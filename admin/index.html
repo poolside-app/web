@@ -162,6 +162,58 @@
   </main>
 </div>
 
+<!-- ── Edit Tenant modal ──────────────────────────────────────────────── -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(10,59,92,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px">
+  <form onsubmit="event.preventDefault(); submitEdit()" style="background:#fff;max-width:480px;width:100%;border-radius:18px;padding:30px 28px;box-shadow:0 20px 60px rgba(10,59,92,.3)">
+    <h2 style="margin:0 0 6px">✏️ Edit tenant</h2>
+    <p style="color:var(--muted);margin:0 0 18px;font-size:14px">Slug can't be changed (it's the subdomain). Other fields are safe to update.</p>
+    <input type="hidden" id="edit-id">
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Club name</label>
+    <input id="edit-name" type="text" required style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px">
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Subdomain <span style="font-weight:500;color:var(--muted);text-transform:none;font-size:11px">(read-only)</span></label>
+    <input id="edit-slug-display" type="text" disabled style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-2);color:var(--muted)">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+      <div>
+        <label style="font-weight:600;font-size:13px;display:block;margin:0 0 6px">Plan</label>
+        <select id="edit-plan" style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+          <option value="free">Free</option>
+          <option value="starter">Starter</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-weight:600;font-size:13px;display:block;margin:0 0 6px">Status</label>
+        <select id="edit-status" style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+          <option value="trial">Trial</option>
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+          <option value="churned">Churned</option>
+        </select>
+      </div>
+    </div>
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Custom domain <span style="font-weight:500;color:var(--muted);text-transform:none;font-size:11px">(Enterprise tier; e.g. <code>yourclub.com</code>)</span></label>
+    <input id="edit-custom-domain" type="text" placeholder="leave blank if none" style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px">
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Internal notes</label>
+    <textarea id="edit-notes" rows="2" style="width:100%;padding:11px 14px;font:14px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical"></textarea>
+
+    <div id="edit-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:space-between;align-items:center">
+      <button type="button" onclick="confirmDeleteTenant()" style="padding:11px 16px;background:#fff;color:var(--red);border:1.5px solid #fecaca;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer">🗑 Delete</button>
+      <div style="display:flex;gap:10px">
+        <button type="button" onclick="closeEditModal()" style="padding:11px 18px;background:#fff;color:var(--text);border:1.5px solid var(--border);border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer">Cancel</button>
+        <button type="submit" id="edit-submit-btn" style="padding:11px 22px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer">Save changes</button>
+      </div>
+    </div>
+  </form>
+</div>
+
 <!-- ── Invite Tenant modal ────────────────────────────────────────────── -->
 <div id="invite-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(10,59,92,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px">
   <form onsubmit="event.preventDefault(); submitInvite()" style="background:#fff;max-width:480px;width:100%;border-radius:18px;padding:30px 28px;box-shadow:0 20px 60px rgba(10,59,92,.3)">
@@ -290,7 +342,10 @@
         <td>${escapeHtml(planLabel)}</td>
         <td><span class="pill ${statusClass}">${escapeHtml((t.status || '').toUpperCase())}</span></td>
         <td>${t.household_count || 0}</td>
-        <td><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" class="btn-sm" style="text-decoration:none">Open →</a></td>
+        <td style="white-space:nowrap">
+          <a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" class="btn-sm" style="text-decoration:none">Open →</a>
+          <button class="btn-sm" onclick="openEditTenant('${escapeHtml(t.id)}')" style="margin-left:4px">Edit</button>
+        </td>
       </tr>`;
     }).join('');
   }
@@ -344,6 +399,66 @@
       errEl.style.display = 'block';
     } finally {
       btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
+  // ── Edit Tenant modal ───────────────────────────────────────────────
+  window.openEditTenant = function(id) {
+    const t = tenantsCache.find(x => x.id === id);
+    if (!t) return;
+    document.getElementById('edit-id').value = t.id;
+    document.getElementById('edit-name').value = t.display_name || '';
+    document.getElementById('edit-slug-display').value = `${t.slug}.poolsideapp.com`;
+    document.getElementById('edit-plan').value = t.plan || 'free';
+    document.getElementById('edit-status').value = t.status || 'trial';
+    document.getElementById('edit-custom-domain').value = t.custom_domain || '';
+    document.getElementById('edit-notes').value = t.notes || '';
+    document.getElementById('edit-err').style.display = 'none';
+    document.getElementById('edit-modal').style.display = 'flex';
+  };
+  window.closeEditModal = function() {
+    document.getElementById('edit-modal').style.display = 'none';
+  };
+
+  window.submitEdit = async function() {
+    const btn = document.getElementById('edit-submit-btn');
+    const errEl = document.getElementById('edit-err');
+    errEl.style.display = 'none';
+    const id = document.getElementById('edit-id').value;
+    const display_name  = document.getElementById('edit-name').value.trim();
+    const plan          = document.getElementById('edit-plan').value;
+    const status        = document.getElementById('edit-status').value;
+    const custom_domain = document.getElementById('edit-custom-domain').value.trim() || null;
+    const notes         = document.getElementById('edit-notes').value.trim() || null;
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+    try {
+      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes });
+      closeEditModal();
+      await loadTenants();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
+  window.confirmDeleteTenant = async function() {
+    const id = document.getElementById('edit-id').value;
+    const t = tenantsCache.find(x => x.id === id);
+    if (!t) return;
+    const ok = confirm(
+      `Mark "${t.display_name}" as churned?\n\n` +
+      `This soft-deletes the tenant — their data stays in the DB but they're hidden from the active list and their members lose access. ` +
+      `Reversible by editing them and changing status back to Active.`
+    );
+    if (!ok) return;
+    try {
+      await callTenantsAdmin('delete', { id });
+      closeEditModal();
+      await loadTenants();
+    } catch (e) {
+      alert('Delete failed: ' + e.message);
     }
   };
 
