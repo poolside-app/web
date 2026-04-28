@@ -314,7 +314,13 @@ function renderTenant(t, ps, posts, events) {
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
     ${(events && events.length) ? `
       <section class="events">
-        <h2>Coming up</h2>
+        <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          Coming up
+          <a href="https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_calendar_ics?slug=${escapeAttr(t.slug)}"
+             style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;background:var(--blue-l);padding:6px 12px;border-radius:8px">
+            📆 Subscribe to calendar
+          </a>
+        </h2>
         ${events.map(ev => `
           <div class="ev">
             ${eventDateBadge(ev)}

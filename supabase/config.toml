@@ -43,3 +43,7 @@ verify_jwt = false
 # Per-tenant calendar entries (parties, swim meets, closures, etc.)
 [functions.events_admin]
 verify_jwt = false
+
+# Public iCal feed — no auth, returns text/calendar so members can subscribe
+[functions.tenant_calendar_ics]
+verify_jwt = false

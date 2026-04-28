@@ -82,7 +82,7 @@
   </aside>
   <main>
     <div class="banner">
-      <b>Welcome back, <span id="auth-greeting">…</span>.</b> Some of the numbers below are still mocked while we wire up real tenant data; integrations panel and Gate Integrations tab are real.
+      <b>Welcome back, <span id="auth-greeting">…</span>.</b> Click any tenant row to edit, sign in as them, or add admins. The Gate Integrations tab is the only mocked surface — everything else is live.
     </div>
 
     <div class="top">
@@ -370,13 +370,13 @@
         suspended: 'pill-suspended', churned: 'pill-suspended',
       }[t.status] || 'pill-active';
       const created = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
-      return `<tr>
+      return `<tr style="cursor:pointer" onclick="openEditTenant('${escapeHtml(t.id)}')">
         <td><b>${escapeHtml(t.display_name)}</b><br><span style="font-size:12px;color:var(--muted)">since ${escapeHtml(created)}</span></td>
-        <td><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank">${escapeHtml(t.slug)}.poolsideapp.com</a></td>
+        <td onclick="event.stopPropagation()"><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank">${escapeHtml(t.slug)}.poolsideapp.com</a></td>
         <td>${escapeHtml(planLabel)}</td>
         <td><span class="pill ${statusClass}">${escapeHtml((t.status || '').toUpperCase())}</span></td>
         <td>${t.household_count || 0}</td>
-        <td style="white-space:nowrap">
+        <td style="white-space:nowrap" onclick="event.stopPropagation()">
           <a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" class="btn-sm" style="text-decoration:none">Open →</a>
           <button class="btn-sm" onclick="openEditTenant('${escapeHtml(t.id)}')" style="margin-left:4px">Edit</button>
         </td>

@@ -150,6 +150,7 @@
         <button data-range="past">Past</button>
         <button data-range="all">All</button>
       </div>
+      <a id="ics-link" target="_blank" rel="noopener" class="btn-ghost btn" style="text-decoration:none">📆 iCal feed</a>
       <button class="btn" onclick="openCreate()">+ New event</button>
     </div>
   </div>
@@ -427,6 +428,8 @@ async function del() {
     if (!me.ok) { logout(); return; }
     document.title = `Calendar — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    document.getElementById('ics-link').href =
+      `${SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug=${encodeURIComponent(me.tenant.slug)}`;
   } catch { logout(); return; }
   await refresh();
 })();
