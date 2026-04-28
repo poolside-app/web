@@ -99,6 +99,26 @@
     display: flex; gap: 32px; flex-wrap: wrap; justify-content: center;
     border-bottom: 1px solid var(--border);
   }
+  /* Posts */
+  .news {
+    max-width: 720px; margin: 0 auto; padding: 48px 22px;
+  }
+  .news h2 {
+    font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+    font-size: 24px; color: var(--blue); margin: 0 0 22px;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .news h2 .count { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .post {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 22px 24px; margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  .post.pinned { border-left: 4px solid var(--sun); }
+  .post-title { font-family:'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; color: var(--blue); margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .post-meta { font-size: 12px; color: var(--muted); margin: 4px 0 12px; }
+  .post-body { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+  .pin-pill { background:#fef3c7; color:#92400e; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; letter-spacing: .04em; text-transform: uppercase; }
   .stat {
     text-align: center; min-width: 140px;
   }
@@ -187,7 +207,13 @@ function renderNotFound(slug) {
   `;
 }
 
-function renderTenant(t, ps) {
+function fmtPostDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function renderTenant(t, ps, posts) {
   document.title = `${t.display_name} — ${ps?.club?.location || 'Poolside'}`;
   document.getElementById('club-name').textContent = t.display_name;
 
@@ -235,6 +261,18 @@ function renderTenant(t, ps) {
       </div>
     </section>
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
+    ${(posts && posts.length) ? `
+      <section class="news">
+        <h2>Latest news <span class="count">${posts.length} post${posts.length === 1 ? '' : 's'}</span></h2>
+        ${posts.map(p => `
+          <article class="post ${p.pinned ? 'pinned' : ''}">
+            <h3 class="post-title">${escapeHtml(p.title)}${p.pinned ? '<span class="pin-pill">📌 Pinned</span>' : ''}</h3>
+            <div class="post-meta">${escapeHtml(fmtPostDate(p.published_at))}</div>
+            <div class="post-body">${escapeHtml(p.body)}</div>
+          </article>
+        `).join('')}
+      </section>
+    ` : ''}
   `;
 }
 
@@ -250,7 +288,7 @@ function renderTenant(t, ps) {
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
-    renderTenant(data.tenant, data.public_settings || {});
+    renderTenant(data.tenant, data.public_settings || {}, data.posts || []);
   } catch (e) {
     document.getElementById('root').innerHTML = `
       <div class="err">

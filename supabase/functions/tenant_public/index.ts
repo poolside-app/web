@@ -79,7 +79,17 @@ Deno.serve(async (req) => {
     },
   };
 
+  // Latest 5 active posts (pinned first), public — surfaces on the landing page.
+  const { data: postsData } = await sb.from('posts')
+    .select('id, title, body, pinned, published_at')
+    .eq('tenant_id', tenant.id)
+    .eq('active', true)
+    .order('pinned', { ascending: false })
+    .order('published_at', { ascending: false })
+    .limit(5);
+  const posts = postsData ?? [];
+
   // Strip the internal id from the response — clients don't need it.
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings });
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts });
 });

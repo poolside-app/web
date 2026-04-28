@@ -35,3 +35,7 @@ verify_jwt = false
 # Households + members CRUD scoped to the tenant on the auth token
 [functions.households_admin]
 verify_jwt = false
+
+# Per-tenant announcement posts shown on the public landing page
+[functions.posts_admin]
+verify_jwt = false
