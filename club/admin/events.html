@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calendar — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 0 22px; display: flex; gap: 4px; overflow-x: auto;
+  }
+  nav.tabs a {
+    padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
+    border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px;
+    white-space: nowrap;
+  }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 880px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+  .filter-row { display: flex; gap: 6px; }
+  .filter-row button {
+    padding: 8px 14px; border: 1.5px solid var(--border); background: #fff;
+    border-radius: 999px; font: 600 12px 'Inter'; cursor: pointer; color: var(--muted);
+  }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn {
+    padding: 10px 18px; border-radius: var(--r-md);
+    font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
+    background: var(--blue); color: #fff;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .day-group { margin-bottom: 22px; }
+  .day-head { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 0 6px 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+
+  .event {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-md); padding: 14px 18px; margin-bottom: 8px;
+    box-shadow: var(--shadow); display: flex; gap: 14px; align-items: flex-start;
+    cursor: pointer; transition: border .12s;
+  }
+  .event:hover { border-color: var(--blue); }
+  .event-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--blue-l); flex-shrink: 0; font-size: 20px;
+  }
+  .event-icon.party    { background: #fef3c7; }
+  .event-icon.swim_meet{ background: #dbeafe; }
+  .event-icon.closure  { background: #fee2e2; }
+  .event-icon.holiday  { background: #fce7f3; }
+  .event-icon.lesson   { background: #ddd6fe; }
+  .event-icon.meeting  { background: #dcfce7; }
+  .event-body { flex: 1; min-width: 0; }
+  .event-title { font-weight: 600; font-size: 15px; color: var(--text); margin: 0; }
+  .event-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .event-loc { font-size: 12px; color: var(--blue); margin-top: 2px; }
+
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+
+  /* Modal */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
+    display: none; align-items: flex-start; justify-content: center;
+    overflow-y: auto; padding: 32px 16px; z-index: 50;
+  }
+  .scrim.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: var(--r-lg); padding: 26px;
+    width: 100%; max-width: 580px; box-shadow: 0 20px 60px rgba(10,59,92,.18);
+  }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter';
+    border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+    font-family: inherit;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus {
+    outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l);
+  }
+  .modal textarea { resize: vertical; min-height: 80px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check-row { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 14px; }
+  .check-row input { width: auto; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .modal-foot .left { margin-right: auto; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px;
+         background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/events.html" class="on">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Calendar</h1>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="filter-row" id="range-filter">
+        <button class="on" data-range="upcoming">Upcoming</button>
+        <button data-range="past">Past</button>
+        <button data-range="all">All</button>
+      </div>
+      <button class="btn" onclick="openCreate()">+ New event</button>
+    </div>
+  </div>
+
+  <div id="list">
+    <div class="empty">Loading…</div>
+  </div>
+</main>
+
+<!-- Create / edit modal -->
+<div class="scrim" id="scrim">
+  <div class="modal">
+    <h2 id="m-heading">New event</h2>
+    <input type="hidden" id="m-id">
+    <label>Title</label>
+    <input id="m-title" maxlength="140" placeholder="Memorial Day BBQ">
+
+    <label>Kind</label>
+    <select id="m-kind">
+      <option value="event">📅 Event</option>
+      <option value="party">🎉 Party</option>
+      <option value="swim_meet">🏊‍♀️ Swim meet</option>
+      <option value="social">🥳 Social</option>
+      <option value="closure">🚫 Closure</option>
+      <option value="holiday">🎆 Holiday</option>
+      <option value="lesson">🏫 Lesson</option>
+      <option value="meeting">📋 Meeting</option>
+    </select>
+
+    <div class="row2">
+      <div><label>Starts</label><input type="datetime-local" id="m-starts_at"></div>
+      <div><label>Ends <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="datetime-local" id="m-ends_at"></div>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="m-all_day">
+      <label for="m-all_day" style="margin:0;font-weight:500">All-day event</label>
+    </div>
+
+    <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+    <input id="m-location" placeholder="The clubhouse / Side lawn / etc.">
+
+    <label>Details <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+    <textarea id="m-body" placeholder="What members should know — RSVP, what to bring, etc."></textarea>
+
+    <div class="err" id="m-err"></div>
+    <div class="modal-foot">
+      <button id="m-delete" class="btn btn-danger left" style="display:none" onclick="del()">Remove event</button>
+      <button class="btn btn-ghost" onclick="closeM()">Cancel</button>
+      <button class="btn" id="m-save" onclick="save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
+const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let RANGE = 'upcoming';
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(EVENTS_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+const KIND_ICON = {
+  event: '📅', party: '🎉', swim_meet: '🏊‍♀️', social: '🥳',
+  closure: '🚫', holiday: '🎆', lesson: '🏫', meeting: '📋',
+};
+const KIND_LABEL = {
+  event: 'Event', party: 'Party', swim_meet: 'Swim meet', social: 'Social',
+  closure: 'Closure', holiday: 'Holiday', lesson: 'Lesson', meeting: 'Meeting',
+};
+
+function fmtDay(d) {
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function fmtTimeRange(ev) {
+  const start = new Date(ev.starts_at);
+  if (ev.all_day) return 'All day';
+  if (!ev.ends_at) return fmtTime(start);
+  const end = new Date(ev.ends_at);
+  // Same day → show "10:00 AM – 12:00 PM"; different days → show full
+  if (start.toDateString() === end.toDateString()) {
+    return `${fmtTime(start)} – ${fmtTime(end)}`;
+  }
+  return `${fmtDay(start)} ${fmtTime(start)} → ${fmtDay(end)} ${fmtTime(end)}`;
+}
+
+// Convert a Date to the local "YYYY-MM-DDTHH:mm" string that
+// <input type="datetime-local"> expects.
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// And back: local input value → ISO string for the API
+function fromLocalInput(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function render(events) {
+  const list = document.getElementById('list');
+  if (!events.length) {
+    list.innerHTML = `<div class="empty"><h2>${RANGE === 'past' ? 'No past events' : RANGE === 'all' ? 'No events yet' : 'Nothing coming up'}</h2>${RANGE !== 'past' ? 'Add one with the button above.' : ''}</div>`;
+    return;
+  }
+  // Group by day
+  const groups = new Map();
+  for (const ev of events) {
+    const key = new Date(ev.starts_at).toDateString();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ev);
+  }
+  const out = [];
+  for (const [dayKey, items] of groups) {
+    out.push(`<div class="day-group"><div class="day-head">${escapeHtml(fmtDay(new Date(dayKey)))}</div>`);
+    for (const ev of items) {
+      out.push(`
+        <div class="event" onclick='openEdit(${JSON.stringify(ev).replace(/'/g, "&#39;")})'>
+          <div class="event-icon ${escapeHtml(ev.kind)}">${KIND_ICON[ev.kind] || '📅'}</div>
+          <div class="event-body">
+            <div class="event-title">${escapeHtml(ev.title)}</div>
+            <div class="event-meta">${escapeHtml(KIND_LABEL[ev.kind] || ev.kind)} · ${escapeHtml(fmtTimeRange(ev))}</div>
+            ${ev.location ? `<div class="event-loc">📍 ${escapeHtml(ev.location)}</div>` : ''}
+          </div>
+        </div>
+      `);
+    }
+    out.push(`</div>`);
+  }
+  list.innerHTML = out.join('');
+}
+
+async function refresh() {
+  try {
+    const data = await call('list', { range: RANGE });
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    render(data.events || []);
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll('#range-filter button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#range-filter button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    RANGE = b.dataset.range;
+    refresh();
+  });
+});
+
+function defaultStart() {
+  // Default to next top of the hour, +1 day
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setMinutes(0, 0, 0);
+  d.setHours(18);
+  return d;
+}
+
+function openCreate() {
+  document.getElementById('m-heading').textContent = 'New event';
+  document.getElementById('m-id').value = '';
+  document.getElementById('m-title').value = '';
+  document.getElementById('m-kind').value = 'event';
+  document.getElementById('m-location').value = '';
+  document.getElementById('m-body').value = '';
+  document.getElementById('m-all_day').checked = false;
+  const start = defaultStart();
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  document.getElementById('m-starts_at').value = toLocalInput(start.toISOString());
+  document.getElementById('m-ends_at').value   = toLocalInput(end.toISOString());
+  document.getElementById('m-delete').style.display = 'none';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim').classList.add('open');
+}
+function openEdit(ev) {
+  document.getElementById('m-heading').textContent = 'Edit event';
+  document.getElementById('m-id').value = ev.id;
+  document.getElementById('m-title').value = ev.title || '';
+  document.getElementById('m-kind').value = ev.kind || 'event';
+  document.getElementById('m-location').value = ev.location || '';
+  document.getElementById('m-body').value = ev.body || '';
+  document.getElementById('m-all_day').checked = !!ev.all_day;
+  document.getElementById('m-starts_at').value = toLocalInput(ev.starts_at);
+  document.getElementById('m-ends_at').value   = toLocalInput(ev.ends_at);
+  document.getElementById('m-delete').style.display = 'inline-block';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim').classList.add('open');
+}
+function closeM() { document.getElementById('scrim').classList.remove('open'); }
+
+async function save() {
+  const id = document.getElementById('m-id').value;
+  const title = document.getElementById('m-title').value.trim();
+  const starts_at = fromLocalInput(document.getElementById('m-starts_at').value);
+  const ends_at_v = document.getElementById('m-ends_at').value;
+  const ends_at = ends_at_v ? fromLocalInput(ends_at_v) : null;
+  const kind = document.getElementById('m-kind').value;
+  const location = document.getElementById('m-location').value.trim() || null;
+  const body = document.getElementById('m-body').value.trim() || null;
+  const all_day = document.getElementById('m-all_day').checked;
+
+  const errEl = document.getElementById('m-err');
+  errEl.classList.remove('show');
+  if (!title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
+  if (!starts_at) { errEl.textContent = 'Start time is required'; errEl.classList.add('show'); return; }
+
+  const btn = document.getElementById('m-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const action = id ? 'update' : 'create';
+    const payload = id
+      ? { id, title, kind, location, body, all_day, starts_at, ends_at }
+      :     { title, kind, location, body, all_day, starts_at, ends_at };
+    const data = await call(action, payload);
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    closeM();
+    await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function del() {
+  const id = document.getElementById('m-id').value;
+  if (!id) return;
+  if (!confirm('Remove this event from the calendar?')) return;
+  try {
+    const data = await call('delete', { id });
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    closeM();
+    await refresh();
+  } catch (e) {
+    const err = document.getElementById('m-err');
+    err.textContent = e.message; err.classList.add('show');
+  }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Calendar — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>

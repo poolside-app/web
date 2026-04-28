@@ -39,3 +39,7 @@ verify_jwt = false
 # Per-tenant announcement posts shown on the public landing page
 [functions.posts_admin]
 verify_jwt = false
+
+# Per-tenant calendar entries (parties, swim meets, closures, etc.)
+[functions.events_admin]
+verify_jwt = false

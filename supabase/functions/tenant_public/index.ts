@@ -89,7 +89,18 @@ Deno.serve(async (req) => {
     .limit(5);
   const posts = postsData ?? [];
 
+  // Next 5 upcoming events (starting now or later, soonest first).
+  const nowIso = new Date().toISOString();
+  const { data: eventsData } = await sb.from('events')
+    .select('id, title, body, kind, location, starts_at, ends_at, all_day')
+    .eq('tenant_id', tenant.id)
+    .eq('active', true)
+    .gte('starts_at', nowIso)
+    .order('starts_at', { ascending: true })
+    .limit(5);
+  const events = eventsData ?? [];
+
   // Strip the internal id from the response — clients don't need it.
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts });
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events });
 });

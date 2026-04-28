@@ -99,6 +99,31 @@
     display: flex; gap: 32px; flex-wrap: wrap; justify-content: center;
     border-bottom: 1px solid var(--border);
   }
+  /* Upcoming events */
+  .events {
+    max-width: 720px; margin: 0 auto; padding: 40px 22px 8px;
+  }
+  .events h2 {
+    font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+    font-size: 24px; color: var(--blue); margin: 0 0 18px;
+  }
+  .ev {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-md); padding: 14px 18px;
+    margin-bottom: 8px; box-shadow: var(--shadow);
+  }
+  .ev-date {
+    flex-shrink: 0; width: 56px; text-align: center;
+    background: var(--bg-2); border-radius: 8px; padding: 8px 0;
+  }
+  .ev-date .mo { font-size: 11px; color: var(--blue); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .ev-date .da { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: var(--blue); line-height: 1.1; }
+  .ev-body { flex: 1; min-width: 0; }
+  .ev-title { font-weight: 600; font-size: 15px; }
+  .ev-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .ev-loc  { font-size: 12px; color: var(--blue); margin-top: 2px; }
+
   /* Posts */
   .news {
     max-width: 720px; margin: 0 auto; padding: 48px 22px;
@@ -213,7 +238,33 @@ function fmtPostDate(iso) {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function renderTenant(t, ps, posts) {
+const KIND_ICON = {
+  event: '📅', party: '🎉', swim_meet: '🏊‍♀️', social: '🥳',
+  closure: '🚫', holiday: '🎆', lesson: '🏫', meeting: '📋',
+};
+const KIND_LABEL = {
+  event: 'Event', party: 'Party', swim_meet: 'Swim meet', social: 'Social',
+  closure: 'Closure', holiday: 'Holiday', lesson: 'Lesson', meeting: 'Meeting',
+};
+function fmtEventTime(ev) {
+  const start = new Date(ev.starts_at);
+  if (ev.all_day) return 'All day';
+  const opts = { hour: 'numeric', minute: '2-digit' };
+  if (!ev.ends_at) return start.toLocaleTimeString(undefined, opts);
+  const end = new Date(ev.ends_at);
+  if (start.toDateString() === end.toDateString()) {
+    return `${start.toLocaleTimeString(undefined, opts)} – ${end.toLocaleTimeString(undefined, opts)}`;
+  }
+  return `${start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} → ${end.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
+}
+function eventDateBadge(ev) {
+  const d = new Date(ev.starts_at);
+  const mo = d.toLocaleDateString(undefined, { month: 'short' });
+  const da = d.getDate();
+  return `<div class="ev-date"><div class="mo">${escapeHtml(mo)}</div><div class="da">${da}</div></div>`;
+}
+
+function renderTenant(t, ps, posts, events) {
   document.title = `${t.display_name} — ${ps?.club?.location || 'Poolside'}`;
   document.getElementById('club-name').textContent = t.display_name;
 
@@ -261,6 +312,21 @@ function renderTenant(t, ps, posts) {
       </div>
     </section>
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
+    ${(events && events.length) ? `
+      <section class="events">
+        <h2>Coming up</h2>
+        ${events.map(ev => `
+          <div class="ev">
+            ${eventDateBadge(ev)}
+            <div class="ev-body">
+              <div class="ev-title">${escapeHtml(KIND_ICON[ev.kind] || '📅')} ${escapeHtml(ev.title)}</div>
+              <div class="ev-meta">${escapeHtml(KIND_LABEL[ev.kind] || ev.kind)} · ${escapeHtml(fmtEventTime(ev))}</div>
+              ${ev.location ? `<div class="ev-loc">📍 ${escapeHtml(ev.location)}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </section>
+    ` : ''}
     ${(posts && posts.length) ? `
       <section class="news">
         <h2>Latest news <span class="count">${posts.length} post${posts.length === 1 ? '' : 's'}</span></h2>
@@ -288,7 +354,7 @@ function renderTenant(t, ps, posts) {
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
-    renderTenant(data.tenant, data.public_settings || {}, data.posts || []);
+    renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || []);
   } catch (e) {
     document.getElementById('root').innerHTML = `
       <div class="err">
