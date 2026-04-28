@@ -3,6 +3,9 @@
 Thumbs.db
 *.swp
 
+# Vendored CLI binaries (~30 MB) — devs install their own
+tools/
+
 # Local env
 .env
 .env.local

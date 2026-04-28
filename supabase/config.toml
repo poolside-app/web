@@ -1,0 +1,7 @@
+project_id = "sdewylbddkcvidwosgxo"
+
+# Functions that handle their own auth (verify HS256 admin tokens themselves)
+# need to opt out of the gateway's JWT check, otherwise the gateway rejects
+# the admin tokens we sign because they're not signed with Supabase's key.
+
+# (List grows as we add Edge Functions in later migrations.)
