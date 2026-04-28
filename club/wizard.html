@@ -451,6 +451,7 @@ function show(n) {
   document.getElementById('skipBtn').style.display = (n === TOTAL) ? 'none' : 'inline-block';
 
   const nb = document.getElementById('nextBtn');
+  nb.disabled = false;
   if (n === TOTAL) {
     nb.textContent = '🎉 Open my admin →';
     nb.onclick = () => { window.location.href = '/club/admin/'; };
