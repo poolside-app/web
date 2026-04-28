@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Club — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+
+  main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
+
+  .hero-card {
+    background: linear-gradient(135deg, var(--blue), var(--blue-2));
+    color: #fff; border-radius: var(--r-lg); padding: 28px;
+    margin-bottom: 22px; box-shadow: 0 10px 30px rgba(10,59,92,.18);
+  }
+  .hero-card h1 { color: #fff; }
+  .hero-card .sub { opacity: .85; margin: 6px 0 0; font-size: 14px; }
+  .hero-card .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 18px; border-radius: var(--r-md);
+    font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
+    background: #fff; color: var(--blue); text-decoration: none;
+    display: inline-block;
+  }
+  .btn:hover { background: var(--blue-l); }
+  .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.4); }
+  .btn-ghost:hover { background: rgba(255,255,255,.1); }
+
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 22px 24px;
+    margin-bottom: 18px; box-shadow: var(--shadow);
+  }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .pill.paid     { background: #dcfce7; color: #14532d; }
+  .pill.unpaid   { background: #fef3c7; color: #92400e; }
+  .pill.role     { background: var(--blue-l); color: var(--blue); }
+
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;
+    margin-top: 14px;
+  }
+  .meta-grid .cell { background: var(--bg-2); border-radius: 10px; padding: 12px 14px; }
+  .meta-grid .cell .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .meta-grid .cell .val { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 2px; }
+
+  .member-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .member-row:last-child { border-bottom: 0; }
+  .member-row .name { font-weight: 600; font-size: 14px; }
+  .member-row .meta { font-size: 12px; color: var(--muted); }
+
+  .ev {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .ev:last-child { border-bottom: 0; }
+  .ev-date {
+    flex-shrink: 0; width: 48px; text-align: center;
+    background: var(--bg-2); border-radius: 8px; padding: 6px 0;
+  }
+  .ev-date .mo { font-size: 10px; color: var(--blue); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .ev-date .da { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; color: var(--blue); line-height: 1.1; }
+  .ev-body { flex: 1; min-width: 0; }
+  .ev-title { font-weight: 600; font-size: 14px; }
+  .ev-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .post-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .post-row:last-child { border-bottom: 0; }
+  .post-title { font-weight: 600; font-size: 14px; }
+  .post-meta { font-size: 11px; color: var(--muted); margin: 2px 0 6px; }
+  .post-body { font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+
+  .empty { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+
+<main id="main">
+  <div class="card"><p>Loading…</p></div>
+</main>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUTH_URL    = `${SUPABASE_URL}/functions/v1/member_auth`;
+const PUBLIC_URL  = `${SUPABASE_URL}/functions/v1/tenant_public`;
+
+function token() { return localStorage.getItem('poolside_member_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_member_token');
+  localStorage.removeItem('poolside_member_user');
+  localStorage.removeItem('poolside_member_tenant');
+  window.location.href = '/m/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+function formatPhone(e164) {
+  if (!e164) return '';
+  const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]})-${m[2]}-${m[3]}` : String(e164);
+}
+function getSlug() {
+  const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+const KIND_ICON = {
+  event: '📅', party: '🎉', swim_meet: '🏊‍♀️', social: '🥳',
+  closure: '🚫', holiday: '🎆', lesson: '🏫', meeting: '📋',
+};
+function fmtEventTime(ev) {
+  const start = new Date(ev.starts_at);
+  if (ev.all_day) return 'All day';
+  const opts = { hour: 'numeric', minute: '2-digit' };
+  if (!ev.ends_at) return start.toLocaleTimeString(undefined, opts);
+  const end = new Date(ev.ends_at);
+  if (start.toDateString() === end.toDateString()) {
+    return `${start.toLocaleTimeString(undefined, opts)} – ${end.toLocaleTimeString(undefined, opts)}`;
+  }
+  return start.toLocaleDateString();
+}
+function eventDateBadge(ev) {
+  const d = new Date(ev.starts_at);
+  return `<div class="ev-date"><div class="mo">${d.toLocaleDateString(undefined, { month:'short' })}</div><div class="da">${d.getDate()}</div></div>`;
+}
+function fmtPostDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+
+  let me;
+  try {
+    const res = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    });
+    me = await res.json();
+  } catch (e) {
+    document.getElementById('main').innerHTML = `<div class="card"><h2>Network error</h2><p>${escapeHtml(e.message)}</p></div>`;
+    return;
+  }
+  if (!me.ok) { logout(); return; }
+
+  document.title = `${me.tenant.display_name} — My Club`;
+  document.getElementById('whoami').textContent = me.user.name || me.user.email;
+
+  // Fire the public lookup in parallel for events + posts (no auth needed).
+  const slug = getSlug();
+  let publicData = { events: [], posts: [], public_settings: {} };
+  if (slug) {
+    try {
+      const r = await fetch(PUBLIC_URL, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug }),
+      });
+      const d = await r.json();
+      if (d.ok) publicData = d;
+    } catch { /* keep empties */ }
+  }
+
+  const { user, household, tenant } = me;
+  const venmo = publicData.public_settings?.payments?.venmo_handle;
+  const dueText = household.dues_paid_for_year
+    ? `<span class="pill paid">Dues paid${household.paid_until_year ? ' · ' + household.paid_until_year : ''}</span>`
+    : `<span class="pill unpaid">Dues unpaid</span>`;
+
+  // Hero card with greeting + quick actions
+  const heroActions = [];
+  heroActions.push(`<a class="btn" href="/" target="_blank">Public home →</a>`);
+  if (venmo) heroActions.push(`<a class="btn btn-ghost" href="https://venmo.com/${escapeAttr(venmo)}" target="_blank" rel="noopener">Pay dues via Venmo</a>`);
+  heroActions.push(`<a class="btn btn-ghost" href="${SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug=${encodeURIComponent(tenant.slug)}" target="_blank">📆 Subscribe to calendar</a>`);
+
+  // Household members list (housemates)
+  const members = (household.members || []);
+  const memberHtml = members.length
+    ? members.map(m => `
+      <div class="member-row">
+        <div>
+          <div class="name">${escapeHtml(m.name)}${m.id === user.id ? ' <span style="color:var(--muted);font-weight:400;font-size:12px">(you)</span>' : ''}</div>
+          <div class="meta">${escapeHtml(formatPhone(m.phone_e164) || '—')}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+        </div>
+        <span class="pill role">${escapeHtml(m.role)}</span>
+      </div>
+    `).join('')
+    : '<div class="empty">No members on file yet.</div>';
+
+  const events = publicData.events || [];
+  const eventsHtml = events.length
+    ? events.map(ev => `
+      <div class="ev">
+        ${eventDateBadge(ev)}
+        <div class="ev-body">
+          <div class="ev-title">${escapeHtml(KIND_ICON[ev.kind] || '📅')} ${escapeHtml(ev.title)}</div>
+          <div class="ev-meta">${escapeHtml(fmtEventTime(ev))}${ev.location ? ' · ' + escapeHtml(ev.location) : ''}</div>
+        </div>
+      </div>
+    `).join('')
+    : '<div class="empty">No upcoming events.</div>';
+
+  const posts = publicData.posts || [];
+  const postsHtml = posts.length
+    ? posts.map(p => `
+      <div class="post-row">
+        <div class="post-title">${escapeHtml(p.title)}${p.pinned ? ' 📌' : ''}</div>
+        <div class="post-meta">${escapeHtml(fmtPostDate(p.published_at))}</div>
+        <div class="post-body">${escapeHtml(p.body)}</div>
+      </div>
+    `).join('')
+    : '<div class="empty">No announcements yet.</div>';
+
+  document.getElementById('main').innerHTML = `
+    <div class="hero-card">
+      <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
+      <p class="sub">Welcome back to ${escapeHtml(tenant.display_name)}.</p>
+      <div class="actions">${heroActions.join('')}</div>
+    </div>
+
+    <div class="card">
+      <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        ${escapeHtml(household.family_name || 'Your household')}
+        ${dueText}
+      </h2>
+      <div class="meta-grid">
+        ${household.tier ? `<div class="cell"><div class="lbl">Tier</div><div class="val">${escapeHtml(household.tier)}</div></div>` : ''}
+        ${household.fob_number ? `<div class="cell"><div class="lbl">Fob #</div><div class="val">${escapeHtml(household.fob_number)}</div></div>` : ''}
+        ${household.address ? `<div class="cell"><div class="lbl">Address</div><div class="val">${escapeHtml(household.address)}${household.city || household.zip ? '<br><span style="font-weight:400;color:var(--muted)">' + escapeHtml([household.city, household.zip].filter(Boolean).join(', ')) + '</span>' : ''}</div></div>` : ''}
+        ${household.emergency_contact ? `<div class="cell"><div class="lbl">Emergency</div><div class="val">${escapeHtml(household.emergency_contact)}</div></div>` : ''}
+      </div>
+      <h3 style="margin-top:20px">Members</h3>
+      ${memberHtml}
+    </div>
+
+    <div class="card">
+      <h2>Coming up</h2>
+      ${eventsHtml}
+    </div>
+
+    <div class="card">
+      <h2>Latest news</h2>
+      ${postsHtml}
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>

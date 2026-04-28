@@ -47,3 +47,7 @@ verify_jwt = false
 # Public iCal feed — no auth, returns text/calendar so members can subscribe
 [functions.tenant_calendar_ics]
 verify_jwt = false
+
+# Member-facing email magic-link auth (start / verify / me / logout)
+[functions.member_auth]
+verify_jwt = false
