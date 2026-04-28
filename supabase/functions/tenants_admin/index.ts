@@ -65,6 +65,35 @@ function strOrNull(v: unknown): string | null {
   return s ? s : null;
 }
 
+// Same helper as in tenant_signup — adds <slug>.poolsideapp.com to the Vercel
+// project. Best-effort; if Vercel hiccups, the tenant is still created.
+async function addVercelSubdomain(slug: string): Promise<{ ok: boolean; error?: string }> {
+  const token     = Deno.env.get('VERCEL_API_TOKEN');
+  const projectId = Deno.env.get('VERCEL_PROJECT_ID');
+  if (!token || !projectId) {
+    return { ok: false, error: 'VERCEL_API_TOKEN or VERCEL_PROJECT_ID not set' };
+  }
+  const domain = `${slug}.poolsideapp.com`;
+  try {
+    const res = await fetch(`https://api.vercel.com/v10/projects/${projectId}/domains`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: domain }),
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 409) return { ok: true };
+    const txt = await res.text();
+    console.warn(`[tenants_admin] Vercel domain add failed for ${domain}:`, res.status, txt);
+    return { ok: false, error: `Vercel ${res.status}: ${txt.slice(0, 200)}` };
+  } catch (e) {
+    console.warn(`[tenants_admin] Vercel API error:`, e);
+    return { ok: false, error: String(e) };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -147,7 +176,15 @@ Deno.serve(async (req) => {
     // Seed an empty settings row
     await sb.from('settings').insert({ tenant_id: data.id, value: {} });
 
-    return jsonResponse({ ok: true, tenant: data });
+    // Auto-provision the Vercel subdomain
+    const vercel = await addVercelSubdomain(data.slug);
+
+    return jsonResponse({
+      ok: true,
+      tenant: data,
+      subdomain_provisioned: vercel.ok,
+      subdomain_warning: vercel.ok ? null : vercel.error,
+    });
   }
 
   // ── update ─────────────────────────────────────────────────────────────

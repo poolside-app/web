@@ -37,6 +37,37 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+// Adds <slug>.poolsideapp.com to the Vercel project so the tenant's URL
+// works immediately after signup. Idempotent (409 = already exists, treat
+// as success). Best-effort: never fails the surrounding tenant creation;
+// if Vercel rejects, we log it and the admin can add the domain manually.
+async function addVercelSubdomain(slug: string): Promise<{ ok: boolean; error?: string }> {
+  const token     = Deno.env.get('VERCEL_API_TOKEN');
+  const projectId = Deno.env.get('VERCEL_PROJECT_ID');
+  if (!token || !projectId) {
+    return { ok: false, error: 'VERCEL_API_TOKEN or VERCEL_PROJECT_ID not set' };
+  }
+  const domain = `${slug}.poolsideapp.com`;
+  try {
+    const res = await fetch(`https://api.vercel.com/v10/projects/${projectId}/domains`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: domain }),
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 409) return { ok: true };  // already on the project
+    const txt = await res.text();
+    console.warn(`[tenant_signup] Vercel domain add failed for ${domain}:`, res.status, txt);
+    return { ok: false, error: `Vercel ${res.status}: ${txt.slice(0, 200)}` };
+  } catch (e) {
+    console.warn(`[tenant_signup] Vercel API error:`, e);
+    return { ok: false, error: String(e) };
+  }
+}
+
 // Subdomains we reserve for our own use, to prevent tenants from grabbing
 // admin / www / api / etc. and breaking the platform.
 const RESERVED_SLUGS = new Set([
@@ -154,10 +185,16 @@ Deno.serve(async (req) => {
     value: { setup_wizard_complete: false },
   });
 
+  // ── Auto-provision the Vercel subdomain so <slug>.poolsideapp.com works
+  // immediately. Best-effort — never fails the signup if Vercel hiccups.
+  const vercel = await addVercelSubdomain(tenant.slug);
+
   return jsonResponse({
     ok: true,
     slug: tenant.slug,
     display_name: tenant.display_name,
     trial_ends_at: tenant.trial_ends_at,
+    subdomain_provisioned: vercel.ok,
+    subdomain_warning: vercel.ok ? null : vercel.error,
   });
 });
