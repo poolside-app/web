@@ -89,32 +89,90 @@
 
     <label for="slug">Pick your subdomain</label>
     <div class="input-prefix-suffix">
-      <input id="slug" type="text" placeholder="bishopestates" autocomplete="off" pattern="[a-z0-9-]{3,30}" required>
-      <span class="suffix">.poolside.app</span>
+      <input id="slug" type="text" placeholder="bishopestates" autocomplete="off" pattern="[a-z0-9-]{2,30}" required>
+      <span class="suffix">.poolsideapp.com</span>
     </div>
-    <p class="field-help">Lowercase letters, numbers, and hyphens — 3 to 30 characters.</p>
+    <p class="field-help">Lowercase letters, numbers, and hyphens — 2 to 30 characters. Auto-suggests from club name.</p>
 
     <label for="email">Your email</label>
     <input id="email" type="email" placeholder="you@yourclub.org" autocomplete="email" required>
     <p class="field-help">Where we'll send your trial confirmation + admin login link.</p>
 
     <label for="pw">Password</label>
-    <input id="pw" type="password" minlength="8" autocomplete="new-password" required>
-    <p class="field-help">8 characters minimum. You can reset it any time.</p>
+    <input id="pw" type="password" minlength="10" autocomplete="new-password" required>
+    <p class="field-help">10 characters minimum. You can change it any time.</p>
 
-    <button class="btn" type="submit">Start 14-day free trial →</button>
+    <button class="btn" id="submit-btn" type="submit">Start 14-day free trial →</button>
 
-    <div class="meta">
-      <span class="check">✓</span>
-      <span>This is a prototype — submitting won't actually create anything yet. Production signup launches when Poolside ships.</span>
-    </div>
+    <div id="signup-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
 
-    <p class="small">Already a club admin? <a href="club-demo/admin/">Sign in</a></p>
+    <p class="small">Already a club admin? <a href="/admin/login.html">Provider sign in</a></p>
   </form>
 </main>
 <script>
-function fakeSubmit() {
-  alert("Thanks — this is a Poolside prototype. The real signup will go live when the SaaS launches. For now, head back to the demo club to see the tenant frontend.");
+const SIGNUP_URL = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_signup';
+
+// Auto-suggest slug from club name
+const clubInput = document.getElementById('club');
+const slugInput = document.getElementById('slug');
+let slugManuallyEdited = false;
+slugInput.addEventListener('input', () => { slugManuallyEdited = true; });
+clubInput.addEventListener('input', () => {
+  if (slugManuallyEdited) return;
+  const slug = clubInput.value.toLowerCase()
+    .replace(/[^a-z0-9 -]/g, '')
+    .replace(/\s+/g, '')
+    .replace(/-+/g, '-')
+    .slice(0, 30);
+  slugInput.value = slug;
+});
+
+async function fakeSubmit() {
+  const btn = document.getElementById('submit-btn');
+  const errEl = document.getElementById('signup-err');
+  errEl.style.display = 'none';
+
+  const display_name = clubInput.value.trim();
+  const slug         = slugInput.value.trim().toLowerCase();
+  const email        = document.getElementById('email').value.trim().toLowerCase();
+  const password     = document.getElementById('pw').value;
+
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Creating your club…';
+  try {
+    const res = await fetch(SIGNUP_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ display_name, slug, email, password, plan: 'free' }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Sign-up failed');
+
+    // Successful — show a "we're spinning up your club" page that includes
+    // their slug + link to sign in. We can't redirect to <slug>.poolsideapp.com
+    // yet because the subdomain isn't auto-added to Vercel; for now we land
+    // them on a holding page they can use.
+    document.querySelector('.card').innerHTML = `
+      <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+      <h1 style="margin-top:14px">🎉 You're in!</h1>
+      <p class="lede"><b>${escapeHtml(data.display_name)}</b> has been created on Poolside.</p>
+      <div class="meta" style="background:#dcfce7;border-color:#86efac;color:#14532d">
+        <span class="check">✓</span>
+        <div>
+          Your club's URL: <code>${escapeHtml(data.slug)}.poolsideapp.com</code><br>
+          <span style="font-size:11px">During the early-access phase Doug provisions each new subdomain manually — you'll get a confirmation email when it's live (usually within a few hours).</span>
+        </div>
+      </div>
+      <p class="small" style="margin-top:18px">Got questions? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
+    `;
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 </script>
 </body>

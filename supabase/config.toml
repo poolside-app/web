@@ -11,3 +11,7 @@ verify_jwt = false
 
 [functions.tenants_admin]
 verify_jwt = false
+
+# Public — no auth required, this is the signup form
+[functions.tenant_signup]
+verify_jwt = false
