@@ -202,6 +202,37 @@
     <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Internal notes</label>
     <textarea id="edit-notes" rows="2" style="width:100%;padding:11px 14px;font:14px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical"></textarea>
 
+    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
+      <h3 style="font-family:'Fraunces',serif;font-weight:600;margin:0 0 4px;font-size:16px">Tenant admins</h3>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 10px">Create the first admin so they can log in at <code id="edit-slug-host">…</code>/club/admin/login.html.</p>
+      <div id="edit-admins-list" style="font-size:13px;background:var(--bg-2);border-radius:10px;padding:8px 12px;margin-bottom:10px;color:var(--muted)">Loading…</div>
+      <details style="border:1.5px solid var(--border);border-radius:10px;padding:10px 14px">
+        <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--blue)">+ Add a tenant admin</summary>
+        <div style="margin-top:12px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-weight:600;font-size:12px;display:block;margin:0 0 4px">Email</label>
+              <input id="ca-email" type="email" placeholder="admin@theirclub.org" style="width:100%;padding:9px 12px;font:14px 'Inter';border:1.5px solid var(--border);border-radius:8px">
+            </div>
+            <div>
+              <label style="font-weight:600;font-size:12px;display:block;margin:0 0 4px">Display name</label>
+              <input id="ca-display" type="text" placeholder="Optional" style="width:100%;padding:9px 12px;font:14px 'Inter';border:1.5px solid var(--border);border-radius:8px">
+            </div>
+          </div>
+          <label style="font-weight:600;font-size:12px;display:block;margin:10px 0 4px">Temp password <span style="font-weight:500;color:var(--muted);font-size:11px">(they'll be forced to change on first login)</span></label>
+          <div style="display:flex;gap:8px">
+            <input id="ca-pw" type="text" placeholder="At least 10 characters" style="flex:1;padding:9px 12px;font:14px 'Inter';border:1.5px solid var(--border);border-radius:8px">
+            <button type="button" onclick="randomPw()" style="padding:9px 14px;background:#fff;border:1.5px solid var(--border);border-radius:8px;font:600 12px 'Inter';cursor:pointer">Generate</button>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:10px">
+            <button type="button" id="ca-submit" onclick="submitCreateAdmin()" style="padding:9px 16px;background:var(--blue);color:#fff;border:0;border-radius:8px;font:600 13px 'Inter';cursor:pointer">Create admin</button>
+          </div>
+          <div id="ca-err" style="display:none;margin-top:8px;padding:8px 12px;font-size:12px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:8px"></div>
+          <div id="ca-ok" style="display:none;margin-top:8px;padding:8px 12px;font-size:12px;background:#dcfce7;border:1px solid #86efac;color:#14532d;border-radius:8px"></div>
+        </div>
+      </details>
+    </div>
+
     <div id="edit-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
 
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:space-between;align-items:center">
@@ -414,11 +445,78 @@
     document.getElementById('edit-custom-domain').value = t.custom_domain || '';
     document.getElementById('edit-notes').value = t.notes || '';
     document.getElementById('edit-err').style.display = 'none';
+    document.getElementById('edit-slug-host').textContent = `${t.slug}.poolsideapp.com`;
+    document.getElementById('edit-admins-list').textContent = 'Loading…';
+    document.getElementById('ca-email').value = '';
+    document.getElementById('ca-display').value = '';
+    document.getElementById('ca-pw').value = '';
+    document.getElementById('ca-err').style.display = 'none';
+    document.getElementById('ca-ok').style.display = 'none';
     document.getElementById('edit-modal').style.display = 'flex';
+    loadTenantAdmins(t.id);
   };
   window.closeEditModal = function() {
     document.getElementById('edit-modal').style.display = 'none';
   };
+
+  async function loadTenantAdmins(tenant_id) {
+    const list = document.getElementById('edit-admins-list');
+    try {
+      const data = await callTenantsAdmin('list_admins', { tenant_id });
+      const admins = (data.admins || []).filter(a => a.active);
+      if (!admins.length) {
+        list.innerHTML = `<i style="color:var(--muted)">No admins yet — create one below so this club can sign in.</i>`;
+        return;
+      }
+      list.innerHTML = admins.map(a => {
+        const tag = a.is_default_pw
+          ? '<span style="color:var(--sun);font-size:11px;font-weight:700;margin-left:6px">temp pw</span>'
+          : '';
+        return `<div style="padding:4px 0"><b>${escapeHtml(a.display_name || a.email)}</b><span style="color:var(--muted);margin-left:8px">${escapeHtml(a.email)}</span>${tag}</div>`;
+      }).join('');
+    } catch (e) {
+      list.innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`;
+    }
+  }
+
+  window.randomPw = function() {
+    const alpha = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pw = '';
+    const buf = new Uint32Array(12);
+    crypto.getRandomValues(buf);
+    for (const n of buf) pw += alpha[n % alpha.length];
+    document.getElementById('ca-pw').value = pw;
+  };
+
+  window.submitCreateAdmin = async function() {
+    const btn = document.getElementById('ca-submit');
+    const errEl = document.getElementById('ca-err');
+    const okEl  = document.getElementById('ca-ok');
+    errEl.style.display = 'none'; okEl.style.display = 'none';
+    const tenant_id    = document.getElementById('edit-id').value;
+    const email        = document.getElementById('ca-email').value.trim().toLowerCase();
+    const display_name = document.getElementById('ca-display').value.trim() || null;
+    const password     = document.getElementById('ca-pw').value;
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Creating…';
+    try {
+      const data = await callTenantsAdmin('create_admin', { tenant_id, email, display_name, password });
+      okEl.innerHTML = `Created. Send them: email <code>${escapeHtml(email)}</code> + password <code>${escapeHtml(password)}</code> — they'll be forced to change it on first login.`;
+      okEl.style.display = 'block';
+      document.getElementById('ca-email').value = '';
+      document.getElementById('ca-display').value = '';
+      document.getElementById('ca-pw').value = '';
+      await loadTenantAdmins(tenant_id);
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
 
   window.submitEdit = async function() {
     const btn = document.getElementById('edit-submit-btn');

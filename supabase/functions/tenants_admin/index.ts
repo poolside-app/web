@@ -22,6 +22,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -223,6 +224,62 @@ Deno.serve(async (req) => {
     const { data, error } = await sb.from('tenants').update(patch).eq('id', id).select().single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true, tenant: data });
+  }
+
+  // ── list_admins ────────────────────────────────────────────────────────
+  if (action === 'list_admins') {
+    const tenant_id = String(body.tenant_id ?? '');
+    if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const { data, error } = await sb.from('admin_users')
+      .select('id, email, username, display_name, is_super, is_default_pw, active, created_at')
+      .eq('tenant_id', tenant_id)
+      .order('created_at', { ascending: true });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, admins: data ?? [] });
+  }
+
+  // ── create_admin ───────────────────────────────────────────────────────
+  // Provider creates the first (or an additional) tenant admin. Sets
+  // is_default_pw=true so the new admin is forced to change the password
+  // on first login.
+  if (action === 'create_admin') {
+    const tenant_id    = String(body.tenant_id ?? '');
+    const email        = String(body.email ?? '').trim().toLowerCase();
+    const password     = String(body.password ?? '');
+    const display_name = strOrNull(body.display_name) ?? (email ? email.split('@')[0] : null);
+    if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    if (!email || !email.includes('@') || email.length > 200) {
+      return jsonResponse({ ok: false, error: 'Valid email is required' }, 400);
+    }
+    if (!password || password.length < 10) {
+      return jsonResponse({ ok: false, error: 'Password must be at least 10 characters' }, 400);
+    }
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id').eq('id', tenant_id).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+
+    const { data: clash } = await sb.from('admin_users')
+      .select('id').eq('tenant_id', tenant_id)
+      .or(`email.eq.${email},username.eq.${email}`).maybeSingle();
+    if (clash) return jsonResponse({ ok: false, error: 'An admin with that email already exists for this tenant' }, 409);
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const { data: admin, error: aErr } = await sb.from('admin_users').insert({
+      tenant_id, username: email, email, password_hash, display_name,
+      is_super: true, is_default_pw: true, active: true,
+    }).select('id, email, display_name').single();
+    if (aErr || !admin) return jsonResponse({ ok: false, error: aErr?.message || 'Could not create admin' }, 500);
+
+    // Assign the system 'super-admin' role if it exists (best-effort).
+    const { data: superRole } = await sb.from('admin_roles')
+      .select('id').eq('slug', 'super-admin').is('tenant_id', null).maybeSingle();
+    if (superRole) {
+      await sb.from('admin_user_roles').insert({
+        admin_user_id: admin.id, admin_role_id: superRole.id,
+      });
+    }
+    return jsonResponse({ ok: true, admin });
   }
 
   // ── delete (soft) ──────────────────────────────────────────────────────

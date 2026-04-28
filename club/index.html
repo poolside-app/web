@@ -16,72 +16,132 @@
     --r-md: 12px; --r-lg: 18px;
   }
   *,*::before,*::after { box-sizing: border-box; }
+  html, body { margin: 0; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
+    background: var(--bg); color: var(--text);
     font: 16px/1.55 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh; display: flex; flex-direction: column;
   }
   a { color: var(--blue); }
-  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
-  h1 { font-size: 36px; line-height: 1.1; }
-  .logo {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
-    color: var(--blue); text-decoration: none;
+  h1 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; line-height: 1.05; }
+  h1 { font-size: clamp(36px, 7vw, 64px); }
+  h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; margin:0; font-size: 22px; }
+
+  /* Sticky top bar */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255, 255, 255, .92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 22px;
+    display: flex; justify-content: space-between; align-items: center;
   }
-  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
-  header { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
-  main {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    padding: 48px 22px;
+  .topbar.translucent {
+    background: rgba(10, 59, 92, .25);
+    border-bottom-color: rgba(255, 255, 255, .15);
   }
-  .card {
-    background: #fff; border: 1px solid var(--border);
-    border-radius: var(--r-lg); padding: 40px 32px;
-    box-shadow: var(--shadow); max-width: 560px; width: 100%;
-    text-align: center;
-  }
-  .lede { color: var(--muted); margin: 12px 0 24px; font-size: 16px; }
-  .pill {
-    display: inline-block; padding: 4px 12px; border-radius: 999px;
-    font-size: 12px; font-weight: 600; letter-spacing: .04em;
-    text-transform: uppercase;
-  }
-  .pill.trial    { background: #fef3c7; color: #92400e; }
-  .pill.active   { background: #dcfce7; color: #14532d; }
-  .pill.suspended{ background: #fee2e2; color: #7f1d1d; }
-  .pill.churned  { background: #f3f4f6; color: #4b5563; }
-  .meta {
-    background: var(--bg-2); border-radius: var(--r-md);
-    padding: 14px 16px; margin-top: 24px; font-size: 13px;
-    color: var(--text); text-align: left;
-  }
-  .meta b { color: var(--blue); }
-  .actions { margin-top: 28px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  .btn {
-    display: inline-block; padding: 12px 22px;
-    background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md);
-    font: 600 14px 'Inter', sans-serif; cursor: pointer; text-decoration: none;
+  .topbar.translucent a, .topbar.translucent .name { color: #fff; }
+  .name { font-family: 'Fraunces', serif; font-weight: 600; font-size: 15px; color: var(--blue); }
+  .topbar a {
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    padding: 8px 14px; border-radius: 8px;
     transition: background .12s;
   }
-  .btn:hover { background: var(--blue-2); text-decoration: none; }
-  .btn.ghost { background: transparent; color: var(--blue); border: 1.5px solid var(--border); }
-  .btn.ghost:hover { background: var(--blue-l); }
-  .small { font-size: 13px; color: var(--muted); margin-top: 22px; }
-  .err { color: var(--red); }
-  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+  .topbar a:hover { background: rgba(0,0,0,.05); }
+  .topbar.translucent a:hover { background: rgba(255,255,255,.15); }
+
+  /* Hero */
+  .hero {
+    flex: 1;
+    position: relative;
+    min-height: 78vh;
+    display: flex; flex-direction: column; justify-content: center;
+    color: #fff;
+    padding: 100px 22px 80px;
+    overflow: hidden;
+  }
+  .hero-bg {
+    position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(160deg, #0a3b5c 0%, #134b73 60%, #1e3a5f 100%);
+    background-size: cover; background-position: center;
+  }
+  .hero-bg.with-photo::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(10,59,92,.55), rgba(10,59,92,.78));
+  }
+  .hero-inner {
+    max-width: 720px; margin: 0 auto; text-align: center; width: 100%;
+  }
+  .eyebrow {
+    display: inline-block; padding: 5px 14px; border-radius: 999px;
+    background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
+    font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .tagline { font-size: clamp(15px, 2vw, 18px); margin-top: 18px; opacity: .92; max-width: 520px; margin-left: auto; margin-right: auto; }
+  .location { margin-top: 20px; font-size: 14px; opacity: .8; }
+  .actions { margin-top: 36px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 13px 26px;
+    background: #fff; color: var(--blue);
+    border: 0; border-radius: var(--r-md);
+    font: 600 15px 'Inter', sans-serif; cursor: pointer; text-decoration: none;
+    transition: transform .12s;
+  }
+  .btn:hover { transform: translateY(-1px); text-decoration: none; }
+  .btn.ghost { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.5); }
+  .btn.ghost:hover { background: rgba(255,255,255,.1); }
+
+  /* Info strip */
+  .strip {
+    background: var(--bg-2); padding: 28px 22px;
+    display: flex; gap: 32px; flex-wrap: wrap; justify-content: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat {
+    text-align: center; min-width: 140px;
+  }
+  .stat .lbl {
+    font-size: 11px; color: var(--muted);
+    font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+    margin-bottom: 4px;
+  }
+  .stat .val { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: var(--blue); }
+
+  /* Pill */
+  .pill {
+    display: inline-block; padding: 4px 12px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .pill.trial    { background: #fef3c7; color: #92400e; }
+  .pill.active   { background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.3); }
+  .pill.suspended{ background: #fee2e2; color: #7f1d1d; }
+  .pill.churned  { background: #f3f4f6; color: #4b5563; }
+  .pill.float    { position: absolute; top: 18px; right: 22px; }
+
+  footer { padding: 22px; text-align: center; font-size: 12px; color: var(--muted); }
+  .err {
+    max-width: 480px; margin: 60px auto; padding: 28px 22px;
+    text-align: center; background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); box-shadow: var(--shadow);
+  }
+
+  @media (max-width: 600px) {
+    .topbar a { padding: 6px 10px; font-size: 12px; }
+    .hero { padding: 80px 16px 60px; min-height: 70vh; }
+    .strip { gap: 18px; padding: 22px 16px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
-</header>
-<main>
-  <div class="card" id="card">
-    <p class="lede">Loading…</p>
-  </div>
-</main>
+<div class="topbar" id="topbar">
+  <span class="name" id="club-name">Loading…</span>
+  <a id="admin-link" href="/club/admin/login.html">Admin sign in</a>
+</div>
+
+<div id="root"></div>
+
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
@@ -91,51 +151,90 @@ const PUBLIC_LOOKUP = `${SUPABASE_URL}/functions/v1/tenant_public`;
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function escapeAttr(s) {
+  return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function getSlugFromHostname() {
   const host = window.location.hostname;
-  // bishopestates.poolsideapp.com → "bishopestates"
   const m = host.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
   if (!m) return null;
   if (['www','admin','api','app'].includes(m[1].toLowerCase())) return null;
   return m[1].toLowerCase();
 }
 
+function fmtTime12(hhmm) {
+  if (!hhmm) return null;
+  const m = String(hhmm).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return hhmm;
+  let h = parseInt(m[1], 10);
+  const mm = m[2];
+  const ampm = h < 12 ? 'AM' : 'PM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return mm === '00' ? `${h} ${ampm}` : `${h}:${mm} ${ampm}`;
+}
+
 function renderNotFound(slug) {
   document.title = 'Club not found — Poolside';
-  document.getElementById('card').innerHTML = `
-    <h1>Club not found</h1>
-    <p class="lede">There's no Poolside club at <b>${escapeHtml(slug ?? window.location.hostname)}</b>.</p>
-    <div class="actions">
-      <a class="btn" href="https://poolsideapp.com/signup.html">Start your own club</a>
-      <a class="btn ghost" href="https://poolsideapp.com/">Back to Poolside</a>
+  document.getElementById('club-name').textContent = 'Poolside';
+  document.getElementById('root').innerHTML = `
+    <div class="err">
+      <h1 style="font-size:28px;margin-bottom:8px">Club not found</h1>
+      <p style="color:var(--muted)">There's no Poolside club at <b>${escapeHtml(slug ?? window.location.hostname)}</b>.</p>
+      <p style="margin-top:18px"><a href="https://poolsideapp.com/signup.html" style="font-weight:600">Start your own club →</a></p>
     </div>
   `;
 }
 
-function renderTenant(t) {
-  document.title = `${t.display_name} — Poolside`;
+function renderTenant(t, ps) {
+  document.title = `${t.display_name} — ${ps?.club?.location || 'Poolside'}`;
+  document.getElementById('club-name').textContent = t.display_name;
+
+  const hasPhoto = !!ps?.branding?.background_photo_url;
+  if (hasPhoto) {
+    document.getElementById('topbar').classList.add('translucent');
+  }
+
+  const eyebrow  = ps?.hero?.eyebrow;
+  const headline = ps?.hero?.headline || t.display_name;
+  const tagline  = ps?.hero?.tagline;
+  const location = ps?.club?.location;
+  const opens    = fmtTime12(ps?.pool?.opens_at);
+  const closes   = fmtTime12(ps?.pool?.closes_at);
+
   const statusLabel = ({trial:'Free Trial', active:'Active', suspended:'Suspended', churned:'Closed'})[t.status] ?? t.status;
-  const trialNote = t.status === 'trial'
-    ? `<p class="small">This club is on a free trial. Once the admin completes setup, members will be able to sign in here.</p>`
+  const statusPill = t.status === 'trial' || t.status === 'suspended' || t.status === 'churned'
+    ? `<span class="pill ${escapeHtml(t.status)} float">${escapeHtml(statusLabel)}</span>`
     : '';
-  const suspendedNote = t.status === 'suspended'
-    ? `<p class="small err">This club is currently suspended. Please contact the club admin.</p>`
+
+  const bgStyle = hasPhoto
+    ? `background-image: url('${escapeAttr(ps.branding.background_photo_url)}');`
     : '';
-  const churnedNote = t.status === 'churned'
-    ? `<p class="small err">This club is no longer active.</p>`
-    : '';
-  document.getElementById('card').innerHTML = `
-    <h1>${escapeHtml(t.display_name)}</h1>
-    <p class="lede">Welcome to your club's home on Poolside.</p>
-    <span class="pill ${escapeHtml(t.status)}">${escapeHtml(statusLabel)}</span>
-    <div class="meta">
-      <div><b>Subdomain</b> ${escapeHtml(t.slug)}.poolsideapp.com</div>
-    </div>
-    <div class="actions">
-      <a class="btn" href="/club/admin/login.html">Admin sign in</a>
-    </div>
-    ${trialNote}${suspendedNote}${churnedNote}
+
+  const stripCells = [];
+  if (opens && closes) stripCells.push(`<div class="stat"><div class="lbl">Today's hours</div><div class="val">${escapeHtml(opens)} – ${escapeHtml(closes)}</div></div>`);
+  if (location)        stripCells.push(`<div class="stat"><div class="lbl">Where</div><div class="val">${escapeHtml(location)}</div></div>`);
+  if (ps?.payments?.venmo_handle) stripCells.push(`<div class="stat"><div class="lbl">Venmo</div><div class="val">@${escapeHtml(ps.payments.venmo_handle)}</div></div>`);
+
+  document.getElementById('root').innerHTML = `
+    <section class="hero">
+      <div class="hero-bg ${hasPhoto ? 'with-photo' : ''}" style="${bgStyle}"></div>
+      ${statusPill}
+      <div class="hero-inner">
+        ${eyebrow ? `<div class="eyebrow">${escapeHtml(eyebrow)}</div>` : ''}
+        <h1>${escapeHtml(headline)}</h1>
+        ${tagline ? `<p class="tagline">${escapeHtml(tagline)}</p>` : ''}
+        ${location ? `<p class="location">📍 ${escapeHtml(location)}</p>` : ''}
+        <div class="actions">
+          <a class="btn" href="/club/admin/login.html">Sign in</a>
+          ${ps?.payments?.venmo_handle
+            ? `<a class="btn ghost" href="https://venmo.com/${escapeAttr(ps.payments.venmo_handle)}" target="_blank" rel="noopener">Pay dues via Venmo</a>`
+            : ''}
+        </div>
+      </div>
+    </section>
+    ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
   `;
 }
 
@@ -151,12 +250,14 @@ function renderTenant(t) {
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
-    renderTenant(data.tenant);
+    renderTenant(data.tenant, data.public_settings || {});
   } catch (e) {
-    document.getElementById('card').innerHTML = `
-      <h1>Couldn't reach Poolside</h1>
-      <p class="lede err">${escapeHtml(e.message || 'Network error')}</p>
-      <div class="actions"><a class="btn ghost" href="">Try again</a></div>
+    document.getElementById('root').innerHTML = `
+      <div class="err">
+        <h1 style="font-size:28px;margin-bottom:8px">Couldn't reach Poolside</h1>
+        <p style="color:var(--red)">${escapeHtml(e.message || 'Network error')}</p>
+        <p style="margin-top:18px"><a href="">Try again</a></p>
+      </div>
     `;
   }
 })();

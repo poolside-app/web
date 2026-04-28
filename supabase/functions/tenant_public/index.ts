@@ -40,10 +40,46 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const { data: tenant } = await sb.from('tenants')
-    .select('slug, display_name, status, plan, custom_domain')
+    .select('id, slug, display_name, status, plan, custom_domain')
     .eq('slug', slug)
     .maybeSingle();
 
   if (!tenant) return jsonResponse({ ok: false, error: 'Not found' }, 404);
-  return jsonResponse({ ok: true, tenant });
+
+  // Pull a SANITIZED slice of settings.value for public landing pages.
+  // Internal flags (e.g. setup_wizard_complete) are deliberately excluded.
+  const { data: settings } = await sb.from('settings')
+    .select('value').eq('tenant_id', tenant.id).maybeSingle();
+  const v = (settings?.value ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  const public_settings = {
+    hero: {
+      eyebrow:  v.hero?.eyebrow  ?? null,
+      headline: v.hero?.headline ?? null,
+      tagline:  v.hero?.tagline  ?? null,
+    },
+    branding: {
+      background_photo_url: v.branding?.background_photo_url ?? null,
+    },
+    club: {
+      location: v.club?.location ?? null,
+    },
+    pool: {
+      opens_at:  v.pool?.opens_at  ?? null,
+      closes_at: v.pool?.closes_at ?? null,
+    },
+    payments: {
+      venmo_handle: v.payments?.venmo_handle ?? null,
+      paypal_link:  v.payments?.paypal_link  ?? null,
+    },
+    features: {
+      swim_lessons: !!v.features?.swim_lessons,
+      parties:      !!v.features?.parties,
+      keyfobs:      !!v.features?.keyfobs,
+      gate:         !!v.features?.gate,
+    },
+  };
+
+  // Strip the internal id from the response — clients don't need it.
+  const { id: _id, ...publicTenant } = tenant;
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings });
 });

@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Settings — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 0 22px; display: flex; gap: 4px;
+  }
+  nav.tabs a {
+    padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
+    border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px;
+  }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+
+  main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 18px;
+  }
+  label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  label .opt { font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; font-size: 11px; margin-left: 6px; }
+  input, select, textarea {
+    width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter';
+    border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l);
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .feature {
+    display:flex; align-items: flex-start; gap: 10px; font-weight: 500;
+    margin: 8px 0; cursor: pointer; padding: 10px 12px;
+    border: 1.5px solid var(--border); border-radius: 10px; background: var(--bg);
+  }
+  .feature input { width: auto; margin-top: 4px; flex-shrink: 0; }
+  .feature .ftitle { font-weight: 600; font-size: 14px; color: var(--text); }
+  .feature .fsub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .btn {
+    padding: 10px 18px; border-radius: var(--r-md);
+    font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
+    background: var(--blue); color: #fff;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .toast {
+    position: fixed; right: 22px; bottom: 22px;
+    background: var(--green); color: #fff; padding: 10px 18px;
+    border-radius: 8px; font-size: 13px; box-shadow: var(--shadow);
+    transform: translateY(120%); transition: transform .25s ease;
+  }
+  .toast.show { transform: translateY(0); }
+  .err {
+    display:none; margin-top: 8px; padding:10px 14px; font-size:13px;
+    background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px;
+  }
+  .err.show { display: block; }
+  .bg-preview img {
+    width: 100%; max-height: 180px; object-fit: cover;
+    border-radius: var(--r-md); border: 1px solid var(--border);
+  }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/settings.html" class="on">Settings</a>
+  <a href="/club/wizard.html">Wizard</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Settings</h1>
+    <div>
+      <button class="btn-ghost btn" onclick="window.location.href='/club/wizard.html'">Re-run wizard</button>
+      <button class="btn" id="save-btn" onclick="save()">Save changes</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Club info</h2>
+    <label>Club name</label>
+    <input id="display_name">
+    <label>Location <span class="opt">(shown on the home page)</span></label>
+    <input id="location" placeholder="Concord, California">
+    <div class="row2" style="margin-top:6px">
+      <div><label>Default city <span class="opt">(prefills new households)</span></label><input id="default_city"></div>
+      <div><label>Default zip</label><input id="default_zip"></div>
+    </div>
+    <label>Swim team name <span class="opt">(if you have one)</span></label>
+    <input id="swim_team_name">
+  </div>
+
+  <div class="card">
+    <h2>Front-page intro</h2>
+    <label>Eyebrow <span class="opt">(small uppercase line above the headline)</span></label>
+    <input id="hero_eyebrow" placeholder="Summer 2026">
+    <label>Headline <span class="opt">(big serif line — leave blank to use club name)</span></label>
+    <input id="hero_headline">
+    <label>Tagline</label>
+    <input id="hero_tagline" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
+  </div>
+
+  <div class="card">
+    <h2>Background photo</h2>
+    <div id="bg-preview" class="bg-preview" style="display:none;margin-bottom:12px">
+      <img id="bg-preview-img" alt="">
+      <button type="button" class="btn-ghost btn" style="margin-top:8px" onclick="clearBg()">Remove photo</button>
+    </div>
+    <label>Upload from your computer</label>
+    <input type="file" id="bg-file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="uploadBg(this)">
+    <p style="font-size:11px;color:var(--muted);margin-top:4px" id="bg-status">JPG, PNG, WebP, or GIF · up to 10 MB</p>
+    <label style="margin-top:14px">…or paste a URL</label>
+    <input type="url" id="background_photo_url" placeholder="https://..." oninput="syncBgPreview()">
+  </div>
+
+  <div class="card">
+    <h2>Pool location &amp; hours</h2>
+    <div class="row2">
+      <div><label>Latitude</label><input type="number" id="lat" step="0.000001" placeholder="37.978900"></div>
+      <div><label>Longitude</label><input type="number" id="lng" step="0.000001" placeholder="-121.969300"></div>
+    </div>
+    <button type="button" class="btn-ghost btn" style="margin-top:8px;font-size:12px" onclick="useMyLocation()">📍 Use my location</button>
+    <div class="row2" style="margin-top:12px">
+      <div><label>Opens at</label><input type="time" id="opens_at"></div>
+      <div><label>Closes at</label><input type="time" id="closes_at"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Payments</h2>
+    <label>Venmo handle <span class="opt">(without @)</span></label>
+    <input id="venmo_handle" placeholder="yourclub">
+    <label>PayPal link</label>
+    <input id="paypal_link" placeholder="https://paypal.me/yourclub">
+  </div>
+
+  <div class="card">
+    <h2>Features</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Tick what applies — admin tabs reveal accordingly.</p>
+    <label class="feature">
+      <input type="checkbox" id="feat_swim">
+      <div>
+        <div class="ftitle">🏊‍♀️ Swim lessons or swim team</div>
+        <div class="fsub">Members book + pay through the app. Stripe handles checkout (1.5% Poolside fee).</div>
+      </div>
+    </label>
+    <label class="feature">
+      <input type="checkbox" id="feat_parties">
+      <div>
+        <div class="ftitle">🎉 Party rentals</div>
+        <div class="fsub">Members request parties online; you approve with one click.</div>
+      </div>
+    </label>
+    <label class="feature">
+      <input type="checkbox" id="feat_keyfobs" onchange="toggleFobDay()">
+      <div>
+        <div class="ftitle">🔑 Keyfob check-in</div>
+        <div class="fsub">Track which household has which fob and when each goes live.</div>
+      </div>
+    </label>
+    <div id="fob-day-row" style="display:none;margin:6px 0 12px;padding:0 4px">
+      <label>Fob activation day</label>
+      <select id="fob_activation_day">
+        <option>Monday</option><option>Tuesday</option>
+        <option selected>Wednesday</option>
+        <option>Thursday</option><option>Friday</option>
+        <option>Saturday</option><option>Sunday</option>
+      </select>
+    </div>
+    <label class="feature">
+      <input type="checkbox" id="feat_gate">
+      <div>
+        <div class="ftitle">🚪 Gate access from members' phones</div>
+        <div class="fsub">Paid add-on, $250 setup + $25/mo. We evaluate your gate panel first.</div>
+      </div>
+    </label>
+  </div>
+
+  <div id="err" class="err"></div>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
+    <button class="btn" id="save-btn-2" onclick="save()">Save changes</button>
+  </div>
+</main>
+
+<div class="toast" id="toast">Saved.</div>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const UPLOAD_URL   = `${SUPABASE_URL}/functions/v1/tenant_upload`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+let TENANT = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+function val(id) { return (document.getElementById(id)?.value ?? '').trim(); }
+function setVal(id, v) { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; }
+function setChk(id, v) { const el = document.getElementById(id); if (el) el.checked = !!v; }
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = kind === 'err' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+function showErr(msg) {
+  const e = document.getElementById('err');
+  e.textContent = msg; e.classList.add('show');
+  setTimeout(() => e.classList.remove('show'), 6000);
+}
+
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function toggleFobDay() {
+  const on = !!document.getElementById('feat_keyfobs').checked;
+  document.getElementById('fob-day-row').style.display = on ? 'block' : 'none';
+}
+function syncBgPreview() {
+  const url = val('background_photo_url');
+  const wrap = document.getElementById('bg-preview');
+  const img  = document.getElementById('bg-preview-img');
+  if (url) { img.src = url; wrap.style.display = 'block'; }
+  else { img.removeAttribute('src'); wrap.style.display = 'none'; }
+}
+function clearBg() {
+  setVal('background_photo_url', '');
+  document.getElementById('bg-file').value = '';
+  document.getElementById('bg-status').textContent = 'JPG, PNG, WebP, or GIF · up to 10 MB';
+  syncBgPreview();
+}
+async function uploadBg(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const status = document.getElementById('bg-status');
+  if (file.size > MAX_UPLOAD_BYTES) {
+    status.textContent = 'File too large — keep it under 10 MB.'; input.value = ''; return;
+  }
+  status.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Could not read file'));
+      r.readAsDataURL(file);
+    });
+    const t = token();
+    if (!t) { logout(); return; }
+    const res = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Upload failed');
+    setVal('background_photo_url', data.url);
+    syncBgPreview();
+    status.textContent = '✓ Uploaded.';
+  } catch (e) {
+    status.textContent = e.message || 'Upload failed';
+  }
+}
+function useMyLocation() {
+  if (!navigator.geolocation) return showErr('Geolocation not supported');
+  navigator.geolocation.getCurrentPosition(
+    pos => { setVal('lat', pos.coords.latitude.toFixed(6)); setVal('lng', pos.coords.longitude.toFixed(6)); },
+    err => showErr('Could not get location: ' + err.message),
+  );
+}
+
+function populate(s) {
+  setVal('display_name',     TENANT?.display_name);
+  setVal('location',         s.club?.location);
+  setVal('default_city',     s.club?.default_city);
+  setVal('default_zip',      s.club?.default_zip);
+  setVal('swim_team_name',   s.club?.swim_team_name);
+  setVal('hero_eyebrow',     s.hero?.eyebrow);
+  setVal('hero_headline',    s.hero?.headline);
+  setVal('hero_tagline',     s.hero?.tagline);
+  setVal('background_photo_url', s.branding?.background_photo_url);
+  syncBgPreview();
+  setVal('lat',  s.pool?.lat);
+  setVal('lng',  s.pool?.lng);
+  if (s.pool?.opens_at)  setVal('opens_at', s.pool.opens_at);
+  if (s.pool?.closes_at) setVal('closes_at', s.pool.closes_at);
+  if (s.pool?.fob_activation_day) setVal('fob_activation_day', s.pool.fob_activation_day);
+  setVal('venmo_handle', s.payments?.venmo_handle);
+  setVal('paypal_link',  s.payments?.paypal_link);
+  setChk('feat_swim',    s.features?.swim_lessons);
+  setChk('feat_parties', s.features?.parties);
+  setChk('feat_keyfobs', s.features?.keyfobs);
+  setChk('feat_gate',    s.features?.gate);
+  toggleFobDay();
+}
+
+function collect(prevSettings) {
+  return {
+    ...prevSettings,                            // preserve unrelated keys
+    setup_wizard_complete: true,                // saving from settings means setup is done
+    club: {
+      ...(prevSettings?.club ?? {}),
+      location:        val('location') || null,
+      default_city:    val('default_city') || null,
+      default_zip:     val('default_zip') || null,
+      swim_team_name:  val('swim_team_name') || null,
+    },
+    hero: {
+      eyebrow:  val('hero_eyebrow') || null,
+      headline: val('hero_headline') || null,
+      tagline:  val('hero_tagline') || null,
+    },
+    branding: { background_photo_url: val('background_photo_url') || null },
+    pool: {
+      ...(prevSettings?.pool ?? {}),
+      lat:                val('lat') ? Number(val('lat')) : null,
+      lng:                val('lng') ? Number(val('lng')) : null,
+      opens_at:           val('opens_at') || null,
+      closes_at:          val('closes_at') || null,
+      fob_activation_day: val('fob_activation_day') || null,
+    },
+    payments: {
+      venmo_handle: val('venmo_handle') || null,
+      paypal_link:  val('paypal_link') || null,
+    },
+    features: {
+      swim_lessons: !!document.getElementById('feat_swim').checked,
+      parties:      !!document.getElementById('feat_parties').checked,
+      keyfobs:      !!document.getElementById('feat_keyfobs').checked,
+      gate:         !!document.getElementById('feat_gate').checked,
+    },
+  };
+}
+
+let LAST_SETTINGS = {};
+
+async function save() {
+  const btns = [document.getElementById('save-btn'), document.getElementById('save-btn-2')];
+  btns.forEach(b => b.disabled = true);
+  try {
+    const value = collect(LAST_SETTINGS);
+    const dn = val('display_name') || (TENANT?.display_name ?? null);
+    const data = await call(SETTINGS_URL, 'save', { value, display_name: dn });
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    LAST_SETTINGS = value;
+    if (TENANT) TENANT.display_name = dn;
+    toast('Saved.');
+  } catch (e) {
+    showErr(e.message);
+    toast(e.message, 'err');
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await call(ME_URL, 'me');
+    if (!me.ok) { logout(); return; }
+    TENANT = me.tenant;
+    document.title = `Settings — ${TENANT.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch (e) { logout(); return; }
+  try {
+    const data = await call(SETTINGS_URL, 'get');
+    if (!data.ok) throw new Error(data.error || 'Load failed');
+    LAST_SETTINGS = data.settings || {};
+    populate(LAST_SETTINGS);
+  } catch (e) { showErr(e.message); }
+})();
+</script>
+</body>
+</html>
