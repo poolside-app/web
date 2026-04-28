@@ -51,3 +51,7 @@ verify_jwt = false
 # Member-facing email magic-link auth (start / verify / me / logout)
 [functions.member_auth]
 verify_jwt = false
+
+# Per-tenant photo gallery CRUD; uploads go through tenant_upload first
+[functions.photos_admin]
+verify_jwt = false

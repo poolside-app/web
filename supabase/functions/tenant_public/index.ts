@@ -100,7 +100,17 @@ Deno.serve(async (req) => {
     .limit(5);
   const events = eventsData ?? [];
 
+  // Photo gallery — admin-curated order, capped at 24 for landing-page weight.
+  const { data: photosData } = await sb.from('photos')
+    .select('id, url, caption')
+    .eq('tenant_id', tenant.id)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: false })
+    .limit(24);
+  const photos = photosData ?? [];
+
   // Strip the internal id from the response — clients don't need it.
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events });
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos });
 });

@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photos — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 0 22px; display: flex; gap: 4px; overflow-x: auto;
+  }
+  nav.tabs a {
+    padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
+    border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px;
+    white-space: nowrap;
+  }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 1080px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .btn {
+    padding: 10px 18px; border-radius: var(--r-md);
+    font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
+    background: var(--blue); color: #fff;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--r-lg);
+    padding: 28px; text-align: center; color: var(--muted);
+    background: var(--bg-2); cursor: pointer; transition: border .15s, background .15s;
+    margin-bottom: 22px;
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--blue); color: var(--blue); background: var(--blue-l);
+  }
+  .upload-zone input { display: none; }
+  .upload-status { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 18px; }
+
+  .grid {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  .tile {
+    position: relative; background: var(--bg-2); border-radius: var(--r-md);
+    overflow: hidden; aspect-ratio: 1; cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s; }
+  .tile:hover img { transform: scale(1.04); }
+  .tile.inactive { opacity: .5; }
+  .tile-cap {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px;
+    background: linear-gradient(0deg, rgba(0,0,0,.7), rgba(0,0,0,0));
+    color: #fff; font-size: 12px; line-height: 1.3;
+  }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+
+  /* Edit modal */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .65);
+    display: none; align-items: center; justify-content: center;
+    overflow-y: auto; padding: 22px; z-index: 50;
+  }
+  .scrim.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: var(--r-lg); padding: 22px;
+    width: 100%; max-width: 600px;
+  }
+  .modal img { width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--r-md); background: #000; margin-bottom: 14px; }
+  .modal label { font-weight: 600; font-size: 12px; display: block; margin: 8px 0 4px; }
+  .modal input { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+  .modal-foot .left { margin-right: auto; }
+  .btn-danger { background: var(--red); color: #fff; }
+
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/photos.html" class="on">Photos</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Photos</h1>
+    <p style="color:var(--muted);font-size:13px;margin:0">First 24 in your chosen order surface on the public landing page.</p>
+  </div>
+
+  <label class="upload-zone" id="drop">
+    <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+    <div style="font-size:32px">📤</div>
+    <div style="font-size:14px;font-weight:600;color:var(--blue);margin-top:6px">Tap to upload or drag photos here</div>
+    <div style="font-size:12px;margin-top:4px">JPG, PNG, WebP, or GIF · up to 10 MB each · multi-select OK</div>
+    <div class="upload-status" id="upload-status"></div>
+  </label>
+
+  <div id="list">
+    <div class="empty">Loading…</div>
+  </div>
+</main>
+
+<!-- Lightbox / edit modal -->
+<div class="scrim" id="scrim">
+  <div class="modal">
+    <img id="m-img" alt="">
+    <label>Caption <span style="color:var(--muted);font-weight:500;font-size:11px">(optional, shown overlay)</span></label>
+    <input id="m-caption" maxlength="200" placeholder="What's in this photo?">
+    <div class="modal-foot">
+      <button class="btn btn-danger left" onclick="del()">Remove from gallery</button>
+      <button class="btn btn-ghost" onclick="moveUp()">← Move earlier</button>
+      <button class="btn btn-ghost" onclick="moveDown()">Move later →</button>
+      <button class="btn btn-ghost" onclick="closeM()">Close</button>
+      <button class="btn" onclick="saveCaption()">Save</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const PHOTOS_URL = `${SUPABASE_URL}/functions/v1/photos_admin`;
+const UPLOAD_URL = `${SUPABASE_URL}/functions/v1/tenant_upload`;
+const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const MAX_BYTES = 10 * 1024 * 1024;
+
+let CACHE = [];
+let SELECTED = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function render(photos) {
+  const list = document.getElementById('list');
+  if (!photos.length) {
+    list.innerHTML = `<div class="empty"><h2>No photos yet</h2>Drop images above to get started.</div>`;
+    return;
+  }
+  list.innerHTML = `<div class="grid">${
+    photos.map(p => `
+      <div class="tile ${p.active ? '' : 'inactive'}" data-id="${escapeAttr(p.id)}">
+        <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.caption || '')}" loading="lazy">
+        ${p.caption ? `<div class="tile-cap">${escapeHtml(p.caption)}</div>` : ''}
+      </div>
+    `).join('')
+  }</div>`;
+  list.querySelectorAll('.tile').forEach(t => {
+    t.addEventListener('click', () => openEdit(t.dataset.id));
+  });
+}
+
+async function refresh() {
+  try {
+    const data = await call(PHOTOS_URL, 'list');
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    CACHE = (data.photos || []).filter(p => p.active);
+    render(CACHE);
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ── Upload ────────────────────────────────────────────────────────────
+async function uploadOne(file) {
+  if (file.size > MAX_BYTES) throw new Error(`${file.name}: too large (max 10 MB)`);
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) throw new Error(`${file.name}: not an image`);
+  const base64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('Read failed'));
+    r.readAsDataURL(file);
+  });
+  const t = token();
+  const upRes = await fetch(UPLOAD_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+  });
+  if (upRes.status === 401) { logout(); throw new Error('Signed out'); }
+  const upData = await upRes.json();
+  if (!upData.ok) throw new Error(upData.error || 'Upload failed');
+  const data = await call(PHOTOS_URL, 'create', { url: upData.url });
+  if (!data.ok) throw new Error(data.error || 'Could not save photo');
+  return data.photo;
+}
+
+async function uploadFiles(files) {
+  const status = document.getElementById('upload-status');
+  const list = Array.from(files);
+  if (!list.length) return;
+  let done = 0, errs = [];
+  for (const f of list) {
+    status.textContent = `Uploading ${done+1}/${list.length}…`;
+    try { await uploadOne(f); done++; }
+    catch (e) { errs.push(e.message); }
+  }
+  status.textContent = errs.length
+    ? `${done} uploaded · ${errs.length} failed: ${errs[0]}`
+    : `✓ ${done} photo${done === 1 ? '' : 's'} added`;
+  await refresh();
+  setTimeout(() => { status.textContent = ''; }, 4000);
+}
+
+document.getElementById('file-input').addEventListener('change', (e) => uploadFiles(e.target.files));
+const dz = document.getElementById('drop');
+['dragenter','dragover'].forEach(t => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add('drag'); }));
+['dragleave','drop'].forEach(t => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.remove('drag'); }));
+dz.addEventListener('drop', (e) => {
+  if (e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files);
+});
+
+// ── Edit modal ────────────────────────────────────────────────────────
+function openEdit(id) {
+  const p = CACHE.find(x => x.id === id);
+  if (!p) return;
+  SELECTED = p;
+  document.getElementById('m-img').src = p.url;
+  document.getElementById('m-caption').value = p.caption || '';
+  document.getElementById('scrim').classList.add('open');
+}
+function closeM() { document.getElementById('scrim').classList.remove('open'); }
+document.getElementById('scrim').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeM();
+});
+
+async function saveCaption() {
+  if (!SELECTED) return;
+  const caption = document.getElementById('m-caption').value.trim() || null;
+  try {
+    const data = await call(PHOTOS_URL, 'update', { id: SELECTED.id, caption });
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    closeM();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function del() {
+  if (!SELECTED) return;
+  if (!confirm('Remove this photo from the gallery?')) return;
+  try {
+    const data = await call(PHOTOS_URL, 'delete', { id: SELECTED.id });
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    closeM();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+// Reorder by swapping sort_order with the neighbor.
+async function moveBy(delta) {
+  if (!SELECTED) return;
+  const idx = CACHE.findIndex(p => p.id === SELECTED.id);
+  if (idx < 0) return;
+  const swap = CACHE[idx + delta];
+  if (!swap) return;
+  // Pick new sort_order values that hold for both rows. Use creation index
+  // as a tiebreaker so we always end up with deterministic ordering.
+  const a = SELECTED.sort_order ?? idx;
+  const b = swap.sort_order ?? (idx + delta);
+  const newA = b - delta * 0;     // a takes b's place visually
+  const newB = a;
+  // Use idx + delta and idx as fallback if both were 0 to break the tie.
+  const finalA = (a === b) ? (idx + delta) : b;
+  const finalB = (a === b) ? idx : a;
+  try {
+    await Promise.all([
+      call(PHOTOS_URL, 'update', { id: SELECTED.id, sort_order: finalA }),
+      call(PHOTOS_URL, 'update', { id: swap.id,     sort_order: finalB }),
+    ]);
+    closeM();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+function moveUp()   { moveBy(-1); }
+function moveDown() { moveBy(+1); }
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Photos — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>
