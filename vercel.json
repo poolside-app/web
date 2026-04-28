@@ -1,12 +1,21 @@
 {
-  "redirects": [
+  "rewrites": [
     {
       "source": "/",
       "has": [
-        { "type": "host", "value": "bishopestates.poolsideapp.com" }
+        {
+          "type": "host",
+          "value": "(?<slug>[a-z0-9][a-z0-9-]*)\\.poolsideapp\\.com"
+        }
       ],
-      "destination": "/club/index.html",
-      "permanent": false
+      "missing": [
+        { "type": "host", "value": "www\\.poolsideapp\\.com" }
+      ],
+      "destination": "/club/index.html"
+    },
+    {
+      "source": "/",
+      "destination": "/home.html"
     }
   ]
 }
