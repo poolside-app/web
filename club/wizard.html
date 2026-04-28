@@ -161,15 +161,23 @@
         <input type="text" id="f-hero_tagline" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
       </div>
 
-      <!-- Step 3 — Background photo URL -->
+      <!-- Step 3 — Background photo (upload or URL) -->
       <div class="step" data-step="3" style="display:none">
         <div class="step-icon">🖼️</div>
         <h2 class="step-title">Background photo</h2>
-        <p class="step-tag">Appears behind every page (darkened for readability). Skip if you'll add later — direct uploads coming soon; for now paste a public URL.</p>
+        <p class="step-tag">Appears behind every page (darkened for readability). Skip if you'll add later.</p>
 
-        <label>Photo URL</label>
-        <input type="url" id="f-background_photo_url" placeholder="https://...">
-        <p class="help">Tip: upload to Imgur, Cloudinary, or your own site, then paste the direct image URL.</p>
+        <div id="bg-preview" style="display:none;margin-bottom:14px">
+          <img id="bg-preview-img" alt="" style="width:100%;max-height:180px;object-fit:cover;border-radius:var(--r-md);border:1px solid var(--border)">
+          <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:12px;padding:6px 12px;font-weight:500" onclick="clearBg()">Remove photo</button>
+        </div>
+
+        <label for="f-bg-file">Upload from your computer</label>
+        <input type="file" id="f-bg-file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="uploadBg(this)">
+        <p class="help" id="bg-status">JPG, PNG, WebP, or GIF · up to 10 MB</p>
+
+        <label style="margin-top:14px">…or paste an image URL</label>
+        <input type="url" id="f-background_photo_url" placeholder="https://..." oninput="syncBgPreview()">
       </div>
 
       <!-- Step 4 — Pool location & hours -->
@@ -200,14 +208,6 @@
             <input type="time" id="f-closes_at" value="20:00">
           </div>
         </div>
-
-        <label style="margin-top:14px">Fob activation day <span class="opt">(when new keyfobs go live each week)</span></label>
-        <select id="f-fob_activation_day">
-          <option>Monday</option><option>Tuesday</option>
-          <option selected>Wednesday</option>
-          <option>Thursday</option><option>Friday</option>
-          <option>Saturday</option><option>Sunday</option>
-        </select>
       </div>
 
       <!-- Step 5 — Payments + features -->
@@ -244,6 +244,22 @@
           </div>
         </label>
         <label class="feature">
+          <input type="checkbox" id="f-feat_keyfobs" onchange="toggleFobDay()">
+          <div>
+            <div class="ftitle">🔑 Keyfob check-in</div>
+            <div class="fsub">Track which household has which fob and when each one activates. Works with your existing physical panel — no extra hardware required.</div>
+          </div>
+        </label>
+        <div id="fob-day-row" style="display:none;margin:6px 0 12px;padding:0 4px">
+          <label style="margin-top:8px">Fob activation day <span class="opt">(when new fobs go live each week)</span></label>
+          <select id="f-fob_activation_day">
+            <option>Monday</option><option>Tuesday</option>
+            <option selected>Wednesday</option>
+            <option>Thursday</option><option>Friday</option>
+            <option>Saturday</option><option>Sunday</option>
+          </select>
+        </div>
+        <label class="feature">
           <input type="checkbox" id="f-feat_gate">
           <div>
             <div class="ftitle">🚪 Gate access from members' phones</div>
@@ -278,6 +294,8 @@
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const UPLOAD_URL   = `${SUPABASE_URL}/functions/v1/tenant_upload`;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const TOTAL = 6;
 let step = 1;
 let TENANT = null;
@@ -336,6 +354,7 @@ function collect() {
     features: {
       swim_lessons: !!document.getElementById('f-feat_swim').checked,
       parties:      !!document.getElementById('f-feat_parties').checked,
+      keyfobs:      !!document.getElementById('f-feat_keyfobs').checked,
       gate:         !!document.getElementById('f-feat_gate').checked,
     },
   };
@@ -351,6 +370,7 @@ function populate(s) {
   setVal('f-hero_headline', s.hero?.headline);
   setVal('f-hero_tagline',  s.hero?.tagline);
   setVal('f-background_photo_url', s.branding?.background_photo_url);
+  syncBgPreview();
   setVal('f-lat',  s.pool?.lat);
   setVal('f-lng',  s.pool?.lng);
   if (s.pool?.opens_at)  setVal('f-opens_at',  s.pool.opens_at);
@@ -360,7 +380,65 @@ function populate(s) {
   setVal('f-paypal_link',  s.payments?.paypal_link);
   setChk('f-feat_swim',    s.features?.swim_lessons);
   setChk('f-feat_parties', s.features?.parties);
+  setChk('f-feat_keyfobs', s.features?.keyfobs);
   setChk('f-feat_gate',    s.features?.gate);
+  toggleFobDay();
+}
+
+function toggleFobDay() {
+  const on = !!document.getElementById('f-feat_keyfobs')?.checked;
+  const row = document.getElementById('fob-day-row');
+  if (row) row.style.display = on ? 'block' : 'none';
+}
+
+function syncBgPreview() {
+  const url = val('f-background_photo_url');
+  const wrap = document.getElementById('bg-preview');
+  const img  = document.getElementById('bg-preview-img');
+  if (url) { img.src = url; wrap.style.display = 'block'; }
+  else     { img.removeAttribute('src'); wrap.style.display = 'none'; }
+}
+
+function clearBg() {
+  setVal('f-background_photo_url', '');
+  document.getElementById('f-bg-file').value = '';
+  document.getElementById('bg-status').textContent = 'JPG, PNG, WebP, or GIF · up to 10 MB';
+  syncBgPreview();
+}
+
+async function uploadBg(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const status = document.getElementById('bg-status');
+  if (file.size > MAX_UPLOAD_BYTES) {
+    status.textContent = 'File too large — keep it under 10 MB.';
+    input.value = '';
+    return;
+  }
+  status.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Could not read file'));
+      r.readAsDataURL(file);
+    });
+    const t = token();
+    if (!t) { logoutAndLogin(); return; }
+    const res = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    });
+    if (res.status === 401) { logoutAndLogin(); return; }
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Upload failed');
+    setVal('f-background_photo_url', data.url);
+    syncBgPreview();
+    status.textContent = '✓ Uploaded.';
+  } catch (e) {
+    status.textContent = e.message || 'Upload failed';
+  }
 }
 
 function show(n) {

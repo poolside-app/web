@@ -27,3 +27,7 @@ verify_jwt = false
 # Per-tenant admin reads/writes — auth verified inside the function
 [functions.tenant_settings]
 verify_jwt = false
+
+# Per-tenant image uploads (background photos, logos) → club-assets bucket
+[functions.tenant_upload]
+verify_jwt = false
