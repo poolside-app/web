@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gate Integrations — Provider Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e5e7eb;
+    --green:#16a34a; --red:#dc2626; --amber:#d97706; --purple:#7e22ce;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 4px 12px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0 0 .3em; }
+  h1 { font-size:28px; } h2 { font-size:20px; } h3 { font-size:15px; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .layout { display: flex; min-height: 100vh; }
+  aside {
+    width: 240px; background: var(--blue); color: #fff;
+    padding: 22px 16px; flex-shrink: 0;
+  }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family:'Fraunces',serif; font-weight:600; font-size:19px; color:#fff; margin-bottom:6px; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); }
+  .role-pill { background: rgba(255,255,255,.12); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; display: inline-block; margin-bottom: 24px; }
+  aside nav { display: flex; flex-direction: column; gap: 4px; }
+  aside nav a {
+    display: flex; align-items: center; gap: 10px;
+    color: rgba(255,255,255,.75); padding: 10px 12px; border-radius: 8px;
+    font-weight: 500; font-size: 14px;
+  }
+  aside nav a.active { background: rgba(255,255,255,.12); color: #fff; }
+  aside nav a:hover { background: rgba(255,255,255,.08); color: #fff; text-decoration: none; }
+  aside .icon { width: 18px; display: inline-block; text-align: center; }
+  main { flex:1; padding: 28px 32px; }
+  @media (max-width: 760px) { aside { display: none; } main { padding: 18px; } }
+
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+  .top h1 { margin: 0; }
+  .lede { color: var(--muted); margin: 0; font-size: 14px; }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1.5px solid var(--border); margin-bottom: 24px; flex-wrap: wrap; }
+  .tab {
+    padding: 12px 18px; cursor: pointer; font-weight: 600; font-size: 14px;
+    color: var(--muted); border-bottom: 2px solid transparent;
+    margin-bottom: -1.5px; background: transparent; border-top: 0; border-left: 0; border-right: 0;
+    font-family: inherit;
+  }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab:hover { color: var(--text); }
+
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); padding: 20px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .card-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; gap: 12px; flex-wrap: wrap; }
+  .card-head h2 { margin: 0; }
+
+  /* Template card */
+  .tpl-grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 880px) { .tpl-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tpl {
+    background: #fff; border: 1.5px solid var(--border); border-radius: var(--r-lg);
+    padding: 22px; position: relative;
+  }
+  .tpl-header { display: flex; gap: 14px; align-items: flex-start; }
+  .tpl-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; flex-shrink: 0;
+  }
+  .tpl h3 { font-family: 'Fraunces', serif; font-size: 18px; margin: 0 0 4px; color: var(--blue); font-weight: 600; }
+  .tpl-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; letter-spacing: .06em; }
+  .tpl-status.production { background: #dcfce7; color: #14532d; }
+  .tpl-status.beta { background: #fef9c3; color: #713f12; }
+  .tpl-desc { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 12px 0 16px; }
+  .tpl-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .tpl-meta-item { font-size: 12px; }
+  .tpl-meta-label { color: var(--muted); font-weight: 500; }
+  .tpl-meta-val { font-weight: 700; color: var(--text); margin-top: 2px; }
+  .tpl-meta-val.price { color: var(--blue); font-family: 'Fraunces', serif; font-size: 18px; }
+  .tpl-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Pricing breakdown box */
+  .pricing-box {
+    background: linear-gradient(120deg, var(--blue-l), #fff);
+    border: 1px solid #cae0ef; border-radius: var(--r-md);
+    padding: 14px; margin: 12px 0;
+  }
+  .pricing-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .pricing-row.total { font-weight: 700; padding-top: 8px; margin-top: 4px; border-top: 1px solid #b8d3e6; color: var(--blue); }
+
+  /* Tenant deployment table */
+  .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .table td { padding: 14px 12px; border-bottom: 1px solid var(--border); }
+  .table tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; letter-spacing: .04em; }
+  .pill-active { background: #dcfce7; color: #14532d; }
+  .pill-shipped { background: #dbeafe; color: #1e40af; }
+  .pill-paid { background: #fef9c3; color: #713f12; }
+  .pill-requested { background: #f3e8ff; color: #6b21a8; }
+  .pill-cancelled { background: #fee2e2; color: #7f1d1d; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; font-weight: 500; font-family: inherit; }
+  .btn-sm:hover { background: var(--blue-l); border-color: var(--blue); color: var(--blue); }
+  .btn-primary { background: var(--blue); color: #fff; border: 0; padding: 9px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; }
+  .btn-primary:hover { background: var(--blue-2); }
+
+  .banner {
+    background: var(--sun); color: #422006; padding: 14px 18px; border-radius: var(--r-md); margin-bottom: 22px; font-size: 14px;
+  }
+  .pane { display: none; }
+  .pane.active { display: block; }
+
+  /* Side-by-side stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; }
+  .stat-label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .stat-num { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; color: var(--blue); margin-top: 2px; line-height: 1.1; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="logo"><span class="logo-dot"></span> Poolside</div>
+    <span class="role-pill">Provider Admin</span>
+    <nav>
+      <a href="index.html"><span class="icon">📊</span> Dashboard</a>
+      <a href="index.html#tenants"><span class="icon">🏊</span> Tenants</a>
+      <a href="index.html#integrations"><span class="icon">🔌</span> Integrations</a>
+      <a href="gate-integrations.html" class="active"><span class="icon">🚪</span> Gate Integrations</a>
+      <a href="#"><span class="icon">💳</span> Billing</a>
+      <a href="#"><span class="icon">📈</span> Analytics</a>
+      <a href="#"><span class="icon">💬</span> Support</a>
+      <hr style="border:0; border-top:1px solid rgba(255,255,255,.15); margin:18px 0">
+      <a href="../index.html"><span class="icon">←</span> Back to marketing</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="banner">
+      <b>Prototype — vetting-first model.</b> Tenants submit their panel info first; we evaluate and only ship hardware for panels we've actually tested. One verified template today (MENGQI-CONTROL HXC-7000); compatibility requests for everything else.
+    </div>
+
+    <div class="top">
+      <div>
+        <h1>🚪 Gate Integrations</h1>
+        <p class="lede">Each panel kind we've tested = a Template tenants can request in one click. Untested panels = Compatibility requests we evaluate one-by-one. <b style="color:var(--red)">Never publish a template before on-site testing.</b></p>
+      </div>
+      <button class="btn-primary">+ New template</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Verified templates</div>
+        <div class="stat-num">1</div>
+        <div class="stat-sub">MENGQI-CONTROL HXC-7000</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Active deployments</div>
+        <div class="stat-num">2</div>
+        <div class="stat-sub">+1 this month</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Compatibility requests</div>
+        <div class="stat-num">4</div>
+        <div class="stat-sub" style="color:var(--amber)">2 awaiting review</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">MRR + setup revenue</div>
+        <div class="stat-num">$50/mo</div>
+        <div class="stat-sub">$1,000 lifetime setup</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="templates" onclick="showTab('templates')">📋 Verified templates</button>
+      <button class="tab" data-tab="requests" onclick="showTab('requests')">🔍 Compatibility requests</button>
+      <button class="tab" data-tab="deployments" onclick="showTab('deployments')">🏊 Tenant deployments</button>
+      <button class="tab" data-tab="hardware" onclick="showTab('hardware')">📦 Hardware inventory</button>
+    </div>
+
+    <!-- TAB: Verified templates -->
+    <div class="pane active" id="pane-templates">
+      <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#713f12">
+        ⚠️ <b>Templates are publish-after-testing only.</b> Each row here represents a panel we've actually integrated end-to-end on real hardware. Before publishing a new template: full bench test, signed-off install at a pilot tenant, replication recipe documented.
+      </div>
+      <div class="tpl-grid">
+        <div class="tpl">
+          <div class="tpl-header">
+            <div class="tpl-icon">🪪</div>
+            <div style="flex:1">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                <h3>MENGQI-CONTROL HXC-7000 Keyfob System</h3>
+                <span class="tpl-status production">VERIFIED</span>
+              </div>
+              <div class="tpl-meta-label" style="font-size:12px">Slug: <code>mengqi-hxc-7000</code> · First verified: Bishop Estates · 2026-04-25</div>
+            </div>
+          </div>
+          <p class="tpl-desc">
+            ESP32 Wiegand sniffer + Raspberry Pi bridge that talks HTTP to MENGQI-CONTROL HXC-7000 TCP/IP keyfob panels (firmware ≥ 2.4). Pre-configured hardware ships from us; tenant plugs it in and the bridge phones home.
+            <br><br>
+            <b>Tested with:</b> Bishop Estates Cabana Club (panel firmware 2.4.7, 84 fobs in rotation).
+          </p>
+
+          <div class="tpl-meta">
+            <div class="tpl-meta-item">
+              <div class="tpl-meta-label">Setup fee</div>
+              <div class="tpl-meta-val price">$250</div>
+              <div class="tpl-meta-label" style="font-size:11px">one-time, hardware + provisioning</div>
+            </div>
+            <div class="tpl-meta-item">
+              <div class="tpl-meta-label">Monthly</div>
+              <div class="tpl-meta-val price">$25</div>
+              <div class="tpl-meta-label" style="font-size:11px">support + updates + warranty</div>
+            </div>
+          </div>
+
+          <div class="pricing-box">
+            <div class="tpl-meta-label" style="margin-bottom:6px"><b>What's in the box</b></div>
+            <div class="pricing-row"><span>Raspberry Pi 4 (2GB) + microSD + power</span><span>~$60</span></div>
+            <div class="pricing-row"><span>ESP32 Wiegand sniffer module</span><span>~$15</span></div>
+            <div class="pricing-row"><span>Cables + waterproof enclosure</span><span>~$10</span></div>
+            <div class="pricing-row"><span>Provisioning labor (~30 min × $50/hr)</span><span>~$25</span></div>
+            <div class="pricing-row"><span>Shipping</span><span>~$15</span></div>
+            <div class="pricing-row total"><span>Hardware margin</span><span>~$125</span></div>
+          </div>
+
+          <div class="tpl-actions">
+            <button class="btn-sm">View setup guide</button>
+            <button class="btn-sm">Edit pricing</button>
+            <button class="btn-sm">Edit template</button>
+            <button class="btn-sm" style="color:var(--red)">Deprecate</button>
+          </div>
+        </div>
+
+        <!-- Placeholder for future templates -->
+        <div class="tpl" style="border-style: dashed; opacity: .65; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; text-align: center;">
+          <div style="font-size: 36px; margin-bottom: 10px">➕</div>
+          <h3 style="color: var(--muted)">Promote a request to a template</h3>
+          <p class="tpl-desc" style="margin: 6px 0 14px">
+            Templates start as Compatibility requests. Once you've integrated a new panel kind on real hardware and it works at a pilot tenant, promote it here so future clubs with the same panel get the one-click experience.
+          </p>
+          <button class="btn-sm">View requests →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Compatibility requests -->
+    <div class="pane" id="pane-requests">
+      <div class="card">
+        <div class="card-head">
+          <h2>🔍 Compatibility requests</h2>
+          <div style="display:flex;gap:8px">
+            <select style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+              <option>All statuses</option>
+              <option>Submitted</option>
+              <option>Reviewing</option>
+              <option>Quoted</option>
+              <option>Accepted</option>
+              <option>Declined</option>
+            </select>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:0;margin-bottom:14px">Tenants whose panels aren't on the verified list yet. Each row is a panel-information submission. Review, evaluate, quote — or decline.</p>
+        <table class="table">
+          <thead>
+            <tr><th>Tenant</th><th>Panel</th><th>Protocol</th><th>Submitted</th><th>Status</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Hidden Lakes Aquatic Center</b></td>
+              <td>ZKTeco F18<br><span style="font-size:11px;color:var(--muted)">FW 6.60</span></td>
+              <td>TCP/IP + RS-485</td>
+              <td>2026-06-12 (3d)</td>
+              <td><span class="pill pill-requested">SUBMITTED</span></td>
+              <td><button class="btn-sm">Review</button></td>
+            </tr>
+            <tr>
+              <td><b>Whisper Creek Pool</b></td>
+              <td>Paxton Net2<br><span style="font-size:11px;color:var(--muted)">control unit</span></td>
+              <td>RS-485 (proprietary)</td>
+              <td>2026-06-11 (4d)</td>
+              <td><span class="pill" style="background:#fef9c3;color:#713f12">REVIEWING</span></td>
+              <td><button class="btn-sm">Continue review</button></td>
+            </tr>
+            <tr>
+              <td><b>Riverside Yacht Club</b></td>
+              <td>HID iCLASS SE<br><span style="font-size:11px;color:var(--muted)">+ HID Edge EVO controller</span></td>
+              <td>OSDP</td>
+              <td>2026-06-08 (7d)</td>
+              <td><span class="pill" style="background:#fde68a;color:#7c2d12">QUOTED</span></td>
+              <td><button class="btn-sm">View quote</button></td>
+            </tr>
+            <tr>
+              <td><b>Cedar Grove Aquatics</b></td>
+              <td>Suprema BioStar 2<br><span style="font-size:11px;color:var(--muted)">unknown FW</span></td>
+              <td>Wiegand + ethernet</td>
+              <td>2026-05-30 (16d)</td>
+              <td><span class="pill" style="background:#fee2e2;color:#7f1d1d">DECLINED</span></td>
+              <td><button class="btn-sm">View notes</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="background:linear-gradient(120deg,var(--blue-l),#fff);border-color:#cae0ef">
+        <div class="card-head"><h2 style="font-size:16px">📋 Review checklist when a request lands</h2></div>
+        <ol style="margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.8;">
+          <li><b>Triage</b> — is this protocol something we can speak? (TCP/IP HTTP yes, OSDP feasible, Bluetooth-only RFID probably no.)</li>
+          <li><b>Risk assessment</b> — vendor's documentation? closed-source binary? prior art on GitHub? Estimated dev time.</li>
+          <li><b>Quote</b> — pick: (a) Decline · (b) Accept at standard $250+$25 if you're confident · (c) Custom quote $500–$2,000+ for new development</li>
+          <li><b>Pilot</b> — when accepted, schedule on-site visit. Test on tenant's actual panel. Get sign-off.</li>
+          <li><b>Promote</b> — once working, promote the request to a Verified Template so future clubs with the same panel are one-click.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- TAB: Tenant deployments -->
+    <div class="pane" id="pane-deployments">
+      <div class="card">
+        <div class="card-head">
+          <h2>Tenant deployments</h2>
+          <input placeholder="🔍 Search tenant…" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 220px;">
+        </div>
+        <table class="table">
+          <thead>
+            <tr><th>Tenant</th><th>Template</th><th>Status</th><th>Hardware</th><th>Monthly</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Bishop Estates</b><br><span style="font-size:12px;color:var(--muted)">Tenant zero — grandfathered</span></td>
+              <td>Bishop Estates Keyfob</td>
+              <td><span class="pill pill-active">ACTIVE</span></td>
+              <td>Bridge #1 · Online ✓</td>
+              <td>$0/mo</td>
+              <td><button class="btn-sm">View</button></td>
+            </tr>
+            <tr>
+              <td><b>Springfield Swim Club</b><br><span style="font-size:12px;color:var(--muted)">since 2026-05-12</span></td>
+              <td>Bishop Estates Keyfob</td>
+              <td><span class="pill pill-active">ACTIVE</span></td>
+              <td>Bridge #2 · Online ✓</td>
+              <td>$25/mo</td>
+              <td><button class="btn-sm">View</button></td>
+            </tr>
+            <tr>
+              <td><b>Maple Hills Pool</b><br><span style="font-size:12px;color:var(--muted)">since 2026-06-01</span></td>
+              <td>Bishop Estates Keyfob</td>
+              <td><span class="pill pill-shipped">SHIPPED</span></td>
+              <td>Tracking 1Z…843 · Est. 2026-06-25</td>
+              <td>$25/mo</td>
+              <td><button class="btn-sm">Mark active</button></td>
+            </tr>
+            <tr>
+              <td><b>Lakeshore Cabana Club</b><br><span style="font-size:12px;color:var(--muted)">since 2026-06-08</span></td>
+              <td>Bishop Estates Keyfob</td>
+              <td><span class="pill pill-paid">PAID</span></td>
+              <td>Awaiting provisioning</td>
+              <td>$25/mo</td>
+              <td><button class="btn-sm">Provision &amp; ship</button></td>
+            </tr>
+            <tr>
+              <td><b>Cedar Grove Aquatics</b><br><span style="font-size:12px;color:var(--muted)">since 2026-06-12</span></td>
+              <td>Bishop Estates Keyfob</td>
+              <td><span class="pill pill-requested">REQUESTED</span></td>
+              <td>Awaiting Stripe payment</td>
+              <td>—</td>
+              <td><button class="btn-sm">Send invoice</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="background:var(--blue-l); border-color:#cae0ef">
+        <div class="card-head"><h2 style="font-size:16px">📋 Provisioning workflow</h2></div>
+        <ol style="margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.8;">
+          <li><b>Requested</b> → tenant clicked "Request integration." Stripe Checkout link sent automatically.</li>
+          <li><b>Paid</b> → setup fee landed. Bridge appears in your queue here.</li>
+          <li><b>Provisioning</b> → flash Pi with bridge code, embed tenant_id + auth token, sticker-label, box.</li>
+          <li><b>Shipped</b> → click Mark Shipped, paste tracking number. Tenant gets email with setup guide.</li>
+          <li><b>Active</b> → bridge auto-detects tenant on first connect, status flips to active. Members can unlock.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- TAB: Hardware inventory -->
+    <div class="pane" id="pane-hardware">
+      <div class="card">
+        <div class="card-head">
+          <h2>Hardware inventory</h2>
+          <button class="btn-primary">+ Add stock</button>
+        </div>
+        <p class="lede" style="margin-bottom: 16px">
+          Pre-flashed bridges sitting on the shelf, ready to ship. Reorder threshold = 3.
+        </p>
+        <table class="table">
+          <thead>
+            <tr><th>SKU</th><th>Variant</th><th>In stock</th><th>Reserved</th><th>Available</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>BE-KEYFOB-V1</code></td>
+              <td>Pi4 + ESP32, MENGQI-compatible</td>
+              <td>5</td>
+              <td>2 (Maple Hills, Lakeshore)</td>
+              <td>3</td>
+              <td><button class="btn-sm">Reorder parts</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede" style="text-align:center;margin-top:20px;font-size:12px">
+        💡 Future: automate parts re-ordering when threshold hit. For now, manual.
+      </p>
+    </div>
+  </main>
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+}
+</script>
+</body>
+</html>

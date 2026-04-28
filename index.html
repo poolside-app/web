@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poolside — Run your pool club, not your spreadsheets.</title>
+<meta name="description" content="Members, gate access, party booking, email confirmations, photo gallery, nightly Drive backups. Everything your neighborhood pool club needs in one app.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:    #0a3b5c;
+    --blue-2:  #134b73;
+    --blue-l:  #e6eef5;
+    --sun:     #f59e0b;
+    --sun-l:   #fff7ea;
+    --bg:      #fefdfb;
+    --bg-2:    #f7f3eb;
+    --text:    #0f172a;
+    --muted:   #64748b;
+    --border:  #e5e7eb;
+    --green:   #16a34a;
+    --shadow:  0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --shadow-lg: 0 8px 32px rgba(10,59,92,.10), 0 24px 64px rgba(10,59,92,.06);
+    --r-sm:  8px;
+    --r-md:  12px;
+    --r-lg:  18px;
+    --r-xl:  28px;
+    --max:   1120px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; display: block; }
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600; letter-spacing: -.015em; margin: 0 0 .4em;
+  }
+  h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1.05; }
+  h2 { font-size: clamp(28px, 4vw, 44px); line-height: 1.1; }
+  h3 { font-size: clamp(20px, 2.4vw, 24px); line-height: 1.2; }
+
+  .container { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
+  .eyebrow {
+    display: inline-block; font: 700 11px/1 'Inter', sans-serif;
+    letter-spacing: .14em; text-transform: uppercase;
+    color: var(--blue); background: var(--blue-l);
+    border-radius: 999px; padding: 6px 12px; margin-bottom: 18px;
+  }
+  .muted { color: var(--muted); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--blue); color: #fff; border: 0;
+    padding: 14px 22px; border-radius: var(--r-md);
+    font: 600 15px/1 'Inter', sans-serif; cursor: pointer;
+    transition: transform .08s ease, box-shadow .12s ease, background .12s ease;
+    text-decoration: none; box-shadow: var(--shadow);
+  }
+  .btn:hover { background: var(--blue-2); transform: translateY(-1px); box-shadow: var(--shadow-lg); text-decoration: none; }
+  .btn-ghost {
+    background: #fff; color: var(--blue); border: 1.5px solid var(--border);
+  }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-sun {
+    background: var(--sun); color: #422006;
+  }
+  .btn-sun:hover { background: #d97706; }
+
+  /* Header */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(254, 253, 251, .85); backdrop-filter: saturate(160%) blur(12px);
+    -webkit-backdrop-filter: saturate(160%) blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  header .row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 0; gap: 16px;
+  }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px;
+    color: var(--blue); text-decoration: none; letter-spacing: -.01em;
+  }
+  .logo-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--sun), #fbbf24);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
+  }
+  nav.top {
+    display: flex; gap: 24px; align-items: center;
+  }
+  nav.top a {
+    color: var(--text); font-weight: 500; font-size: 14px;
+  }
+  nav.top a.cta { color: #fff; background: var(--blue); padding: 8px 16px; border-radius: 8px; }
+  nav.top a.cta:hover { background: var(--blue-2); text-decoration: none; }
+  .nav-mobile-only { display: none; }
+  @media (max-width: 740px) {
+    nav.top a:not(.cta) { display: none; }
+    .nav-mobile-only { display: inline; }
+  }
+
+  /* Hero */
+  .hero {
+    padding: 64px 0 48px; position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(60% 60% at 80% 0%, rgba(245,158,11,.10), transparent 60%),
+      radial-gradient(60% 60% at 0% 30%, rgba(10,59,92,.06), transparent 60%);
+  }
+  .hero-grid {
+    display: grid; grid-template-columns: 1fr; gap: 36px; align-items: center;
+    position: relative;
+  }
+  @media (min-width: 900px) {
+    .hero-grid { grid-template-columns: 1.1fr .9fr; gap: 56px; }
+    .hero { padding: 96px 0 80px; }
+  }
+  .hero h1 strong {
+    font-weight: 600; color: var(--blue);
+    background: linear-gradient(90deg, var(--blue), var(--blue-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead {
+    font-size: 18px; color: var(--muted); margin: 14px 0 28px; max-width: 560px;
+  }
+  @media (min-width: 900px) { .hero p.lead { font-size: 20px; } }
+  .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .hero-meta {
+    margin-top: 22px; font-size: 13px; color: var(--muted);
+    display: flex; gap: 18px; flex-wrap: wrap;
+  }
+  .hero-meta span::before { content: "✓"; color: var(--green); font-weight: 700; margin-right: 6px; }
+
+  /* Phone mockup */
+  .phone {
+    width: 100%; max-width: 320px; margin: 0 auto;
+    aspect-ratio: 9 / 19;
+    background: linear-gradient(155deg, var(--blue) 0%, var(--blue-2) 100%);
+    border-radius: 36px; padding: 14px;
+    box-shadow: var(--shadow-lg), inset 0 0 0 2px rgba(255,255,255,.12);
+    position: relative;
+  }
+  .phone::before {
+    content: ""; position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    width: 84px; height: 18px; background: #000; border-radius: 12px;
+  }
+  .phone-screen {
+    width: 100%; height: 100%; background: var(--bg);
+    border-radius: 22px; padding: 36px 16px 16px;
+    overflow: hidden; position: relative;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .ps-eyebrow {
+    font: 700 9px/1.2 'Inter', sans-serif; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--blue); margin-top: 4px;
+  }
+  .ps-headline {
+    font-family: 'Fraunces', serif; font-size: 22px; line-height: 1.1;
+    font-weight: 600; color: var(--blue); margin: 0 0 6px;
+  }
+  .ps-tag { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .ps-card {
+    background: var(--bg-2); border-radius: 12px; padding: 10px 12px;
+    font-size: 11px; color: var(--text);
+  }
+  .ps-card strong { color: var(--blue); }
+  .ps-stat { display: flex; justify-content: space-between; align-items: baseline; }
+  .ps-stat-num { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: var(--blue); }
+  .ps-fab {
+    position: absolute; right: 16px; bottom: 18px;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--sun), #d97706); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; box-shadow: 0 8px 18px rgba(245,158,11,.4);
+  }
+
+  /* Sections */
+  section { padding: 72px 0; }
+  @media (min-width: 900px) { section { padding: 96px 0; } }
+  .section-head { text-align: center; max-width: 720px; margin: 0 auto 48px; }
+  .section-head p { color: var(--muted); font-size: 17px; margin: 8px 0 0; }
+
+  /* Features */
+  .features {
+    background: linear-gradient(180deg, var(--bg) 0%, #fbf6ec 100%);
+  }
+  .feat-grid {
+    display: grid; gap: 18px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 640px) { .feat-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 1000px) { .feat-grid { grid-template-columns: repeat(3, 1fr); } }
+  .feat {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 24px;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .feat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .feat-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: var(--blue-l); color: var(--blue);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; margin-bottom: 14px;
+  }
+  .feat h3 { font-size: 18px; margin: 0 0 6px; }
+  .feat p { font-size: 14px; color: var(--muted); margin: 0; }
+
+  /* How it works */
+  .how-grid {
+    display: grid; gap: 32px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 760px) { .how-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; } }
+  .step {
+    text-align: center; padding: 0 8px;
+  }
+  .step-num {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--blue); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600;
+    margin-bottom: 18px; box-shadow: var(--shadow);
+  }
+  .step h3 { font-size: 22px; margin: 0 0 8px; }
+  .step p { color: var(--muted); margin: 0; font-size: 15px; }
+
+  /* Pricing */
+  .pricing {
+    background: linear-gradient(180deg, #fbf6ec 0%, var(--bg) 100%);
+  }
+  .price-grid {
+    display: grid; gap: 18px; grid-template-columns: 1fr;
+  }
+  @media (min-width: 800px) { .price-grid { grid-template-columns: repeat(3, 1fr); } }
+  .price {
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: var(--r-lg); padding: 28px 24px;
+    display: flex; flex-direction: column; gap: 14px;
+    position: relative;
+  }
+  .price.featured {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 4px var(--blue-l), var(--shadow-lg);
+    transform: translateY(-4px);
+  }
+  .price-badge {
+    position: absolute; top: -12px; right: 22px;
+    background: var(--sun); color: #422006;
+    padding: 5px 12px; border-radius: 999px;
+    font: 700 11px/1 'Inter', sans-serif; letter-spacing: .06em;
+  }
+  .price-tier {
+    font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600;
+    color: var(--blue);
+  }
+  .price-amt {
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .price-amt .num {
+    font-family: 'Fraunces', serif; font-size: 44px; font-weight: 600; color: var(--text);
+    letter-spacing: -.02em;
+  }
+  .price-amt .per { color: var(--muted); font-size: 14px; }
+  .price ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+  .price li {
+    font-size: 14px; padding-left: 24px; position: relative;
+  }
+  .price li::before {
+    content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 700;
+  }
+  .price li.muted { color: var(--muted); }
+  .price li.muted::before { color: var(--muted); content: "—"; }
+  .price .btn { width: 100%; margin-top: auto; }
+
+  /* FAQ */
+  .faq-grid {
+    display: grid; gap: 14px; max-width: 800px; margin: 0 auto;
+  }
+  .faq {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 18px 22px; cursor: pointer;
+  }
+  .faq summary {
+    list-style: none; cursor: pointer; font-weight: 600; font-size: 16px;
+    color: var(--text); display: flex; justify-content: space-between; align-items: center;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: "+"; font-size: 22px; font-weight: 400; color: var(--muted);
+    transition: transform .12s ease;
+  }
+  .faq[open] summary::after { content: "−"; }
+  .faq[open] { box-shadow: var(--shadow); }
+  .faq p {
+    margin: 12px 0 0; color: var(--muted); font-size: 15px; line-height: 1.6;
+  }
+
+  /* CTA strip */
+  .cta-strip {
+    background: linear-gradient(120deg, var(--blue), var(--blue-2));
+    color: #fff; text-align: center;
+  }
+  .cta-strip h2 { color: #fff; }
+  .cta-strip p { color: rgba(255,255,255,.85); font-size: 17px; max-width: 560px; margin: 0 auto 28px; }
+
+  /* Footer */
+  footer {
+    background: var(--blue); color: rgba(255,255,255,.7);
+    padding: 56px 0 28px; font-size: 14px;
+  }
+  footer a { color: rgba(255,255,255,.85); }
+  footer a:hover { color: #fff; }
+  .foot-grid {
+    display: grid; gap: 32px; grid-template-columns: 1fr;
+    padding-bottom: 32px; border-bottom: 1px solid rgba(255,255,255,.12);
+  }
+  @media (min-width: 720px) { .foot-grid { grid-template-columns: 2fr 1fr 1fr 1fr; } }
+  .foot-col h4 { color: #fff; font-family: 'Inter', sans-serif; font-size: 13px;
+    text-transform: uppercase; letter-spacing: .14em; font-weight: 700; margin: 0 0 14px; }
+  .foot-col ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .foot-col p { color: rgba(255,255,255,.7); margin: 0; font-size: 14px; line-height: 1.6; }
+  .foot-bottom {
+    padding-top: 22px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    color: rgba(255,255,255,.55); font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container row">
+    <a href="/" class="logo">
+      <span class="logo-dot"></span> Poolside
+    </a>
+    <nav class="top">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a href="signup.html" class="cta">
+        <span class="nav-mobile-only">Try free</span>
+        <span style="display:none">.</span>
+        <span class="hide-on-mobile" style="display:inline">Start free trial</span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<!-- ─────────── HERO ─────────── -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="eyebrow">For neighborhood pool clubs</span>
+      <h1>Run your pool club, <strong>not your spreadsheets.</strong></h1>
+      <p class="lead">
+        Members, gate access, party booking, email confirmations, photo gallery,
+        nightly Drive backups. The whole pool club, one app — and one annual fee.
+      </p>
+      <div class="hero-cta">
+        <a href="signup.html" class="btn">Start 14-day free trial →</a>
+        <a href="#features" class="btn btn-ghost">See features</a>
+      </div>
+      <div class="hero-meta">
+        <span>No credit card to start</span>
+        <span>Setup wizard in 5 min</span>
+        <span>Cancel any time</span>
+      </div>
+    </div>
+
+    <!-- Phone preview -->
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="ps-eyebrow">SUMMER 2026</div>
+        <div class="ps-headline">A neighborhood pool.</div>
+        <div class="ps-tag">Open Memorial Day → Labor Day</div>
+
+        <div class="ps-card ps-stat">
+          <div>🏊 <strong>members visited today</strong></div>
+          <div class="ps-stat-num">32</div>
+        </div>
+        <div class="ps-card">
+          📰 <strong>Saturday potluck this weekend</strong> — bring a dish.
+        </div>
+        <div class="ps-card">
+          🎉 <strong>3 party requests pending</strong>
+        </div>
+        <div class="ps-card">
+          🔓 <strong>Last unlock</strong> · 2:47 PM — Jen Owens
+        </div>
+        <div class="ps-fab">🔓</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── FEATURES ─────────── -->
+<section id="features" class="features">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Everything in one place</span>
+      <h2>Built for the way pool clubs actually run.</h2>
+      <p>If your board is volunteer, you don't have time for six different tools. Poolside replaces all of them.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-icon">🏠</div>
+        <h3>Households, not just members</h3>
+        <p>Track families. One billing entity, multiple phones, parents and teens with their own permissions.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🚪</div>
+        <h3>Gate access (paid add-on)</h3>
+        <p>Members tap to unlock from their phone, with full audit log. We've certified the MENGQI-CONTROL panel — submit yours for review; on-site testing required for new panels.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🎉</div>
+        <h3>Party booking</h3>
+        <p>Online request form, admin approves with a click, confirmation email goes out automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📧</div>
+        <h3>Email that just works</h3>
+        <p>Member confirmations, party approvals, admin notifications — no Mailchimp, no Apps Script, no quotas.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📷</div>
+        <h3>Photo gallery</h3>
+        <p>Members upload pool photos, admin approves — automatic moderation, season archive built in.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">☁️</div>
+        <h3>Nightly Drive backup</h3>
+        <p>Mirrors members, parties, signed-application PDFs to <em>your</em> Google Drive. Open in Sheets directly.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📲</div>
+        <h3>SMS sign-in</h3>
+        <p>Members sign in with their phone — no passwords to forget, no accounts to manage.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🪪</div>
+        <h3>Signed-application PDFs</h3>
+        <p>Every membership form generates a real-text PDF with signatures and waivers. Stored forever, retrievable instantly.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">💸</div>
+        <h3>Bring your own payments</h3>
+        <p>Venmo handle? PayPal link? Stripe? Whatever you use, members see the right buttons.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── HOW IT WORKS ─────────── -->
+<section id="how">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">From zero to running club</span>
+      <h2>You'll be live before lunch.</h2>
+      <p>The setup wizard auto-launches on your first admin login. Six steps, plain English, skippable when it doesn't apply.</p>
+    </div>
+    <div class="how-grid">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Sign up</h3>
+        <p>Pick your subdomain (<code>yourclub.poolside.app</code>) and pay nothing for 14 days.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Walk the wizard</h3>
+        <p>Club name, hero photo, pool location, payment handles, Drive backup. Done in 5 minutes on your phone.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Invite members</h3>
+        <p>Send the link. They sign in with SMS, you approve. Members live; gate works; you go back to swimming.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── PRICING ─────────── -->
+<section id="pricing" class="pricing">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Simple, annual</span>
+      <h2>One annual fee. No per-member nickel-and-diming.</h2>
+      <p>Pool clubs are seasonal. Pricing should be too. Pay once a year, cancel any time before the next season.</p>
+    </div>
+    <div class="price-grid" style="grid-template-columns: repeat(4, 1fr); gap: 12px">
+      <div class="price">
+        <div class="price-tier">Free Forever</div>
+        <div class="price-amt"><span class="num">$0</span></div>
+        <p class="muted" style="margin:0;font-size:13px">For tiny HOA pools.</p>
+        <ul>
+          <li>Up to <b>20 households</b></li>
+          <li>All features included</li>
+          <li>Email magic-link sign-in</li>
+          <li>Manual dues tracking</li>
+          <li class="muted">SMS sign-in</li>
+          <li class="muted">Stripe payment processing</li>
+        </ul>
+        <a href="signup.html?plan=free" class="btn btn-ghost">Start free</a>
+      </div>
+
+      <div class="price">
+        <div class="price-tier">Starter</div>
+        <div class="price-amt"><span class="num">$99</span><span class="per">/yr</span></div>
+        <p class="muted" style="margin:0;font-size:13px">Small community clubs.</p>
+        <ul>
+          <li>Up to <b>75 households</b></li>
+          <li>Everything in Free, plus:</li>
+          <li>SMS sign-in (Twilio)</li>
+          <li>Stripe payment processing</li>
+          <li>1 admin user</li>
+          <li>250 SMS/mo included</li>
+        </ul>
+        <a href="signup.html?plan=starter" class="btn btn-ghost">Start free trial</a>
+      </div>
+
+      <div class="price featured">
+        <span class="price-badge">Most popular</span>
+        <div class="price-tier">Pro</div>
+        <div class="price-amt"><span class="num">$199</span><span class="per">/yr</span></div>
+        <p class="muted" style="margin:0;font-size:13px">Full-season neighborhood clubs.</p>
+        <ul>
+          <li>Up to <b>250 households</b></li>
+          <li>Everything in Starter, plus:</li>
+          <li>Auto-dunning + late fees</li>
+          <li>Auto-renew memberships</li>
+          <li>3 admins, click analytics</li>
+          <li>Drive backup mirror</li>
+        </ul>
+        <a href="signup.html?plan=pro" class="btn">Start free trial</a>
+      </div>
+
+      <div class="price">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amt"><span class="num">$399</span><span class="per">/yr</span></div>
+        <p class="muted" style="margin:0;font-size:13px">Multi-pool &amp; large clubs.</p>
+        <ul>
+          <li><b>Unlimited households</b></li>
+          <li>Everything in Pro, plus:</li>
+          <li>Custom domain</li>
+          <li>White-label sender</li>
+          <li>A/B testing on campaigns</li>
+          <li>4-hour phone support</li>
+          <li>2,500 SMS/mo included</li>
+        </ul>
+        <a href="signup.html?plan=enterprise" class="btn btn-ghost">Talk to us</a>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:36px;padding:22px;background:var(--blue-l);border-radius:14px;max-width:720px;margin-left:auto;margin-right:auto">
+      <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:var(--blue);margin-bottom:8px">When members pay you, we take a tiny slice</div>
+      <p style="font-size:13px;color:var(--text);margin:0 0 14px">No fees on dues if you stick with Venmo/check. If you switch to Stripe (auto-renew, auto-dunning, less manual work), here's what we charge on top of Stripe's 2.9%:</p>
+      <table style="margin:0 auto;font-size:13px;border-collapse:collapse">
+        <tr><td style="text-align:right;padding:4px 12px"><b>Membership dues</b></td><td style="padding:4px 12px;color:var(--blue);font-weight:700">0.5%</td></tr>
+        <tr><td style="text-align:right;padding:4px 12px">Swim lessons, classes, programs</td><td style="padding:4px 12px;color:var(--blue);font-weight:700">1.5%</td></tr>
+        <tr><td style="text-align:right;padding:4px 12px">Snack shack tabs</td><td style="padding:4px 12px;color:var(--blue);font-weight:700">1.5%</td></tr>
+        <tr><td style="text-align:right;padding:4px 12px">Parties, events, tickets</td><td style="padding:4px 12px;color:var(--blue);font-weight:700">2.0%</td></tr>
+        <tr><td style="text-align:right;padding:4px 12px"><b>Donations</b></td><td style="padding:4px 12px;color:var(--green);font-weight:700">0% — free, always</td></tr>
+        <tr><td style="text-align:right;padding:4px 12px">Late fees, reactivation</td><td style="padding:4px 12px;color:var(--blue);font-weight:700">5%</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── FAQ ─────────── -->
+<section id="faq">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Questions, answered</span>
+      <h2>Frequently asked.</h2>
+    </div>
+    <div class="faq-grid">
+      <details class="faq">
+        <summary>Do members need to download an app?</summary>
+        <p>No. Poolside is a progressive web app — members open the link on their phone and tap "Add to home screen" once. After that it looks and feels like a native app, but with no App Store, no Play Store, and no install friction.</p>
+      </details>
+      <details class="faq">
+        <summary>How does the gate unlock work?</summary>
+        <p>Gate-from-phone is a <b>paid add-on</b> — not bundled with the base subscription, because keyfob panels vary wildly between vendors. We've certified the <b>MENGQI-CONTROL HXC-7000</b> panel end-to-end. For other panels, you submit your model and we evaluate one-by-one — on-site testing required for new ones. Pricing for verified panels: $250 hardware setup + $25/mo. Custom integrations are quoted individually ($500–$2,000 setup typical) before any work starts. We never promise an integration we haven't tested.</p>
+      </details>
+      <details class="faq">
+        <summary>What about the Apps Script setup we already have?</summary>
+        <p>You don't need it anymore. Poolside replaces the spreadsheet + Apps Script + Gmail dance with a real backend. Your existing Sheets data can be imported during setup, or just left as a historical archive — your call.</p>
+      </details>
+      <details class="faq">
+        <summary>How do we collect dues?</summary>
+        <p>Bring your own. Most clubs use Venmo or PayPal — we generate the right payment buttons for members and let you mark dues paid as money lands. We have Stripe Connect on the roadmap for clubs that want fully automated billing, including failed-card dunning. Talk to us if that's a priority.</p>
+      </details>
+      <details class="faq">
+        <summary>Where is our data stored? Can we get it out?</summary>
+        <p>Your data lives in our Supabase Postgres database, mirrored nightly to <em>your</em> Google Drive folder as CSVs and PDFs. You own the Drive folder. If you ever cancel, you keep the data.</p>
+      </details>
+      <details class="faq">
+        <summary>Is there a free trial?</summary>
+        <p>Yes — 14 days, no credit card required. Long enough to walk the wizard, invite a few members, see if it fits your club.</p>
+      </details>
+      <details class="faq">
+        <summary>What if our pool already has its own domain?</summary>
+        <p>Enterprise tier includes custom domain support — your members visit <code>yourclub.com</code> and never see "poolside" anywhere. We handle the DNS setup.</p>
+      </details>
+      <details class="faq">
+        <summary>How do you handle SMS?</summary>
+        <p>Members sign in by typing their phone number, getting a 6-digit code via text, and entering it. No passwords. The SMS is sent through Twilio on Poolside's account — you don't need a Twilio account. Pro tier includes 500 SMS/month, Enterprise is unlimited.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── CTA STRIP ─────────── -->
+<section class="cta-strip">
+  <div class="container">
+    <h2>Try it for one season.</h2>
+    <p>14 days free, no credit card. If it isn't dramatically simpler than what you're doing now, walk away — we promise to be unoffended.</p>
+    <a href="signup.html" class="btn btn-sun">Start free trial →</a>
+  </div>
+</section>
+
+<!-- ─────────── FOOTER ─────────── -->
+<footer>
+  <div class="container">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <a href="/" class="logo" style="color:#fff">
+          <span class="logo-dot"></span> Poolside
+        </a>
+        <p style="margin-top:14px;max-width:340px">
+          Pool club software that doesn't fight you. Built by someone who runs a club too.
+        </p>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#how">How it works</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="mailto:hello@poolside.app">Contact</a></li>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Terms</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h4>Try it</h4>
+        <ul>
+          <li><a href="signup.html">Free trial</a></li>
+          <li><a href="admin/">Provider admin</a></li>
+          <li><a href="club-demo/">See a demo club</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Poolside. Built in California.</span>
+      <span>Made for neighborhood pool clubs everywhere.</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Swim Lessons — Bishop Estates Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --teal:#14b8a6; --red:#dc2626; --amber:#d97706;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg-2); color:var(--text); font:14px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  h1,h2,h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0 0 .3em; }
+  h1 { font-size:26px; } h2 { font-size:18px; } h3 { font-size:15px; }
+  a { color: var(--blue); text-decoration: none; }
+  .top-banner { background: var(--blue); color:#fff; font-size:12px; padding:8px 16px; text-align:center; }
+  .top-banner a { color:#fff; text-decoration: underline; }
+  .container { max-width: 880px; margin: 0 auto; padding: 24px 16px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:14px; flex-wrap:wrap; }
+  .lede { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+  .btn { background: var(--blue); color:#fff; border:0; padding: 10px 18px; border-radius: 9px; font: 600 14px 'Inter', sans-serif; cursor: pointer; transition: background .12s; font-family: inherit; }
+  .btn:hover { background: var(--blue-2); }
+  .btn-ghost { background: #fff; color: var(--blue); border: 1.5px solid var(--border); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+  @media (max-width: 600px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background:#fff; border:1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
+  .stat-label { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform: uppercase; color: var(--muted); }
+  .stat-num { font-family:'Fraunces',serif; font-size:24px; font-weight: 600; color: var(--blue); margin-top: 2px; line-height: 1.1; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius: var(--r-md); padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
+
+  .program {
+    background:#fff; border:1px solid var(--border); border-radius: var(--r-lg);
+    padding: 16px; margin-bottom: 12px; display: flex; gap: 14px; align-items: flex-start;
+  }
+  .prog-icon {
+    width:54px; height:54px; border-radius: 14px; flex-shrink: 0;
+    display:flex; align-items:center; justify-content:center; font-size: 28px;
+    background: linear-gradient(135deg, var(--blue-l), #cae0ef);
+  }
+  .prog-body { flex: 1; min-width: 0; }
+  .prog-title { font-family:'Fraunces',serif; font-weight: 600; font-size: 16px; color: var(--blue); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .prog-meta { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .prog-meta b { color: var(--text); font-weight: 600; }
+  .prog-stats { display:flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+  .prog-stat { font-size: 12px; }
+  .prog-stat .num { font-family:'Fraunces',serif; font-size: 16px; font-weight: 600; color: var(--blue); display:inline-block; margin-right: 4px; }
+  .prog-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+  .pill { display:inline-block; font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; letter-spacing:.06em; }
+  .pill-active { background:#dcfce7; color:#14532d; }
+  .pill-draft { background:#f3f4f6; color:#475569; }
+  .pill-full { background:#fee2e2; color:#7f1d1d; }
+  .pill-open { background:#dbeafe; color:#1e40af; }
+
+  /* Sessions list */
+  .sessions-list { margin-top: 12px; }
+  .session-row {
+    background: var(--bg-2); border-radius: 10px; padding: 12px 14px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .session-when { font-size: 13px; font-weight: 600; }
+  .session-meta { font-size: 12px; color: var(--muted); }
+  .session-roster {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+    background: #fff; border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 10px;
+  }
+  .session-roster b { color: var(--blue); }
+
+  /* Roster table */
+  .roster-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .roster-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .roster-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+  .roster-table tr:last-child td { border-bottom: 0; }
+
+  .empty {
+    text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px;
+  }
+  .integration-callout {
+    background: linear-gradient(120deg, #fff7ea, #fff);
+    border: 1.5px solid #fde68a; border-radius: 12px; padding: 14px 18px; font-size: 13px; color: #713f12;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-banner">
+  Bishop Estates · Club Admin · 🏊‍♀️ Swim Lessons —
+  <a href="../">tenant home</a> · <a href="campaigns.html">campaigns</a> · <a href="../../">marketing</a>
+</div>
+
+<div class="container">
+  <div class="top">
+    <div>
+      <h1>🏊‍♀️ Swim Lessons</h1>
+      <p class="lede">Programs your club offers, sessions on the calendar, and the roster of who's signed up.</p>
+    </div>
+    <button class="btn">+ New program</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Active programs</div><div class="stat-num">3</div><div class="stat-sub">+1 vs last summer</div></div>
+    <div class="stat"><div class="stat-label">Bookings this month</div><div class="stat-num">42</div><div class="stat-sub">$1,890 collected</div></div>
+    <div class="stat"><div class="stat-label">Open spots</div><div class="stat-num">18</div><div class="stat-sub">across 6 sessions</div></div>
+    <div class="stat"><div class="stat-label">Poolside fees taken</div><div class="stat-num">$28</div><div class="stat-sub">1.5% of $1,890</div></div>
+  </div>
+
+  <div class="integration-callout" style="margin-bottom: 18px">
+    💸 <b>Stripe Connect ready.</b> Payments processed through your connected Stripe account, Poolside takes 1.5% per booking. Want to use Venmo/check instead? Toggle that in Settings — bookings still work, you just confirm payment manually.
+  </div>
+
+  <!-- Programs -->
+  <h2 style="margin: 20px 0 10px">Programs</h2>
+
+  <div class="program">
+    <div class="prog-icon">🏆</div>
+    <div class="prog-body">
+      <p class="prog-title">Summer Swim Team — 2026 Session 1 <span class="pill pill-active">ACTIVE</span></p>
+      <p class="prog-meta">10 sessions · M–F 9:00–10:00am · June 8–19 · 24 max kids · Coach Mike + Coach Lauren · <b>$150/kid</b></p>
+      <div class="prog-stats">
+        <div class="prog-stat"><span class="num">22</span>booked</div>
+        <div class="prog-stat"><span class="num">2</span>spots open</div>
+        <div class="prog-stat"><span class="num">$3,300</span>collected</div>
+      </div>
+      <details class="sessions-list">
+        <summary style="cursor: pointer; font-size: 12px; color: var(--blue); font-weight: 600; padding: 8px 0">View sessions →</summary>
+        <div class="session-row"><div><div class="session-when">Mon Jun 8 · 9:00–10:00am</div><div class="session-meta">Coach Mike · Pool Lane 1–4</div></div><span class="session-roster">👶 <b>22</b> / 24 booked</span></div>
+        <div class="session-row"><div><div class="session-when">Tue Jun 9 · 9:00–10:00am</div><div class="session-meta">Coach Mike · Pool Lane 1–4</div></div><span class="session-roster">👶 <b>22</b> / 24 booked</span></div>
+        <div class="session-row"><div><div class="session-when">Wed Jun 10 · 9:00–10:00am</div><div class="session-meta">Coach Lauren · Pool Lane 1–4</div></div><span class="session-roster">👶 <b>22</b> / 24 booked</span></div>
+        <div class="session-row" style="opacity: .6"><div><div class="session-when">… 7 more sessions</div><div class="session-meta">Through June 19</div></div></div>
+      </details>
+    </div>
+    <div class="prog-actions">
+      <button class="btn-ghost btn btn-sm">Roster</button>
+      <button class="btn-ghost btn btn-sm">Edit</button>
+    </div>
+  </div>
+
+  <div class="program">
+    <div class="prog-icon">👤</div>
+    <div class="prog-body">
+      <p class="prog-title">Private Lessons — Coach Mike <span class="pill pill-active">ACTIVE</span></p>
+      <p class="prog-meta">30-min slots · 1-on-1 · Tue/Thu 4:00–6:00pm · <b>$35/lesson</b></p>
+      <div class="prog-stats">
+        <div class="prog-stat"><span class="num">14</span>booked next 4 weeks</div>
+        <div class="prog-stat"><span class="num">10</span>open slots</div>
+        <div class="prog-stat"><span class="num">$490</span>collected</div>
+      </div>
+    </div>
+    <div class="prog-actions">
+      <button class="btn-ghost btn btn-sm">Roster</button>
+      <button class="btn-ghost btn btn-sm">Edit</button>
+    </div>
+  </div>
+
+  <div class="program">
+    <div class="prog-icon">👶</div>
+    <div class="prog-body">
+      <p class="prog-title">Mommy &amp; Me — Tuesdays <span class="pill pill-open">3 SPOTS LEFT</span></p>
+      <p class="prog-meta">8-week series · Tue 10:00–10:45am · June 9 – July 28 · 12 pairs max · Coach Lauren · <b>$120/pair</b></p>
+      <div class="prog-stats">
+        <div class="prog-stat"><span class="num">9</span>booked</div>
+        <div class="prog-stat"><span class="num">3</span>spots open</div>
+        <div class="prog-stat"><span class="num">$1,080</span>collected</div>
+      </div>
+    </div>
+    <div class="prog-actions">
+      <button class="btn-ghost btn btn-sm">Roster</button>
+      <button class="btn-ghost btn btn-sm">Edit</button>
+    </div>
+  </div>
+
+  <!-- Roster sample -->
+  <h2 style="margin: 28px 0 10px">Recent bookings</h2>
+
+  <div class="card">
+    <div class="card-head">
+      <h2 style="margin:0;font-size:16px">Latest 5 bookings</h2>
+      <a href="#" style="font-size: 13px">View full roster →</a>
+    </div>
+    <table class="roster-table">
+      <thead>
+        <tr><th>Student</th><th>Program</th><th>Household</th><th>Paid</th><th>Booked</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Lily Owens</b><br><span style="font-size:11px;color:var(--muted)">age 7</span></td>
+          <td>Summer Swim Team</td>
+          <td>The Owens</td>
+          <td>✅ $150</td>
+          <td>2 hours ago</td>
+        </tr>
+        <tr>
+          <td><b>Aiden Smith</b><br><span style="font-size:11px;color:var(--muted)">age 9</span></td>
+          <td>Summer Swim Team</td>
+          <td>The Smiths</td>
+          <td>✅ $150</td>
+          <td>5 hours ago</td>
+        </tr>
+        <tr>
+          <td><b>Tom Owens</b><br><span style="font-size:11px;color:var(--muted)">age 5</span></td>
+          <td>Private · Coach Mike · Tue Jun 10</td>
+          <td>The Owens</td>
+          <td>✅ $35</td>
+          <td>yesterday</td>
+        </tr>
+        <tr>
+          <td><b>Hazel Park</b><br><span style="font-size:11px;color:var(--muted)">age 1.5</span></td>
+          <td>Mommy &amp; Me</td>
+          <td>The Parks</td>
+          <td>⏳ pending</td>
+          <td>yesterday</td>
+        </tr>
+        <tr>
+          <td><b>Marcus Lee</b><br><span style="font-size:11px;color:var(--muted)">age 8</span></td>
+          <td>Summer Swim Team</td>
+          <td>The Lees</td>
+          <td>✅ $150</td>
+          <td>3 days ago</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 style="margin: 28px 0 10px">Instructors</h2>
+  <div class="card">
+    <table class="roster-table">
+      <thead><tr><th>Name</th><th>Programs</th><th>Bookings (mo)</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><b>Coach Mike</b></td><td>Swim Team · Private</td><td>26</td><td><button class="btn-ghost btn btn-sm">Edit</button></td></tr>
+        <tr><td><b>Coach Lauren</b></td><td>Swim Team · Mommy &amp; Me</td><td>16</td><td><button class="btn-ghost btn btn-sm">Edit</button></td></tr>
+      </tbody>
+    </table>
+    <button class="btn-ghost btn btn-sm" style="margin-top: 12px">+ Add instructor</button>
+  </div>
+</div>
+
+</body>
+</html>

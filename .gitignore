@@ -1,0 +1,22 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local env
+.env
+.env.local
+.vercel
+
+# Supabase CLI temp
+supabase/.temp/
+
+# Node/build artifacts (when we add a build step)
+node_modules/
+dist/
+.next/
+.cache/
+
+# Logs / scratch
+*.log
+recovery.txt

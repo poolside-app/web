@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bishop Estates Cabana Club — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --teal:#14b8a6;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; max-width: 720px; margin: 0 auto; }
+  h1,h2,h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0 0 .3em; }
+  h1 { font-size: 30px; line-height: 1.1; }
+  h2 { font-size: 20px; }
+  h3 { font-size: 16px; }
+  a { color: var(--blue); text-decoration: none; }
+
+  .top-banner { background: var(--blue); color: #fff; font-size: 12px; padding: 8px 16px; text-align: center; }
+  .top-banner a { color: #fff; text-decoration: underline; }
+
+  /* Hero */
+  .hero {
+    position: relative; padding: 36px 22px 28px; color: #fff;
+    background: linear-gradient(160deg, #0a3b5c 0%, #134b73 60%, #1e3a5f 100%);
+    border-radius: 0 0 24px 24px;
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(80% 70% at 70% 0%, rgba(245,158,11,.16), transparent 60%);
+    pointer-events: none; border-radius: 0 0 24px 24px;
+  }
+  .hero-inner { position: relative; z-index: 1; }
+  .pool-pill {
+    display: inline-flex; gap: 14px; align-items: center;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 999px; padding: 8px 14px; font-size: 12px; margin-bottom: 16px;
+  }
+  .pool-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.3); }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .8; margin-bottom: 6px; }
+  .hero h1 { color: #fff; }
+  .hero p.sub { opacity: .85; margin: 8px 0 0; font-size: 15px; }
+
+  /* Sign-in pill */
+  .signin {
+    position: absolute; top: 22px; right: 22px; z-index: 2;
+    background: rgba(255,255,255,.16); color: #fff;
+    padding: 8px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; backdrop-filter: blur(8px);
+  }
+
+  /* Sections */
+  section { padding: 24px 22px; }
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 18px; margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  .card-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--blue); margin-bottom: 4px; }
+  .card-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; color: var(--blue); margin: 4px 0 10px; }
+  .card p { color: var(--text); font-size: 14px; margin: 0; }
+  .card .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* Ticker */
+  .ticker {
+    display: flex; gap: 14px; align-items: center; padding: 14px 18px;
+    background: var(--bg-2); border-radius: 12px; margin: 16px 0;
+    font-size: 13px; color: var(--text); overflow: hidden;
+  }
+  .ticker .icon { font-size: 18px; }
+  .ticker b { color: var(--blue); }
+
+  /* CTA card */
+  .cta-card {
+    background: linear-gradient(120deg, #fff 0%, var(--bg-2) 100%);
+    border: 1.5px dashed var(--blue);
+    border-radius: var(--r-lg); padding: 22px; margin-bottom: 18px;
+    text-align: center;
+  }
+  .cta-card h3 { font-family: 'Fraunces', serif; font-size: 22px; color: var(--blue); margin: 0 0 4px; }
+  .cta-card p { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+  .btn { display: inline-block; background: var(--blue); color: #fff; padding: 12px 22px; border-radius: 999px; font-weight: 600; font-size: 14px; }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 720px; padding: 10px 8px 20px;
+    background: rgba(254,253,251,.95); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around;
+  }
+  .bottom-nav a {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 8px 10px; color: var(--muted); text-decoration: none;
+    font-size: 11px; font-weight: 600;
+  }
+  .bottom-nav a.active { color: var(--blue); }
+  .bottom-nav a span.icon { font-size: 22px; }
+
+  /* Bottom space for fixed nav */
+  body { padding-bottom: 78px; }
+
+  /* Campaign modal (in-app pop-up) */
+  .camp-overlay {
+    position: fixed; inset: 0; background: rgba(10,59,92,.55);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .camp-overlay.show { opacity: 1; pointer-events: auto; }
+  .camp-modal {
+    background: #fff; border-radius: 22px; max-width: 360px; width: 100%;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(10,59,92,.3);
+    transform: translateY(12px) scale(.96); transition: transform .25s ease;
+  }
+  .camp-overlay.show .camp-modal { transform: translateY(0) scale(1); }
+  .camp-img {
+    aspect-ratio: 16/9;
+    background: linear-gradient(135deg, #0a3b5c 0%, #134b73 60%, #f59e0b 100%);
+    position: relative; display: flex; align-items: flex-end; padding: 16px;
+    color: #fff;
+  }
+  .camp-img::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(80% 70% at 70% 0%, rgba(245,158,11,.4), transparent 60%);
+  }
+  .camp-img-emoji { position: relative; z-index: 1; font-size: 56px; line-height: 1; filter: drop-shadow(0 4px 12px rgba(0,0,0,.2)); }
+  .camp-body-area { padding: 20px 22px 22px; }
+  .camp-title {
+    font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600;
+    color: var(--blue); margin: 0 0 8px; line-height: 1.15;
+  }
+  .camp-text { color: var(--text); font-size: 14px; margin: 0 0 16px; line-height: 1.5; }
+  .camp-cta {
+    display: block; width: 100%; padding: 14px;
+    background: var(--sun); color: #422006; border: 0; border-radius: 12px;
+    font: 600 15px 'Inter', sans-serif; cursor: pointer; text-align: center;
+    transition: background .12s; text-decoration: none;
+  }
+  .camp-cta:hover { background: #d97706; text-decoration: none; }
+  .camp-dismiss {
+    display: block; width: 100%; text-align: center; padding: 12px 0 0;
+    background: transparent; border: 0; color: var(--muted); font-size: 13px;
+    cursor: pointer; font-family: inherit;
+  }
+  .camp-dismiss:hover { color: var(--text); }
+
+  /* FAB */
+  .fab {
+    position: fixed; right: 22px; bottom: 92px; z-index: 30;
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--sun), #d97706); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; box-shadow: 0 12px 24px rgba(245,158,11,.4);
+    text-decoration: none; cursor: pointer;
+  }
+
+  .photo-strip { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0; }
+  .photo-strip > div {
+    flex: 0 0 120px; height: 120px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--blue-l), #cae0ef);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-banner">
+  Demo tenant — <code>bishopestates.poolside.app</code> · <a href="../">marketing</a> · <a href="admin/campaigns.html">campaigns admin</a> · <button onclick="showCampaign()" style="background:transparent;border:0;color:#fff;text-decoration:underline;cursor:pointer;font-size:12px;font-family:inherit;padding:0">replay popup</button>
+</div>
+
+<div class="signin">🔑 Sign in</div>
+
+<div class="hero">
+  <div class="hero-inner">
+    <div class="pool-pill"><span class="dot"></span> 32 members visited today · 78°F · ☀ Clear</div>
+    <div class="eyebrow">Bishop Estates Cabana Club</div>
+    <h1>A neighborhood pool.</h1>
+    <p class="sub">Family memberships from $600/yr · Open Memorial Day → Labor Day</p>
+  </div>
+</div>
+
+<section>
+  <div class="cta-card">
+    <h3>Become a member</h3>
+    <p>Family + individual options. 14-day enrollment window after Memorial Day.</p>
+    <a href="#" class="btn">Apply for membership →</a>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">📰 Announcement</div>
+    <div class="card-title">Saturday potluck this weekend</div>
+    <p>Bring a dish to share. Pool grills are fired up at 4pm. Music by the Smith family band starts at 5.</p>
+    <div class="meta">Posted 3 days ago by board</div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">🎉 Book a party</div>
+    <div class="card-title">Available slots fill fast</div>
+    <p>Birthday parties, baby showers, family reunions. $350 base, includes 2-hour use of the cabana side. Approved within 48 hours.</p>
+    <div class="meta">2 slots booked this weekend · 3 still open</div>
+    <a href="#" class="btn" style="margin-top: 10px;">See open slots →</a>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">📷 Gallery — Summer 2026</div>
+    <div class="card-title">Members share their favorites</div>
+    <div class="photo-strip">
+      <div>📷 Pool day</div>
+      <div>📷 Diving board</div>
+      <div>📷 Sunset</div>
+      <div>📷 Kids</div>
+      <div>📷 Cabana</div>
+    </div>
+    <div class="meta" style="margin-top:8px">Tap to view all 47 photos · members can submit their own</div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">🤝 Sponsors</div>
+    <div class="card-title">Local businesses keep our pool running</div>
+    <p style="color:var(--muted)">Acme Pool Supply · Valley Veterinary · Dr. Chen DDS · The Coffee House on Main</p>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">💚 Resurfacing fund</div>
+    <div class="card-title">$8,400 raised toward $25,000 goal</div>
+    <p>The pool is showing its age. Help us re-tile and re-coat the surface this off-season.</p>
+    <a href="#" class="btn" style="margin-top: 10px;">Donate →</a>
+  </div>
+</section>
+
+<a href="#" class="fab">🔓</a>
+
+<!-- Campaign modal — auto-shows on load, controlled via campaigns admin -->
+<div class="camp-overlay" id="campOverlay">
+  <div class="camp-modal">
+    <div class="camp-img">
+      <div class="camp-img-emoji">🎆</div>
+    </div>
+    <div class="camp-body-area">
+      <h3 class="camp-title">4th of July Party — $25/family</h3>
+      <p class="camp-text">Join us for the annual fireworks party at the pool. $25/family covers food, drinks, and the show. Tickets sold in advance only.</p>
+      <a href="https://eventbrite.com/" target="_blank" class="camp-cta" onclick="recordClick()">Get tickets →</a>
+      <button class="camp-dismiss" onclick="dismissCampaign()">Dismiss</button>
+    </div>
+  </div>
+</div>
+<script>
+  function showCampaign() {
+    document.getElementById('campOverlay').classList.add('show');
+  }
+  function dismissCampaign() {
+    document.getElementById('campOverlay').classList.remove('show');
+  }
+  function recordClick() {
+    // In real app: log click to campaign_views table
+    setTimeout(dismissCampaign, 100);
+  }
+  // Auto-show on page load (after a brief delay so the page renders first)
+  setTimeout(showCampaign, 500);
+</script>
+
+<nav class="bottom-nav">
+  <a href="#" class="active"><span class="icon">🏠</span><span>Home</span></a>
+  <a href="#"><span class="icon">📅</span><span>Calendar</span></a>
+  <a href="#"><span class="icon">🎉</span><span>Party</span></a>
+  <a href="#"><span class="icon">🏊</span><span>Swim</span></a>
+  <a href="#"><span class="icon">🪪</span><span>Join</span></a>
+</nav>
+
+</body>
+</html>

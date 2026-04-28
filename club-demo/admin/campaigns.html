@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Campaigns — Bishop Estates Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg-2); color:var(--text); font:14px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  h1,h2,h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0 0 .3em; }
+  h1 { font-size:26px; } h2 { font-size:18px; } h3 { font-size:15px; }
+  a { color: var(--blue); text-decoration: none; }
+
+  .top-banner { background: var(--blue); color:#fff; font-size:12px; padding:8px 16px; text-align:center; }
+  .top-banner a { color:#fff; text-decoration: underline; }
+
+  .container { max-width: 880px; margin: 0 auto; padding: 24px 16px; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:14px; flex-wrap:wrap; }
+  .lede { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+  .btn { background: var(--blue); color:#fff; border:0; padding: 10px 18px; border-radius: 9px; font: 600 14px 'Inter', sans-serif; cursor: pointer; transition: background .12s; }
+  .btn:hover { background: var(--blue-2); }
+  .btn-ghost { background: #fff; color: var(--blue); border: 1.5px solid var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius: var(--r-md); padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
+
+  /* Campaign row */
+  .camp {
+    background:#fff; border:1px solid var(--border); border-radius: var(--r-lg);
+    padding: 16px; margin-bottom: 12px; display: flex; gap: 14px; align-items: flex-start;
+  }
+  .camp-icon {
+    width:44px; height:44px; border-radius: 12px; flex-shrink: 0;
+    display:flex; align-items:center; justify-content:center; font-size: 22px;
+    background: var(--blue-l);
+  }
+  .camp-icon.amber { background: #fff7ea; }
+  .camp-icon.red { background: #fee2e2; }
+  .camp-icon.green { background: #dcfce7; }
+  .camp-body { flex: 1; min-width: 0; }
+  .camp-title { font-weight: 700; font-size: 15px; color: var(--text); margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .camp-meta { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  .camp-meta b { color: var(--text); font-weight: 600; }
+  .camp-actions { display: flex; gap: 6px; align-items: flex-start; }
+
+  .pill { display:inline-block; font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; letter-spacing:.06em; }
+  .pill-active { background:#dcfce7; color:#14532d; }
+  .pill-draft { background:#f3f4f6; color:#475569; }
+  .pill-paused { background:#fef9c3; color:#713f12; }
+  .pill-ended { background:#fee2e2; color:#7f1d1d; }
+
+  /* Templates picker */
+  .tpl-grid {
+    display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr);
+  }
+  @media (min-width: 600px) { .tpl-grid { grid-template-columns: repeat(3, 1fr); } }
+  .tpl-card {
+    background: var(--bg-2); border: 1.5px solid var(--border); border-radius: var(--r-md);
+    padding: 14px; cursor: pointer; transition: border .12s, transform .08s;
+    text-align: center; min-height: 96px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  }
+  .tpl-card:hover { border-color: var(--blue); transform: translateY(-2px); }
+  .tpl-card.selected { border-color: var(--blue); background: var(--blue-l); }
+  .tpl-icon-big { font-size: 28px; line-height: 1; }
+  .tpl-name { font-weight: 600; font-size: 12px; color: var(--text); }
+
+  /* Form */
+  label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; }
+  label .opt { font-weight: 500; color: var(--muted); font-size: 11px; margin-left: 6px; text-transform: none; letter-spacing: 0; }
+  input[type=text], input[type=url], input[type=date], textarea, select {
+    width: 100%; padding: 11px 14px; font: 15px/1.4 'Inter', sans-serif;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    background: #fff; color: var(--text); transition: border .12s; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l);
+  }
+  textarea { resize: vertical; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .row2 { grid-template-columns: 1fr; } }
+  .help { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
+
+  /* Preview pane */
+  .preview-pane {
+    background: linear-gradient(135deg, var(--blue-l), #fff);
+    border: 1.5px dashed var(--blue); border-radius: var(--r-md);
+    padding: 14px; margin-top: 14px;
+  }
+  .preview-label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--blue); margin-bottom: 8px; }
+
+  /* Modal preview */
+  .modal-preview {
+    background: #fff; border-radius: 18px; padding: 0;
+    overflow: hidden; max-width: 320px; margin: 0 auto;
+    box-shadow: 0 12px 32px rgba(10,59,92,.18);
+  }
+  .modal-preview .img-area {
+    background: linear-gradient(135deg, #cae0ef, var(--blue-l));
+    aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+    color: var(--blue); font-size: 36px;
+  }
+  .modal-preview .body-area { padding: 18px 20px 20px; }
+  .modal-preview .preview-emoji { font-size: 24px; line-height: 1; margin-bottom: 4px; }
+  .modal-preview .preview-title { font-family:'Fraunces',serif; font-size: 19px; font-weight: 600; color: var(--blue); line-height:1.15; margin: 4px 0 8px; }
+  .modal-preview .preview-body { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.5; }
+  .modal-preview .cta-btn {
+    display: block; width: 100%; padding: 12px;
+    background: var(--blue); color:#fff; border: 0; border-radius: 10px;
+    font: 600 14px 'Inter', sans-serif; cursor: pointer; text-align: center;
+  }
+  .modal-preview .cta-btn.amber { background: var(--sun); color: #422006; }
+  .modal-preview .cta-btn.green { background: var(--green); }
+  .modal-preview .cta-btn.red    { background: var(--red); }
+  .modal-preview .dismiss { display:block; text-align:center; padding: 10px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+  .stat { background:#fff; border:1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
+  .stat-label { font-size:10px; font-weight:700; letter-spacing:.12em; text-transform: uppercase; color: var(--muted); }
+  .stat-num { font-family:'Fraunces',serif; font-size:24px; font-weight: 600; color: var(--blue); margin-top: 2px; line-height: 1.1; }
+
+  .pane { display: none; }
+  .pane.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="top-banner">
+  Bishop Estates · Club Admin · 📢 Campaigns —
+  <a href="../">tenant home</a> ·
+  <a href="../../admin/">provider admin</a> ·
+  <a href="../../">marketing</a>
+</div>
+
+<div class="container">
+
+  <!-- LIST PANE -->
+  <div class="pane active" id="pane-list">
+    <div class="top">
+      <div>
+        <h1>📢 Campaigns</h1>
+        <p class="lede">Pop-up messages your members see when they open the app. Use them for events, donations, announcements, or renewals.</p>
+      </div>
+      <button class="btn" onclick="show('create')">+ New campaign</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Active now</div><div class="stat-num">2</div></div>
+      <div class="stat"><div class="stat-label">Total clicks (30d)</div><div class="stat-num">87</div></div>
+      <div class="stat"><div class="stat-label">View rate</div><div class="stat-num">68%</div></div>
+    </div>
+
+    <!-- Active campaigns -->
+    <h2 style="margin: 18px 0 10px">Active</h2>
+
+    <div class="camp">
+      <div class="camp-icon amber">🎆</div>
+      <div class="camp-body">
+        <p class="camp-title">4th of July Party — $25/family <span class="pill pill-active">ACTIVE</span></p>
+        <p class="camp-meta">CTA → <b>Get tickets</b> · Audience: <b>All members</b> · Until <b>Jul 5</b> · <b>34 of 147</b> seen · <b>18</b> clicks</p>
+      </div>
+      <div class="camp-actions">
+        <button class="btn-ghost btn btn-sm">Edit</button>
+        <button class="btn-ghost btn btn-sm">Pause</button>
+      </div>
+    </div>
+
+    <div class="camp">
+      <div class="camp-icon amber">🪑</div>
+      <div class="camp-body">
+        <p class="camp-title">Lounge chair fund — $2,400 of $5,000 <span class="pill pill-active">ACTIVE</span></p>
+        <p class="camp-meta">CTA → <b>Donate via Venmo</b> · Audience: <b>All members</b> · No end date · <b>62 of 147</b> seen · <b>11</b> clicks</p>
+      </div>
+      <div class="camp-actions">
+        <button class="btn-ghost btn btn-sm">Edit</button>
+        <button class="btn-ghost btn btn-sm">Pause</button>
+      </div>
+    </div>
+
+    <!-- Drafts / past -->
+    <h2 style="margin: 26px 0 10px">Drafts &amp; past</h2>
+
+    <div class="camp" style="opacity:.85">
+      <div class="camp-icon">👋</div>
+      <div class="camp-body">
+        <p class="camp-title">Welcome to the 2026 season! <span class="pill pill-draft">DRAFT</span></p>
+        <p class="camp-meta">No CTA · Audience: <b>Members joined &lt; 30 days</b> · Frequency: <b>Once</b></p>
+      </div>
+      <div class="camp-actions">
+        <button class="btn btn-sm">Publish</button>
+        <button class="btn-ghost btn btn-sm">Edit</button>
+      </div>
+    </div>
+
+    <div class="camp" style="opacity:.65">
+      <div class="camp-icon red">🌊</div>
+      <div class="camp-body">
+        <p class="camp-title">Pool closed Saturday for cleaning <span class="pill pill-ended">ENDED</span></p>
+        <p class="camp-meta">No CTA · Audience: <b>All members</b> · Ran Apr 24–25 · <b>112 of 147</b> seen</p>
+      </div>
+      <div class="camp-actions">
+        <button class="btn-ghost btn btn-sm">Re-run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREATE PANE -->
+  <div class="pane" id="pane-create">
+    <div class="top">
+      <div>
+        <h1>+ New campaign</h1>
+        <p class="lede">Start with a template, customize what you want, hit Publish.</p>
+      </div>
+      <button class="btn-ghost btn" onclick="show('list')">← Back</button>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 12px">1. Pick a template</h2>
+      <div class="tpl-grid">
+        <div class="tpl-card selected" onclick="pickTpl(this,'event')"><span class="tpl-icon-big">🎆</span><span class="tpl-name">Event tickets</span></div>
+        <div class="tpl-card" onclick="pickTpl(this,'donate')"><span class="tpl-icon-big">💸</span><span class="tpl-name">Donation drive</span></div>
+        <div class="tpl-card" onclick="pickTpl(this,'announce')"><span class="tpl-icon-big">📢</span><span class="tpl-name">Announcement</span></div>
+        <div class="tpl-card" onclick="pickTpl(this,'renew')"><span class="tpl-icon-big">🪪</span><span class="tpl-name">Renewal reminder</span></div>
+        <div class="tpl-card" onclick="pickTpl(this,'welcome')"><span class="tpl-icon-big">👋</span><span class="tpl-name">Welcome</span></div>
+        <div class="tpl-card" onclick="pickTpl(this,'closed')"><span class="tpl-icon-big">🌊</span><span class="tpl-name">Pool closed</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 12px">2. Customize</h2>
+
+      <label>Emoji + title</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="emoji" value="🎆" style="width:64px;text-align:center;font-size:22px">
+        <input type="text" id="title" value="4th of July Party — $25/family" style="flex:1">
+      </div>
+
+      <label>Body <span class="opt">(1–2 short sentences)</span></label>
+      <textarea id="body" rows="3">Join us for the annual fireworks party at the pool — $25/family covers food, drinks, and the show. Tickets sold in advance only.</textarea>
+
+      <label>Inline image <span class="opt">(optional, 16:9)</span></label>
+      <div style="border:2px dashed var(--border); border-radius: 10px; padding: 18px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer">
+        📷 Tap to upload — JPEG or PNG
+      </div>
+
+      <div class="row2" style="margin-top:14px">
+        <div>
+          <label>CTA button label <span class="opt">(optional)</span></label>
+          <input type="text" id="cta-label" value="Get tickets →">
+        </div>
+        <div>
+          <label>CTA button color</label>
+          <select id="cta-color" onchange="syncPreview()">
+            <option value="primary">Blue (default)</option>
+            <option value="amber" selected>Amber (urgent / sale)</option>
+            <option value="green">Green (donation / positive)</option>
+            <option value="red">Red (alert / closure)</option>
+          </select>
+        </div>
+      </div>
+
+      <label>CTA link <span class="opt">(where the button goes)</span></label>
+      <input type="url" id="cta-url" value="https://eventbrite.com/e/bishop-estates-4th-2026" placeholder="https://...">
+
+      <details style="margin-top:18px">
+        <summary style="cursor:pointer; font-weight: 600; font-size: 13px; color: var(--muted)">⚙️ Advanced options</summary>
+        <div style="padding-top: 14px">
+          <div class="row2">
+            <div>
+              <label>Audience</label>
+              <select>
+                <option>All members</option>
+                <option>Paid members only</option>
+                <option>Unpaid members only</option>
+                <option>Members joined &lt; 30 days</option>
+                <option>Specific households…</option>
+              </select>
+            </div>
+            <div>
+              <label>Frequency</label>
+              <select>
+                <option>Once per member</option>
+                <option>Once per day</option>
+                <option>Until clicked</option>
+                <option>Until dismissed</option>
+                <option>Every open</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row2" style="margin-top:14px">
+            <div>
+              <label>Start date</label>
+              <input type="date" value="2026-06-15">
+            </div>
+            <div>
+              <label>End date <span class="opt">(optional)</span></label>
+              <input type="date" value="2026-07-05">
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Live preview -->
+    <div class="card">
+      <h2 style="margin:0 0 12px">3. Preview</h2>
+      <p class="lede" style="margin: 0 0 14px">This is what members will see when they open the app.</p>
+
+      <div class="preview-pane">
+        <div class="preview-label">📱 As member sees it</div>
+        <div class="modal-preview">
+          <div class="img-area">📷</div>
+          <div class="body-area">
+            <div class="preview-emoji" id="p-emoji">🎆</div>
+            <div class="preview-title" id="p-title">4th of July Party — $25/family</div>
+            <div class="preview-body" id="p-body">Join us for the annual fireworks party at the pool — $25/family covers food, drinks, and the show. Tickets sold in advance only.</div>
+            <button class="cta-btn amber" id="p-cta">Get tickets →</button>
+            <a href="#" class="dismiss">Dismiss</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap: 10px; flex-wrap: wrap; margin-bottom: 30px">
+      <button class="btn" style="padding: 12px 24px; font-size: 15px">🚀 Publish now</button>
+      <button class="btn-ghost btn" style="padding: 12px 24px; font-size: 15px">💾 Save as draft</button>
+      <button class="btn-ghost btn" style="padding: 12px 24px; font-size: 15px" onclick="show('list')">Cancel</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function show(name) {
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function pickTpl(el, kind) {
+  document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  // Pre-fill the form for each template
+  const presets = {
+    event:    { emoji: '🎆', title: '4th of July Party — $25/family', body: 'Join us for the annual fireworks party at the pool — $25/family covers food, drinks, and the show. Tickets sold in advance only.', label: 'Get tickets →', color: 'amber' },
+    donate:   { emoji: '💸', title: 'Lounge chair fund — $2,400 of $5,000', body: 'Help us replace the worn-out lounge chairs by Memorial Day. Every $50 buys one new chair.', label: 'Donate via Venmo →', color: 'green' },
+    announce: { emoji: '📢', title: 'New summer hours starting Monday', body: 'The pool will be open 10 AM – 9 PM weekdays and 9 AM – 10 PM weekends starting June 1.', label: '', color: 'primary' },
+    renew:    { emoji: '🪪', title: 'Renew before Feb 1 — save $50', body: 'Early-bird membership renewal saves your family $50. Submit your renewal form before February 1.', label: 'Renew now →', color: 'primary' },
+    welcome:  { emoji: '👋', title: 'Welcome to the 2026 season!', body: 'You\'re officially a member of Bishop Estates Cabana Club. Pool opens Memorial Day weekend. We can\'t wait to see you.', label: '', color: 'primary' },
+    closed:   { emoji: '🌊', title: 'Pool closed Saturday for cleaning', body: 'The pool will be closed all day Saturday April 27 for our annual deep clean. Reopens Sunday at 10 AM.', label: '', color: 'red' },
+  };
+  const p = presets[kind];
+  if (p) {
+    document.getElementById('emoji').value = p.emoji;
+    document.getElementById('title').value = p.title;
+    document.getElementById('body').value = p.body;
+    document.getElementById('cta-label').value = p.label;
+    document.getElementById('cta-color').value = p.color;
+    syncPreview();
+  }
+}
+function syncPreview() {
+  document.getElementById('p-emoji').textContent = document.getElementById('emoji').value;
+  document.getElementById('p-title').textContent = document.getElementById('title').value;
+  document.getElementById('p-body').textContent  = document.getElementById('body').value;
+  const lab = document.getElementById('cta-label').value.trim();
+  const cta = document.getElementById('p-cta');
+  if (lab) {
+    cta.style.display = 'block';
+    cta.textContent = lab;
+    cta.className = 'cta-btn ' + document.getElementById('cta-color').value;
+  } else {
+    cta.style.display = 'none';
+  }
+}
+['emoji','title','body','cta-label'].forEach(id => {
+  document.getElementById(id).addEventListener('input', syncPreview);
+});
+syncPreview();
+</script>
+</body>
+</html>

@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Setup Wizard — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg-2); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  h1, h2, h3 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; letter-spacing: -.015em; margin: 0; }
+  h1 { font-size: 28px; line-height: 1.1; }
+  h2 { font-size: 22px; }
+  a { color: var(--blue); }
+
+  .demo-banner {
+    background: var(--sun); color: #422006; text-align: center;
+    padding: 8px; font-size: 12px;
+  }
+  .demo-banner a { color: #422006; font-weight: 700; }
+
+  .wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 32px 16px;
+  }
+  .modal {
+    background: #fff; border-radius: 24px; max-width: 540px; width: 100%;
+    box-shadow: 0 20px 60px rgba(10,59,92,.18);
+    overflow: hidden; display: flex; flex-direction: column;
+    max-height: 92vh;
+  }
+
+  /* Header with progress */
+  .head {
+    padding: 22px 24px 0; flex-shrink: 0;
+  }
+  .head-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px;
+  }
+  .head-row .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 17px; color: var(--blue);
+  }
+  .logo-dot { width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); }
+  .step-counter {
+    font-size: 12px; color: var(--muted); font-weight: 600;
+    letter-spacing: .05em; text-transform: uppercase;
+  }
+  .progress {
+    height: 4px; background: var(--bg-2); border-radius: 999px; overflow: hidden;
+    margin-bottom: 22px;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--blue), var(--blue-2));
+    border-radius: 999px; width: 14%; transition: width .3s ease;
+  }
+
+  /* Body */
+  .body {
+    padding: 0 24px 16px; flex: 1; overflow-y: auto;
+  }
+  .step-icon {
+    font-size: 36px; line-height: 1; margin-bottom: 12px;
+  }
+  .step-title { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; color: var(--blue); margin-bottom: 6px; line-height: 1.15; }
+  .step-tag { color: var(--muted); font-size: 14px; margin-bottom: 22px; line-height: 1.5; }
+  label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; }
+  label .opt { font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; font-size: 11px; margin-left: 6px; }
+  input, textarea, select {
+    width: 100%; padding: 12px 14px; font: 15px/1.4 'Inter', sans-serif;
+    border: 1.5px solid var(--border); border-radius: var(--r-md);
+    background: #fff; color: var(--text); transition: border .12s;
+    font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l);
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .help { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
+  .pill-input {
+    position: relative; display: flex; align-items: center;
+  }
+  .pill-input input { padding-right: 130px; }
+  .pill-input .suffix {
+    position: absolute; right: 10px; color: var(--muted); font-size: 12px;
+    background: var(--bg-2); padding: 4px 8px; border-radius: 6px;
+  }
+
+  /* Footer with buttons */
+  .foot {
+    padding: 18px 24px 22px; border-top: 1px solid var(--border);
+    display: flex; gap: 10px; justify-content: space-between; flex-shrink: 0;
+    background: #fff;
+  }
+  .btn {
+    padding: 12px 22px; border-radius: var(--r-md); font: 600 14px 'Inter', sans-serif;
+    cursor: pointer; transition: all .12s; border: 1.5px solid transparent;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-2); }
+  .btn-ghost { background: transparent; color: var(--muted); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--bg-2); color: var(--text); }
+  .btn-link { background: transparent; color: var(--muted); border: 0; font-size: 13px; padding: 12px; }
+  .btn-link:hover { color: var(--text); text-decoration: underline; }
+
+  /* Done step */
+  .done-card {
+    text-align: center; padding: 12px 0 4px;
+  }
+  .done-icon {
+    width: 78px; height: 78px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--green), #15803d);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 38px; margin: 0 auto 18px;
+    box-shadow: 0 12px 28px rgba(22,163,74,.3);
+  }
+  .summary {
+    text-align: left; background: var(--bg-2); border-radius: 14px;
+    padding: 16px; margin-top: 18px; font-size: 14px;
+  }
+  .summary-row {
+    display: flex; justify-content: space-between; padding: 6px 0;
+    border-bottom: 1px solid rgba(10,59,92,.08);
+  }
+  .summary-row:last-child { border-bottom: 0; }
+  .summary-row b { color: var(--blue); }
+
+  .skip-row {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--muted); font-size: 12px; margin-top: 12px;
+  }
+  .skip-row label { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }
+
+  .upload-box {
+    border: 2px dashed var(--border); border-radius: var(--r-md);
+    padding: 28px; text-align: center; color: var(--muted);
+    background: var(--bg-2); cursor: pointer; transition: border .12s;
+  }
+  .upload-box:hover { border-color: var(--blue); color: var(--blue); }
+
+  .integration-card {
+    background: linear-gradient(120deg, var(--bg-2) 0%, #fff 100%);
+    border: 1.5px solid var(--border); border-radius: var(--r-md);
+    padding: 16px; display: flex; gap: 14px; align-items: center; margin-bottom: 12px;
+  }
+  .integration-card.connected { border-color: var(--green); background: linear-gradient(120deg, #ecfdf5, #fff); }
+  .integration-card .icon { width: 48px; height: 48px; border-radius: 12px; background: var(--blue-l); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .integration-card .body-txt { flex: 1; }
+  .integration-card h3 { font-family: 'Fraunces', serif; font-size: 16px; color: var(--blue); margin: 0 0 2px; font-weight: 600; }
+  .integration-card p { color: var(--muted); font-size: 13px; margin: 0; }
+  .badge { background: var(--green); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; letter-spacing: .06em; }
+</style>
+</head>
+<body>
+<div class="demo-banner">
+  Wizard prototype — clickable demo. <a href="index.html">← back to marketing</a> · <a href="club-demo/">tenant frontend</a> · <a href="admin/">provider admin</a>
+</div>
+
+<div class="wrap">
+  <div class="modal">
+    <!-- Header -->
+    <div class="head">
+      <div class="head-row">
+        <div class="logo"><span class="logo-dot"></span> Poolside</div>
+        <div class="step-counter"><span id="step-num">1</span> of 7</div>
+      </div>
+      <div class="progress"><div class="progress-fill" id="progress"></div></div>
+    </div>
+
+    <!-- Body — switches per step -->
+    <div class="body" id="body">
+      <!-- Step 1 — Club basics -->
+      <div class="step" data-step="1">
+        <div class="step-icon">🏛️</div>
+        <h2 class="step-title">Tell us about your club</h2>
+        <p class="step-tag">The basics that show up everywhere — emails, the home page, your club's profile.</p>
+
+        <label>Club name</label>
+        <input type="text" placeholder="Bishop Estates Cabana Club" value="Bishop Estates Cabana Club">
+
+        <label>Location <span class="opt">(shown under hero)</span></label>
+        <input type="text" placeholder="Concord, California" value="Concord, California">
+
+        <div class="row2" style="margin-top: 10px">
+          <div>
+            <label>Default city</label>
+            <input type="text" placeholder="Concord" value="Concord">
+          </div>
+          <div>
+            <label>Default zip</label>
+            <input type="text" placeholder="94521" value="94521">
+          </div>
+        </div>
+
+        <label>Swim team name <span class="opt">(if you have one)</span></label>
+        <input type="text" placeholder="Bishop Estates Swim Team">
+      </div>
+
+      <!-- Step 2 — Hero text -->
+      <div class="step" data-step="2" style="display:none">
+        <div class="step-icon">🪪</div>
+        <h2 class="step-title">Front-page intro</h2>
+        <p class="step-tag">Three lines at the top of your home page. Leave a line blank to hide it.</p>
+
+        <label>Eyebrow <span class="opt">(small uppercase line)</span></label>
+        <input type="text" placeholder="Summer 2026">
+
+        <label>Headline <span class="opt">(the big serif line)</span></label>
+        <input type="text" placeholder="A neighborhood pool.">
+
+        <label>Tagline <span class="opt">(one freeform line)</span></label>
+        <input type="text" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
+      </div>
+
+      <!-- Step 3 — Background photo -->
+      <div class="step" data-step="3" style="display:none">
+        <div class="step-icon">🖼️</div>
+        <h2 class="step-title">Background photo</h2>
+        <p class="step-tag">Appears behind every page (darkened for readability). Skip if you'll add later.</p>
+
+        <div class="upload-box">
+          📤 Tap to upload a photo<br>
+          <span style="font-size:12px">JPEG or PNG · 1920×1080 recommended</span>
+        </div>
+
+        <label style="margin-top:18px">…or paste a URL</label>
+        <input type="text" placeholder="https://...">
+      </div>
+
+      <!-- Step 4 — Pool location & hours -->
+      <div class="step" data-step="4" style="display:none">
+        <div class="step-icon">📍</div>
+        <h2 class="step-title">Pool location &amp; hours</h2>
+        <p class="step-tag">Powers the weather ticker and gates the unlock button outside open hours.</p>
+
+        <div class="row2">
+          <div>
+            <label>Latitude</label>
+            <input type="number" placeholder="37.978900" step="0.000001">
+          </div>
+          <div>
+            <label>Longitude</label>
+            <input type="number" placeholder="-121.969300" step="0.000001">
+          </div>
+        </div>
+
+        <button class="btn btn-ghost" style="margin-top:8px;font-size:13px;padding:8px 14px;font-weight:500">📍 Use my location</button>
+
+        <div class="row2" style="margin-top:14px">
+          <div>
+            <label>Opens at</label>
+            <input type="time" value="10:00">
+          </div>
+          <div>
+            <label>Closes at</label>
+            <input type="time" value="20:00">
+          </div>
+        </div>
+
+        <label style="margin-top:14px">Fob activation day <span class="opt">(when new keyfobs go live each week)</span></label>
+        <select>
+          <option>Monday</option><option>Tuesday</option>
+          <option selected>Wednesday</option>
+          <option>Thursday</option><option>Friday</option>
+          <option>Saturday</option><option>Sunday</option>
+        </select>
+      </div>
+
+      <!-- Step 5 — Payments + Optional features -->
+      <div class="step" data-step="5" style="display:none">
+        <div class="step-icon">💳</div>
+        <h2 class="step-title">Payments &amp; optional features</h2>
+        <p class="step-tag">How members pay you, plus toggles for the optional services you offer.</p>
+
+        <label>Venmo handle <span class="opt">(without @)</span></label>
+        <div class="pill-input">
+          <input type="text" placeholder="yourclub" style="padding-left: 30px">
+          <span class="suffix" style="left: 10px; right: auto">@</span>
+        </div>
+
+        <label style="margin-top:14px">PayPal link</label>
+        <input type="text" placeholder="https://paypal.me/yourclub">
+
+        <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--border)">
+
+        <div style="font-weight:700; font-size: 13px; color: var(--blue); margin-bottom: 4px">Services you offer</div>
+        <p class="help" style="margin: 0 0 12px">Tick what applies — we'll wire up the relevant admin tabs. You can change these any time in Settings → Features.</p>
+
+        <label style="display:flex; align-items: flex-start; gap: 10px; font-weight: 500; margin: 8px 0; cursor: pointer; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; background: var(--bg); transition: border .12s">
+          <input type="checkbox" checked style="margin-top: 4px; flex-shrink: 0">
+          <div>
+            <div style="font-weight: 600; font-size: 14px; color: var(--text)">🏊‍♀️ Swim lessons or swim team</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 2px">Members book + pay for lessons through the app. Stripe handles checkout (1.5% Poolside fee per booking).</div>
+          </div>
+        </label>
+
+        <label style="display:flex; align-items: flex-start; gap: 10px; font-weight: 500; margin: 8px 0; cursor: pointer; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; background: var(--bg); transition: border .12s">
+          <input type="checkbox" checked style="margin-top: 4px; flex-shrink: 0">
+          <div>
+            <div style="font-weight: 600; font-size: 14px; color: var(--text)">🎉 Party rentals</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 2px">Members request parties online; you approve with one click. Email confirmation auto-sends.</div>
+          </div>
+        </label>
+
+        <label style="display:flex; align-items: flex-start; gap: 10px; font-weight: 500; margin: 8px 0; cursor: pointer; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; background: var(--bg); transition: border .12s">
+          <input type="checkbox" style="margin-top: 4px; flex-shrink: 0">
+          <div>
+            <div style="font-weight: 600; font-size: 14px; color: var(--text)">🚪 Gate access from members' phones</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 2px">Paid add-on, $250 setup + $25/mo. We evaluate your gate panel first — on-site testing required.</div>
+          </div>
+        </label>
+      </div>
+
+      <!-- Step 6 — Drive backup -->
+      <div class="step" data-step="6" style="display:none">
+        <div class="step-icon">🔗</div>
+        <h2 class="step-title">Connect Google Drive</h2>
+        <p class="step-tag">Nightly mirror of every member, party, and signed-application PDF lands in <em>your</em> Drive folder. Skip and add later if you want.</p>
+
+        <div class="integration-card">
+          <div class="icon">📁</div>
+          <div class="body-txt">
+            <h3>Google Drive</h3>
+            <p>One click, you authorize, we create your "Bishop Estates Backups" folder automatically.</p>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;margin-top:10px">🔗 Connect Google Drive</button>
+
+        <p class="help" style="margin-top:18px">
+          ✓ Backups update daily — only changed files (no daily duplicates)<br>
+          ✓ CSVs open straight in Google Sheets<br>
+          ✓ You own the folder; you control access
+        </p>
+      </div>
+
+      <!-- Step 7 — Done -->
+      <div class="step" data-step="7" style="display:none">
+        <div class="done-card">
+          <div class="done-icon">✓</div>
+          <h2 class="step-title" style="text-align:center">You're live!</h2>
+          <p class="step-tag" style="text-align:center">Bishop Estates Cabana Club is up and running at <code>bishopestates.poolside.app</code>.</p>
+        </div>
+
+        <div class="summary">
+          <div class="summary-row"><span>Club name</span><b>Bishop Estates Cabana Club</b></div>
+          <div class="summary-row"><span>Subdomain</span><b>bishopestates.poolside.app</b></div>
+          <div class="summary-row"><span>Hero text</span><b>Set</b></div>
+          <div class="summary-row"><span>Pool location</span><b>37.9789, -121.9693</b></div>
+          <div class="summary-row"><span>Open hours</span><b>10:00 AM – 8:00 PM</b></div>
+          <div class="summary-row"><span>Payments</span><b>Venmo · PayPal</b></div>
+          <div class="summary-row"><span>Drive backup</span><b>✓ Connected</b></div>
+        </div>
+
+        <p class="help" style="margin-top:18px;line-height:1.5;text-align:center">
+          Next steps: invite members, post your first announcement, upload some pool photos.<br>
+          Your setup is saved — re-launch this wizard any time from <b>Onboarding → Setup Wizard</b> to edit values.
+        </p>
+
+        <div class="integration-card" style="margin-top:18px;border-color:var(--sun);background:linear-gradient(120deg,#fff7ea,#fff)">
+          <div class="icon" style="background:#fef3c7;color:#92400e">🚪</div>
+          <div class="body-txt">
+            <h3>Have a keyfob panel? We may be able to integrate.</h3>
+            <p>Members would tap their phones to unlock the gate. We've certified <b>MENGQI-CONTROL HXC-7000</b> so far — submit your panel's info and we'll evaluate yours. On-site testing required for new panels. <a href="admin/gate-integrations.html">How it works →</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer buttons -->
+    <div class="foot">
+      <button class="btn btn-ghost" id="backBtn" onclick="prev()">← Back</button>
+      <button class="btn btn-link" id="skipBtn" onclick="next()">Skip</button>
+      <button class="btn btn-primary" id="nextBtn" onclick="next()">Next →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOTAL = 7;
+let step = 1;
+
+function show(n) {
+  document.querySelectorAll('.step').forEach(el => {
+    el.style.display = (parseInt(el.dataset.step) === n) ? 'block' : 'none';
+  });
+  document.getElementById('step-num').textContent = n;
+  document.getElementById('progress').style.width = (n / TOTAL * 100) + '%';
+  // back button hidden on step 1
+  document.getElementById('backBtn').style.visibility = (n === 1) ? 'hidden' : 'visible';
+  // skip is hidden on summary step
+  document.getElementById('skipBtn').style.display = (n === TOTAL) ? 'none' : 'inline-block';
+  // next button text changes
+  const nb = document.getElementById('nextBtn');
+  if (n === TOTAL) {
+    nb.textContent = '🎉 Open my admin →';
+    nb.onclick = () => { window.location.href = 'club-demo/admin/'; };
+  } else if (n === TOTAL - 1) {
+    nb.textContent = 'Finish setup →';
+    nb.onclick = next;
+  } else {
+    nb.textContent = 'Next →';
+    nb.onclick = next;
+  }
+}
+function next() { if (step < TOTAL) { step++; show(step); } }
+function prev() { if (step > 1) { step--; show(step); } }
+show(1);
+</script>
+</body>
+</html>

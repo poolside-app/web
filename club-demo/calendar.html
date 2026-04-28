@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calendar — Bishop Estates</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --teal:#14b8a6; --red:#dc2626; --amber:#d97706; --purple:#7e22ce; --pink:#db2777;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; max-width: 720px; margin: 0 auto; }
+  h1,h2,h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0 0 .3em; }
+  h1 { font-size: 30px; line-height: 1.1; }
+  h2 { font-size: 18px; }
+  a { color: var(--blue); text-decoration: none; }
+  .top-banner { background: var(--blue); color:#fff; font-size:12px; padding:8px 16px; text-align:center; }
+  .top-banner a { color:#fff; text-decoration: underline; }
+
+  .header {
+    padding: 20px 22px 14px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .header h1 { margin: 0; }
+
+  .month-nav {
+    display: flex; justify-content: space-between; align-items: center; padding: 0 22px 14px; gap: 12px;
+  }
+  .month-name {
+    font-family:'Fraunces',serif; font-size: 22px; font-weight: 600; color: var(--blue);
+  }
+  .nav-btn {
+    width: 36px; height: 36px; border-radius: 999px;
+    background: var(--bg-2); border: 0; cursor: pointer; font-size: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .nav-btn:hover { background: var(--blue-l); }
+
+  /* Subscribe banner */
+  .subscribe {
+    margin: 0 22px 18px; padding: 14px 18px;
+    background: linear-gradient(120deg, var(--blue-l), #fff);
+    border: 1.5px dashed var(--blue); border-radius: var(--r-md);
+    display: flex; gap: 12px; align-items: center; font-size: 13px;
+  }
+  .subscribe .icon { font-size: 24px; }
+  .subscribe-action {
+    background: var(--blue); color: #fff; padding: 8px 14px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; text-decoration: none; flex-shrink: 0;
+  }
+  .subscribe-action:hover { background: var(--blue-2); text-decoration: none; }
+
+  /* Filter chips */
+  .filters {
+    display: flex; gap: 6px; padding: 0 22px 14px; overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0; padding: 6px 12px; font-size: 12px; font-weight: 600;
+    background: var(--bg-2); border: 1.5px solid transparent; border-radius: 999px;
+    cursor: pointer; transition: border .12s, background .12s;
+  }
+  .filter-chip.active { background: var(--blue); color: #fff; }
+
+  /* Month grid */
+  .month-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    background: var(--border); gap: 1px; padding: 0 14px;
+  }
+  .day-head {
+    background: var(--bg); padding: 6px; text-align: center;
+    font-size: 10px; font-weight: 700; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .day {
+    background: var(--bg); aspect-ratio: 1; min-height: 60px;
+    padding: 4px 6px; position: relative; cursor: pointer;
+    transition: background .12s;
+  }
+  .day:hover { background: var(--bg-2); }
+  .day.outside { background: var(--bg-2); opacity: .4; }
+  .day.today {
+    background: var(--blue); color: #fff;
+  }
+  .day-num { font-size: 12px; font-weight: 600; }
+  .day.today .day-num { color: #fff; }
+  .day-events {
+    position: absolute; bottom: 4px; left: 4px; right: 4px;
+    display: flex; gap: 2px; flex-wrap: wrap;
+  }
+  .ev-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+  }
+  .ev-dot.party    { background: var(--purple); }
+  .ev-dot.lesson   { background: var(--teal); }
+  .ev-dot.closed   { background: var(--red); }
+  .ev-dot.event    { background: var(--blue); }
+  .ev-dot.campaign { background: var(--sun); }
+  .ev-dot.maint    { background: var(--amber); }
+
+  /* Agenda list (mobile: stacked under grid) */
+  .agenda { padding: 22px; }
+  .agenda h2 { margin: 0 0 14px; }
+  .ev-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 10px;
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+  .ev-icon {
+    width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+  }
+  .ev-icon.party    { background: #f3e8ff; color: var(--purple); }
+  .ev-icon.lesson   { background: #ccfbf1; color: var(--teal); }
+  .ev-icon.closed   { background: #fee2e2; color: var(--red); }
+  .ev-icon.event    { background: var(--blue-l); color: var(--blue); }
+  .ev-icon.campaign { background: #fff7ea; color: var(--amber); }
+  .ev-icon.maint    { background: #fef3c7; color: var(--amber); }
+  .ev-body { flex: 1; min-width: 0; }
+  .ev-when { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .ev-title { font-family:'Fraunces',serif; font-weight: 600; font-size: 15px; color: var(--text); margin: 0; line-height: 1.2; }
+  .ev-meta { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .ev-source {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; letter-spacing: .06em;
+    margin-top: 6px;
+  }
+  .ev-source.parties    { background: #f3e8ff; color: var(--purple); }
+  .ev-source.swim       { background: #ccfbf1; color: var(--teal); }
+  .ev-source.closed     { background: #fee2e2; color: var(--red); }
+  .ev-source.manual     { background: var(--blue-l); color: var(--blue); }
+  .ev-source.campaigns  { background: #fff7ea; color: var(--amber); }
+  .ev-source.maint      { background: #fef3c7; color: var(--amber); }
+</style>
+</head>
+<body>
+
+<div class="top-banner">
+  Bishop Estates · Calendar — <a href="index.html">home</a> · <a href="admin/swim-lessons.html">swim admin</a> · <a href="admin/campaigns.html">campaigns</a>
+</div>
+
+<div class="header">
+  <h1>📅 Calendar</h1>
+  <div style="font-size: 12px; color: var(--muted)">
+    All upcoming events at the club.
+  </div>
+</div>
+
+<div class="subscribe">
+  <span class="icon">📲</span>
+  <div style="flex:1">
+    <div style="font-weight: 700; font-size: 13px">Subscribe in your own calendar</div>
+    <div style="font-size: 11px; color: var(--muted)">Auto-updates in Apple/Google/Outlook. One-time setup.</div>
+  </div>
+  <a href="webcal://bishopestates.poolside.app/calendar.ics" class="subscribe-action">Subscribe →</a>
+</div>
+
+<div class="filters">
+  <span class="filter-chip active">All</span>
+  <span class="filter-chip">🎉 Parties</span>
+  <span class="filter-chip">🏊 Swim lessons</span>
+  <span class="filter-chip">🌊 Pool closed</span>
+  <span class="filter-chip">📋 Events</span>
+  <span class="filter-chip">🎆 Campaigns</span>
+</div>
+
+<div class="month-nav">
+  <button class="nav-btn">←</button>
+  <span class="month-name">June 2026</span>
+  <button class="nav-btn">→</button>
+</div>
+
+<div class="month-grid">
+  <span class="day-head">Sun</span>
+  <span class="day-head">Mon</span>
+  <span class="day-head">Tue</span>
+  <span class="day-head">Wed</span>
+  <span class="day-head">Thu</span>
+  <span class="day-head">Fri</span>
+  <span class="day-head">Sat</span>
+
+  <!-- Days — June 2026 starts on a Monday so first row leads with May 31 (Sun) -->
+  <div class="day outside"><span class="day-num">31</span></div>
+  <div class="day"><span class="day-num">1</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">2</span></div>
+  <div class="day"><span class="day-num">3</span><div class="day-events"><span class="ev-dot lesson"></span><span class="ev-dot campaign"></span></div></div>
+  <div class="day"><span class="day-num">4</span></div>
+  <div class="day"><span class="day-num">5</span></div>
+  <div class="day"><span class="day-num">6</span><div class="day-events"><span class="ev-dot party"></span></div></div>
+
+  <div class="day"><span class="day-num">7</span></div>
+  <div class="day today"><span class="day-num">8</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">9</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">10</span><div class="day-events"><span class="ev-dot lesson"></span><span class="ev-dot maint"></span></div></div>
+  <div class="day"><span class="day-num">11</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">12</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">13</span><div class="day-events"><span class="ev-dot party"></span></div></div>
+
+  <div class="day"><span class="day-num">14</span></div>
+  <div class="day"><span class="day-num">15</span><div class="day-events"><span class="ev-dot lesson"></span><span class="ev-dot event"></span></div></div>
+  <div class="day"><span class="day-num">16</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">17</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">18</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">19</span><div class="day-events"><span class="ev-dot lesson"></span></div></div>
+  <div class="day"><span class="day-num">20</span><div class="day-events"><span class="ev-dot party"></span></div></div>
+
+  <div class="day"><span class="day-num">21</span></div>
+  <div class="day"><span class="day-num">22</span></div>
+  <div class="day"><span class="day-num">23</span></div>
+  <div class="day"><span class="day-num">24</span></div>
+  <div class="day"><span class="day-num">25</span></div>
+  <div class="day"><span class="day-num">26</span></div>
+  <div class="day"><span class="day-num">27</span><div class="day-events"><span class="ev-dot closed"></span></div></div>
+
+  <div class="day"><span class="day-num">28</span></div>
+  <div class="day"><span class="day-num">29</span></div>
+  <div class="day"><span class="day-num">30</span></div>
+  <div class="day outside"><span class="day-num">1</span></div>
+  <div class="day outside"><span class="day-num">2</span></div>
+  <div class="day outside"><span class="day-num">3</span></div>
+  <div class="day outside"><span class="day-num">4</span><div class="day-events"><span class="ev-dot party"></span><span class="ev-dot campaign"></span></div></div>
+</div>
+
+<div class="agenda">
+  <h2>Upcoming · June 8 onward</h2>
+
+  <div class="ev-card">
+    <div class="ev-icon lesson">🏊</div>
+    <div class="ev-body">
+      <div class="ev-when">Mon Jun 8 · 9:00–10:00am · today</div>
+      <h3 class="ev-title">Summer Swim Team — Day 1</h3>
+      <div class="ev-meta">Coach Mike · 22 of 24 spots filled</div>
+      <span class="ev-source swim">FROM SWIM LESSONS</span>
+    </div>
+  </div>
+
+  <div class="ev-card">
+    <div class="ev-icon party">🎉</div>
+    <div class="ev-body">
+      <div class="ev-when">Sat Jun 13 · 1:00–5:00pm</div>
+      <h3 class="ev-title">Owens 8th birthday party</h3>
+      <div class="ev-meta">15 guests · cabana side · approved by board</div>
+      <span class="ev-source parties">FROM PARTY REQUESTS</span>
+    </div>
+  </div>
+
+  <div class="ev-card">
+    <div class="ev-icon event">📋</div>
+    <div class="ev-body">
+      <div class="ev-when">Mon Jun 15 · 7:00pm</div>
+      <h3 class="ev-title">Quarterly board meeting</h3>
+      <div class="ev-meta">Open to all members · cabana lounge</div>
+      <span class="ev-source manual">MANUAL EVENT</span>
+    </div>
+  </div>
+
+  <div class="ev-card">
+    <div class="ev-icon party">🎉</div>
+    <div class="ev-body">
+      <div class="ev-when">Sat Jun 20 · 4:00–8:00pm</div>
+      <h3 class="ev-title">Smith family graduation party</h3>
+      <div class="ev-meta">25 guests · full pool · approved</div>
+      <span class="ev-source parties">FROM PARTY REQUESTS</span>
+    </div>
+  </div>
+
+  <div class="ev-card">
+    <div class="ev-icon closed">🌊</div>
+    <div class="ev-body">
+      <div class="ev-when">Sat Jun 27 · all day</div>
+      <h3 class="ev-title">Pool closed for cleaning</h3>
+      <div class="ev-meta">Annual deep-clean · reopens Sunday 10am</div>
+      <span class="ev-source closed">FROM POOL HOURS</span>
+    </div>
+  </div>
+
+  <div class="ev-card">
+    <div class="ev-icon party">🎉</div>
+    <div class="ev-body">
+      <div class="ev-when">Sat Jul 4 · 6:00–10:00pm</div>
+      <h3 class="ev-title">4th of July Party — fireworks at 9</h3>
+      <div class="ev-meta">$25/family · catered · 142 RSVPs so far</div>
+      <span class="ev-source campaigns">FROM CAMPAIGNS</span>
+    </div>
+  </div>
+</div>
+
+<div style="padding: 0 22px 32px; font-size: 12px; color: var(--muted); line-height: 1.6">
+  <b>How this calendar works:</b> events come from your existing operations data — approved party requests, scheduled swim lessons, active campaigns, pool-closure days from your hours settings. You don't need a separate Google Calendar. Members can subscribe via the link above to see everything in their own Apple/Google/Outlook calendar with reminders.
+</div>
+
+</body>
+</html>

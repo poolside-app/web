@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Start your trial — Poolside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin:0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 32px; line-height: 1.1; }
+  h2 { font-size: 20px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--border); }
+  main {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 32px 22px;
+  }
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 32px 28px;
+    box-shadow: var(--shadow); max-width: 460px; width: 100%;
+  }
+  .lede { color: var(--muted); margin: 8px 0 24px; font-size: 15px; }
+  label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 12px 14px; font: 15px/1.4 'Inter', sans-serif;
+    border: 1.5px solid var(--border); border-radius: var(--r-md);
+    background: #fff; color: var(--text); transition: border .12s;
+  }
+  input:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  .input-prefix-suffix { position: relative; display: flex; align-items: center; }
+  .input-prefix-suffix input { padding-right: 130px; }
+  .input-prefix-suffix .suffix {
+    position: absolute; right: 12px; color: var(--muted); font-size: 13px;
+    background: var(--bg-2); padding: 4px 8px; border-radius: 6px;
+  }
+  .field-help { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+  .err { color: var(--red); font-size: 12px; margin-top: 4px; display: none; }
+  .err.show { display: block; }
+  .btn {
+    display: block; width: 100%; padding: 14px;
+    background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md);
+    font: 600 15px 'Inter', sans-serif; cursor: pointer;
+    margin-top: 22px; transition: background .12s;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .small { font-size: 13px; color: var(--muted); text-align: center; margin-top: 18px; }
+  .meta {
+    background: var(--blue-l); border-radius: var(--r-md); padding: 14px 16px;
+    margin-top: 20px; font-size: 13px; color: var(--blue); display: flex; gap: 10px;
+  }
+  .check { color: var(--green); font-weight: 700; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" class="logo"><span class="logo-dot"></span> Poolside</a>
+</header>
+<main>
+  <form class="card" onsubmit="event.preventDefault(); fakeSubmit()">
+    <h1>Start your free trial</h1>
+    <p class="lede">14 days, no credit card. We'll spin up your club's site at a subdomain you choose, and your setup wizard will be waiting when you log in.</p>
+
+    <label for="club">Club name</label>
+    <input id="club" type="text" placeholder="Bishop Estates Cabana Club" autocomplete="organization" required>
+
+    <label for="slug">Pick your subdomain</label>
+    <div class="input-prefix-suffix">
+      <input id="slug" type="text" placeholder="bishopestates" autocomplete="off" pattern="[a-z0-9-]{3,30}" required>
+      <span class="suffix">.poolside.app</span>
+    </div>
+    <p class="field-help">Lowercase letters, numbers, and hyphens — 3 to 30 characters.</p>
+
+    <label for="email">Your email</label>
+    <input id="email" type="email" placeholder="you@yourclub.org" autocomplete="email" required>
+    <p class="field-help">Where we'll send your trial confirmation + admin login link.</p>
+
+    <label for="pw">Password</label>
+    <input id="pw" type="password" minlength="8" autocomplete="new-password" required>
+    <p class="field-help">8 characters minimum. You can reset it any time.</p>
+
+    <button class="btn" type="submit">Start 14-day free trial →</button>
+
+    <div class="meta">
+      <span class="check">✓</span>
+      <span>This is a prototype — submitting won't actually create anything yet. Production signup launches when Poolside ships.</span>
+    </div>
+
+    <p class="small">Already a club admin? <a href="club-demo/admin/">Sign in</a></p>
+  </form>
+</main>
+<script>
+function fakeSubmit() {
+  alert("Thanks — this is a Poolside prototype. The real signup will go live when the SaaS launches. For now, head back to the demo club to see the tenant frontend.");
+}
+</script>
+</body>
+</html>
