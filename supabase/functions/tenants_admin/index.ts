@@ -335,7 +335,8 @@ Deno.serve(async (req) => {
         tid: tenant.id, slug: tenant.slug,
         impersonated_by: adminId,
         synthetic,
-        exp: getNumericDate(60 * 60),  // 1 hour
+        exp: getNumericDate(60 * 60 * 24),  // 24 hours — long enough that provider
+                                            // testing doesn't churn through tokens
       },
       key,
     );
@@ -345,6 +346,63 @@ Deno.serve(async (req) => {
       tenant: { slug: tenant.slug, display_name: tenant.display_name },
       user:   { id: sub, email, display_name: displayName },
       synthetic,
+    });
+  }
+
+  // ── impersonate_member ─────────────────────────────────────────────────
+  // Provider mints a 24-hour member token for any active household member of
+  // the tenant. Lets us test the /m/ surface end-to-end without bouncing
+  // through email magic links. Body can specify member_id; if not, we pick
+  // the most recently active member of the tenant.
+  if (action === 'impersonate_member') {
+    const tenant_id = String(body.tenant_id ?? '');
+    if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    if (!JWT_SECRET) return jsonResponse({ ok: false, error: 'ADMIN_JWT_SECRET not set' }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name').eq('id', tenant_id).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+
+    let member;
+    const memberId = strOrNull(body.member_id);
+    if (memberId) {
+      const { data } = await sb.from('household_members')
+        .select('id, name, email, household_id, active')
+        .eq('id', memberId).eq('tenant_id', tenant_id).maybeSingle();
+      member = data;
+    } else {
+      // Most recently seen → most recently created → first active member
+      const { data } = await sb.from('household_members')
+        .select('id, name, email, household_id, active, last_seen_at, created_at')
+        .eq('tenant_id', tenant_id).eq('active', true)
+        .order('last_seen_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle();
+      member = data;
+    }
+    if (!member || !member.active) {
+      return jsonResponse({ ok: false, error: 'No active household member to impersonate. Add one first via Households.' }, 404);
+    }
+
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+    );
+    const token = await create(
+      { alg: 'HS256', typ: 'JWT' },
+      {
+        sub: member.id, kind: 'member',
+        tid: tenant.id, slug: tenant.slug, hid: member.household_id,
+        impersonated_by: adminId,
+        exp: getNumericDate(60 * 60 * 24),  // 24 hours
+      },
+      key,
+    );
+    return jsonResponse({
+      ok: true,
+      token,
+      tenant: { slug: tenant.slug, display_name: tenant.display_name },
+      user: { id: member.id, name: member.name, email: member.email },
     });
   }
 

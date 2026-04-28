@@ -251,6 +251,19 @@ function logout() {
 }
 document.getElementById('signout').addEventListener('click', logout);
 
+// Provider impersonation handoff. /admin opens us with #bootstrap=<jwt>
+// after calling tenants_admin → impersonate_member. Move the token into
+// localStorage and clear the hash so it doesn't sit in browser history.
+(function bootstrapFromHash() {
+  if (!window.location.hash.startsWith('#bootstrap=')) return;
+  const tok = decodeURIComponent(window.location.hash.slice('#bootstrap='.length));
+  if (!tok) return;
+  localStorage.setItem('poolside_member_token', tok);
+  localStorage.removeItem('poolside_member_user');
+  localStorage.removeItem('poolside_member_tenant');
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+})();
+
 function formatPhone(e164) {
   if (!e164) return '';
   const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);

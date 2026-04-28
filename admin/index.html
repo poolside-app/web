@@ -377,8 +377,9 @@
         <td><span class="pill ${statusClass}">${escapeHtml((t.status || '').toUpperCase())}</span></td>
         <td>${t.household_count || 0}</td>
         <td style="white-space:nowrap" onclick="event.stopPropagation()">
-          <a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" class="btn-sm" style="text-decoration:none">Open →</a>
-          <button class="btn-sm" onclick="openEditTenant('${escapeHtml(t.id)}')" style="margin-left:4px">Edit</button>
+          <button class="btn-sm" title="Sign in as a tenant admin (24h token)" onclick="quickImpersonate('${escapeHtml(t.id)}','${escapeHtml(t.slug)}','admin')" style="margin-right:4px">🔑 Admin</button>
+          <button class="btn-sm" title="Sign in as a household member (24h token)" onclick="quickImpersonate('${escapeHtml(t.id)}','${escapeHtml(t.slug)}','member')" style="margin-right:4px">📱 Member</button>
+          <button class="btn-sm" onclick="openEditTenant('${escapeHtml(t.id)}')">Edit</button>
         </td>
       </tr>`;
     }).join('');
@@ -517,24 +518,28 @@
     }
   };
 
-  // Provider hops into a tenant's admin via a 1-hour impersonation
-  // token. We open a new tab to the tenant subdomain and pass the token
-  // in a URL hash — /club/admin/ picks it up, stows it in localStorage,
-  // and reloads to a clean URL so the token doesn't sit in history.
+  // Provider hops into a tenant's admin OR a member's view via a 24-hour
+  // impersonation token. We open a new tab to the tenant subdomain and
+  // pass the token in a URL hash — the destination page picks it up,
+  // stows it in localStorage, and reloads to a clean URL so the token
+  // doesn't sit in history.
   window.impersonateTenant = async function() {
     const id = document.getElementById('edit-id').value;
     const t  = tenantsCache.find(x => x.id === id);
     if (!t) return;
+    quickImpersonate(id, t.slug, 'admin');
+  };
+
+  window.quickImpersonate = async function(tenant_id, slug, kind) {
+    const action = kind === 'member' ? 'impersonate_member' : 'impersonate';
     try {
-      const data = await callTenantsAdmin('impersonate', { tenant_id: id });
+      const data = await callTenantsAdmin(action, { tenant_id });
       if (!data.ok) throw new Error(data.error || 'Impersonate failed');
       const tokenEnc = encodeURIComponent(data.token);
-      const url = `https://${t.slug}.poolsideapp.com/club/admin/#bootstrap=${tokenEnc}`;
-      window.open(url, '_blank', 'noopener');
+      const path = kind === 'member' ? '/m/' : '/club/admin/';
+      window.open(`https://${slug}.poolsideapp.com${path}#bootstrap=${tokenEnc}`, '_blank', 'noopener');
     } catch (e) {
-      const errEl = document.getElementById('edit-err');
-      errEl.textContent = e.message;
-      errEl.style.display = 'block';
+      alert(e.message);
     }
   };
 
