@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in — Poolside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; line-height: 1.1; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
+  main {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 32px 22px;
+  }
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 32px 28px;
+    box-shadow: var(--shadow); max-width: 420px; width: 100%;
+  }
+  .lede { color: var(--muted); margin: 8px 0 24px; font-size: 14px; }
+  label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 12px 14px; font: 15px/1.4 'Inter', sans-serif;
+    border: 1.5px solid var(--border); border-radius: var(--r-md);
+    background: #fff; color: var(--text);
+  }
+  input:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  .btn {
+    display: block; width: 100%; padding: 13px;
+    background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md);
+    font: 600 15px 'Inter', sans-serif; cursor: pointer;
+    margin-top: 22px;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .err { display:none; margin-top:14px; padding:10px 14px; font-size:13px;
+         background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+  .small { font-size: 13px; color: var(--muted); text-align: center; margin-top: 18px; }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+</header>
+<main>
+  <form class="card" onsubmit="event.preventDefault(); doLogin()">
+    <h1 id="title">Sign in</h1>
+    <p class="lede" id="sub">Enter your admin credentials.</p>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="email" required>
+
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+
+    <button class="btn" id="submit" type="submit">Sign in</button>
+
+    <div id="err" class="err"></div>
+
+    <p class="small">Wrong club? <a href="/">Back to club home</a></p>
+  </form>
+</main>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUTH_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const TENANT_LOOKUP = `${SUPABASE_URL}/functions/v1/tenant_public`;
+
+function getSlugFromHostname() {
+  const host = window.location.hostname;
+  const m = host.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  if (!m) return null;
+  if (['www','admin','api','app'].includes(m[1].toLowerCase())) return null;
+  return m[1].toLowerCase();
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const SLUG = getSlugFromHostname();
+
+(async () => {
+  if (!SLUG) {
+    document.getElementById('title').textContent = 'Wrong page';
+    document.getElementById('sub').textContent = 'This sign-in is for tenant clubs only. Visit your club\'s subdomain to sign in.';
+    document.getElementById('email').disabled = true;
+    document.getElementById('pw').disabled = true;
+    document.getElementById('submit').disabled = true;
+    return;
+  }
+  try {
+    const res = await fetch(TENANT_LOOKUP, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: SLUG }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.ok && data.tenant) {
+        document.title = `Sign in — ${data.tenant.display_name}`;
+        document.getElementById('title').textContent = `Sign in to ${data.tenant.display_name}`;
+        document.getElementById('sub').textContent = `Admin access for ${SLUG}.poolsideapp.com.`;
+      }
+    }
+  } catch { /* keep generic title */ }
+})();
+
+async function doLogin() {
+  const btn = document.getElementById('submit');
+  const errEl = document.getElementById('err');
+  errEl.classList.remove('show');
+
+  const email    = document.getElementById('email').value.trim().toLowerCase();
+  const password = document.getElementById('pw').value;
+  if (!SLUG) { errEl.textContent = 'No club detected from URL.'; errEl.classList.add('show'); return; }
+
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Signing in…';
+  try {
+    const res = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'login', slug: SLUG, email, password }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Sign-in failed');
+
+    localStorage.setItem('poolside_tenant_token', data.token);
+    localStorage.setItem('poolside_tenant_user', JSON.stringify(data.user));
+    localStorage.setItem('poolside_tenant_tenant', JSON.stringify(data.tenant));
+    window.location.href = '/club/admin/';
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+</script>
+</body>
+</html>

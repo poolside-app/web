@@ -19,3 +19,7 @@ verify_jwt = false
 # Public — tenant landing pages call this to get display_name etc.
 [functions.tenant_public]
 verify_jwt = false
+
+# Per-tenant admin login — verifies bcrypt + signs HS256 JWT itself
+[functions.tenant_admin_auth]
+verify_jwt = false
