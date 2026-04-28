@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Loading…</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 36px; line-height: 1.1; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
+  main {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 48px 22px;
+  }
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 40px 32px;
+    box-shadow: var(--shadow); max-width: 560px; width: 100%;
+    text-align: center;
+  }
+  .lede { color: var(--muted); margin: 12px 0 24px; font-size: 16px; }
+  .pill {
+    display: inline-block; padding: 4px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .pill.trial    { background: #fef3c7; color: #92400e; }
+  .pill.active   { background: #dcfce7; color: #14532d; }
+  .pill.suspended{ background: #fee2e2; color: #7f1d1d; }
+  .pill.churned  { background: #f3f4f6; color: #4b5563; }
+  .meta {
+    background: var(--bg-2); border-radius: var(--r-md);
+    padding: 14px 16px; margin-top: 24px; font-size: 13px;
+    color: var(--text); text-align: left;
+  }
+  .meta b { color: var(--blue); }
+  .actions { margin-top: 28px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 22px;
+    background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md);
+    font: 600 14px 'Inter', sans-serif; cursor: pointer; text-decoration: none;
+    transition: background .12s;
+  }
+  .btn:hover { background: var(--blue-2); text-decoration: none; }
+  .btn.ghost { background: transparent; color: var(--blue); border: 1.5px solid var(--border); }
+  .btn.ghost:hover { background: var(--blue-l); }
+  .small { font-size: 13px; color: var(--muted); margin-top: 22px; }
+  .err { color: var(--red); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+</header>
+<main>
+  <div class="card" id="card">
+    <p class="lede">Loading…</p>
+  </div>
+</main>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const PUBLIC_LOOKUP = `${SUPABASE_URL}/functions/v1/tenant_public`;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function getSlugFromHostname() {
+  const host = window.location.hostname;
+  // bishopestates.poolsideapp.com → "bishopestates"
+  const m = host.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  if (!m) return null;
+  if (['www','admin','api','app'].includes(m[1].toLowerCase())) return null;
+  return m[1].toLowerCase();
+}
+
+function renderNotFound(slug) {
+  document.title = 'Club not found — Poolside';
+  document.getElementById('card').innerHTML = `
+    <h1>Club not found</h1>
+    <p class="lede">There's no Poolside club at <b>${escapeHtml(slug ?? window.location.hostname)}</b>.</p>
+    <div class="actions">
+      <a class="btn" href="https://poolsideapp.com/signup.html">Start your own club</a>
+      <a class="btn ghost" href="https://poolsideapp.com/">Back to Poolside</a>
+    </div>
+  `;
+}
+
+function renderTenant(t) {
+  document.title = `${t.display_name} — Poolside`;
+  const statusLabel = ({trial:'Free Trial', active:'Active', suspended:'Suspended', churned:'Closed'})[t.status] ?? t.status;
+  const trialNote = t.status === 'trial'
+    ? `<p class="small">This club is on a free trial. Once the admin completes setup, members will be able to sign in here.</p>`
+    : '';
+  const suspendedNote = t.status === 'suspended'
+    ? `<p class="small err">This club is currently suspended. Please contact the club admin.</p>`
+    : '';
+  const churnedNote = t.status === 'churned'
+    ? `<p class="small err">This club is no longer active.</p>`
+    : '';
+  document.getElementById('card').innerHTML = `
+    <h1>${escapeHtml(t.display_name)}</h1>
+    <p class="lede">Welcome to your club's home on Poolside.</p>
+    <span class="pill ${escapeHtml(t.status)}">${escapeHtml(statusLabel)}</span>
+    <div class="meta">
+      <div><b>Subdomain</b> ${escapeHtml(t.slug)}.poolsideapp.com</div>
+    </div>
+    <div class="actions">
+      <a class="btn" href="/admin/login.html">Admin sign in</a>
+    </div>
+    ${trialNote}${suspendedNote}${churnedNote}
+  `;
+}
+
+(async () => {
+  const slug = getSlugFromHostname();
+  if (!slug) { renderNotFound(null); return; }
+  try {
+    const res = await fetch(PUBLIC_LOOKUP, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    if (res.status === 404) { renderNotFound(slug); return; }
+    const data = await res.json();
+    if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
+    renderTenant(data.tenant);
+  } catch (e) {
+    document.getElementById('card').innerHTML = `
+      <h1>Couldn't reach Poolside</h1>
+      <p class="lede err">${escapeHtml(e.message || 'Network error')}</p>
+      <div class="actions"><a class="btn ghost" href="">Try again</a></div>
+    `;
+  }
+})();
+</script>
+</body>
+</html>

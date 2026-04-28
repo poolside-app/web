@@ -15,3 +15,7 @@ verify_jwt = false
 # Public — no auth required, this is the signup form
 [functions.tenant_signup]
 verify_jwt = false
+
+# Public — tenant landing pages call this to get display_name etc.
+[functions.tenant_public]
+verify_jwt = false
