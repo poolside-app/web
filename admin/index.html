@@ -235,8 +235,11 @@
 
     <div id="edit-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
 
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:space-between;align-items:center">
-      <button type="button" onclick="confirmDeleteTenant()" style="padding:11px 16px;background:#fff;color:var(--red);border:1.5px solid #fecaca;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer">🗑 Delete</button>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:space-between;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:10px">
+        <button type="button" onclick="confirmDeleteTenant()" style="padding:11px 16px;background:#fff;color:var(--red);border:1.5px solid #fecaca;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer">🗑 Delete</button>
+        <button type="button" onclick="impersonateTenant()" style="padding:11px 16px;background:#fff;color:var(--blue);border:1.5px solid var(--border);border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer">🔑 Sign in as this tenant</button>
+      </div>
       <div style="display:flex;gap:10px">
         <button type="button" onclick="closeEditModal()" style="padding:11px 18px;background:#fff;color:var(--text);border:1.5px solid var(--border);border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer">Cancel</button>
         <button type="submit" id="edit-submit-btn" style="padding:11px 22px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer">Save changes</button>
@@ -514,9 +517,26 @@
     }
   };
 
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
+  // Provider hops into a tenant's admin via a 1-hour impersonation
+  // token. We open a new tab to the tenant subdomain and pass the token
+  // in a URL hash — /club/admin/ picks it up, stows it in localStorage,
+  // and reloads to a clean URL so the token doesn't sit in history.
+  window.impersonateTenant = async function() {
+    const id = document.getElementById('edit-id').value;
+    const t  = tenantsCache.find(x => x.id === id);
+    if (!t) return;
+    try {
+      const data = await callTenantsAdmin('impersonate', { tenant_id: id });
+      if (!data.ok) throw new Error(data.error || 'Impersonate failed');
+      const tokenEnc = encodeURIComponent(data.token);
+      const url = `https://${t.slug}.poolsideapp.com/club/admin/#bootstrap=${tokenEnc}`;
+      window.open(url, '_blank', 'noopener');
+    } catch (e) {
+      const errEl = document.getElementById('edit-err');
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    }
+  };
 
   window.submitEdit = async function() {
     const btn = document.getElementById('edit-submit-btn');

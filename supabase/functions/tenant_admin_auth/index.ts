@@ -51,7 +51,10 @@ async function getJwtKey(): Promise<CryptoKey> {
   );
 }
 
-type TenantAdminPayload = { sub: string; kind: 'tenant_admin'; tid: string; slug: string; exp: number };
+type TenantAdminPayload = {
+  sub: string; kind: 'tenant_admin'; tid: string; slug: string; exp: number;
+  impersonated_by?: string; synthetic?: boolean;
+};
 
 async function signToken(adminUserId: string, tenantId: string, slug: string): Promise<string> {
   const key = await getJwtKey();
@@ -157,13 +160,38 @@ Deno.serve(async (req) => {
         .select('slug, display_name, status, plan')
         .eq('id', payload.tid).maybeSingle(),
     ]);
-    if (!user || !user.active) return jsonResponse({ ok: false, error: 'User not found' }, 401);
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 401);
-    return jsonResponse({ ok: true, user, tenant });
+
+    // Synthetic impersonation tokens have no real admin_users row — fall
+    // back to a synthetic user identity sourced from the JWT itself.
+    if ((!user || !user.active) && payload.synthetic) {
+      return jsonResponse({
+        ok: true,
+        tenant,
+        user: {
+          id: payload.sub,
+          email: 'provider@poolsideapp.com',
+          display_name: 'Provider (impersonating)',
+          is_super: true,
+          is_default_pw: false,
+          impersonated: true,
+        },
+      });
+    }
+    if (!user || !user.active) return jsonResponse({ ok: false, error: 'User not found' }, 401);
+
+    return jsonResponse({
+      ok: true,
+      tenant,
+      user: { ...user, impersonated: !!payload.impersonated_by },
+    });
   }
 
   // ── change_password ────────────────────────────────────────────────────
   if (action === 'change_password') {
+    if (payload.impersonated_by) {
+      return jsonResponse({ ok: false, error: 'Cannot change password while impersonating' }, 403);
+    }
     const cur = String(body.current_password ?? '');
     const nxt = String(body.new_password ?? '');
     if (!cur || !nxt) return jsonResponse({ ok: false, error: 'Both passwords are required' }, 400);

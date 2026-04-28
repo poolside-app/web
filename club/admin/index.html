@@ -116,6 +116,22 @@ function logout() {
 
 document.getElementById('signout').addEventListener('click', logout);
 
+// Provider impersonation handoff: if the URL hash has a bootstrap=<jwt>
+// payload (provider opens us in a new tab via tenants_admin/impersonate),
+// move the token into localStorage and reload to a clean URL.
+(function bootstrapFromHash() {
+  if (!window.location.hash.startsWith('#bootstrap=')) return;
+  const tok = decodeURIComponent(window.location.hash.slice('#bootstrap='.length));
+  if (!tok) return;
+  localStorage.setItem('poolside_tenant_token', tok);
+  // Wipe stale user/tenant cache from any previous session — `me` will
+  // repopulate them below.
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  // Strip the hash so the token doesn't linger in browser history.
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+})();
+
 (async () => {
   const token = localStorage.getItem('poolside_tenant_token');
   if (!token) { logout(); return; }
@@ -137,6 +153,13 @@ document.getElementById('signout').addEventListener('click', logout);
   const { user, tenant } = data;
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
+
+  if (user.impersonated) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#fef3c7;color:#78350f;padding:8px 22px;font-size:13px;text-align:center;border-bottom:1px solid #fde68a';
+    banner.innerHTML = `🔑 You're signed in as <b>${escapeHtml(tenant.display_name)}</b> via provider impersonation. Token expires in ≤1 hour.`;
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
 
   // First-run: kick the user into the setup wizard if they haven't finished it.
   try {

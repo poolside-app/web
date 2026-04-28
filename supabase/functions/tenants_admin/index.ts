@@ -23,7 +23,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
-import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -280,6 +280,72 @@ Deno.serve(async (req) => {
       });
     }
     return jsonResponse({ ok: true, admin });
+  }
+
+  // ── impersonate ────────────────────────────────────────────────────────
+  // Provider mints a short-lived tenant_admin token for any tenant. Used
+  // for in-product support and to access tenants that don't have an admin
+  // yet (e.g. seeded tenants like bishopestates). Token is 1 hour so the
+  // blast radius stays small if it leaks.
+  if (action === 'impersonate') {
+    const tenant_id = String(body.tenant_id ?? '');
+    if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    if (!JWT_SECRET) return jsonResponse({ ok: false, error: 'ADMIN_JWT_SECRET not set' }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name').eq('id', tenant_id).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+
+    // Find any active super_admin user. If none, manufacture a synthetic
+    // identity so the provider can still poke around — but mark the token
+    // so the rest of the system can audit it later if we want.
+    const { data: existing } = await sb.from('admin_users')
+      .select('id, email, display_name, is_super')
+      .eq('tenant_id', tenant_id).eq('active', true)
+      .order('is_super', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1).maybeSingle();
+
+    let sub: string;
+    let displayName: string;
+    let email: string;
+    let synthetic = false;
+
+    if (existing) {
+      sub = existing.id as string;
+      email = (existing.email as string) || '';
+      displayName = (existing.display_name as string) || email || 'Provider';
+    } else {
+      // No real admin user exists. Use the provider admin's own id as the
+      // sub so foreign keys never resolve to a real tenant admin row.
+      sub = adminId;  // provider admin id
+      email = 'provider@poolsideapp.com';
+      displayName = 'Provider (impersonating)';
+      synthetic = true;
+    }
+
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+    );
+    const token = await create(
+      { alg: 'HS256', typ: 'JWT' },
+      {
+        sub, kind: 'tenant_admin',
+        tid: tenant.id, slug: tenant.slug,
+        impersonated_by: adminId,
+        synthetic,
+        exp: getNumericDate(60 * 60),  // 1 hour
+      },
+      key,
+    );
+    return jsonResponse({
+      ok: true,
+      token,
+      tenant: { slug: tenant.slug, display_name: tenant.display_name },
+      user:   { id: sub, email, display_name: displayName },
+      synthetic,
+    });
   }
 
   // ── delete (soft) ──────────────────────────────────────────────────────
