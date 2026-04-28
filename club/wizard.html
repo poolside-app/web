@@ -112,7 +112,10 @@
     <div class="head">
       <div class="head-row">
         <div class="logo"><span class="logo-dot"></span> Poolside</div>
-        <div class="step-counter"><span id="step-num">1</span> of 6</div>
+        <div style="display:flex; align-items:center; gap:14px">
+          <a id="cancel-link" href="/club/admin/" style="display:none; font-size:12px; color:var(--muted); text-decoration:none">Cancel</a>
+          <div class="step-counter"><span id="step-num">1</span> of 6</div>
+        </div>
       </div>
       <div class="progress"><div class="progress-fill" id="progress"></div></div>
     </div>
@@ -514,6 +517,11 @@ async function finish() {
   TENANT = data.tenant;
   document.title = `Setup — ${data.tenant?.display_name || 'Poolside'}`;
   populate(data.settings || {});
+  // If they've already finished the wizard, this is a re-edit pass — let
+  // them bail without saving. First-run users still have to walk through.
+  if (data.settings?.setup_wizard_complete) {
+    document.getElementById('cancel-link').style.display = 'inline';
+  }
   show(1);
 })();
 

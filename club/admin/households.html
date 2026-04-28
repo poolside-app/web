@@ -107,8 +107,27 @@
   }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .row-addr { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; }
   .checkbox-row input { width: auto; }
+  .year-stepper { display: flex; align-items: stretch; height: 40px; }
+  .year-stepper .step-btn {
+    width: 40px; border: 1.5px solid var(--border); background: #fff;
+    color: var(--blue); font: 700 18px 'Inter'; cursor: pointer;
+    user-select: none; transition: background .12s;
+  }
+  .year-stepper .step-btn:first-child { border-radius: 10px 0 0 10px; border-right: 0; }
+  .year-stepper .step-btn:last-child  { border-radius: 0 10px 10px 0; border-left: 0; }
+  .year-stepper .step-btn:hover { background: var(--blue-l); }
+  .year-stepper input {
+    width: 100%; border-radius: 0; text-align: center; font-weight: 700;
+    border-left-width: 1.5px; border-right-width: 1.5px;
+    -moz-appearance: textfield;
+  }
+  .year-stepper input::-webkit-outer-spin-button,
+  .year-stepper input::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
   .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
   .modal-foot .left { margin-right: auto; }
   .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px;
@@ -172,17 +191,30 @@
         <option value="senior">Senior</option><option value="staff">Staff</option>
       </select></div>
       <div><label>Fob # <span style="color:var(--muted)">(opt)</span></label><input id="c-fob_number"></div>
-      <div><label>Paid until year</label><input type="number" id="c-paid_until_year" placeholder="2026"></div>
+      <div><label>Paid until year</label>
+        <div class="year-stepper">
+          <button type="button" class="step-btn" onclick="bumpYear('c-paid_until_year', -1)">−</button>
+          <input type="number" id="c-paid_until_year">
+          <button type="button" class="step-btn" onclick="bumpYear('c-paid_until_year', +1)">+</button>
+        </div>
+      </div>
     </div>
     <div class="checkbox-row">
       <input type="checkbox" id="c-dues_paid_for_year">
       <label for="c-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
     </div>
 
+    <label>Address <span style="color:var(--muted)">(opt)</span></label>
+    <input id="c-address" placeholder="123 Main St">
+    <div class="row2" style="margin-top:6px">
+      <div><label>City</label><input id="c-city"></div>
+      <div><label>Zip</label><input id="c-zip"></div>
+    </div>
+
     <h3 style="margin-top:14px">Primary contact</h3>
     <div class="row2">
       <div><label>Name</label><input id="c-pName" placeholder="Jane Smith"></div>
-      <div><label>Phone</label><input id="c-pPhone" placeholder="555-555-5555"></div>
+      <div><label>Phone</label><input id="c-pPhone" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)"></div>
     </div>
     <label>Email <span style="color:var(--muted)">(opt)</span></label>
     <input id="c-pEmail" type="email">
@@ -209,12 +241,27 @@
         <option value="senior">Senior</option><option value="staff">Staff</option>
       </select></div>
       <div><label>Fob #</label><input id="e-fob_number"></div>
-      <div><label>Paid until year</label><input type="number" id="e-paid_until_year"></div>
+      <div><label>Paid until year</label>
+        <div class="year-stepper">
+          <button type="button" class="step-btn" onclick="bumpYear('e-paid_until_year', -1)">−</button>
+          <input type="number" id="e-paid_until_year">
+          <button type="button" class="step-btn" onclick="bumpYear('e-paid_until_year', +1)">+</button>
+        </div>
+      </div>
     </div>
     <div class="checkbox-row">
       <input type="checkbox" id="e-dues_paid_for_year">
       <label for="e-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
     </div>
+
+    <label>Address</label>
+    <input id="e-address" placeholder="123 Main St">
+    <div class="row2" style="margin-top:6px">
+      <div><label>City</label><input id="e-city"></div>
+      <div><label>Zip</label><input id="e-zip"></div>
+    </div>
+    <label>Emergency contact</label>
+    <input id="e-emergency_contact" placeholder="Name + phone (e.g. John Smith — 555-1234)">
     <label>Notes</label>
     <textarea id="e-notes" rows="2"></textarea>
 
@@ -222,7 +269,7 @@
     <div class="members" id="members-list"><div class="empty" style="padding:18px">No members yet.</div></div>
     <div class="member-add">
       <input id="m-name" placeholder="Name">
-      <input id="m-phone" placeholder="Phone (opt for kids)">
+      <input id="m-phone" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)">
       <select id="m-role">
         <option value="adult">Adult</option><option value="teen">Teen</option><option value="child">Child</option>
       </select>
@@ -242,11 +289,40 @@
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
-const HH_URL  = `${SUPABASE_URL}/functions/v1/households_admin`;
-const ME_URL  = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const HH_URL       = `${SUPABASE_URL}/functions/v1/households_admin`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 
 let CACHE = [];
 let SELECTED = null;
+let DEFAULT_CITY = '';
+let DEFAULT_ZIP  = '';
+const CURRENT_YEAR = new Date().getFullYear();
+
+function bumpYear(id, delta) {
+  const el = document.getElementById(id);
+  let v = parseInt(el.value, 10);
+  if (!Number.isFinite(v)) v = CURRENT_YEAR;
+  el.value = v + delta;
+}
+
+// Display US numbers as (555)-123-4567. DB stays in E.164 (+15551234567)
+// because Twilio needs it for SMS auth.
+function formatPhone(e164) {
+  if (!e164) return '';
+  const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  if (m) return `(${m[1]})-${m[2]}-${m[3]}`;
+  return String(e164);
+}
+
+// Live-format an input as the user types so it always reads US-style.
+function formatPhoneInput(el) {
+  const digits = el.value.replace(/\D/g, '').slice(0, 10);
+  if (!digits.length) { el.value = ''; return; }
+  if (digits.length < 4) { el.value = `(${digits}`; return; }
+  if (digits.length < 7) { el.value = `(${digits.slice(0,3)})-${digits.slice(3)}`; return; }
+  el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -297,7 +373,7 @@ function renderRows(rows) {
         const cnt = (h.members || []).filter(m => m.active).length;
         return `<tr data-id="${h.id}">
           <td><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}</td>
-          <td>${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(p.phone_e164) : ''}</span></td>
+          <td>${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(formatPhone(p.phone_e164)) : ''}</span></td>
           <td>${cnt}</td>
           <td><span class="pill tier">${escapeHtml(h.tier || 'family')}</span></td>
           <td>${h.fob_number ? escapeHtml(h.fob_number) : '<i style="color:var(--muted)">—</i>'}</td>
@@ -335,10 +411,13 @@ async function refresh() {
 
 // ── Create ────────────────────────────────────────────────────────────
 function openCreate() {
-  ['c-family_name','c-fob_number','c-paid_until_year','c-pName','c-pPhone','c-pEmail']
+  ['c-family_name','c-fob_number','c-address','c-pName','c-pPhone','c-pEmail']
     .forEach(id => document.getElementById(id).value = '');
   document.getElementById('c-tier').value = 'family';
   document.getElementById('c-dues_paid_for_year').checked = false;
+  document.getElementById('c-paid_until_year').value = CURRENT_YEAR;
+  document.getElementById('c-city').value = DEFAULT_CITY;
+  document.getElementById('c-zip').value  = DEFAULT_ZIP;
   openModal('create-scrim');
 }
 async function saveCreate() {
@@ -352,6 +431,9 @@ async function saveCreate() {
       fob_number: document.getElementById('c-fob_number').value.trim() || null,
       paid_until_year: document.getElementById('c-paid_until_year').value || null,
       dues_paid_for_year: document.getElementById('c-dues_paid_for_year').checked,
+      address: document.getElementById('c-address').value.trim() || null,
+      city:    document.getElementById('c-city').value.trim() || null,
+      zip:     document.getElementById('c-zip').value.trim() || null,
       primary: {
         name: document.getElementById('c-pName').value.trim(),
         phone_e164: document.getElementById('c-pPhone').value.trim(),
@@ -375,8 +457,12 @@ function openEdit(id) {
   document.getElementById('e-family_name').value = h.family_name || '';
   document.getElementById('e-tier').value = h.tier || 'family';
   document.getElementById('e-fob_number').value = h.fob_number || '';
-  document.getElementById('e-paid_until_year').value = h.paid_until_year || '';
+  document.getElementById('e-paid_until_year').value = h.paid_until_year || CURRENT_YEAR;
   document.getElementById('e-dues_paid_for_year').checked = !!h.dues_paid_for_year;
+  document.getElementById('e-address').value = h.address || '';
+  document.getElementById('e-city').value = h.city || '';
+  document.getElementById('e-zip').value  = h.zip || '';
+  document.getElementById('e-emergency_contact').value = h.emergency_contact || '';
   document.getElementById('e-notes').value = h.notes || '';
   renderMembers(h);
   ['m-name','m-phone'].forEach(id => document.getElementById(id).value = '');
@@ -392,7 +478,7 @@ function renderMembers(h) {
     <div class="member-row">
       <div>
         <div class="name">${escapeHtml(m.name)} ${m.role === 'primary' ? '<span class="pill tier">Primary</span>' : ''}</div>
-        <div class="meta">${escapeHtml(m.phone_e164 || '—')} · ${escapeHtml(m.role)}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+        <div class="meta">${escapeHtml(formatPhone(m.phone_e164) || '—')} · ${escapeHtml(m.role)}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
       </div>
       ${m.role !== 'primary' ? `<button class="btn btn-ghost btn-sm" onclick="removeMember('${m.id}')">Remove</button>` : ''}
     </div>
@@ -411,7 +497,11 @@ async function saveEdit() {
       fob_number: document.getElementById('e-fob_number').value.trim() || null,
       paid_until_year: document.getElementById('e-paid_until_year').value || null,
       dues_paid_for_year: document.getElementById('e-dues_paid_for_year').checked,
-      notes: document.getElementById('e-notes').value.trim() || null,
+      address: document.getElementById('e-address').value.trim() || null,
+      city:    document.getElementById('e-city').value.trim() || null,
+      zip:     document.getElementById('e-zip').value.trim() || null,
+      emergency_contact: document.getElementById('e-emergency_contact').value.trim() || null,
+      notes:   document.getElementById('e-notes').value.trim() || null,
     });
     if (!data.ok) throw new Error(data.error || 'Save failed');
     closeModal('edit-scrim');
@@ -468,6 +558,14 @@ async function removeMember(id) {
     document.title = `Households — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
   } catch (e) { logout(); return; }
+  // Pre-fill new-household City/Zip from the wizard's defaults
+  try {
+    const s = await call(SETTINGS_URL, 'get');
+    if (s.ok) {
+      DEFAULT_CITY = s.settings?.club?.default_city || '';
+      DEFAULT_ZIP  = s.settings?.club?.default_zip  || '';
+    }
+  } catch { /* defaults stay blank */ }
   await refresh();
 })();
 </script>
