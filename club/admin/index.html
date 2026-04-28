@@ -66,6 +66,16 @@
     border: 2px dashed var(--border); border-radius: var(--r-md);
     padding: 40px 22px; text-align: center; color: var(--muted);
   }
+  nav.tabs {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 0 22px; display: flex; gap: 4px;
+  }
+  nav.tabs a {
+    padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
+    border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px;
+  }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -77,6 +87,11 @@
     <a id="signout">Sign out</a>
   </div>
 </header>
+<nav class="tabs">
+  <a href="/club/admin/" class="on">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/wizard.html">Setup wizard</a>
+</nav>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
@@ -86,6 +101,7 @@
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const AUTH_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const HH_URL = `${SUPABASE_URL}/functions/v1/households_admin`;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -138,6 +154,8 @@ document.getElementById('signout').addEventListener('click', logout);
   const statusLabel = ({trial:'Free Trial', active:'Active', suspended:'Suspended', churned:'Closed'})[tenant.status] ?? tenant.status;
   const planLabel   = ({free:'Free', starter:'Starter', pro:'Pro', enterprise:'Enterprise'})[tenant.plan] ?? tenant.plan;
 
+  // Households + member counts in parallel with the render
+  let hhCount = '…', memberCount = '…';
   document.getElementById('main').innerHTML = `
     <div class="card">
       <h1>${escapeHtml(tenant.display_name)}</h1>
@@ -145,19 +163,40 @@ document.getElementById('signout').addEventListener('click', logout);
       <div class="grid">
         <div class="stat"><div class="lbl">Status</div><div class="val"><span class="pill ${escapeHtml(tenant.status)}">${escapeHtml(statusLabel)}</span></div></div>
         <div class="stat"><div class="lbl">Plan</div><div class="val">${escapeHtml(planLabel)}</div></div>
-        <div class="stat"><div class="lbl">Households</div><div class="val">0</div></div>
-        <div class="stat"><div class="lbl">Members</div><div class="val">0</div></div>
+        <div class="stat"><div class="lbl">Households</div><div class="val" id="hh-count">…</div></div>
+        <div class="stat"><div class="lbl">Members</div><div class="val" id="m-count">…</div></div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Coming soon</h2>
+      <h2>What's next</h2>
       <div class="placeholder">
-        Members, gate access, party booking, dues, calendar, campaigns, swim lessons, snack-shack tab.<br>
-        These tools land in the next phase. You're signed in and your account is wired up.
+        <a href="/club/admin/households.html" style="font-weight:600">Manage households &amp; members →</a><br>
+        <span style="font-size:13px">Gate access, party booking, dues, campaigns, swim lessons land in the next phase.</span>
       </div>
     </div>
   `;
+
+  try {
+    const hRes = await fetch(HH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'list' }),
+    });
+    const hData = await hRes.json();
+    if (hData.ok) {
+      const active = (hData.households || []).filter(h => h.active !== false);
+      const memberTotal = active.reduce((n, h) => n + (h.members || []).filter(m => m.active).length, 0);
+      document.getElementById('hh-count').textContent = active.length;
+      document.getElementById('m-count').textContent = memberTotal;
+    } else {
+      document.getElementById('hh-count').textContent = '0';
+      document.getElementById('m-count').textContent = '0';
+    }
+  } catch {
+    document.getElementById('hh-count').textContent = '–';
+    document.getElementById('m-count').textContent = '–';
+  }
 })();
 </script>
 </body>

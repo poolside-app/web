@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Households — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  h3 { font-size: 16px; margin: 0 0 8px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+
+  nav.tabs {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 0 22px; display: flex; gap: 4px;
+  }
+  nav.tabs a {
+    padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
+    border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px;
+  }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+
+  main { flex: 1; padding: 28px 22px; max-width: 1080px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+  .toolbar input { padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--r-md); width: 280px; font: 14px/1.4 'Inter'; }
+  .btn {
+    padding: 10px 18px; border-radius: var(--r-md);
+    font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
+    background: var(--blue); color: #fff;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--bg-2); cursor: pointer; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .pill.paid     { background: #dcfce7; color: #14532d; }
+  .pill.unpaid   { background: #fef3c7; color: #92400e; }
+  .pill.tier     { background: var(--blue-l); color: var(--blue); }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); }
+
+  /* Modal */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
+    display: none; align-items: flex-start; justify-content: center;
+    overflow-y: auto; padding: 32px 16px; z-index: 50;
+  }
+  .scrim.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: var(--r-lg); padding: 26px 26px 22px;
+    width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(10,59,92,.18);
+  }
+  .modal h2 { margin-bottom: 4px; }
+  .modal .lede { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter';
+    border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus {
+    outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l);
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; }
+  .checkbox-row input { width: auto; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .modal-foot .left { margin-right: auto; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px;
+         background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+
+  /* Member list inside the edit modal */
+  .members {
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 6px; margin-top: 6px;
+  }
+  .member-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 8px 10px; border-radius: 8px;
+  }
+  .member-row + .member-row { border-top: 1px solid var(--border); }
+  .member-row .name { font-weight: 600; font-size: 13px; }
+  .member-row .meta { font-size: 12px; color: var(--muted); }
+  .member-add { display: flex; gap: 6px; padding: 8px 6px 4px; flex-wrap: wrap; }
+  .member-add input, .member-add select { padding: 8px 10px; font-size: 13px; flex: 1 1 100px; }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html" class="on">Households</a>
+  <a href="/club/wizard.html">Setup wizard</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1 id="title">Households</h1>
+    <div style="display:flex;gap:10px;align-items:center">
+      <input id="search" type="search" placeholder="Search by name, phone, fob…">
+      <button class="btn" onclick="openCreate()">+ Add household</button>
+    </div>
+  </div>
+
+  <div class="card" id="card">
+    <div class="empty">Loading…</div>
+  </div>
+</main>
+
+<!-- Create household modal -->
+<div class="scrim" id="create-scrim">
+  <div class="modal">
+    <h2>New household</h2>
+    <p class="lede">Family info plus the primary contact. You can add more members after.</p>
+
+    <h3 style="margin-top:8px">Family</h3>
+    <label>Family name</label>
+    <input id="c-family_name" placeholder="Smith Family">
+    <div class="row3" style="margin-top:6px">
+      <div><label>Tier</label><select id="c-tier">
+        <option value="family">Family</option><option value="single">Single</option>
+        <option value="senior">Senior</option><option value="staff">Staff</option>
+      </select></div>
+      <div><label>Fob # <span style="color:var(--muted)">(opt)</span></label><input id="c-fob_number"></div>
+      <div><label>Paid until year</label><input type="number" id="c-paid_until_year" placeholder="2026"></div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="c-dues_paid_for_year">
+      <label for="c-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
+    </div>
+
+    <h3 style="margin-top:14px">Primary contact</h3>
+    <div class="row2">
+      <div><label>Name</label><input id="c-pName" placeholder="Jane Smith"></div>
+      <div><label>Phone</label><input id="c-pPhone" placeholder="555-555-5555"></div>
+    </div>
+    <label>Email <span style="color:var(--muted)">(opt)</span></label>
+    <input id="c-pEmail" type="email">
+
+    <div class="err" id="c-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('create-scrim')">Cancel</button>
+      <button class="btn" id="c-save" onclick="saveCreate()">Create household</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit household modal -->
+<div class="scrim" id="edit-scrim">
+  <div class="modal" style="max-width: 720px">
+    <h2 id="e-title">Edit household</h2>
+
+    <h3 style="margin-top:8px">Family</h3>
+    <label>Family name</label>
+    <input id="e-family_name">
+    <div class="row3" style="margin-top:6px">
+      <div><label>Tier</label><select id="e-tier">
+        <option value="family">Family</option><option value="single">Single</option>
+        <option value="senior">Senior</option><option value="staff">Staff</option>
+      </select></div>
+      <div><label>Fob #</label><input id="e-fob_number"></div>
+      <div><label>Paid until year</label><input type="number" id="e-paid_until_year"></div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="e-dues_paid_for_year">
+      <label for="e-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
+    </div>
+    <label>Notes</label>
+    <textarea id="e-notes" rows="2"></textarea>
+
+    <h3 style="margin-top:18px">Members</h3>
+    <div class="members" id="members-list"><div class="empty" style="padding:18px">No members yet.</div></div>
+    <div class="member-add">
+      <input id="m-name" placeholder="Name">
+      <input id="m-phone" placeholder="Phone (opt for kids)">
+      <select id="m-role">
+        <option value="adult">Adult</option><option value="teen">Teen</option><option value="child">Child</option>
+      </select>
+      <button class="btn btn-sm" onclick="addMember()">+ Add</button>
+    </div>
+
+    <div class="err" id="e-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger left" onclick="deleteHousehold()">Remove household</button>
+      <button class="btn btn-ghost" onclick="closeModal('edit-scrim')">Close</button>
+      <button class="btn" id="e-save" onclick="saveEdit()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const HH_URL  = `${SUPABASE_URL}/functions/v1/households_admin`;
+const ME_URL  = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let CACHE = [];
+let SELECTED = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function showErr(id, msg) {
+  const e = document.getElementById(id);
+  e.textContent = msg; e.classList.add('show');
+}
+function clearErr(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { clearErr(id.startsWith('e-') ? 'e-err' : 'c-err'); document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function primaryOf(h) { return (h.members || []).find(m => m.role === 'primary'); }
+
+function renderRows(rows) {
+  const card = document.getElementById('card');
+  if (!rows.length) {
+    card.innerHTML = `<div class="empty"><h2>No households yet</h2>Add your first household with the button above.</div>`;
+    return;
+  }
+  const fmtPaid = (h) => h.dues_paid_for_year
+    ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>`
+    : `<span class="pill unpaid">Unpaid</span>`;
+  card.innerHTML = `<table>
+    <thead><tr><th>Family</th><th>Primary</th><th>Members</th><th>Tier</th><th>Fob</th><th>Dues</th></tr></thead>
+    <tbody>
+      ${rows.map(h => {
+        const p = primaryOf(h);
+        const cnt = (h.members || []).filter(m => m.active).length;
+        return `<tr data-id="${h.id}">
+          <td><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}</td>
+          <td>${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(p.phone_e164) : ''}</span></td>
+          <td>${cnt}</td>
+          <td><span class="pill tier">${escapeHtml(h.tier || 'family')}</span></td>
+          <td>${h.fob_number ? escapeHtml(h.fob_number) : '<i style="color:var(--muted)">—</i>'}</td>
+          <td>${fmtPaid(h)}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+  card.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => openEdit(tr.dataset.id));
+  });
+}
+
+function applySearch() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  if (!q) { renderRows(CACHE); return; }
+  const matches = CACHE.filter(h => {
+    if (h.family_name?.toLowerCase().includes(q)) return true;
+    if (h.fob_number?.toLowerCase().includes(q)) return true;
+    return (h.members || []).some(m =>
+      m.name?.toLowerCase().includes(q) ||
+      m.phone_e164?.toLowerCase().includes(q) ||
+      m.email?.toLowerCase().includes(q));
+  });
+  renderRows(matches);
+}
+document.getElementById('search').addEventListener('input', applySearch);
+
+async function refresh() {
+  const data = await call(HH_URL, 'list');
+  if (!data.ok) { document.getElementById('card').innerHTML = `<div class="empty">${escapeHtml(data.error || 'Failed to load')}</div>`; return; }
+  CACHE = data.households || [];
+  applySearch();
+}
+
+// ── Create ────────────────────────────────────────────────────────────
+function openCreate() {
+  ['c-family_name','c-fob_number','c-paid_until_year','c-pName','c-pPhone','c-pEmail']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('c-tier').value = 'family';
+  document.getElementById('c-dues_paid_for_year').checked = false;
+  openModal('create-scrim');
+}
+async function saveCreate() {
+  clearErr('c-err');
+  const btn = document.getElementById('c-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Creating…';
+  try {
+    const body = {
+      family_name: document.getElementById('c-family_name').value.trim(),
+      tier: document.getElementById('c-tier').value,
+      fob_number: document.getElementById('c-fob_number').value.trim() || null,
+      paid_until_year: document.getElementById('c-paid_until_year').value || null,
+      dues_paid_for_year: document.getElementById('c-dues_paid_for_year').checked,
+      primary: {
+        name: document.getElementById('c-pName').value.trim(),
+        phone_e164: document.getElementById('c-pPhone').value.trim(),
+        email: document.getElementById('c-pEmail').value.trim() || null,
+      },
+    };
+    const data = await call(HH_URL, 'create_household', body);
+    if (!data.ok) throw new Error(data.error || 'Create failed');
+    closeModal('create-scrim');
+    await refresh();
+  } catch (e) { showErr('c-err', e.message); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+// ── Edit ──────────────────────────────────────────────────────────────
+function openEdit(id) {
+  const h = CACHE.find(x => x.id === id);
+  if (!h) return;
+  SELECTED = h;
+  document.getElementById('e-title').textContent = `Edit ${h.family_name}`;
+  document.getElementById('e-family_name').value = h.family_name || '';
+  document.getElementById('e-tier').value = h.tier || 'family';
+  document.getElementById('e-fob_number').value = h.fob_number || '';
+  document.getElementById('e-paid_until_year').value = h.paid_until_year || '';
+  document.getElementById('e-dues_paid_for_year').checked = !!h.dues_paid_for_year;
+  document.getElementById('e-notes').value = h.notes || '';
+  renderMembers(h);
+  ['m-name','m-phone'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('m-role').value = 'adult';
+  openModal('edit-scrim');
+}
+
+function renderMembers(h) {
+  const list = document.getElementById('members-list');
+  const active = (h.members || []).filter(m => m.active);
+  if (!active.length) { list.innerHTML = `<div class="empty" style="padding:14px">No members yet.</div>`; return; }
+  list.innerHTML = active.map(m => `
+    <div class="member-row">
+      <div>
+        <div class="name">${escapeHtml(m.name)} ${m.role === 'primary' ? '<span class="pill tier">Primary</span>' : ''}</div>
+        <div class="meta">${escapeHtml(m.phone_e164 || '—')} · ${escapeHtml(m.role)}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+      </div>
+      ${m.role !== 'primary' ? `<button class="btn btn-ghost btn-sm" onclick="removeMember('${m.id}')">Remove</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function saveEdit() {
+  clearErr('e-err');
+  const btn = document.getElementById('e-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const data = await call(HH_URL, 'update_household', {
+      id: SELECTED.id,
+      family_name: document.getElementById('e-family_name').value.trim(),
+      tier: document.getElementById('e-tier').value,
+      fob_number: document.getElementById('e-fob_number').value.trim() || null,
+      paid_until_year: document.getElementById('e-paid_until_year').value || null,
+      dues_paid_for_year: document.getElementById('e-dues_paid_for_year').checked,
+      notes: document.getElementById('e-notes').value.trim() || null,
+    });
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    closeModal('edit-scrim');
+    await refresh();
+  } catch (e) { showErr('e-err', e.message); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function deleteHousehold() {
+  if (!confirm(`Remove the ${SELECTED.family_name} household? This soft-deletes them and revokes any in-flight sessions.`)) return;
+  try {
+    const data = await call(HH_URL, 'delete_household', { id: SELECTED.id });
+    if (!data.ok) throw new Error(data.error || 'Remove failed');
+    closeModal('edit-scrim');
+    await refresh();
+  } catch (e) { showErr('e-err', e.message); }
+}
+
+async function addMember() {
+  clearErr('e-err');
+  const name = document.getElementById('m-name').value.trim();
+  const phone = document.getElementById('m-phone').value.trim();
+  const role = document.getElementById('m-role').value;
+  if (!name) { showErr('e-err', 'Name is required'); return; }
+  try {
+    const data = await call(HH_URL, 'add_member', {
+      household_id: SELECTED.id, name, phone_e164: phone || null, role,
+    });
+    if (!data.ok) throw new Error(data.error || 'Could not add member');
+    await refresh();
+    SELECTED = CACHE.find(h => h.id === SELECTED.id);
+    renderMembers(SELECTED);
+    ['m-name','m-phone'].forEach(id => document.getElementById(id).value = '');
+  } catch (e) { showErr('e-err', e.message); }
+}
+
+async function removeMember(id) {
+  if (!confirm('Remove this member?')) return;
+  try {
+    const data = await call(HH_URL, 'remove_member', { id });
+    if (!data.ok) throw new Error(data.error || 'Could not remove member');
+    await refresh();
+    SELECTED = CACHE.find(h => h.id === SELECTED.id);
+    renderMembers(SELECTED);
+  } catch (e) { showErr('e-err', e.message); }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  // Light auth check + display name
+  try {
+    const me = await call(ME_URL, 'me');
+    if (!me.ok) { logout(); return; }
+    document.title = `Households — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch (e) { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>

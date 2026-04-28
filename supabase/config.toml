@@ -31,3 +31,7 @@ verify_jwt = false
 # Per-tenant image uploads (background photos, logos) → club-assets bucket
 [functions.tenant_upload]
 verify_jwt = false
+
+# Households + members CRUD scoped to the tenant on the auth token
+[functions.households_admin]
+verify_jwt = false
