@@ -274,6 +274,140 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── list_my_parties ────────────────────────────────────────────────────
+  if (action === 'list_my_parties') {
+    const { data, error } = await sb.from('party_bookings')
+      .select('id, title, body, starts_at, ends_at, expected_guests, location, status, admin_notes, decided_at, event_id, created_at')
+      .eq('tenant_id', payload.tid as string)
+      .eq('household_id', payload.hid as string)
+      .order('created_at', { ascending: false });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, parties: data ?? [] });
+  }
+
+  // ── request_party ──────────────────────────────────────────────────────
+  if (action === 'request_party') {
+    // Verify the requesting member can_book_parties before accepting.
+    const { data: member } = await sb.from('household_members')
+      .select('id, can_book_parties, household_id, active')
+      .eq('id', payload.sub as string).maybeSingle();
+    if (!member || !member.active) {
+      return jsonResponse({ ok: false, error: 'Member not found' }, 401);
+    }
+    if (!member.can_book_parties) {
+      return jsonResponse({ ok: false, error: 'Your household admin hasn\'t given you party-booking access' }, 403);
+    }
+
+    const title = String((body as Record<string, unknown>).title ?? '').trim();
+    const startsAtRaw = String((body as Record<string, unknown>).starts_at ?? '').trim();
+    if (!title) return jsonResponse({ ok: false, error: 'Title is required' }, 400);
+    if (title.length > 140) return jsonResponse({ ok: false, error: 'Title too long' }, 400);
+    if (!startsAtRaw) return jsonResponse({ ok: false, error: 'Date / time is required' }, 400);
+    const startsDate = new Date(startsAtRaw);
+    if (isNaN(startsDate.getTime())) return jsonResponse({ ok: false, error: 'Invalid date/time' }, 400);
+    if (startsDate < new Date()) {
+      return jsonResponse({ ok: false, error: 'Pick a date in the future' }, 400);
+    }
+    const endsAtRaw = (body as Record<string, unknown>).ends_at;
+    let endsAt: string | null = null;
+    if (endsAtRaw) {
+      const e = new Date(String(endsAtRaw));
+      if (isNaN(e.getTime())) return jsonResponse({ ok: false, error: 'Invalid end time' }, 400);
+      if (e < startsDate) return jsonResponse({ ok: false, error: 'End time must be after start' }, 400);
+      endsAt = e.toISOString();
+    }
+    const guests = (body as Record<string, unknown>).expected_guests;
+    const expected_guests = guests === undefined || guests === null || guests === ''
+      ? null
+      : Math.max(0, Math.trunc(Number(guests) || 0));
+
+    const bodyText = String((body as Record<string, unknown>).body ?? '').trim();
+    if (bodyText.length > 2000) return jsonResponse({ ok: false, error: 'Notes too long' }, 400);
+
+    const { data, error } = await sb.from('party_bookings').insert({
+      tenant_id: payload.tid as string,
+      household_id: member.household_id,
+      requested_by: member.id,
+      title,
+      body: bodyText || null,
+      starts_at: startsDate.toISOString(),
+      ends_at: endsAt,
+      expected_guests,
+      status: 'pending',
+    }).select('id, title, starts_at, ends_at, status, created_at').single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, party: data });
+  }
+
+  // ── cancel_my_party ────────────────────────────────────────────────────
+  if (action === 'cancel_my_party') {
+    const id = String((body as Record<string, unknown>).id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: bk } = await sb.from('party_bookings')
+      .select('id, status, event_id, household_id')
+      .eq('id', id).eq('tenant_id', payload.tid as string).maybeSingle();
+    if (!bk) return jsonResponse({ ok: false, error: 'Not found' }, 404);
+    if (bk.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Not yours' }, 403);
+    if (bk.status === 'cancelled') return jsonResponse({ ok: true });
+    // Members can cancel pending OR approved (life happens). Admin-cancelled
+    // ones can't be re-cancelled.
+    if (!['pending','approved'].includes(bk.status as string)) {
+      return jsonResponse({ ok: false, error: `Cannot cancel — status is ${bk.status}` }, 409);
+    }
+    await sb.from('party_bookings').update({
+      status: 'cancelled', updated_at: new Date().toISOString(),
+    }).eq('id', id);
+    if (bk.event_id) {
+      await sb.from('events').update({
+        active: false, updated_at: new Date().toISOString(),
+      }).eq('id', bk.event_id);
+    }
+    return jsonResponse({ ok: true });
+  }
+
+  // ── update_my_profile ──────────────────────────────────────────────────
+  // Members can edit their own name/email/phone. Other fields (role,
+  // permissions, household_id) stay admin-controlled.
+  if (action === 'update_my_profile') {
+    const patch: Record<string, unknown> = { last_seen_at: new Date().toISOString() };
+    const b = body as Record<string, unknown>;
+    if (b.name !== undefined) {
+      const v = String(b.name).trim();
+      if (!v) return jsonResponse({ ok: false, error: 'Name cannot be empty' }, 400);
+      patch.name = v;
+    }
+    if (b.email !== undefined) {
+      const v = String(b.email).trim().toLowerCase();
+      if (v && !v.includes('@')) return jsonResponse({ ok: false, error: 'Invalid email' }, 400);
+      patch.email = v || null;
+    }
+    if (b.phone_e164 !== undefined) {
+      const raw = String(b.phone_e164 ?? '').trim();
+      if (!raw) {
+        patch.phone_e164 = null;
+      } else {
+        const digits = raw.replace(/[^\d+]/g, '');
+        let norm: string | null = null;
+        if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) norm = digits;
+        else if (/^\d{10}$/.test(digits)) norm = '+1' + digits;
+        else if (/^1\d{10}$/.test(digits)) norm = '+' + digits;
+        if (!norm) return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
+
+        // Make sure another active member doesn't already use this number
+        const { data: clash } = await sb.from('household_members')
+          .select('id').eq('tenant_id', payload.tid as string).eq('phone_e164', norm)
+          .eq('active', true).neq('id', payload.sub as string).maybeSingle();
+        if (clash) return jsonResponse({ ok: false, error: 'Phone number already in use' }, 409);
+        patch.phone_e164 = norm;
+      }
+    }
+    if (Object.keys(patch).length === 1) return jsonResponse({ ok: true, noop: true });
+    const { error } = await sb.from('household_members')
+      .update(patch).eq('id', payload.sub as string);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true });
+  }
+
   if (action === 'logout') {
     return jsonResponse({ ok: true });
   }

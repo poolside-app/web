@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parties — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+
+  main { flex: 1; padding: 28px 22px; max-width: 960px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-row button {
+    padding: 8px 14px; border: 1.5px solid var(--border); background: #fff;
+    border-radius: 999px; font: 600 12px 'Inter'; cursor: pointer; color: var(--muted);
+  }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-success { background: var(--green); color: #fff; }
+  .btn-success:hover { background: #15803d; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .booking {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 18px 22px; margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    display: grid; grid-template-columns: 1fr auto; gap: 14px;
+    cursor: pointer;
+  }
+  .booking:hover { border-color: var(--blue); }
+  .booking h3 { font-size: 16px; margin: 0 0 4px; }
+  .booking .meta { font-size: 12px; color: var(--muted); }
+  .booking .body { font-size: 13px; color: var(--text); margin-top: 8px; line-height: 1.5; white-space: pre-wrap; }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .pill.pending  { background: #fef3c7; color: #92400e; }
+  .pill.approved { background: #dcfce7; color: #14532d; }
+  .pill.rejected { background: #fee2e2; color: #7f1d1d; }
+  .pill.cancelled{ background: #f3f4f6; color: #4b5563; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+
+  /* Modal */
+  .scrim { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
+  .scrim.open { display: flex; }
+  .modal { background: #fff; border-radius: var(--r-lg); padding: 26px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(10,59,92,.18); }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal select, .modal textarea { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
+  .modal textarea { resize: vertical; min-height: 80px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .modal-foot .left { margin-right: auto; }
+  .info { background: var(--bg-2); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.55; }
+  .info b { color: var(--blue); }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/parties.html" class="on">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Party requests</h1>
+    <div class="filter-row" id="status-filter">
+      <button class="on" data-status="pending">Pending</button>
+      <button data-status="approved">Approved</button>
+      <button data-status="rejected">Rejected</button>
+      <button data-status="cancelled">Cancelled</button>
+      <button data-status="all">All</button>
+    </div>
+  </div>
+
+  <div id="list">
+    <div class="empty">Loading…</div>
+  </div>
+</main>
+
+<!-- Detail / decision modal -->
+<div class="scrim" id="scrim">
+  <div class="modal">
+    <h2 id="m-title">Party request</h2>
+    <div class="info" id="m-info">…</div>
+    <label>Member's notes</label>
+    <div id="m-body" style="font-size:13px;line-height:1.5;color:var(--muted);min-height:20px;white-space:pre-wrap"></div>
+
+    <hr style="margin:18px 0;border:0;border-top:1px solid var(--border)">
+
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:0 0 8px">Approval (optional overrides)</h3>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Leave blank to keep what the member proposed.</p>
+    <div class="row2">
+      <div><label>Override start</label><input type="datetime-local" id="ov-starts_at"></div>
+      <div><label>Override end</label><input type="datetime-local" id="ov-ends_at"></div>
+    </div>
+    <label>Override location</label>
+    <input id="ov-location" placeholder="The clubhouse / Side lawn / etc.">
+
+    <label>Admin note <span style="color:var(--muted);font-weight:500;font-size:11px">(visible to the member)</span></label>
+    <input id="m-admin_notes" placeholder="Optional note attached to the decision">
+
+    <div class="err" id="m-err"></div>
+    <div class="modal-foot">
+      <button class="btn-ghost btn left" id="m-cancel-admin" onclick="adminCancel()">Cancel booking</button>
+      <button class="btn-ghost btn" onclick="closeM()">Close</button>
+      <button class="btn-danger btn" id="m-reject" onclick="rej()">Reject</button>
+      <button class="btn-success btn" id="m-approve" onclick="appr()">Approve →</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const PARTIES_URL = `${SUPABASE_URL}/functions/v1/parties_admin`;
+const ME_URL     = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let STATUS = 'pending';
+let SELECTED = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(PARTIES_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function fmtDate(iso) { return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'; }
+function formatPhone(e164) {
+  if (!e164) return '';
+  const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]})-${m[2]}-${m[3]}` : String(e164);
+}
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function render(rows) {
+  const list = document.getElementById('list');
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty">No ${STATUS === 'all' ? '' : STATUS + ' '}requests.</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(b => {
+    const guests = b.expected_guests ? `${b.expected_guests} guests` : '';
+    const family = b.household?.family_name || 'Household';
+    const requester = b.requester?.name || '—';
+    return `
+      <div class="booking" data-id="${b.id}">
+        <div>
+          <h3>${escapeHtml(b.title)} <span class="pill ${escapeHtml(b.status)}">${escapeHtml(b.status)}</span></h3>
+          <div class="meta">${escapeHtml(family)} · requested by ${escapeHtml(requester)} · ${escapeHtml(fmtDate(b.starts_at))}${b.ends_at ? ' → ' + escapeHtml(new Date(b.ends_at).toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'})) : ''}${guests ? ' · ' + escapeHtml(guests) : ''}</div>
+          ${b.body ? `<div class="body">${escapeHtml(b.body)}</div>` : ''}
+          ${b.admin_notes ? `<div class="body" style="color:var(--blue);font-style:italic">📝 ${escapeHtml(b.admin_notes)}</div>` : ''}
+        </div>
+        <div style="text-align:right;font-size:11px;color:var(--muted);min-width:90px">
+          submitted<br>${escapeHtml(new Date(b.created_at).toLocaleDateString())}
+        </div>
+      </div>
+    `;
+  }).join('');
+  list.querySelectorAll('.booking').forEach(el => {
+    el.addEventListener('click', () => openModal(el.dataset.id, rows));
+  });
+}
+
+let CACHE = [];
+async function refresh() {
+  try {
+    const data = await call('list', { status: STATUS });
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    CACHE = data.bookings || [];
+    render(CACHE);
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll('#status-filter button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#status-filter button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    STATUS = b.dataset.status;
+    refresh();
+  });
+});
+
+function openModal(id, rows) {
+  const b = rows.find(x => x.id === id);
+  if (!b) return;
+  SELECTED = b;
+  document.getElementById('m-title').textContent = b.title || 'Party request';
+  document.getElementById('m-info').innerHTML = `
+    <div><b>${escapeHtml(b.household?.family_name || 'Household')}</b> · requested by <b>${escapeHtml(b.requester?.name || '—')}</b>${b.requester?.phone_e164 ? ' · ' + escapeHtml(formatPhone(b.requester.phone_e164)) : ''}${b.requester?.email ? ' · ' + escapeHtml(b.requester.email) : ''}</div>
+    <div style="margin-top:6px"><b>When:</b> ${escapeHtml(fmtDate(b.starts_at))}${b.ends_at ? ' → ' + escapeHtml(fmtDate(b.ends_at)) : ''}</div>
+    ${b.expected_guests ? `<div style="margin-top:4px"><b>Guests:</b> ~${b.expected_guests}</div>` : ''}
+    <div style="margin-top:6px"><b>Status:</b> <span class="pill ${escapeHtml(b.status)}">${escapeHtml(b.status)}</span></div>
+  `;
+  document.getElementById('m-body').textContent = b.body || '(no notes from member)';
+  document.getElementById('m-admin_notes').value = b.admin_notes || '';
+  document.getElementById('ov-starts_at').value = '';
+  document.getElementById('ov-ends_at').value = '';
+  document.getElementById('ov-location').value = '';
+  document.getElementById('m-err').classList.remove('show');
+
+  // Hide buttons that aren't applicable for the current status
+  const apprBtn = document.getElementById('m-approve');
+  const rejBtn  = document.getElementById('m-reject');
+  const cnclBtn = document.getElementById('m-cancel-admin');
+  apprBtn.style.display = b.status === 'pending' ? 'inline-block' : 'none';
+  rejBtn.style.display  = b.status === 'pending' ? 'inline-block' : 'none';
+  cnclBtn.style.display = (b.status === 'approved' || b.status === 'pending') ? 'inline-block' : 'none';
+
+  document.getElementById('scrim').classList.add('open');
+}
+function closeM() { document.getElementById('scrim').classList.remove('open'); }
+
+async function appr() {
+  if (!SELECTED) return;
+  const override = {};
+  const s = fromLocalInput(document.getElementById('ov-starts_at').value);
+  const e = fromLocalInput(document.getElementById('ov-ends_at').value);
+  const loc = document.getElementById('ov-location').value.trim();
+  if (s) override.starts_at = s;
+  if (e) override.ends_at = e;
+  if (loc) override.location = loc;
+  const admin_notes = document.getElementById('m-admin_notes').value.trim() || null;
+  const errEl = document.getElementById('m-err');
+  errEl.classList.remove('show');
+  try {
+    const data = await call('approve', { id: SELECTED.id, admin_notes, override });
+    if (!data.ok) throw new Error(data.error || 'Approve failed');
+    closeM();
+    await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+async function rej() {
+  if (!SELECTED) return;
+  const admin_notes = document.getElementById('m-admin_notes').value.trim() || null;
+  if (!confirm('Reject this party request?')) return;
+  try {
+    const data = await call('reject', { id: SELECTED.id, admin_notes });
+    if (!data.ok) throw new Error(data.error || 'Reject failed');
+    closeM();
+    await refresh();
+  } catch (e) { document.getElementById('m-err').textContent = e.message; document.getElementById('m-err').classList.add('show'); }
+}
+async function adminCancel() {
+  if (!SELECTED) return;
+  const admin_notes = document.getElementById('m-admin_notes').value.trim() || null;
+  if (!confirm('Cancel this booking? If approved, the calendar event will be removed too.')) return;
+  try {
+    const data = await call('cancel_admin', { id: SELECTED.id, admin_notes });
+    if (!data.ok) throw new Error(data.error || 'Cancel failed');
+    closeM();
+    await refresh();
+  } catch (e) { document.getElementById('m-err').textContent = e.message; document.getElementById('m-err').classList.add('show'); }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Parties — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>

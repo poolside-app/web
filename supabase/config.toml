@@ -55,3 +55,7 @@ verify_jwt = false
 # Per-tenant photo gallery CRUD; uploads go through tenant_upload first
 [functions.photos_admin]
 verify_jwt = false
+
+# Admin-side party booking review (approve / reject / admin-cancel)
+[functions.parties_admin]
+verify_jwt = false

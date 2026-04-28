@@ -132,6 +132,43 @@
   .lightbox .nav.next { right: 16px; }
   .lightbox .cap { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; color: #fff; font-size: 14px; padding: 0 22px; }
 
+  /* Party request card + status pills */
+  .pill.party-pending  { background: #fef3c7; color: #92400e; }
+  .pill.party-approved { background: #dcfce7; color: #14532d; }
+  .pill.party-rejected { background: #fee2e2; color: #7f1d1d; }
+  .pill.party-cancelled{ background: #f3f4f6; color: #4b5563; }
+  .party-row {
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  }
+  .party-row:last-child { border-bottom: 0; }
+  .party-row .ptitle { font-weight: 600; font-size: 14px; }
+  .party-row .pmeta  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .party-row .pnote  { font-size: 12px; color: var(--blue); font-style: italic; margin-top: 4px; }
+
+  /* Modal (party + profile) */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 60;
+    display: none; align-items: flex-start; justify-content: center;
+    overflow-y: auto; padding: 28px 16px;
+  }
+  .scrim.open { display: flex; }
+  .pmodal {
+    background: #fff; border-radius: var(--r-lg); padding: 24px;
+    width: 100%; max-width: 540px; box-shadow: 0 20px 60px rgba(10,59,92,.18);
+  }
+  .pmodal label { display:block; font-weight:600; font-size:12px; margin: 12px 0 4px; }
+  .pmodal input, .pmodal textarea {
+    width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter';
+    border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+    font-family: inherit;
+  }
+  .pmodal textarea { resize: vertical; min-height: 80px; }
+  .pmodal .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pmodal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .perr { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .perr.show { display:block; }
+
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -144,6 +181,49 @@
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
+
+<!-- Party request modal -->
+<div class="scrim" id="party-scrim" onclick="if (event.target === this) closePartyModal()">
+  <div class="pmodal">
+    <h2 style="margin:0">Request a party</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Your club's admin reviews requests and approves them. Once approved, the party shows up on the calendar.</p>
+
+    <label>Title</label>
+    <input id="p-title" placeholder="Smith Family birthday party" maxlength="140">
+    <div class="row2">
+      <div><label>Starts</label><input type="datetime-local" id="p-starts"></div>
+      <div><label>Ends <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="datetime-local" id="p-ends"></div>
+    </div>
+    <label>Expected guests <span style="color:var(--muted);font-weight:500;font-size:11px">(approx is fine)</span></label>
+    <input type="number" id="p-guests" min="0" placeholder="20">
+    <label>Anything the admin should know? <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+    <textarea id="p-body" maxlength="2000" placeholder="What it's for, kids/adults, anything special you'll need."></textarea>
+    <div class="perr" id="p-err"></div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closePartyModal()">Cancel</button>
+      <button class="btn" id="p-submit" onclick="submitParty()" style="background:var(--blue);color:#fff">Send request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile modal -->
+<div class="scrim" id="profile-scrim" onclick="if (event.target === this) closeProfileModal()">
+  <div class="pmodal">
+    <h2 style="margin:0">Your info</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Update your contact info. Your role and household stay admin-controlled.</p>
+    <label>Name</label>
+    <input id="pr-name">
+    <label>Email <span style="color:var(--muted);font-weight:500;font-size:11px">(used for sign-in links)</span></label>
+    <input id="pr-email" type="email">
+    <label>Phone</label>
+    <input id="pr-phone" oninput="formatPhoneInput(this)">
+    <div class="perr" id="pr-err"></div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closeProfileModal()">Cancel</button>
+      <button class="btn" id="pr-submit" onclick="submitProfile()" style="background:var(--blue);color:#fff">Save</button>
+    </div>
+  </div>
+</div>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
   <button class="close" onclick="closeLightbox()" aria-label="Close">×</button>
@@ -232,6 +312,153 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') lbStep(+1);
 });
 
+let ME_USER = null;
+
+async function callMember(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(AUTH_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function formatPhoneInput(el) {
+  const digits = el.value.replace(/\D/g, '').slice(0, 10);
+  if (!digits.length) { el.value = ''; return; }
+  if (digits.length < 4) { el.value = `(${digits}`; return; }
+  if (digits.length < 7) { el.value = `(${digits.slice(0,3)})-${digits.slice(3)}`; return; }
+  el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
+// ── Party request flow ─────────────────────────────────────────────────
+function openPartyModal() {
+  const start = new Date();
+  start.setDate(start.getDate() + 7);
+  start.setHours(14, 0, 0, 0);
+  document.getElementById('p-title').value = '';
+  document.getElementById('p-starts').value = toLocalInput(start.toISOString());
+  const end = new Date(start.getTime() + 2 * 60 * 60_000);
+  document.getElementById('p-ends').value = toLocalInput(end.toISOString());
+  document.getElementById('p-guests').value = '';
+  document.getElementById('p-body').value = '';
+  document.getElementById('p-err').classList.remove('show');
+  document.getElementById('party-scrim').classList.add('open');
+}
+function closePartyModal() { document.getElementById('party-scrim').classList.remove('open'); }
+async function submitParty() {
+  const errEl = document.getElementById('p-err');
+  errEl.classList.remove('show');
+  const title = document.getElementById('p-title').value.trim();
+  const starts_at = fromLocalInput(document.getElementById('p-starts').value);
+  const ends_at_v = document.getElementById('p-ends').value;
+  const ends_at = ends_at_v ? fromLocalInput(ends_at_v) : null;
+  const guests = document.getElementById('p-guests').value;
+  const body = document.getElementById('p-body').value.trim();
+  if (!title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
+  if (!starts_at) { errEl.textContent = 'Start time is required'; errEl.classList.add('show'); return; }
+  const btn = document.getElementById('p-submit');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const data = await callMember('request_party', {
+      title, starts_at, ends_at,
+      expected_guests: guests || null,
+      body: body || null,
+    });
+    if (!data.ok) throw new Error(data.error || 'Could not submit');
+    closePartyModal();
+    await refreshParties();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function cancelParty(id) {
+  if (!confirm('Cancel this party request?')) return;
+  try {
+    const data = await callMember('cancel_my_party', { id });
+    if (!data.ok) throw new Error(data.error || 'Cancel failed');
+    await refreshParties();
+  } catch (e) { alert(e.message); }
+}
+
+async function refreshParties() {
+  try {
+    const data = await callMember('list_my_parties');
+    if (!data.ok) return;
+    const rows = data.parties || [];
+    const card = document.getElementById('parties-card');
+    if (!card) return;
+    if (!rows.length) {
+      card.innerHTML = `<h2>Your party requests</h2><div class="empty">You haven't requested any parties yet. Use the button above.</div>`;
+      return;
+    }
+    card.innerHTML = `<h2>Your party requests</h2>${rows.map(b => {
+      const fmt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' }) : '';
+      const cancellable = ['pending','approved'].includes(b.status);
+      return `
+        <div class="party-row">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle">${escapeHtml(b.title)}</div>
+            <div class="pmeta">${escapeHtml(fmt(b.starts_at))}${b.ends_at ? ' → ' + escapeHtml(new Date(b.ends_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})) : ''}${b.expected_guests ? ' · ' + b.expected_guests + ' guests' : ''}</div>
+            ${b.admin_notes ? `<div class="pnote">📝 ${escapeHtml(b.admin_notes)}</div>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span class="pill party-${escapeHtml(b.status)}">${escapeHtml(b.status)}</span>
+            ${cancellable ? `<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="cancelParty('${b.id}')">Cancel</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('')}`;
+  } catch { /* ignore — non-critical */ }
+}
+
+// ── Profile flow ───────────────────────────────────────────────────────
+function openProfileModal() {
+  if (!ME_USER) return;
+  document.getElementById('pr-name').value  = ME_USER.name || '';
+  document.getElementById('pr-email').value = ME_USER.email || '';
+  // Display the stored E.164 in human-readable form for editing
+  const phoneEl = document.getElementById('pr-phone');
+  phoneEl.value = ME_USER.phone_e164 ? formatPhone(ME_USER.phone_e164) : '';
+  document.getElementById('pr-err').classList.remove('show');
+  document.getElementById('profile-scrim').classList.add('open');
+}
+function closeProfileModal() { document.getElementById('profile-scrim').classList.remove('open'); }
+async function submitProfile() {
+  const errEl = document.getElementById('pr-err');
+  errEl.classList.remove('show');
+  const btn = document.getElementById('pr-submit');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const data = await callMember('update_my_profile', {
+      name:       document.getElementById('pr-name').value.trim() || null,
+      email:      document.getElementById('pr-email').value.trim() || null,
+      phone_e164: document.getElementById('pr-phone').value.trim() || null,
+    });
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    closeProfileModal();
+    // Refresh the dashboard to pull updated info
+    window.location.reload();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
 (async () => {
   if (!token()) { logout(); return; }
 
@@ -249,6 +476,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (!me.ok) { logout(); return; }
 
+  ME_USER = me.user;
   document.title = `${me.tenant.display_name} — My Club`;
   document.getElementById('whoami').textContent = me.user.name || me.user.email;
 
@@ -274,9 +502,11 @@ document.addEventListener('keydown', (e) => {
 
   // Hero card with greeting + quick actions
   const heroActions = [];
-  heroActions.push(`<a class="btn" href="/" target="_blank">Public home →</a>`);
+  if (user.can_book_parties) heroActions.push(`<button class="btn" onclick="openPartyModal()">🎉 Request a party</button>`);
+  heroActions.push(`<button class="btn btn-ghost" onclick="openProfileModal()">Edit my info</button>`);
   if (venmo) heroActions.push(`<a class="btn btn-ghost" href="https://venmo.com/${escapeAttr(venmo)}" target="_blank" rel="noopener">Pay dues via Venmo</a>`);
   heroActions.push(`<a class="btn btn-ghost" href="${SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug=${encodeURIComponent(tenant.slug)}" target="_blank">📆 Subscribe to calendar</a>`);
+  heroActions.push(`<a class="btn btn-ghost" href="/" target="_blank">Public home →</a>`);
 
   // Household members list (housemates)
   const members = (household.members || []);
@@ -353,6 +583,11 @@ document.addEventListener('keydown', (e) => {
       ${eventsHtml}
     </div>
 
+    <div class="card" id="parties-card">
+      <h2>Your party requests</h2>
+      <div class="empty">Loading…</div>
+    </div>
+
     ${photos.length ? `
       <div class="card">
         <h2>Photos</h2>
@@ -365,6 +600,13 @@ document.addEventListener('keydown', (e) => {
       ${postsHtml}
     </div>
   `;
+
+  if (user.can_book_parties) {
+    refreshParties();
+  } else {
+    const card = document.getElementById('parties-card');
+    if (card) card.innerHTML = `<h2>Your party requests</h2><div class="empty">Your household admin hasn't enabled party booking for your account.</div>`;
+  }
 })();
 </script>
 </body>
