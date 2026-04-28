@@ -23,3 +23,7 @@ verify_jwt = false
 # Per-tenant admin login — verifies bcrypt + signs HS256 JWT itself
 [functions.tenant_admin_auth]
 verify_jwt = false
+
+# Per-tenant admin reads/writes — auth verified inside the function
+[functions.tenant_settings]
+verify_jwt = false

@@ -85,6 +85,7 @@
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const AUTH_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -119,6 +120,20 @@ document.getElementById('signout').addEventListener('click', logout);
   const { user, tenant } = data;
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
+
+  // First-run: kick the user into the setup wizard if they haven't finished it.
+  try {
+    const sRes = await fetch(SETTINGS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'get' }),
+    });
+    const sData = await sRes.json();
+    if (sData.ok && !sData.settings?.setup_wizard_complete) {
+      window.location.href = '/club/wizard.html';
+      return;
+    }
+  } catch { /* dashboard is the safe fallback */ }
 
   const statusLabel = ({trial:'Free Trial', active:'Active', suspended:'Suspended', churned:'Closed'})[tenant.status] ?? tenant.status;
   const planLabel   = ({free:'Free', starter:'Starter', pro:'Pro', enterprise:'Enterprise'})[tenant.plan] ?? tenant.plan;
