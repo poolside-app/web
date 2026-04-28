@@ -90,82 +90,43 @@
         <h1>Dashboard</h1>
         <p style="color:var(--muted);margin:0">Welcome back — here's how the platform is doing.</p>
       </div>
-      <button class="btn-sm" style="padding: 10px 16px; font-size: 13px; background: var(--blue); color: #fff; border: 0;">+ Invite tenant</button>
+      <button class="btn-sm" style="padding: 10px 16px; font-size: 13px; background: var(--blue); color: #fff; border: 0;" onclick="openInviteTenantModal()">+ Invite tenant</button>
     </div>
 
     <div class="stats">
       <div class="stat">
         <div class="stat-label">Active tenants</div>
-        <div class="stat-num">14</div>
-        <div class="stat-trend">↑ 3 this month</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">MRR</div>
-        <div class="stat-num">$2,184</div>
-        <div class="stat-trend">↑ $312 vs. last mo.</div>
+        <div class="stat-num" id="stat-active">—</div>
+        <div class="stat-trend" id="stat-active-sub">&nbsp;</div>
       </div>
       <div class="stat">
         <div class="stat-label">Trials</div>
-        <div class="stat-num">5</div>
-        <div class="stat-trend" style="color:var(--amber)">2 expiring soon</div>
+        <div class="stat-num" id="stat-trial">—</div>
+        <div class="stat-trend" id="stat-trial-sub">&nbsp;</div>
       </div>
       <div class="stat">
-        <div class="stat-label">Members across all clubs</div>
-        <div class="stat-num">1,832</div>
-        <div class="stat-trend">↑ 47 this week</div>
+        <div class="stat-label">Households across all clubs</div>
+        <div class="stat-num" id="stat-households">—</div>
+        <div class="stat-trend" id="stat-households-sub">&nbsp;</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total tenants (all-time)</div>
+        <div class="stat-num" id="stat-total">—</div>
+        <div class="stat-trend" id="stat-total-sub">&nbsp;</div>
       </div>
     </div>
 
     <div class="card" id="tenants">
       <div class="card-head">
-        <h2>🏊 Recent tenants</h2>
-        <input placeholder="🔍 Search…" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 220px;">
+        <h2>🏊 Tenants</h2>
+        <input id="tenant-search" placeholder="🔍 Search…" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 220px;" oninput="renderTenants()">
       </div>
       <table class="table">
         <thead>
-          <tr><th>Club</th><th>Subdomain</th><th>Plan</th><th>Status</th><th>Members</th><th></th></tr>
+          <tr><th>Club</th><th>Subdomain</th><th>Plan</th><th>Status</th><th>Households</th><th></th></tr>
         </thead>
-        <tbody>
-          <tr>
-            <td><b>Bishop Estates Cabana Club</b><br><span style="font-size:12px;color:var(--muted)">since 2026-04-27</span></td>
-            <td><a href="../club-demo/">bishopestates.poolside.app</a></td>
-            <td>Pro</td>
-            <td><span class="pill pill-active">ACTIVE</span></td>
-            <td>147</td>
-            <td><button class="btn-sm">Open →</button></td>
-          </tr>
-          <tr>
-            <td><b>Springfield Swim Club</b><br><span style="font-size:12px;color:var(--muted)">since 2026-05-12</span></td>
-            <td>springfield.poolside.app</td>
-            <td>Pro</td>
-            <td><span class="pill pill-active">ACTIVE</span></td>
-            <td>89</td>
-            <td><button class="btn-sm">Open →</button></td>
-          </tr>
-          <tr>
-            <td><b>Lakeshore Cabana Club</b><br><span style="font-size:12px;color:var(--muted)">since 2026-05-18</span></td>
-            <td>lakeshore.poolside.app</td>
-            <td>Starter</td>
-            <td><span class="pill pill-trial">TRIAL · 4d left</span></td>
-            <td>22</td>
-            <td><button class="btn-sm">Open →</button></td>
-          </tr>
-          <tr>
-            <td><b>Maple Hills Pool</b><br><span style="font-size:12px;color:var(--muted)">since 2026-06-01</span></td>
-            <td>maplehills.poolside.app</td>
-            <td>Enterprise</td>
-            <td><span class="pill pill-active">ACTIVE</span></td>
-            <td>312</td>
-            <td><button class="btn-sm">Open →</button></td>
-          </tr>
-          <tr>
-            <td><b>Cedar Grove Aquatics</b><br><span style="font-size:12px;color:var(--muted)">since 2026-06-10</span></td>
-            <td>cedargrove.poolside.app</td>
-            <td>Pro</td>
-            <td><span class="pill pill-suspended">SUSPENDED</span></td>
-            <td>—</td>
-            <td><button class="btn-sm">Open →</button></td>
-          </tr>
+        <tbody id="tenants-tbody">
+          <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -200,6 +161,197 @@
     </div>
   </main>
 </div>
+
+<!-- ── Invite Tenant modal ────────────────────────────────────────────── -->
+<div id="invite-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(10,59,92,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px">
+  <form onsubmit="event.preventDefault(); submitInvite()" style="background:#fff;max-width:480px;width:100%;border-radius:18px;padding:30px 28px;box-shadow:0 20px 60px rgba(10,59,92,.3)">
+    <h2 style="margin:0 0 6px">+ Invite a new tenant</h2>
+    <p style="color:var(--muted);margin:0 0 18px;font-size:14px">Creates the tenant in the Poolside DB. They'll get their subdomain at <code>&lt;slug&gt;.poolsideapp.com</code> (you'll add it manually in Vercel for now).</p>
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Club name</label>
+    <input id="invite-name" type="text" placeholder="e.g. Springfield Swim Club" required style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px" oninput="autoSlugify()">
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Subdomain slug</label>
+    <div style="position:relative">
+      <input id="invite-slug" type="text" placeholder="springfield" required pattern="^[a-z0-9][a-z0-9-]{1,29}$" style="width:100%;padding:11px 14px;padding-right:140px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px">
+      <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px;background:var(--bg);padding:4px 8px;border-radius:6px">.poolsideapp.com</span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Lowercase letters, numbers, hyphens. 2–30 chars. Auto-generated from name above.</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+      <div>
+        <label style="font-weight:600;font-size:13px;display:block;margin:0 0 6px">Plan</label>
+        <select id="invite-plan" style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+          <option value="free">Free</option>
+          <option value="starter">Starter ($99/yr)</option>
+          <option value="pro" selected>Pro ($199/yr)</option>
+          <option value="enterprise">Enterprise ($399/yr)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-weight:600;font-size:13px;display:block;margin:0 0 6px">Status</label>
+        <select id="invite-status" style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+          <option value="trial" selected>Trial (14 days)</option>
+          <option value="active">Active</option>
+        </select>
+      </div>
+    </div>
+
+    <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Internal notes <span style="font-weight:500;color:var(--muted);text-transform:none;font-size:11px">(optional, only you see)</span></label>
+    <textarea id="invite-notes" rows="2" style="width:100%;padding:11px 14px;font:14px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;resize:vertical" placeholder="How they found us, contact info, etc."></textarea>
+
+    <div id="invite-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button type="button" onclick="closeInviteTenantModal()" style="padding:11px 18px;background:#fff;color:var(--text);border:1.5px solid var(--border);border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer">Cancel</button>
+      <button type="submit" id="invite-submit-btn" style="padding:11px 22px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer">Create tenant →</button>
+    </div>
+  </form>
+</div>
+
+<script type="module">
+  // Tenants admin endpoint
+  const TENANTS_FN = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenants_admin';
+
+  async function callTenantsAdmin(action, payload = {}) {
+    const token = localStorage.getItem('poolside_provider_token');
+    if (!token) { window.location.href = '/admin/login.html'; throw new Error('No session'); }
+    const res = await fetch(TENANTS_FN, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+
+  let tenantsCache = [];
+
+  async function loadTenants() {
+    try {
+      const { tenants } = await callTenantsAdmin('list');
+      tenantsCache = tenants || [];
+      renderStats();
+      renderTenants();
+    } catch (e) {
+      const tbody = document.getElementById('tenants-tbody');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:24px">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderStats() {
+    const active = tenantsCache.filter(t => t.status === 'active').length;
+    const trial  = tenantsCache.filter(t => t.status === 'trial').length;
+    const total  = tenantsCache.length;
+    const households = tenantsCache.reduce((s, t) => s + (t.household_count || 0), 0);
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText('stat-active', String(active));
+    setText('stat-trial',  String(trial));
+    setText('stat-households', String(households));
+    setText('stat-total',  String(total));
+
+    // Sub-text trend lines
+    setText('stat-active-sub', active === 0 ? 'No active tenants yet' : `${active} live ${active === 1 ? 'club' : 'clubs'}`);
+    setText('stat-trial-sub',  trial  === 0 ? 'No trials in flight' : `${trial} ${trial === 1 ? 'club' : 'clubs'} on trial`);
+    setText('stat-households-sub', households === 1 ? 'household across the network' : 'households across the network');
+    setText('stat-total-sub', total === 1 ? '1 club ever' : `${total} ${total === 1 ? 'club' : 'clubs'} ever`);
+  }
+
+  function renderTenants() {
+    const tbody = document.getElementById('tenants-tbody');
+    if (!tbody) return;
+    const q = (document.getElementById('tenant-search')?.value || '').trim().toLowerCase();
+    let rows = tenantsCache.slice();
+    if (q) {
+      rows = rows.filter(t =>
+        String(t.display_name || '').toLowerCase().includes(q) ||
+        String(t.slug || '').toLowerCase().includes(q) ||
+        String(t.notes || '').toLowerCase().includes(q));
+    }
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">No tenants yet — click <b>+ Invite tenant</b> to create the first one.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(t => {
+      const planLabel = t.plan ? t.plan[0].toUpperCase() + t.plan.slice(1) : '—';
+      const statusClass = {
+        active: 'pill-active', trial: 'pill-trial',
+        suspended: 'pill-suspended', churned: 'pill-suspended',
+      }[t.status] || 'pill-active';
+      const created = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+      return `<tr>
+        <td><b>${escapeHtml(t.display_name)}</b><br><span style="font-size:12px;color:var(--muted)">since ${escapeHtml(created)}</span></td>
+        <td><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank">${escapeHtml(t.slug)}.poolsideapp.com</a></td>
+        <td>${escapeHtml(planLabel)}</td>
+        <td><span class="pill ${statusClass}">${escapeHtml((t.status || '').toUpperCase())}</span></td>
+        <td>${t.household_count || 0}</td>
+        <td><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" class="btn-sm" style="text-decoration:none">Open →</a></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Invite Tenant modal ─────────────────────────────────────────────
+  window.openInviteTenantModal = function() {
+    document.getElementById('invite-name').value  = '';
+    document.getElementById('invite-slug').value  = '';
+    document.getElementById('invite-notes').value = '';
+    document.getElementById('invite-err').style.display = 'none';
+    document.getElementById('invite-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('invite-name').focus(), 50);
+  };
+  window.closeInviteTenantModal = function() {
+    document.getElementById('invite-modal').style.display = 'none';
+  };
+
+  // Auto-slugify display name as user types
+  window.autoSlugify = function() {
+    const name = document.getElementById('invite-name').value;
+    const slugInput = document.getElementById('invite-slug');
+    // Only auto-generate if user hasn't manually edited the slug
+    if (slugInput.dataset.userEdited === '1') return;
+    const slug = name.toLowerCase()
+      .replace(/[^a-z0-9 -]/g, '')
+      .replace(/\s+/g, '')
+      .replace(/-+/g, '-')
+      .slice(0, 30);
+    slugInput.value = slug;
+  };
+  document.getElementById('invite-slug').addEventListener('input', e => {
+    e.target.dataset.userEdited = '1';
+  });
+
+  window.submitInvite = async function() {
+    const btn = document.getElementById('invite-submit-btn');
+    const errEl = document.getElementById('invite-err');
+    errEl.style.display = 'none';
+    const display_name = document.getElementById('invite-name').value.trim();
+    const slug         = document.getElementById('invite-slug').value.trim().toLowerCase();
+    const plan         = document.getElementById('invite-plan').value;
+    const status       = document.getElementById('invite-status').value;
+    const notes        = document.getElementById('invite-notes').value.trim();
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Creating…';
+    try {
+      await callTenantsAdmin('create', { display_name, slug, plan, status, notes: notes || null });
+      closeInviteTenantModal();
+      await loadTenants();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
+  };
+
+  // Kick off the load
+  // Wait for the auth check to finish first — both run on same page
+  // load. Slight delay is fine.
+  setTimeout(loadTenants, 400);
+</script>
 
 <script type="module">
   // Auth gate — redirect to /admin/login.html if not signed in.
