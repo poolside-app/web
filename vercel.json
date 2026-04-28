@@ -1,18 +1,12 @@
 {
   "redirects": [
     {
-      "source": "/test-vercel-json-12345",
-      "destination": "/club/index.html",
-      "permanent": false
-    }
-  ],
-  "rewrites": [
-    {
       "source": "/",
       "has": [
         { "type": "host", "value": "bishopestates.poolsideapp.com" }
       ],
-      "destination": "/club/index.html"
+      "destination": "/club/index.html",
+      "permanent": false
     }
   ]
 }
