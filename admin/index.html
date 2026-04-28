@@ -73,12 +73,16 @@
       <a href="#analytics"><span class="icon">📈</span> Analytics</a>
       <a href="#support"><span class="icon">💬</span> Support</a>
       <hr style="border:0; border-top:1px solid rgba(255,255,255,.15); margin:18px 0">
+      <div style="font-size:12px;color:rgba(255,255,255,.65);padding:6px 12px;line-height:1.4">
+        Signed in as<br><b id="auth-display-name" style="color:#fff">…</b>
+      </div>
+      <a href="#" onclick="event.preventDefault(); doLogout()"><span class="icon">⏻</span> Sign out</a>
       <a href="../index.html"><span class="icon">←</span> Back to marketing</a>
     </nav>
   </aside>
   <main>
     <div class="banner">
-      <b>Prototype.</b> All numbers below are mocked. Real provider admin gets built when Poolside repo is set up.
+      <b>Welcome back, <span id="auth-greeting">…</span>.</b> Some of the numbers below are still mocked while we wire up real tenant data; integrations panel and Gate Integrations tab are real.
     </div>
 
     <div class="top">
@@ -196,5 +200,66 @@
     </div>
   </main>
 </div>
+
+<script type="module">
+  // Auth gate — redirect to /admin/login.html if not signed in.
+  const FN_URL = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/admin_auth';
+  const token = localStorage.getItem('poolside_provider_token');
+
+  if (!token) {
+    window.location.href = '/admin/login.html';
+  } else {
+    // Verify token still valid + load fresh user shape.
+    fetch(FN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json()).then(data => {
+      if (!data.ok || !data.user) {
+        localStorage.removeItem('poolside_provider_token');
+        localStorage.removeItem('poolside_provider_user');
+        window.location.href = '/admin/login.html';
+        return;
+      }
+      // Default-pw users must change before reaching dashboard.
+      if (data.user.is_default_pw) {
+        window.location.href = '/admin/change-password.html';
+        return;
+      }
+      // Hydrate the placeholders.
+      const name = data.user.display_name || data.user.email || 'Admin';
+      const first = String(name).split(' ')[0];
+      const dn = document.getElementById('auth-display-name');
+      const gr = document.getElementById('auth-greeting');
+      if (dn) dn.textContent = name;
+      if (gr) gr.textContent = first;
+      localStorage.setItem('poolside_provider_user', JSON.stringify(data.user));
+    }).catch(() => {
+      // Network failure — fall back to cached user shape if available.
+      try {
+        const cached = JSON.parse(localStorage.getItem('poolside_provider_user') || '{}');
+        const name = cached.display_name || cached.email || 'Admin';
+        const dn = document.getElementById('auth-display-name');
+        const gr = document.getElementById('auth-greeting');
+        if (dn) dn.textContent = name;
+        if (gr) gr.textContent = String(name).split(' ')[0];
+      } catch {}
+    });
+  }
+
+  window.doLogout = async function() {
+    try {
+      await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'logout' }),
+      });
+    } catch {}
+    localStorage.removeItem('poolside_provider_token');
+    localStorage.removeItem('poolside_provider_user');
+    window.location.href = '/admin/login.html';
+  };
+</script>
+
 </body>
 </html>

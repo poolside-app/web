@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Provider sign in — Poolside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow:0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(60% 60% at 70% 0%, rgba(245,158,11,.10), transparent 60%),
+      radial-gradient(50% 50% at 0% 80%, rgba(10,59,92,.06), transparent 60%),
+      var(--bg);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-font-smoothing: antialiased; padding: 32px 20px;
+  }
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 18px; padding: 36px 32px;
+    box-shadow: var(--shadow); max-width: 440px; width: 100%;
+  }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px;
+    color: var(--blue); text-decoration: none; margin-bottom: 18px;
+  }
+  .logo-dot { width:11px; height:11px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  .role-pill {
+    background: var(--blue-l); color: var(--blue);
+    font-size: 11px; font-weight: 700; letter-spacing: .12em;
+    padding: 4px 10px; border-radius: 999px; display: inline-block;
+    margin-bottom: 22px;
+  }
+  h1 { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600; margin: 0 0 6px; line-height: 1.15; letter-spacing: -.01em; }
+  .lede { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+
+  label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 12px 14px; font: 15px/1.4 'Inter', sans-serif;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    background: #fff; color: var(--text); transition: border .12s; font-family: inherit;
+  }
+  input:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+
+  .btn {
+    width: 100%; padding: 13px;
+    background: var(--blue); color: #fff; border: 0; border-radius: 10px;
+    font: 600 15px 'Inter', sans-serif; cursor: pointer;
+    margin-top: 22px; transition: background .12s;
+    font-family: inherit;
+  }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: wait; }
+
+  .err {
+    margin-top: 14px; padding: 10px 14px; font-size: 13px;
+    background: #fee2e2; border: 1px solid #fecaca; color: #7f1d1d;
+    border-radius: 10px; display: none;
+  }
+  .err.show { display: block; }
+
+  .help { font-size: 12px; color: var(--muted); margin-top: 16px; text-align: center; }
+  .help a { color: var(--blue); }
+</style>
+</head>
+<body>
+<form class="card" onsubmit="event.preventDefault(); doLogin()">
+  <a href="/" class="logo">
+    <span class="logo-dot"></span> Poolside
+  </a>
+  <span class="role-pill">PROVIDER ADMIN</span>
+  <h1>Sign in.</h1>
+  <p class="lede">Provider-side dashboard for managing tenants, integrations, and platform-wide settings.</p>
+
+  <label>Email</label>
+  <input id="email" type="email" autocomplete="email" required autofocus>
+  <label>Password</label>
+  <input id="password" type="password" autocomplete="current-password" required minlength="8">
+
+  <button class="btn" id="submit-btn" type="submit">Sign in →</button>
+  <div class="err" id="err"></div>
+  <p class="help">Tenant admins (per-club) sign in at <code>yourclub.poolsideapp.com/admin</code>.</p>
+</form>
+
+<script type="module">
+  // The Supabase project's edge function URL. Hardcoded — public.
+  const FN_URL = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/admin_auth';
+
+  async function doLogin() {
+    const btn   = document.getElementById('submit-btn');
+    const errEl = document.getElementById('err');
+    errEl.classList.remove('show');
+    const email    = document.getElementById('email').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
+    if (!email || !password) {
+      errEl.textContent = 'Email and password are required';
+      errEl.classList.add('show');
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'login', username: email, password }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Sign-in failed');
+      localStorage.setItem('poolside_provider_token', data.token);
+      localStorage.setItem('poolside_provider_user',  JSON.stringify(data.user));
+      // If the password is still the default, force a change before showing the dashboard.
+      if (data.user?.is_default_pw) {
+        window.location.href = '/admin/change-password.html';
+      } else {
+        window.location.href = '/admin/';
+      }
+    } catch (e) {
+      errEl.textContent = e.message || 'Sign-in failed';
+      errEl.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Sign in →';
+    }
+  }
+  // Expose for the form's onsubmit hook (it's loaded as a module).
+  window.doLogin = doLogin;
+</script>
+</body>
+</html>

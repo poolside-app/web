@@ -5,3 +5,6 @@ project_id = "sdewylbddkcvidwosgxo"
 # the admin tokens we sign because they're not signed with Supabase's key.
 
 # (List grows as we add Edge Functions in later migrations.)
+
+[functions.admin_auth]
+verify_jwt = false

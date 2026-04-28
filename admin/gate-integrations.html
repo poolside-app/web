@@ -428,6 +428,11 @@ function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
 }
+
+// Auth gate — same pattern as admin/index.html.
+if (!localStorage.getItem('poolside_provider_token')) {
+  window.location.href = '/admin/login.html';
+}
 </script>
 </body>
 </html>
