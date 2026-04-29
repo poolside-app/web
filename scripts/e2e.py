@@ -3,12 +3,18 @@
 End-to-end test of the applications pipeline.
 
 Mints a synthetic tenant_admin JWT (no provider login needed) and walks the
-full apply → review → verify → reminder → cleanup flow against bishopestates.
+full apply -> review -> verify -> reminder -> cleanup flow against bishopestates.
 
 Run from the repo root:   python scripts/e2e.py
 Exits 0 on all-green, 1 on any failure.
 """
 import os, sys, time, json, hmac, hashlib, base64, uuid, urllib.request, urllib.parse, urllib.error
+
+# Windows cp1252 stdout chokes on Unicode box drawings; force UTF-8 if available.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 
 ENV = {}
 with open('.env.local', 'r') as f:
@@ -47,10 +53,13 @@ def mint_tenant_admin_jwt(tid: str, slug: str) -> str:
     sig = hmac.new(JWT_SECRET.encode(), f'{h}.{p}'.encode(), hashlib.sha256).digest()
     return f'{h}.{p}.{b64url(sig)}'
 
+UA = 'poolside-e2e/1.0'  # default urllib UA gets blocked by some APIs
+
 def post(url: str, body: dict, token: str | None = None) -> dict:
     data = json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, method='POST')
     req.add_header('Content-Type', 'application/json')
+    req.add_header('User-Agent', UA)
     if token: req.add_header('Authorization', f'Bearer {token}')
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
@@ -67,6 +76,7 @@ def mgmt_query(sql: str) -> list:
     req = urllib.request.Request(url, data=json.dumps({'query': sql}).encode(), method='POST')
     req.add_header('Authorization', f'Bearer {ACCESS_TOKEN}')
     req.add_header('Content-Type', 'application/json')
+    req.add_header('User-Agent', UA)
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read().decode())
 
@@ -100,7 +110,7 @@ TENANT_ID = rows[0]['id']
 TOKEN = mint_tenant_admin_jwt(TENANT_ID, TENANT_SLUG)
 
 print(f'\nE2E against tenant: {TENANT_SLUG} ({TENANT_ID})\n')
-print('── Applications pipeline ──')
+print('-- Applications pipeline --')
 
 stamp   = str(int(time.time()))[-6:]
 APP_FAM = f'E2E Family {stamp}'
