@@ -30,7 +30,8 @@ flop() { printf "  ${red}✗${rst} %s — %s\n" "$1" "$2"; fail=$((fail+1)); }
 check() {
   local name="$1" url="$2" expect="$3"
   local body
-  body="$(curl -sS --max-time 15 "$url" 2>&1)" || { flop "$name" "curl failed"; return; }
+  # -L so apex→www redirects don't return "Redirecting…" stubs
+  body="$(curl -sSL --max-time 15 "$url" 2>&1)" || { flop "$name" "curl failed"; return; }
   if [[ "$body" == *"$expect"* ]]; then pass "$name"
   else flop "$name" "expected '${expect}' in response"; fi
 }
