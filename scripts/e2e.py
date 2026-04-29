@@ -476,6 +476,80 @@ step('verify_payment flips dues_paid',           app_verify_flips_dues)
 step('reminder refuses when already paid',       app_reminder_blocked_when_paid)
 step('audit log has welcome + venmo_verified',  app_audit_log)
 
+# Full BE-parity application: 2 adults + 2 kids + waivers + signatures.
+# Verifies that approve auto-populates ALL household members (not just primary).
+FULL_APP_ID = None
+FULL_HH_ID  = None
+SIG_PNG = ('data:image/png;base64,'
+           'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=')
+
+def app_submit_full_detail():
+    global FULL_APP_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'submit', 'slug': SLUG_A,
+        'family_name':   f'Full {STAMP}',
+        'primary_name':  f'Pat Full {STAMP}',
+        'primary_email': f'full-primary-{STAMP}@example.com',
+        'primary_phone': f'+1555{STAMP}1001',
+        'is_new_member': True,
+        'need_new_fob':  True,
+        'alt_email':     f'full-alt-{STAMP}@example.com',
+        'adults': [
+            { 'name': f'Pat Full {STAMP}',     'email': f'full-primary-{STAMP}@example.com', 'phone': f'+1555{STAMP}1001' },
+            { 'name': f'Sam Spouse {STAMP}',   'email': f'full-spouse-{STAMP}@example.com',  'phone': f'+1555{STAMP}1002' },
+        ],
+        'children': [
+            { 'name': f'Tween Kid {STAMP}', 'dob': '2012-06-15' },  # ≥13 → role=teen
+            { 'name': f'Tiny Kid {STAMP}',  'dob': '2020-03-10', 'allergies': 'peanuts' },
+        ],
+        'waivers_accepted': { 'rules': True, 'guest': True, 'party': True, 'sitter': True, 'waiver': True },
+        'signature_primary':  SIG_PNG,
+        'signature_guardian': SIG_PNG,
+        'payment_method': 'venmo',
+    })
+    assert r.get('ok'), f'full submit: {r}'
+    FULL_APP_ID = r['application_id']
+    track('applications', FULL_APP_ID)
+
+def app_full_approve_populates_all_members():
+    global FULL_HH_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'approve', 'id': FULL_APP_ID, 'override': {'tier': 'family'},
+    }, TOKEN_A)
+    assert r.get('ok'), f'full approve: {r}'
+    FULL_HH_ID = r['household_id']
+    track('households', FULL_HH_ID)
+    # Should have created primary + spouse + 2 children = 4 members total.
+    expected = 4
+    got = r.get('members_created')
+    assert got == expected, f'expected {expected} members created, got {got}'
+
+def app_full_household_roster_correct():
+    rows = mgmt_query(
+        f"select role, name from public.household_members "
+        f"where household_id = '{FULL_HH_ID}' order by name;"
+    )
+    roles = sorted([r['role'] for r in rows])
+    # primary + adult + teen (DOB 2012, ≥13y old) + child
+    expected_roles = ['adult', 'child', 'primary', 'teen']
+    assert roles == expected_roles, f'expected roles {expected_roles}, got {roles}'
+
+def app_full_signatures_persisted():
+    rows = mgmt_query(
+        f"select signature_primary, signature_guardian, accepted_at "
+        f"from public.applications where id = '{FULL_APP_ID}';"
+    )
+    assert rows, 'application row missing'
+    a = rows[0]
+    assert a.get('signature_primary',  '').startswith('data:image/png;base64,'), 'primary sig missing'
+    assert a.get('signature_guardian', '').startswith('data:image/png;base64,'), 'guardian sig missing'
+    assert a.get('accepted_at'), 'accepted_at not set despite all 5 waivers true'
+
+step('submit application (full BE parity)',       app_submit_full_detail)
+step('approve populates all 4 household members', app_full_approve_populates_all_members)
+step('household roles match adults/children mix', app_full_household_roster_correct)
+step('signatures + accepted_at persisted',        app_full_signatures_persisted)
+
 # ── 9. Member auth start (no auth required path) ─────────────────────────
 section('Member auth')
 

@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const waivers = (body.waivers ?? {}) as Record<string, unknown>;
+    const waivers = (body.waivers_accepted ?? body.waivers ?? {}) as Record<string, unknown>;
     const waivers_accepted: Record<string, boolean> = {};
     for (const k of ['rules','guest','party','sitter','waiver']) {
       waivers_accepted[k] = waivers[k] === true;
