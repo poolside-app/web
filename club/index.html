@@ -353,14 +353,34 @@ function fmtHourLabel(hhmm) {
   return m[1] === '00' ? `${h}${ap}` : `${h}:${m[1]}${ap}`;
 }
 
-function renderTenant(t, ps, posts, events, photos) {
+function renderTenant(t, ps, posts, events, photos, documents) {
   GALLERY = photos || [];
+
+  // Apply tenant primary color across the page (override --blue + --blue-2).
+  const primary = ps?.branding?.primary_color;
+  if (primary && /^#[0-9a-f]{6}$/i.test(primary)) {
+    document.documentElement.style.setProperty('--blue', primary);
+    // Compute a slightly darker --blue-2 by blending toward black 12%
+    const hex = primary.slice(1);
+    const r = parseInt(hex.slice(0,2), 16);
+    const g = parseInt(hex.slice(2,4), 16);
+    const b = parseInt(hex.slice(4,6), 16);
+    const dim = (n) => Math.max(0, Math.round(n * 0.86)).toString(16).padStart(2, '0');
+    document.documentElement.style.setProperty('--blue-2', `#${dim(r)}${dim(g)}${dim(b)}`);
+  }
 
   // Coming-up = next 5 upcoming derived from the wider events list.
   const nowMs = Date.now();
   const upcoming = (events || []).filter(e => new Date(e.starts_at).getTime() >= nowMs).slice(0, 5);
   document.title = `${t.display_name} — ${ps?.club?.location || 'Poolside'}`;
-  document.getElementById('club-name').textContent = t.display_name;
+  // If a logo is set, swap the topbar text for an image
+  const logoUrl = ps?.branding?.logo_url;
+  const nameEl = document.getElementById('club-name');
+  if (logoUrl) {
+    nameEl.innerHTML = `<img src="${escapeAttr(logoUrl)}" alt="${escapeAttr(t.display_name)}" style="max-height:32px;max-width:200px;display:block">`;
+  } else {
+    nameEl.textContent = t.display_name;
+  }
 
   const hasPhoto = !!ps?.branding?.background_photo_url;
   if (hasPhoto) {
@@ -443,6 +463,21 @@ function renderTenant(t, ps, posts, events, photos) {
         </div>
       </section>
     ` : ''}
+    ${(documents && documents.length) ? `
+      <section class="news">
+        <h2>Documents</h2>
+        ${documents.map(d => `
+          <a href="${escapeAttr(d.url)}" target="_blank" rel="noopener" class="post" style="display:flex;gap:14px;align-items:center;text-decoration:none">
+            <div style="font-size:28px;flex-shrink:0">${/\.pdf(\?|$)/i.test(d.url) ? '📄' : '📎'}</div>
+            <div style="flex:1">
+              <div class="post-title" style="font-size:16px">${escapeHtml(d.title)}</div>
+              ${d.description ? `<div style="font-size:13px;color:var(--muted);margin-top:4px">${escapeHtml(d.description)}</div>` : ''}
+            </div>
+            <div style="color:var(--blue);font-size:14px;font-weight:600">↗</div>
+          </a>
+        `).join('')}
+      </section>
+    ` : ''}
     ${(posts && posts.length) ? `
       <section class="news">
         <h2>Latest news <span class="count">${posts.length} post${posts.length === 1 ? '' : 's'}</span></h2>
@@ -482,7 +517,7 @@ function renderTenant(t, ps, posts, events, photos) {
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
-    renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || [], data.photos || []);
+    renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || [], data.photos || [], data.documents || []);
   } catch (e) {
     document.getElementById('root').innerHTML = `
       <div class="err">

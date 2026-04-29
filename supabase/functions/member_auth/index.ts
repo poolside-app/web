@@ -266,11 +266,23 @@ Deno.serve(async (req) => {
     if (!member || !member.active) return jsonResponse({ ok: false, error: 'Member not found' }, 401);
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 401);
     if (!household || !household.active) return jsonResponse({ ok: false, error: 'Household not active' }, 401);
+
+    // Members see public + members-visibility documents
+    const { data: docs } = await sb.from('documents')
+      .select('id, title, description, url, visibility, sort_order')
+      .eq('tenant_id', payload.tid as string)
+      .eq('active', true)
+      .in('visibility', ['public', 'members'])
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(50);
+
     return jsonResponse({
       ok: true,
       user: member,
       tenant,
       household: { ...household, members: housemates ?? [] },
+      documents: docs ?? [],
     });
   }
 

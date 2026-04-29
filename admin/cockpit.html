@@ -130,6 +130,7 @@
   <label style="font-weight:600;font-size:12px;color:var(--muted)">Tenant</label>
   <select id="tenant-pick"></select>
   <button onclick="reloadFrames()">↻ Reload frames</button>
+  <button onclick="resetSelected()" title="Wipe + reseed the selected tenant with demo data">🌱 Reset & seed</button>
   <button class="primary" id="run-btn" onclick="runE2e()">🧪 Run end-to-end</button>
   <span class="pill" id="last-deploy">deploy: …</span>
   <span class="pill" id="last-smoke">smoke: …</span>
@@ -286,6 +287,18 @@ async function loadFrames() {
     document.getElementById('member-ph').textContent = e.message;
     document.getElementById('admin-ph').textContent = e.message;
   }
+}
+
+async function resetSelected() {
+  if (!SELECTED) return;
+  if (!confirm(`Reset ${SELECTED.display_name}?\n\nWIPES households, events, posts, photos, party requests, then re-seeds with realistic demo data. Use freely on test tenants; do NOT use on a production tenant.`)) return;
+  try {
+    const data = await call(TENANTS_FN, 'seed_demo_data', { tenant_id: SELECTED.id, wipe: true });
+    if (!data.ok) throw new Error(data.error || 'Reset failed');
+    const s = data.summary;
+    alert(`Reset ${SELECTED.display_name}:\n${s.households} households · ${s.members} members\n${s.events} events · ${s.posts} posts · ${s.photos} photos`);
+    reloadFrames();
+  } catch (e) { alert(e.message); }
 }
 
 function reloadFrames() {

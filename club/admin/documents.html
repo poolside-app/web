@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Documents — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 880px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .doc {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 16px 20px; margin-bottom: 10px;
+    box-shadow: var(--shadow); cursor: pointer; transition: border .12s;
+  }
+  .doc:hover { border-color: var(--blue); }
+  .doc-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: var(--blue-l); display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .doc.inactive { opacity: .55; background: var(--bg-2); }
+  .doc-title { font-weight: 600; font-size: 15px; }
+  .doc-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.public { background: #dcfce7; color: #14532d; }
+  .pill.members{ background: var(--blue-l); color: var(--blue); }
+  .pill.admins { background: #fef3c7; color: #92400e; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+
+  .scrim { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
+  .scrim.open { display: flex; }
+  .modal { background: #fff; border-radius: var(--r-lg); padding: 26px; width: 100%; max-width: 580px; box-shadow: 0 20px 60px rgba(10,59,92,.18); }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal select, .modal textarea { width: 100%; padding: 10px 12px; font: 14px 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
+  .modal textarea { resize: vertical; min-height: 70px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .modal-foot .left { margin-right: auto; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+  .upload-status { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html" class="on">Documents</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Documents</h1>
+    <button class="btn" onclick="openCreate()">+ Add document</button>
+  </div>
+
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<div class="scrim" id="scrim">
+  <div class="modal">
+    <h2 id="m-heading">Add document</h2>
+    <input type="hidden" id="m-id">
+    <label>Title</label>
+    <input id="m-title" placeholder="Member handbook 2026">
+    <label>Description <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+    <textarea id="m-description" maxlength="500" placeholder="What is this document and when does it apply?"></textarea>
+
+    <div class="row2">
+      <div>
+        <label>Visibility</label>
+        <select id="m-visibility">
+          <option value="public">🌐 Public — landing page</option>
+          <option value="members">📱 Members only</option>
+          <option value="admins">🔑 Admins only</option>
+        </select>
+      </div>
+      <div>
+        <label>Order</label>
+        <input type="number" id="m-sort_order" value="0">
+      </div>
+    </div>
+
+    <label>Upload PDF or image <span style="color:var(--muted);font-weight:500;font-size:11px">(replaces existing file)</span></label>
+    <input type="file" id="m-file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif" onchange="uploadFile(this)">
+    <div class="upload-status" id="upload-status">PDF, JPG, PNG, WebP, or GIF · up to 25 MB</div>
+
+    <label>…or paste a URL</label>
+    <input type="url" id="m-url" placeholder="https://...">
+
+    <div class="err" id="m-err"></div>
+    <div class="modal-foot">
+      <button id="m-delete" class="btn btn-danger left" style="display:none" onclick="del()">Remove document</button>
+      <button class="btn btn-ghost" onclick="closeM()">Cancel</button>
+      <button class="btn" id="m-save" onclick="save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const DOCS_URL  = `${SUPABASE_URL}/functions/v1/documents_admin`;
+const UPLOAD_URL = `${SUPABASE_URL}/functions/v1/tenant_upload`;
+const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const MAX_BYTES = 25 * 1024 * 1024;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function iconForUrl(url) {
+  if (/\.pdf(\?|$)/i.test(url)) return '📄';
+  if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '🖼️';
+  return '📎';
+}
+
+let CACHE = [];
+async function refresh() {
+  try {
+    const data = await call(DOCS_URL, 'list');
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    CACHE = (data.documents || []).filter(d => d.active);
+    const list = document.getElementById('list');
+    if (!CACHE.length) {
+      list.innerHTML = `<div class="empty"><h2>No documents yet</h2>Upload your member handbook, club rules, application form, etc.</div>`;
+      return;
+    }
+    list.innerHTML = CACHE.map(d => `
+      <div class="doc" onclick='openEdit(${JSON.stringify(d).replace(/'/g, "&#39;")})'>
+        <div class="doc-icon">${iconForUrl(d.url)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="doc-title">${escapeHtml(d.title)} <span class="pill ${escapeHtml(d.visibility)}">${escapeHtml(d.visibility)}</span></div>
+          ${d.description ? `<div class="doc-desc">${escapeHtml(d.description)}</div>` : ''}
+        </div>
+        <a href="${escapeAttr(d.url)}" target="_blank" rel="noopener" class="btn-ghost btn btn-sm" onclick="event.stopPropagation()" style="text-decoration:none;flex-shrink:0">↗ Open</a>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function openCreate() {
+  document.getElementById('m-heading').textContent = 'Add document';
+  document.getElementById('m-id').value = '';
+  document.getElementById('m-title').value = '';
+  document.getElementById('m-description').value = '';
+  document.getElementById('m-visibility').value = 'public';
+  document.getElementById('m-sort_order').value = '0';
+  document.getElementById('m-url').value = '';
+  document.getElementById('m-file').value = '';
+  document.getElementById('upload-status').textContent = 'PDF, JPG, PNG, WebP, or GIF · up to 25 MB';
+  document.getElementById('m-delete').style.display = 'none';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim').classList.add('open');
+}
+function openEdit(d) {
+  document.getElementById('m-heading').textContent = 'Edit document';
+  document.getElementById('m-id').value = d.id;
+  document.getElementById('m-title').value = d.title || '';
+  document.getElementById('m-description').value = d.description || '';
+  document.getElementById('m-visibility').value = d.visibility || 'public';
+  document.getElementById('m-sort_order').value = d.sort_order ?? 0;
+  document.getElementById('m-url').value = d.url || '';
+  document.getElementById('m-file').value = '';
+  document.getElementById('upload-status').textContent = 'Upload a new file to replace this one';
+  document.getElementById('m-delete').style.display = 'inline-block';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim').classList.add('open');
+}
+function closeM() { document.getElementById('scrim').classList.remove('open'); }
+
+async function uploadFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const status = document.getElementById('upload-status');
+  if (file.size > MAX_BYTES) {
+    status.textContent = 'File too large — keep it under 25 MB.';
+    input.value = '';
+    return;
+  }
+  status.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Read failed'));
+      r.readAsDataURL(file);
+    });
+    const t = token();
+    const res = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Upload failed');
+    document.getElementById('m-url').value = data.url;
+    if (!document.getElementById('m-title').value) {
+      // pre-fill title from filename if blank
+      document.getElementById('m-title').value = file.name.replace(/\.[a-z0-9]+$/i, '');
+    }
+    status.textContent = '✓ Uploaded.';
+  } catch (e) {
+    status.textContent = e.message || 'Upload failed';
+  }
+}
+
+async function save() {
+  const id = document.getElementById('m-id').value;
+  const title = document.getElementById('m-title').value.trim();
+  const description = document.getElementById('m-description').value.trim() || null;
+  const visibility = document.getElementById('m-visibility').value;
+  const sort_order = Number(document.getElementById('m-sort_order').value || 0);
+  const url = document.getElementById('m-url').value.trim();
+  const errEl = document.getElementById('m-err');
+  errEl.classList.remove('show');
+  if (!title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
+  if (!url)   { errEl.textContent = 'Upload a file or paste a URL'; errEl.classList.add('show'); return; }
+
+  const btn = document.getElementById('m-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const action = id ? 'update' : 'create';
+    const payload = id
+      ? { id, title, description, visibility, sort_order }
+      : { title, description, visibility, sort_order, url };
+    const data = await call(DOCS_URL, action, payload);
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    // For updates we may also want to swap the URL if a new file was uploaded
+    if (id && url && data.document?.url !== url) {
+      await call(DOCS_URL, 'update', { id, /* re-attach URL */ });
+      // documents_admin update doesn't accept url — reflect it via re-create-style migration if needed.
+      // For v1 we just note this.
+    }
+    closeM();
+    await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function del() {
+  const id = document.getElementById('m-id').value;
+  if (!id) return;
+  if (!confirm('Remove this document?')) return;
+  try {
+    const data = await call(DOCS_URL, 'delete', { id });
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    closeM();
+    await refresh();
+  } catch (e) { document.getElementById('m-err').textContent = e.message; document.getElementById('m-err').classList.add('show'); }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Documents — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>

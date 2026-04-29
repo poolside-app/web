@@ -113,6 +113,7 @@
   <a href="/club/admin/parties.html">Parties</a>
   <a href="/club/admin/announcements.html">Announcements</a>
   <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html">Documents</a>
   <a href="/club/admin/impact.html">Impact</a>
   <a href="/club/admin/settings.html" class="on">Settings</a>
   <a href="/club/wizard.html">Wizard</a>
@@ -152,7 +153,9 @@
   </div>
 
   <div class="card">
-    <h2>Background photo</h2>
+    <h2>Branding</h2>
+
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Background photo <span style="color:var(--muted);font-weight:500;font-size:12px">— shown behind the public hero</span></h3>
     <div id="bg-preview" class="bg-preview" style="display:none;margin-bottom:12px">
       <img id="bg-preview-img" alt="">
       <button type="button" class="btn-ghost btn" style="margin-top:8px" onclick="clearBg()">Remove photo</button>
@@ -162,6 +165,26 @@
     <p style="font-size:11px;color:var(--muted);margin-top:4px" id="bg-status">JPG, PNG, WebP, or GIF · up to 10 MB</p>
     <label style="margin-top:14px">…or paste a URL</label>
     <input type="url" id="background_photo_url" placeholder="https://..." oninput="syncBgPreview()">
+
+    <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Logo <span style="color:var(--muted);font-weight:500;font-size:12px">— replaces "Poolside" in the topbar</span></h3>
+    <div id="logo-preview" class="bg-preview" style="display:none;margin-bottom:12px">
+      <img id="logo-preview-img" alt="" style="max-height:80px;width:auto;background:var(--bg-2);padding:8px;border-radius:8px">
+      <button type="button" class="btn-ghost btn" style="margin-top:8px" onclick="clearLogo()">Remove logo</button>
+    </div>
+    <label>Upload from your computer</label>
+    <input type="file" id="logo-file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="uploadLogo(this)">
+    <p style="font-size:11px;color:var(--muted);margin-top:4px" id="logo-status">PNG with transparent background works best · 240×60 recommended</p>
+    <label style="margin-top:14px">…or paste a URL</label>
+    <input type="url" id="logo_url" placeholder="https://..." oninput="syncLogoPreview()">
+
+    <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Primary color <span style="color:var(--muted);font-weight:500;font-size:12px">— replaces Poolside blue across your member + public pages</span></h3>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <input type="color" id="primary_color" value="#0a3b5c" style="width:80px;height:44px;padding:2px;cursor:pointer">
+      <button type="button" class="btn-ghost btn" onclick="document.getElementById('primary_color').value='#0a3b5c'">Reset to default</button>
+      <span style="font-size:12px;color:var(--muted)">Pick a darker shade — text on top of it stays readable.</span>
+    </div>
   </div>
 
   <div class="card">
@@ -293,6 +316,51 @@ function syncBgPreview() {
   if (url) { img.src = url; wrap.style.display = 'block'; }
   else { img.removeAttribute('src'); wrap.style.display = 'none'; }
 }
+function syncLogoPreview() {
+  const url = val('logo_url');
+  const wrap = document.getElementById('logo-preview');
+  const img  = document.getElementById('logo-preview-img');
+  if (url) { img.src = url; wrap.style.display = 'block'; }
+  else { img.removeAttribute('src'); wrap.style.display = 'none'; }
+}
+function clearLogo() {
+  setVal('logo_url', '');
+  document.getElementById('logo-file').value = '';
+  document.getElementById('logo-status').textContent = 'PNG with transparent background works best · 240×60 recommended';
+  syncLogoPreview();
+}
+async function uploadLogo(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const status = document.getElementById('logo-status');
+  if (file.size > MAX_UPLOAD_BYTES) {
+    status.textContent = 'File too large — keep it under 10 MB.'; input.value = ''; return;
+  }
+  status.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Could not read file'));
+      r.readAsDataURL(file);
+    });
+    const t = token();
+    if (!t) { logout(); return; }
+    const res = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Upload failed');
+    setVal('logo_url', data.url);
+    syncLogoPreview();
+    status.textContent = '✓ Uploaded.';
+  } catch (e) {
+    status.textContent = e.message || 'Upload failed';
+  }
+}
 function clearBg() {
   setVal('background_photo_url', '');
   document.getElementById('bg-file').value = '';
@@ -349,7 +417,10 @@ function populate(s) {
   setVal('hero_headline',    s.hero?.headline);
   setVal('hero_tagline',     s.hero?.tagline);
   setVal('background_photo_url', s.branding?.background_photo_url);
+  setVal('logo_url',              s.branding?.logo_url);
+  setVal('primary_color',         s.branding?.primary_color || '#0a3b5c');
   syncBgPreview();
+  syncLogoPreview();
   setVal('lat',  s.pool?.lat);
   setVal('lng',  s.pool?.lng);
   if (s.pool?.opens_at)  setVal('opens_at', s.pool.opens_at);
@@ -380,7 +451,11 @@ function collect(prevSettings) {
       headline: val('hero_headline') || null,
       tagline:  val('hero_tagline') || null,
     },
-    branding: { background_photo_url: val('background_photo_url') || null },
+    branding: {
+      background_photo_url: val('background_photo_url') || null,
+      logo_url:             val('logo_url') || null,
+      primary_color:        val('primary_color') || null,
+    },
     pool: {
       ...(prevSettings?.pool ?? {}),
       lat:                val('lat') ? Number(val('lat')) : null,

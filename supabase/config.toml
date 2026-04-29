@@ -67,3 +67,7 @@ verify_jwt = false
 # Aggregated time-saved / dollar-value metrics for the Impact admin page
 [functions.tenant_metrics]
 verify_jwt = false
+
+# Per-tenant documents (handbook, applications, financials)
+[functions.documents_admin]
+verify_jwt = false

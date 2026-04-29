@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My profile — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  main { flex: 1; padding: 28px 22px; max-width: 540px; width: 100%; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 24px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  input { width: 100%; padding: 10px 12px; font: 14px 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+  .ok  { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#dcfce7; border:1px solid #86efac; color:#14532d; border-radius:10px; }
+  .ok.show  { display: block; }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/admin/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <a href="/admin/" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to admin</a>
+</header>
+<main>
+  <h1>My profile</h1>
+  <p style="color:var(--muted);font-size:14px;margin:8px 0 22px">Provider account info + password change.</p>
+
+  <div class="card">
+    <h2>Account</h2>
+    <div id="me-info" style="font-size:14px;color:var(--muted)">Loading…</div>
+  </div>
+
+  <div class="card">
+    <h2>Change password</h2>
+    <label>Current password</label>
+    <input id="cur" type="password" autocomplete="current-password">
+    <label>New password <span style="color:var(--muted);font-weight:500;font-size:11px">(at least 10 characters)</span></label>
+    <input id="nxt" type="password" autocomplete="new-password" minlength="10">
+    <label>Confirm new password</label>
+    <input id="cnf" type="password" autocomplete="new-password" minlength="10">
+
+    <div class="err" id="err"></div>
+    <div class="ok"  id="ok"></div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button class="btn" id="save" onclick="changePw()">Update password</button>
+    </div>
+  </div>
+</main>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUTH_URL = `${SUPABASE_URL}/functions/v1/admin_auth`;
+function token() { return localStorage.getItem('poolside_provider_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function gotoLogin() { window.location.href = '/admin/login.html?next=/admin/profile.html'; }
+
+async function call(action, extra = {}) {
+  const t = token();
+  if (!t) { gotoLogin(); throw new Error('Not signed in'); }
+  const res = await fetch(AUTH_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { gotoLogin(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+async function changePw() {
+  const errEl = document.getElementById('err'); errEl.classList.remove('show');
+  const okEl  = document.getElementById('ok');  okEl.classList.remove('show');
+  const cur = document.getElementById('cur').value;
+  const nxt = document.getElementById('nxt').value;
+  const cnf = document.getElementById('cnf').value;
+  if (!cur || !nxt) { errEl.textContent = 'Fill in both passwords'; errEl.classList.add('show'); return; }
+  if (nxt.length < 10) { errEl.textContent = 'New password must be ≥ 10 characters'; errEl.classList.add('show'); return; }
+  if (nxt !== cnf) { errEl.textContent = "Passwords don't match"; errEl.classList.add('show'); return; }
+  const btn = document.getElementById('save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const data = await call('change_password', { current_password: cur, new_password: nxt });
+    if (!data.ok) throw new Error(data.error || 'Could not change password');
+    document.getElementById('cur').value = '';
+    document.getElementById('nxt').value = '';
+    document.getElementById('cnf').value = '';
+    okEl.textContent = '✓ Password updated. Future sessions will need the new one.';
+    okEl.classList.add('show');
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+(async () => {
+  if (!token()) { gotoLogin(); return; }
+  try {
+    const me = await call('me');
+    if (!me.ok) { gotoLogin(); return; }
+    const a = me.admin || {};
+    document.getElementById('me-info').innerHTML = `
+      <div class="grid">
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Display name</div><div style="margin-top:2px">${escapeHtml(a.display_name || '—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Email</div><div style="margin-top:2px">${escapeHtml(a.email || a.username || '—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Role</div><div style="margin-top:2px">${a.is_super ? 'Provider · super' : 'Provider'}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Created</div><div style="margin-top:2px">${a.created_at ? new Date(a.created_at).toLocaleDateString() : '—'}</div></div>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('me-info').innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`;
+  }
+})();
+</script>
+</body>
+</html>

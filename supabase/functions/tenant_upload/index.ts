@@ -33,12 +33,15 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
-const MAX_BYTES = 10 * 1024 * 1024;  // 10 MB, matches the bucket cap
+const ALLOWED_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
+]);
+const MAX_BYTES = 25 * 1024 * 1024;  // 25 MB (PDFs run bigger than images)
 
 function extFor(contentType: string, filename: string): string {
   const map: Record<string, string> = {
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+    'application/pdf': 'pdf',
   };
   if (map[contentType]) return map[contentType];
   const m = filename.match(/\.([a-z0-9]{1,5})$/i);
@@ -78,7 +81,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'filename, content_type, and base64 are required' }, 400);
   }
   if (!ALLOWED_TYPES.has(content_type)) {
-    return jsonResponse({ ok: false, error: 'Only JPG, PNG, WebP, or GIF images are allowed' }, 400);
+    return jsonResponse({ ok: false, error: 'Only JPG, PNG, WebP, GIF, or PDF files are allowed' }, 400);
   }
 
   // Decode base64 → Uint8Array

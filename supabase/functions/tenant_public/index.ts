@@ -59,6 +59,8 @@ Deno.serve(async (req) => {
     },
     branding: {
       background_photo_url: v.branding?.background_photo_url ?? null,
+      logo_url:             v.branding?.logo_url ?? null,
+      primary_color:        v.branding?.primary_color ?? null,
     },
     club: {
       location: v.club?.location ?? null,
@@ -78,6 +80,19 @@ Deno.serve(async (req) => {
       gate:         !!v.features?.gate,
     },
   };
+
+  // Public-visibility documents only — members see member-visibility ones via
+  // their own authenticated endpoint (member_auth.me already returns them; for
+  // now public surface is enough).
+  const { data: docsData } = await sb.from('documents')
+    .select('id, title, description, url, sort_order')
+    .eq('tenant_id', tenant.id)
+    .eq('active', true)
+    .eq('visibility', 'public')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const documents = docsData ?? [];
 
   // Latest 5 active posts (pinned first), public — surfaces on the landing page.
   const { data: postsData } = await sb.from('posts')
@@ -117,5 +132,5 @@ Deno.serve(async (req) => {
 
   // Strip the internal id from the response — clients don't need it.
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos });
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos, documents });
 });

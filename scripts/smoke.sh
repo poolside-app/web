@@ -152,8 +152,21 @@ check_post "tenant_metrics rejects anon" \
   '{"action":"get"}' \
   'Not authenticated'
 
-check_status "admin /club/admin/impact.html"  "${HOST}/club/admin/impact.html"   "200"
-check       "impact page wires the API"        "${HOST}/club/admin/impact.html"   "tenant_metrics"
+check_post "documents_admin rejects anon" \
+  "${SUPA}/functions/v1/documents_admin" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_status "admin /club/admin/impact.html"     "${HOST}/club/admin/impact.html"     "200"
+check       "impact page wires the API"           "${HOST}/club/admin/impact.html"     "tenant_metrics"
+check_status "admin /club/admin/documents.html"  "${HOST}/club/admin/documents.html"  "200"
+check       "docs page wires the API"             "${HOST}/club/admin/documents.html"  "documents_admin"
+check_status "provider /admin/profile.html"       "${ROOT}/admin/profile.html"          "200"
+check       "profile page wires admin_auth"       "${ROOT}/admin/profile.html"          "change_password"
+check_post "tenant_public exposes documents shape" \
+  "${SUPA}/functions/v1/tenant_public" \
+  '{"slug":"bishopestates"}' \
+  '"documents"'
 
 echo
 echo "── Member magic-link round trip (no auth, but real DB write) ──"
