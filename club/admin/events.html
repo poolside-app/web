@@ -95,6 +95,64 @@
 
   .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
 
+  /* Month calendar grid */
+  .cal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; padding: 0 4px;
+  }
+  .cal-head h2 { font-family:'Fraunces',serif; font-size: 22px; font-weight: 600; margin: 0; color: var(--blue); }
+  .cal-head .nav { display: flex; gap: 6px; align-items: center; }
+  .cal-head .nav button {
+    width: 36px; height: 36px; border: 1.5px solid var(--border); background: #fff;
+    border-radius: 10px; cursor: pointer; font: 600 16px 'Inter';
+  }
+  .cal-head .nav button:hover { background: var(--blue-l); }
+  .cal-head .nav button.today {
+    width: auto; padding: 0 14px; font-size: 12px; font-weight: 600;
+  }
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+    background: var(--border); border: 1px solid var(--border); border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .dow {
+    background: var(--bg-2); padding: 8px 6px; font-size: 11px; font-weight: 700;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .06em; text-align: center;
+  }
+  .day {
+    background: #fff; min-height: 96px; padding: 6px 6px 4px;
+    cursor: pointer; transition: background .12s;
+    display: flex; flex-direction: column; gap: 2px; overflow: hidden;
+  }
+  .day:hover { background: var(--bg-2); }
+  .day.other-month { background: #fafbfc; color: #cbd5e1; }
+  .day.other-month:hover { background: #f5f7fa; }
+  .day.today .num { background: var(--blue); color: #fff; }
+  .day .num {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; margin-bottom: 2px;
+  }
+  .chip {
+    font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+    background: var(--blue-l); color: var(--blue);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chip.party     { background: #fef3c7; color: #92400e; }
+  .chip.swim_meet { background: #cffafe; color: #155e75; }
+  .chip.closure   { background: #fee2e2; color: #7f1d1d; }
+  .chip.holiday   { background: #fce7f3; color: #9d174d; }
+  .chip.lesson    { background: #ddd6fe; color: #5b21b6; }
+  .chip.meeting   { background: #dcfce7; color: #14532d; }
+  .chip.social    { background: #fae8ff; color: #86198f; }
+  .more { font-size: 10px; color: var(--muted); padding-left: 4px; }
+
+  @media (max-width: 700px) {
+    .day { min-height: 64px; padding: 4px; }
+    .day .num { width: 18px; height: 18px; font-size: 10px; }
+    .chip { font-size: 9px; padding: 1px 4px; }
+  }
+
   /* Modal */
   .scrim {
     position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
@@ -147,7 +205,11 @@
   <div class="toolbar">
     <h1>Calendar</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <div class="filter-row" id="range-filter">
+      <div class="filter-row" id="view-toggle">
+        <button class="on" data-view="month">Month</button>
+        <button data-view="list">List</button>
+      </div>
+      <div class="filter-row" id="range-filter" style="display:none">
         <button class="on" data-range="upcoming">Upcoming</button>
         <button data-range="past">Past</button>
         <button data-range="all">All</button>
@@ -157,7 +219,8 @@
     </div>
   </div>
 
-  <div id="list">
+  <div id="month-view"></div>
+  <div id="list" style="display:none">
     <div class="empty">Loading…</div>
   </div>
 </main>
@@ -214,6 +277,9 @@ const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
 const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
 let RANGE = 'upcoming';
+let VIEW = 'month';
+let MONTH_CURSOR = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+let CACHE_ALL = [];
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -315,11 +381,20 @@ function render(events) {
 
 async function refresh() {
   try {
-    const data = await call('list', { range: RANGE });
-    if (!data.ok) throw new Error(data.error || 'Failed to load');
-    render(data.events || []);
+    if (VIEW === 'month') {
+      // Always load 'all' for the month view so prev/next nav has data ready.
+      const data = await call('list', { range: 'all' });
+      if (!data.ok) throw new Error(data.error || 'Failed to load');
+      CACHE_ALL = data.events || [];
+      renderMonth();
+    } else {
+      const data = await call('list', { range: RANGE });
+      if (!data.ok) throw new Error(data.error || 'Failed to load');
+      render(data.events || []);
+    }
   } catch (e) {
-    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+    const target = VIEW === 'month' ? document.getElementById('month-view') : document.getElementById('list');
+    target.innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -331,6 +406,112 @@ document.querySelectorAll('#range-filter button').forEach(b => {
     refresh();
   });
 });
+
+document.querySelectorAll('#view-toggle button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#view-toggle button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    VIEW = b.dataset.view;
+    document.getElementById('month-view').style.display = VIEW === 'month' ? 'block' : 'none';
+    document.getElementById('list').style.display       = VIEW === 'list'  ? 'block' : 'none';
+    document.getElementById('range-filter').style.display = VIEW === 'list' ? 'flex' : 'none';
+    refresh();
+  });
+});
+
+// ── Month-grid view ────────────────────────────────────────────────────
+function renderMonth() {
+  const root = document.getElementById('month-view');
+  const cur = MONTH_CURSOR;
+  const monthName = cur.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  // Calendar bounds: pad to start on Sunday + end on Saturday.
+  const firstDay = new Date(cur.getFullYear(), cur.getMonth(), 1);
+  const lastDay  = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+  const start = new Date(firstDay); start.setDate(start.getDate() - start.getDay());          // Sun
+  const end   = new Date(lastDay);  end.setDate(end.getDate() + (6 - end.getDay()));          // Sat
+
+  // Bucket events by yyyy-mm-dd local date
+  const byDay = new Map();
+  for (const ev of CACHE_ALL) {
+    const d = new Date(ev.starts_at);
+    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(ev);
+  }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let cellsHtml = dows.map(d => `<div class="dow">${d}</div>`).join('');
+  const cursorD = new Date(start);
+  while (cursorD <= end) {
+    const k = `${cursorD.getFullYear()}-${String(cursorD.getMonth()+1).padStart(2,'0')}-${String(cursorD.getDate()).padStart(2,'0')}`;
+    const otherMonth = cursorD.getMonth() !== cur.getMonth();
+    const isToday    = cursorD.getTime() === today.getTime();
+    const dayEvents  = byDay.get(k) || [];
+    const visible    = dayEvents.slice(0, 3);
+    const overflow   = dayEvents.length - visible.length;
+    const dateAttr   = `${cursorD.getFullYear()}-${String(cursorD.getMonth()+1).padStart(2,'0')}-${String(cursorD.getDate()).padStart(2,'0')}`;
+    cellsHtml += `
+      <div class="day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}"
+           data-date="${dateAttr}"
+           onclick="dayCellClick('${dateAttr}', event)">
+        <div class="num">${cursorD.getDate()}</div>
+        ${visible.map(ev => `
+          <div class="chip ${escapeHtml(ev.kind)}" title="${escapeHtml(ev.title)}"
+               onclick="event.stopPropagation(); openEdit(${JSON.stringify(ev).replace(/'/g, '&#39;')})">
+            ${escapeHtml(KIND_ICON[ev.kind] || '')} ${escapeHtml(ev.title)}
+          </div>
+        `).join('')}
+        ${overflow > 0 ? `<div class="more">+ ${overflow} more</div>` : ''}
+      </div>
+    `;
+    cursorD.setDate(cursorD.getDate() + 1);
+  }
+
+  root.innerHTML = `
+    <div class="cal-head">
+      <h2>${escapeHtml(monthName)}</h2>
+      <div class="nav">
+        <button onclick="monthShift(-1)" aria-label="Previous month">‹</button>
+        <button class="today" onclick="monthGoToday()">Today</button>
+        <button onclick="monthShift(1)" aria-label="Next month">›</button>
+      </div>
+    </div>
+    <div class="cal-grid">${cellsHtml}</div>
+  `;
+}
+
+function monthShift(delta) {
+  const d = new Date(MONTH_CURSOR);
+  d.setMonth(d.getMonth() + delta);
+  MONTH_CURSOR = d;
+  renderMonth();
+}
+function monthGoToday() {
+  const d = new Date(); d.setDate(1); d.setHours(0,0,0,0);
+  MONTH_CURSOR = d;
+  renderMonth();
+}
+
+function dayCellClick(dateStr, ev) {
+  // Click empty space in a day → open the create modal seeded to that date
+  const d = new Date(dateStr + 'T18:00:00');
+  document.getElementById('m-heading').textContent = 'New event';
+  document.getElementById('m-id').value = '';
+  document.getElementById('m-title').value = '';
+  document.getElementById('m-kind').value = 'event';
+  document.getElementById('m-location').value = '';
+  document.getElementById('m-body').value = '';
+  document.getElementById('m-all_day').checked = false;
+  document.getElementById('m-starts_at').value = toLocalInput(d.toISOString());
+  const e = new Date(d.getTime() + 2 * 60 * 60 * 1000);
+  document.getElementById('m-ends_at').value = toLocalInput(e.toISOString());
+  document.getElementById('m-delete').style.display = 'none';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim').classList.add('open');
+}
 
 function defaultStart() {
   // Default to next top of the hour, +1 day

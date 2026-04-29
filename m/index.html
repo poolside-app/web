@@ -618,7 +618,10 @@ async function submitProfile() {
     refreshParties();
   } else {
     const card = document.getElementById('parties-card');
-    if (card) card.innerHTML = `<h2>Your party requests</h2><div class="empty">Your household admin hasn't enabled party booking for your account.</div>`;
+    if (card) {
+      const role = user.role || 'this member';
+      card.innerHTML = `<h2>Your party requests</h2><div class="empty">Party booking is reserved for adults / primary contacts on each household. You're signed in as a <b>${escapeHtml(role)}</b> — ask your household primary to file the request.</div>`;
+    }
   }
 })();
 </script>

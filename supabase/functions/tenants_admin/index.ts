@@ -371,14 +371,25 @@ Deno.serve(async (req) => {
         .eq('id', memberId).eq('tenant_id', tenant_id).maybeSingle();
       member = data;
     } else {
-      // Most recently seen → most recently created → first active member
-      const { data } = await sb.from('household_members')
-        .select('id, name, email, household_id, active, last_seen_at, created_at')
-        .eq('tenant_id', tenant_id).eq('active', true)
-        .order('last_seen_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1).maybeSingle();
-      member = data;
+      // Pick a member that can actually exercise the full member surface:
+      // prefer primaries (can book parties), fall back to any adult, then
+      // fall back to any active member at all.
+      const tries: Array<Record<string, unknown>> = [
+        { role: 'primary' },
+        { role: 'adult' },
+        {},  // anyone active
+      ];
+      for (const filter of tries) {
+        let q = sb.from('household_members')
+          .select('id, name, email, household_id, active, last_seen_at, created_at')
+          .eq('tenant_id', tenant_id).eq('active', true);
+        if (filter.role) q = q.eq('role', filter.role as string);
+        const { data } = await q
+          .order('last_seen_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(1).maybeSingle();
+        if (data) { member = data; break; }
+      }
     }
     if (!member || !member.active) {
       return jsonResponse({ ok: false, error: 'No active household member to impersonate. Add one first via Households.' }, 404);
