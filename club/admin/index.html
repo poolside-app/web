@@ -107,7 +107,9 @@
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
-const AUTH_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const AUTH_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const APPS_URL    = `${SUPABASE_URL}/functions/v1/applications`;
+const PARTIES_URL = `${SUPABASE_URL}/functions/v1/parties_admin`;
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const HH_URL = `${SUPABASE_URL}/functions/v1/households_admin`;
 
@@ -199,15 +201,21 @@ document.getElementById('signout').addEventListener('click', logout);
       </div>
     </div>
 
+    <div class="card" id="activity-card">
+      <h2>What needs your attention</h2>
+      <div class="placeholder">Loading…</div>
+    </div>
+
     <div class="card">
       <h2>What's next</h2>
       <div class="placeholder">
         <a href="/club/admin/households.html" style="font-weight:600">Manage households &amp; members →</a><br>
-        <span style="font-size:13px">Gate access, party booking, dues, campaigns, swim lessons land in the next phase.</span>
+        <span style="font-size:13px">Gate access, dues, campaigns, swim lessons land in the next phase.</span>
       </div>
     </div>
   `;
 
+  // Households + members counts
   try {
     const hRes = await fetch(HH_URL, {
       method: 'POST',
@@ -227,6 +235,49 @@ document.getElementById('signout').addEventListener('click', logout);
   } catch {
     document.getElementById('hh-count').textContent = '–';
     document.getElementById('m-count').textContent = '–';
+  }
+
+  // Activity feed: pending applications + party requests + overdue dues
+  try {
+    const headers = { 'content-type': 'application/json', 'authorization': `Bearer ${token}` };
+    const [appsPending, parties, appsOverdue] = await Promise.all([
+      fetch(APPS_URL,    { method: 'POST', headers, body: JSON.stringify({ action: 'list', status: 'pending' }) }).then(r => r.json()),
+      fetch(PARTIES_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'list', status: 'pending' }) }).then(r => r.json()),
+      fetch(APPS_URL,    { method: 'POST', headers, body: JSON.stringify({ action: 'list', status: 'approved', filter: 'overdue' }) }).then(r => r.json()),
+    ]);
+    const appCount    = (appsPending.applications || []).length;
+    const partyCount  = (parties.bookings  || []).length;
+    const overdueCount = (appsOverdue.applications || []).length;
+
+    const items = [];
+    if (appCount > 0) items.push({
+      icon: '📨', label: `${appCount} new application${appCount === 1 ? '' : 's'}`,
+      sub: 'Review pending memberships', href: '/club/admin/applications.html', tone: 'amber',
+    });
+    if (partyCount > 0) items.push({
+      icon: '🎉', label: `${partyCount} party request${partyCount === 1 ? '' : 's'}`,
+      sub: 'Approve or reject', href: '/club/admin/parties.html', tone: 'amber',
+    });
+    if (overdueCount > 0) items.push({
+      icon: '💸', label: `${overdueCount} overdue dues`,
+      sub: 'Approved 10+ days, still unpaid', href: '/club/admin/applications.html', tone: 'red',
+    });
+
+    const card = document.getElementById('activity-card');
+    if (items.length === 0) {
+      card.innerHTML = `<h2>What needs your attention</h2><div class="placeholder">✓ All caught up — no pending applications, party requests, or overdue dues.</div>`;
+    } else {
+      card.innerHTML = `<h2>What needs your attention</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">${items.map(it => `
+          <a href="${it.href}" style="display:flex;gap:14px;align-items:center;padding:14px 18px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:${it.tone==='red'?'#fef2f2':it.tone==='amber'?'#fffbeb':'#fff'};border-left:4px solid ${it.tone==='red'?'var(--red)':it.tone==='amber'?'var(--sun)':'var(--blue)'}">
+            <div style="font-size:24px">${it.icon}</div>
+            <div style="flex:1"><div style="font-weight:600;font-size:14px">${escapeHtml(it.label)}</div><div style="font-size:12px;color:var(--muted)">${escapeHtml(it.sub)}</div></div>
+            <div style="color:var(--blue);font-weight:600">→</div>
+          </a>
+        `).join('')}</div>`;
+    }
+  } catch {
+    document.getElementById('activity-card').innerHTML = `<h2>What needs your attention</h2><div class="placeholder">Couldn't load activity feed.</div>`;
   }
 })();
 </script>

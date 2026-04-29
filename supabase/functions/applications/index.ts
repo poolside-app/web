@@ -61,6 +61,18 @@ function strOrNull(v: unknown): string | null {
 function escapeHtml(s: string): string {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 }
+
+function randomToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 function intOrDefault(v: unknown, d: number): number {
   if (v === null || v === undefined || v === '') return d;
   const n = Number(v);
@@ -224,7 +236,79 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq('id', id);
 
-    return jsonResponse({ ok: true, household_id: hh.id, primary_id: pm.id });
+    // ── Welcome email + magic-link token ────────────────────────────────
+    // Generate a member_magic_links row so the family can sign in
+    // immediately without the magic-link request dance.
+    let welcome_dev_link: string | null = null;
+    let welcome_sent = false;
+    if (app.primary_email) {
+      const tok = randomToken();
+      const tokHash = await sha256Hex(tok);
+      const expIso = new Date(Date.now() + 60 * 60 * 24 * 1000 * 7).toISOString();  // 7 days
+      await sb.from('member_magic_links').insert({
+        tenant_id: TID, member_id: pm.id,
+        token_hash: tokHash, expires_at: expIso,
+      });
+
+      const { data: tenant } = await sb.from('tenants')
+        .select('display_name, slug').eq('id', TID).maybeSingle();
+      const clubName = tenant?.display_name || 'Your club';
+      const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
+      const verifyLink = `${clubUrl}/m/verify.html#token=${encodeURIComponent(tok)}`;
+
+      const { data: settingsRow } = await sb.from('settings')
+        .select('value').eq('tenant_id', TID).maybeSingle();
+      const venmo = ((settingsRow?.value as Record<string, unknown> | null)?.payments as Record<string, unknown> | undefined)?.venmo_handle;
+
+      const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+      const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+
+      const html = `
+        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to ${escapeHtml(clubName)}!</h2>
+          <p style="margin:0 0 16px;color:#64748b">Hi ${escapeHtml(app.primary_name)} — your application was approved. Click below to sign in to your member dashboard.</p>
+          <p style="margin:24px 0">
+            <a href="${verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to ${escapeHtml(clubName)}</a>
+          </p>
+          ${app.payment_status !== 'paid' ? `
+            <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 6px;font-size:16px">Final step: dues</h3>
+            <p style="margin:0 0 8px;color:#64748b">${app.payment_method === 'venmo' && venmo
+              ? `Send your annual dues via Venmo to <b>@${escapeHtml(String(venmo))}</b>. We'll mark your account as paid once we confirm the payment.`
+              : 'A board member will reach out shortly with payment details.'}</p>
+          ` : ''}
+          <hr style="border:0;border-top:1px solid #e5e7eb;margin:28px 0">
+          <p style="margin:0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, ask for a fresh one at <a href="${clubUrl}/m/login.html" style="color:#0a3b5c">${escapeHtml(clubUrl.replace(/^https?:\/\//, ''))}/m/login.html</a>.</p>
+        </div>
+      `;
+
+      if (RESEND_API_KEY) {
+        try {
+          const r = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: RESEND_FROM, to: [app.primary_email],
+              subject: `Welcome to ${clubName}!`, html,
+            }),
+          });
+          welcome_sent = r.ok;
+        } catch { /* fall through to dev mode */ }
+      }
+      if (!welcome_sent) welcome_dev_link = verifyLink;
+
+      await sb.from('application_actions').insert({
+        application_id: id, tenant_id: TID,
+        kind: 'welcome_sent',
+        body: welcome_sent ? 'email via Resend' : 'dev mode (link returned)',
+        actor_id: decided_by,
+      });
+    }
+
+    return jsonResponse({
+      ok: true,
+      household_id: hh.id, primary_id: pm.id,
+      welcome_sent, welcome_dev_link,
+    });
   }
 
   // ── verify_payment (manual, used for Venmo flow) ──────────────────────
