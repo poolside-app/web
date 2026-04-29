@@ -379,6 +379,8 @@
         <td style="white-space:nowrap" onclick="event.stopPropagation()">
           <button class="btn-sm" title="Sign in as a tenant admin (24h token)" onclick="quickImpersonate('${escapeHtml(t.id)}','${escapeHtml(t.slug)}','admin')" style="margin-right:4px">🔑 Admin</button>
           <button class="btn-sm" title="Sign in as a household member (24h token)" onclick="quickImpersonate('${escapeHtml(t.id)}','${escapeHtml(t.slug)}','member')" style="margin-right:4px">📱 Member</button>
+          <a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" class="btn-sm" style="text-decoration:none;margin-right:4px" title="Open public landing page">🌐 Public</a>
+          <button class="btn-sm" title="Fill with realistic test data" onclick="seedDemo('${escapeHtml(t.id)}','${escapeHtml(t.display_name)}')" style="margin-right:4px">🌱 Seed</button>
           <button class="btn-sm" onclick="openEditTenant('${escapeHtml(t.id)}')">Edit</button>
         </td>
       </tr>`;
@@ -528,6 +530,22 @@
     const t  = tenantsCache.find(x => x.id === id);
     if (!t) return;
     quickImpersonate(id, t.slug, 'admin');
+  };
+
+  window.seedDemo = async function(tenant_id, name) {
+    const wipe = confirm(`Seed demo data into ${name}?\n\n` +
+      `OK = WIPE existing households/events/posts/photos and re-seed.\n` +
+      `Cancel = leave existing data alone (no-op).`);
+    if (!wipe) return;
+    try {
+      const data = await callTenantsAdmin('seed_demo_data', { tenant_id, wipe: true });
+      if (!data.ok) throw new Error(data.error || 'Seed failed');
+      const s = data.summary;
+      alert(`Seeded ${name}:\n` +
+        `${s.households} households · ${s.members} members\n` +
+        `${s.events} events · ${s.posts} posts · ${s.photos} photos`);
+      await loadTenants();
+    } catch (e) { alert(e.message); }
   };
 
   window.quickImpersonate = async function(tenant_id, slug, kind) {

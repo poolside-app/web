@@ -406,6 +406,148 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── seed_demo_data ─────────────────────────────────────────────────────
+  // Provider-only: fill a tenant with realistic households, events, posts,
+  // and photos so every surface has content to look at. Idempotent-ish:
+  // existing data is left alone unless `wipe: true` is passed.
+  if (action === 'seed_demo_data') {
+    const tenant_id = String(body.tenant_id ?? '');
+    if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const wipe = body.wipe === true;
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name').eq('id', tenant_id).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+
+    if (wipe) {
+      // Cascade FKs handle most child rows; deleting parent records here.
+      await sb.from('photos').delete().eq('tenant_id', tenant_id);
+      await sb.from('posts').delete().eq('tenant_id', tenant_id);
+      await sb.from('events').delete().eq('tenant_id', tenant_id);
+      await sb.from('party_bookings').delete().eq('tenant_id', tenant_id);
+      await sb.from('households').delete().eq('tenant_id', tenant_id);
+    }
+
+    // ── households + members ──────────────────────────────────────────
+    // Phone collisions across tenants are fine — index is per-tenant active.
+    // Stamp the phone block per-call so re-seeds without wipe still work.
+    const stamp = String(Date.now()).slice(-5);
+    const FAMILIES = [
+      { fam: 'Lopez',  primary: ['Maria',  '+155501' + stamp + '01'], spouse: ['Carlos', '+155501' + stamp + '02'], kids: [['Sofia','teen'], ['Diego','child']] },
+      { fam: 'Patel',  primary: ['Aisha',  '+155501' + stamp + '03'], spouse: ['Raj',    '+155501' + stamp + '04'], kids: [['Zara','child']] },
+      { fam: 'Carter', primary: ['James',  '+155501' + stamp + '05'], spouse: ['Emma',   '+155501' + stamp + '06'], kids: [['Lily','teen'], ['Noah','child'], ['Ava','child']] },
+      { fam: 'OBrien', primary: ['Sean',   '+155501' + stamp + '07'], spouse: ['Megan',  '+155501' + stamp + '08'], kids: [] },
+      { fam: 'Nguyen', primary: ['Linh',   '+155501' + stamp + '09'], spouse: ['Tuan',   '+155501' + stamp + '10'], kids: [['Khoa','teen']] },
+    ];
+
+    const householdsCreated: string[] = [];
+    const membersCreated: string[] = [];
+    for (let i = 0; i < FAMILIES.length; i++) {
+      const f = FAMILIES[i];
+      const { data: hh, error: hhErr } = await sb.from('households').insert({
+        tenant_id, family_name: `The ${f.fam}s`, tier: 'family',
+        fob_number: `${1000 + i}`,
+        dues_paid_for_year: i % 2 === 0,
+        paid_until_year: new Date().getFullYear(),
+        address: `${100 + i * 4} Maple Street`, city: 'Concord', zip: '94521',
+        active: true,
+      }).select('id').single();
+      if (hhErr || !hh) continue;
+      householdsCreated.push(hh.id);
+
+      // Primary contact
+      const { data: pm } = await sb.from('household_members').insert({
+        tenant_id, household_id: hh.id,
+        name: `${f.primary[0]} ${f.fam}`, phone_e164: f.primary[1],
+        email: `${f.primary[0].toLowerCase()}.${f.fam.toLowerCase()}@example.com`,
+        role: 'primary', can_unlock_gate: true, can_book_parties: true,
+        active: true, confirmed_at: new Date().toISOString(),
+      }).select('id').single();
+      if (pm) membersCreated.push(pm.id);
+
+      // Spouse + kids
+      const { data: sp } = await sb.from('household_members').insert({
+        tenant_id, household_id: hh.id,
+        name: `${f.spouse[0]} ${f.fam}`, phone_e164: f.spouse[1],
+        email: `${f.spouse[0].toLowerCase()}.${f.fam.toLowerCase()}@example.com`,
+        role: 'adult', can_unlock_gate: true, can_book_parties: true,
+        active: true, confirmed_at: new Date().toISOString(),
+      }).select('id').single();
+      if (sp) membersCreated.push(sp.id);
+
+      for (const [kidName, kidRole] of f.kids) {
+        const { data: kid } = await sb.from('household_members').insert({
+          tenant_id, household_id: hh.id,
+          name: `${kidName} ${f.fam}`, role: kidRole,
+          can_unlock_gate: kidRole === 'teen', can_book_parties: false,
+          active: true, confirmed_at: new Date().toISOString(),
+        }).select('id').single();
+        if (kid) membersCreated.push(kid.id);
+      }
+    }
+
+    // ── events ────────────────────────────────────────────────────────
+    const day = 86400_000;
+    const now = Date.now();
+    const at = (offset: number, h: number) => {
+      const d = new Date(now + offset * day);
+      d.setHours(h, 0, 0, 0);
+      return d.toISOString();
+    };
+    const eventsToInsert = [
+      { title: 'Memorial Day BBQ',     kind: 'party',     starts_at: at(7,  12), ends_at: at(7,  18), location: 'Pool deck',  body: 'Burgers + dogs on us. Bring a side to share.' },
+      { title: 'Summer Swim Meet',     kind: 'swim_meet', starts_at: at(14, 9),  ends_at: at(14, 12), location: 'Main pool',  body: 'Home meet vs. Twin Oaks. Cheer loud!' },
+      { title: 'Pool closed for chemicals', kind: 'closure', starts_at: at(3,  8), ends_at: at(3,  18), location: 'Whole pool', body: 'Annual deep treatment. Back to normal hours next day.' },
+      { title: 'Board Meeting',        kind: 'meeting',   starts_at: at(10, 19), ends_at: at(10, 20), location: 'Clubhouse', body: 'All members welcome.' },
+    ];
+    const eventsCreated: string[] = [];
+    for (const ev of eventsToInsert) {
+      const { data } = await sb.from('events').insert({
+        tenant_id, ...ev, all_day: false, active: true,
+      }).select('id').single();
+      if (data) eventsCreated.push(data.id);
+    }
+
+    // ── posts ─────────────────────────────────────────────────────────
+    const postsToInsert = [
+      { title: '🏊 Welcome to the 2026 season!', body: "Pool's open Memorial Day through Labor Day. Hours are posted on the home page. Sign in with your email to see your household, request parties, and get notified when things change.", pinned: true },
+      { title: 'Dues reminder',          body: 'Annual dues are due May 15. Click "Pay via Venmo" on the home page or drop a check at the clubhouse. Late fee kicks in May 16.', pinned: false },
+      { title: 'Lifeguard hiring',        body: "We're short two lifeguards for July. If you have a teen with current certification, send them our way!", pinned: false },
+    ];
+    const postsCreated: string[] = [];
+    for (const p of postsToInsert) {
+      const { data } = await sb.from('posts').insert({
+        tenant_id, ...p, active: true,
+      }).select('id').single();
+      if (data) postsCreated.push(data.id);
+    }
+
+    // ── photos (placeholder service, stable seeds) ────────────────────
+    const photoSeeds = ['poolsideA', 'poolsideB', 'poolsideC', 'poolsideD', 'poolsideE', 'poolsideF'];
+    const photosCreated: string[] = [];
+    for (let i = 0; i < photoSeeds.length; i++) {
+      const url = `https://picsum.photos/seed/${photoSeeds[i]}/1200/800`;
+      const { data } = await sb.from('photos').insert({
+        tenant_id, url, sort_order: i,
+        caption: i === 0 ? 'Opening weekend, summer 2026' : null,
+        active: true,
+      }).select('id').single();
+      if (data) photosCreated.push(data.id);
+    }
+
+    return jsonResponse({
+      ok: true,
+      summary: {
+        households: householdsCreated.length,
+        members:    membersCreated.length,
+        events:     eventsCreated.length,
+        posts:      postsCreated.length,
+        photos:     photosCreated.length,
+        wiped:      wipe,
+      },
+    });
+  }
+
   // ── delete (soft) ──────────────────────────────────────────────────────
   if (action === 'delete') {
     const id = String(body.id ?? '');
