@@ -47,7 +47,9 @@ check_post() {
 check_status() {
   local name="$1" url="$2" expect="$3"
   local code
-  code="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$url" 2>&1)" \
+  # -L follows redirects (apex→www, vercel.json rewrites etc.) — the
+  # final landing page is what we actually care about.
+  code="$(curl -sSL --max-time 15 -o /dev/null -w '%{http_code}' "$url" 2>&1)" \
     || { flop "$name" "curl failed"; return; }
   if [[ "$code" == "$expect" ]]; then pass "$name (${code})"
   else flop "$name" "expected ${expect}, got ${code}"; fi
