@@ -180,6 +180,19 @@ check_post "applications.list rejects anon" \
   '{"action":"list"}' \
   'Not authenticated'
 
+check_post "programs.list rejects anon" \
+  "${SUPA}/functions/v1/programs" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_post "programs.list_public returns ok" \
+  "${SUPA}/functions/v1/programs" \
+  "{\"action\":\"list_public\",\"slug\":\"${SLUG}\"}" \
+  '"ok":true'
+
+check_status "admin /club/admin/programs" "${HOST}/club/admin/programs.html" "200"
+check       "admin programs page wires the API" "${HOST}/club/admin/programs.html" "/functions/v1/programs"
+
 check_status "public /apply.html"                "${HOST}/apply.html"                "200"
 check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
 check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"

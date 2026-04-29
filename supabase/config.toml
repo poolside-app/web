@@ -83,3 +83,8 @@ verify_jwt = false
 # Per-tenant audit log reader (writes happen inline in other functions)
 [functions.audit_admin]
 verify_jwt = false
+
+# Bookings engine — programs (swim lessons, yoga, camp) + member sign-ups.
+# Mixed surface: public list / member book / admin manage — all in one fn.
+[functions.programs]
+verify_jwt = false

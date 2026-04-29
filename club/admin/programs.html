@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Programs — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin-bottom: 12px; } h3 { font-size: 15px; margin: 0 0 8px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 960px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:hover { background: var(--blue-2); }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-success { background: var(--green); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .program { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px 22px; margin-bottom: 12px; box-shadow: var(--shadow); cursor: pointer; }
+  .program:hover { border-color: var(--blue); }
+  .program h3 { font-size: 16px; margin: 0 0 4px; }
+  .program .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .program .desc { font-size: 13px; color: var(--text); margin-top: 6px; line-height: 1.5; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.kids   { background: #fef3c7; color: #92400e; }
+  .pill.adults { background: #dbeafe; color: #1e3a8a; }
+  .pill.all    { background: #e0e7ff; color: #3730a3; }
+  .pill.full   { background: #fee2e2; color: #7f1d1d; }
+  .pill.open   { background: #dcfce7; color: #14532d; }
+  .pill.inact  { background: #f3f4f6; color: #4b5563; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+
+  .scrim { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
+  .scrim.open { display: flex; }
+  .modal { background: #fff; border-radius: var(--r-lg); padding: 26px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(10,59,92,.18); }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal select, .modal textarea { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
+  .modal textarea { resize: vertical; min-height: 70px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .weekdays { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .weekdays label { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1.5px solid var(--border); border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 }
+  .weekdays input { width: auto; margin: 0; }
+  .weekdays label.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .modal-foot .left { margin-right: auto; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+
+  .roster-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .roster-row:last-child { border-bottom: 0; }
+  .roster-row .who { font-size: 14px; }
+  .roster-row .who small { color: var(--muted); display: block; font-size: 11px; }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/applications.html">Applications</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/programs.html" class="on">Programs</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html">Documents</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+
+<main>
+  <div class="toolbar">
+    <div>
+      <h1>Programs</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Swim lessons, yoga, camp — anything members sign up for.</div>
+    </div>
+    <button class="btn" onclick="openCreate()">+ New program</button>
+  </div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<!-- Create / Edit modal -->
+<div class="scrim" id="scrim-edit">
+  <div class="modal">
+    <h2 id="m-title">New program</h2>
+    <label>Name *</label>
+    <input id="m-name" maxlength="140" placeholder="e.g. Swim Lessons — Tuesday 6pm">
+    <label>Description</label>
+    <textarea id="m-description" maxlength="1000" placeholder="What members should know — level, prereqs, what to bring."></textarea>
+    <div class="row3">
+      <div>
+        <label>Audience</label>
+        <select id="m-audience"><option value="all">All</option><option value="kids">Kids</option><option value="adults">Adults</option></select>
+      </div>
+      <div><label>Capacity</label><input id="m-capacity" type="number" min="0" value="12"></div>
+      <div><label>Price ($)</label><input id="m-price" type="number" min="0" step="0.01" value="0"></div>
+    </div>
+    <label>Weekdays</label>
+    <div class="weekdays" id="m-weekdays">
+      <label><input type="checkbox" value="mon">Mon</label>
+      <label><input type="checkbox" value="tue">Tue</label>
+      <label><input type="checkbox" value="wed">Wed</label>
+      <label><input type="checkbox" value="thu">Thu</label>
+      <label><input type="checkbox" value="fri">Fri</label>
+      <label><input type="checkbox" value="sat">Sat</label>
+      <label><input type="checkbox" value="sun">Sun</label>
+    </div>
+    <div class="row2">
+      <div><label>Start time</label><input id="m-start_time" type="time"></div>
+      <div><label>End time</label><input id="m-end_time" type="time"></div>
+    </div>
+    <div class="row2">
+      <div><label>Start date</label><input id="m-start_date" type="date"></div>
+      <div><label>End date</label><input id="m-end_date" type="date"></div>
+    </div>
+    <div class="row2">
+      <div><label>Instructor</label><input id="m-instructor" maxlength="80"></div>
+      <div><label>Location</label><input id="m-location" maxlength="120" placeholder="e.g. Main pool, lap lanes 3–4"></div>
+    </div>
+    <div class="err" id="m-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger left" id="m-delete" style="display:none" onclick="del()">Archive</button>
+      <button class="btn btn-ghost" onclick="closeM()">Cancel</button>
+      <button class="btn" id="m-save" onclick="save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Roster modal -->
+<div class="scrim" id="scrim-roster">
+  <div class="modal" style="max-width:560px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+      <div>
+        <h2 id="r-title">Roster</h2>
+        <div id="r-meta" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <button class="btn btn-sm" onclick="closeRoster()">Close</button>
+    </div>
+    <hr style="margin:14px 0;border:0;border-top:1px solid var(--border)">
+    <div id="r-list"></div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const PROGRAMS_URL = `${SUPABASE_URL}/functions/v1/programs`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let CACHE = [];
+let EDITING = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(PROGRAMS_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function fmtSchedule(p) {
+  const days = (p.weekdays || '').split(',').filter(Boolean).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
+  const tm = (p.start_time && p.end_time) ? ` · ${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)}`
+    : p.start_time ? ` · ${p.start_time.slice(0,5)}` : '';
+  const dr = (p.start_date && p.end_date) ? ` · ${new Date(p.start_date).toLocaleDateString()}–${new Date(p.end_date).toLocaleDateString()}`
+    : p.start_date ? ` · from ${new Date(p.start_date).toLocaleDateString()}` : '';
+  return (days || '—') + tm + dr;
+}
+function fmtPrice(c) { if (!c) return 'Free'; return '$' + (c / 100).toFixed(2); }
+
+function render() {
+  const list = document.getElementById('list');
+  if (!CACHE.length) { list.innerHTML = `<div class="empty">No programs yet. Click <b>+ New program</b> to add your first one.</div>`; return; }
+  list.innerHTML = CACHE.map(p => {
+    const left = p.spots_left ?? 0;
+    const cap = p.capacity ?? 0;
+    const fullPill = !p.active ? `<span class="pill inact">archived</span>`
+      : (left === 0 ? `<span class="pill full">full</span>` : `<span class="pill open">${left}/${cap} open</span>`);
+    return `
+      <div class="program" data-id="${p.id}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+          <div style="flex:1;min-width:0">
+            <h3>${escapeHtml(p.name)} <span class="pill ${escapeHtml(p.audience)}">${escapeHtml(p.audience)}</span> ${fullPill}</h3>
+            <div class="meta">${escapeHtml(fmtSchedule(p))} · ${escapeHtml(fmtPrice(p.price_cents))}${p.instructor ? ' · ' + escapeHtml(p.instructor) : ''}${p.location ? ' · ' + escapeHtml(p.location) : ''}</div>
+            ${p.description ? `<div class="desc">${escapeHtml(p.description)}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn btn-sm" onclick="event.stopPropagation();openRoster('${p.id}')">Roster (${cap - left})</button>
+            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEdit('${p.id}')">Edit</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const data = await call('list');
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    CACHE = data.programs || [];
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function setWeekdays(csv) {
+  const days = (csv || '').split(',').map(s => s.trim());
+  document.querySelectorAll('#m-weekdays input').forEach(cb => {
+    cb.checked = days.includes(cb.value);
+    cb.parentElement.classList.toggle('on', cb.checked);
+  });
+}
+document.querySelectorAll('#m-weekdays input').forEach(cb => {
+  cb.addEventListener('change', () => cb.parentElement.classList.toggle('on', cb.checked));
+});
+function getWeekdays() {
+  return [...document.querySelectorAll('#m-weekdays input:checked')].map(cb => cb.value).join(',');
+}
+
+function openCreate() {
+  EDITING = null;
+  document.getElementById('m-title').textContent = 'New program';
+  document.getElementById('m-delete').style.display = 'none';
+  document.getElementById('m-name').value = '';
+  document.getElementById('m-description').value = '';
+  document.getElementById('m-audience').value = 'all';
+  document.getElementById('m-capacity').value = '12';
+  document.getElementById('m-price').value = '0';
+  setWeekdays('mon,tue,wed,thu,fri');
+  document.getElementById('m-start_time').value = '';
+  document.getElementById('m-end_time').value = '';
+  document.getElementById('m-start_date').value = '';
+  document.getElementById('m-end_date').value = '';
+  document.getElementById('m-instructor').value = '';
+  document.getElementById('m-location').value = '';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim-edit').classList.add('open');
+}
+
+function openEdit(id) {
+  const p = CACHE.find(x => x.id === id);
+  if (!p) return;
+  EDITING = p;
+  document.getElementById('m-title').textContent = 'Edit program';
+  document.getElementById('m-delete').style.display = p.active ? 'inline-block' : 'none';
+  document.getElementById('m-name').value = p.name || '';
+  document.getElementById('m-description').value = p.description || '';
+  document.getElementById('m-audience').value = p.audience || 'all';
+  document.getElementById('m-capacity').value = p.capacity ?? 12;
+  document.getElementById('m-price').value = ((p.price_cents || 0) / 100).toFixed(2);
+  setWeekdays(p.weekdays || '');
+  document.getElementById('m-start_time').value = (p.start_time || '').slice(0,5);
+  document.getElementById('m-end_time').value   = (p.end_time   || '').slice(0,5);
+  document.getElementById('m-start_date').value = p.start_date  || '';
+  document.getElementById('m-end_date').value   = p.end_date    || '';
+  document.getElementById('m-instructor').value = p.instructor  || '';
+  document.getElementById('m-location').value   = p.location    || '';
+  document.getElementById('m-err').classList.remove('show');
+  document.getElementById('scrim-edit').classList.add('open');
+}
+
+function closeM() { document.getElementById('scrim-edit').classList.remove('open'); }
+
+async function save() {
+  const errEl = document.getElementById('m-err'); errEl.classList.remove('show');
+  const payload = {
+    name:        document.getElementById('m-name').value.trim(),
+    description: document.getElementById('m-description').value.trim(),
+    audience:    document.getElementById('m-audience').value,
+    capacity:    Math.max(0, parseInt(document.getElementById('m-capacity').value, 10) || 0),
+    price_cents: Math.round((parseFloat(document.getElementById('m-price').value) || 0) * 100),
+    weekdays:    getWeekdays(),
+    start_time:  document.getElementById('m-start_time').value || null,
+    end_time:    document.getElementById('m-end_time').value || null,
+    start_date:  document.getElementById('m-start_date').value || null,
+    end_date:    document.getElementById('m-end_date').value || null,
+    instructor:  document.getElementById('m-instructor').value.trim(),
+    location:    document.getElementById('m-location').value.trim(),
+  };
+  if (!payload.name) { errEl.textContent = 'Name is required'; errEl.classList.add('show'); return; }
+  try {
+    const r = EDITING
+      ? await call('update', { id: EDITING.id, ...payload })
+      : await call('create', payload);
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    closeM();
+    await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+
+async function del() {
+  if (!EDITING) return;
+  if (!confirm(`Archive "${EDITING.name}"? Existing bookings stay; new sign-ups are blocked.`)) return;
+  const r = await call('delete', { id: EDITING.id });
+  if (!r.ok) { document.getElementById('m-err').textContent = r.error || 'Delete failed'; document.getElementById('m-err').classList.add('show'); return; }
+  closeM();
+  await refresh();
+}
+
+let ROSTER_PROGRAM = null;
+async function openRoster(id) {
+  const r = await call('roster', { program_id: id });
+  if (!r.ok) { alert(r.error || 'Failed to load roster'); return; }
+  ROSTER_PROGRAM = r.program;
+  document.getElementById('r-title').textContent = r.program.name;
+  document.getElementById('r-meta').textContent = `${fmtSchedule(r.program)} · cap ${r.program.capacity}`;
+  const list = document.getElementById('r-list');
+  if (!r.bookings.length) {
+    list.innerHTML = `<div class="empty" style="padding:30px;border-radius:10px">No sign-ups yet.</div>`;
+  } else {
+    list.innerHTML = r.bookings.map(b => `
+      <div class="roster-row">
+        <div class="who">
+          <div>${escapeHtml(b.participant_name)} <span class="pill ${escapeHtml(b.status)}">${escapeHtml(b.status)}</span> ${b.paid ? '<span class="pill open">paid</span>' : '<span class="pill full">unpaid</span>'}</div>
+          <small>${escapeHtml(b.family_name || '—')}</small>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-ghost" onclick="togglePaid('${b.id}', ${!b.paid})">${b.paid ? 'Unpaid' : 'Mark paid'}</button>
+          ${b.status !== 'cancelled' ? `<button class="btn btn-sm btn-danger" onclick="cancelBooking('${b.id}')">Cancel</button>` : ''}
+        </div>
+      </div>`).join('');
+  }
+  document.getElementById('scrim-roster').classList.add('open');
+}
+function closeRoster() { document.getElementById('scrim-roster').classList.remove('open'); ROSTER_PROGRAM = null; }
+async function togglePaid(bid, paid) {
+  const r = await call('mark_paid', { booking_id: bid, paid });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await openRoster(ROSTER_PROGRAM.id);
+}
+async function cancelBooking(bid) {
+  if (!confirm('Cancel this booking?')) return;
+  const r = await call('cancel_booking_admin', { booking_id: bid });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await openRoster(ROSTER_PROGRAM.id);
+  await refresh();
+}
+
+document.querySelectorAll('.program').forEach(el => el.addEventListener('click', () => openEdit(el.dataset.id)));
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Programs — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>

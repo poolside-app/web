@@ -164,7 +164,7 @@ print(f'  tenant A: {SLUG_A} ({TENANT_A_ID[:8]}…)')
 print(f'  tenant B: {SLUG_B} ({TENANT_B_ID[:8]}…)  [throwaway]')
 
 # Track resources for cleanup
-RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': []}
+RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': []}
 def track(kind, id):  RESOURCES[kind].append(id)
 
 # ── 1. Cross-tenant isolation (THE most important) ───────────────────────
@@ -679,6 +679,105 @@ step('non-primary CANNOT add housemate',   non_primary_cannot_add)
 step('primary can remove housemate',       member_remove_housemate)
 step('primary cannot remove themselves',   member_cannot_remove_primary)
 
+# ── 13. Programs (bookings engine) ───────────────────────────────────────
+section('Programs (bookings)')
+
+PROG_ID = None
+PROG_BOOKING_ID = None
+
+def prog_admin_create():
+    global PROG_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', {
+        'action': 'create',
+        'name': f'E2E Swim {STAMP}',
+        'description': 'auto-test program',
+        'audience': 'kids', 'capacity': 2, 'price_cents': 5000,
+        'weekdays': 'tue,thu', 'start_time': '18:00', 'end_time': '18:45',
+        'instructor': 'Coach E2E',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    PROG_ID = r['program']['id']
+    track('programs', PROG_ID)
+    assert r['program']['spots_left'] == 2, f'expected 2 spots, got {r["program"]["spots_left"]}'
+
+def prog_public_list_visible():
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list_public', 'slug': SLUG_A })
+    assert r.get('ok'), f'list_public: {r}'
+    found = next((p for p in r.get('programs', []) if p['id'] == PROG_ID), None)
+    assert found, 'program not exposed via list_public'
+    assert found['spots_left'] == 2
+
+def prog_member_book():
+    global PROG_BOOKING_ID
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', {
+        'action': 'book', 'program_id': PROG_ID,
+        'participant_name': f'Kid Booking {STAMP}',
+    }, tok)
+    assert r.get('ok'), f'book: {r}'
+    assert r['booking']['status'] == 'confirmed', f'expected confirmed, got {r["booking"]["status"]}'
+    PROG_BOOKING_ID = r['booking']['id']
+
+def prog_my_bookings_lists_it():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'my_bookings' }, tok)
+    assert r.get('ok'), f'my_bookings: {r}'
+    found = next((b for b in r.get('bookings', []) if b['id'] == PROG_BOOKING_ID), None)
+    assert found, 'booking not in my_bookings'
+    assert (found.get('program') or {}).get('id') == PROG_ID
+
+def prog_admin_roster_and_mark_paid():
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'roster', 'program_id': PROG_ID }, TOKEN_A)
+    assert r.get('ok'), f'roster: {r}'
+    bk = next((b for b in r.get('bookings', []) if b['id'] == PROG_BOOKING_ID), None)
+    assert bk and bk['paid'] is False
+    r2 = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'mark_paid', 'booking_id': PROG_BOOKING_ID, 'paid': True }, TOKEN_A)
+    assert r2.get('ok') and r2['booking']['paid'] is True, f'mark_paid: {r2}'
+
+def prog_capacity_overflow_waitlists():
+    # capacity=2, 1 confirmed already → next two attempts: one confirmed, one waitlisted.
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r1 = post(f'{SUPABASE_URL}/functions/v1/programs', {
+        'action': 'book', 'program_id': PROG_ID,
+        'participant_name': f'Sibling A {STAMP}',
+    }, tok)
+    assert r1.get('ok') and r1['booking']['status'] == 'confirmed', f'sibling A: {r1}'
+    r2 = post(f'{SUPABASE_URL}/functions/v1/programs', {
+        'action': 'book', 'program_id': PROG_ID,
+        'participant_name': f'Sibling B {STAMP}',
+    }, tok)
+    assert r2.get('ok') and r2['booking']['status'] == 'waitlisted', f'sibling B should waitlist: {r2}'
+
+def prog_member_cancels_own_booking():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', {
+        'action': 'cancel_booking', 'booking_id': PROG_BOOKING_ID,
+    }, tok)
+    assert r.get('ok'), f'cancel: {r}'
+    rows = mgmt_query(f"select status from public.program_bookings where id = '{PROG_BOOKING_ID}';")
+    assert rows and rows[0]['status'] == 'cancelled', 'booking not marked cancelled'
+
+def prog_isolation():
+    # Tenant B should NOT see tenant A's program in admin list
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list' }, TOKEN_B)
+    assert r.get('ok')
+    leaked = any(p['id'] == PROG_ID for p in r.get('programs', []))
+    assert not leaked, 'tenant B can see tenant A programs (ISOLATION FAIL)'
+
+def prog_anon_blocked_for_admin_action():
+    r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list' })
+    assert not r.get('ok'), 'admin list must reject anon'
+
+step('admin creates program',                 prog_admin_create)
+step('public list_public exposes it',         prog_public_list_visible)
+step('member books a confirmed spot',         prog_member_book)
+step('my_bookings returns the booking',       prog_my_bookings_lists_it)
+step('admin roster + mark_paid flow',         prog_admin_roster_and_mark_paid)
+step('over-capacity bookings waitlist',       prog_capacity_overflow_waitlists)
+step('member cancels their own booking',      prog_member_cancels_own_booking)
+step('cross-tenant isolation on programs',    prog_isolation)
+step('anon rejected for admin action',        prog_anon_blocked_for_admin_action)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -696,6 +795,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.photos where id = '{p}';")
     for d in RESOURCES['documents']:
         mgmt_query(f"delete from public.documents where id = '{d}';")
+    for pid in RESOURCES['programs']:
+        mgmt_query(f"delete from public.programs where id = '{pid}';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 
