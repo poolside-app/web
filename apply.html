@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apply for membership — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -14,92 +15,237 @@
     --r-md: 12px; --r-lg: 18px;
   }
   *,*::before,*::after { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  body { margin:0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display:flex; flex-direction: column; }
   a { color: var(--blue); }
   h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
-  h1 { font-size: 30px; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 18px; color: var(--blue); margin-bottom: 12px; }
   .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
   .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
   header { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
-  main { flex: 1; padding: 32px 22px; display: flex; align-items: center; justify-content: center; }
-  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 32px 30px; box-shadow: var(--shadow); max-width: 540px; width: 100%; }
+  main { flex:1; padding: 28px 22px; display:flex; align-items:flex-start; justify-content:center; }
+  .card { background:#fff; border:1px solid var(--border); border-radius: var(--r-lg); padding: 28px 28px 22px; box-shadow: var(--shadow); max-width: 580px; width: 100%; }
+  .progress { height: 4px; background: var(--bg-2); border-radius: 999px; overflow: hidden; margin: 8px 0 22px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--blue-2)); transition: width .25s; }
+  .step-counter { font-size: 11px; color: var(--muted); font-weight:700; letter-spacing: .08em; text-transform: uppercase; }
   .lede { color: var(--muted); margin: 8px 0 22px; font-size: 14px; }
-  label { display: block; font-weight: 600; font-size: 12px; margin: 14px 0 4px; }
-  label .opt { font-weight: 500; color: var(--muted); text-transform: none; font-size: 11px; margin-left: 6px; }
-  input, textarea { width: 100%; padding: 11px 13px; font: 14px 'Inter', sans-serif; border: 1.5px solid var(--border); border-radius: var(--r-md); background: #fff; }
-  input:focus, textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
-  textarea { resize: vertical; min-height: 80px; }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .row3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
-  .pay-opt {
-    display: flex; align-items: center; gap: 8px; font-size: 14px;
-    padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px;
-    cursor: pointer; transition: border .12s;
-  }
+  label { display:block; font-weight:600; font-size: 12px; margin: 14px 0 4px; }
+  label .opt { font-weight:500; color: var(--muted); text-transform: none; font-size: 11px; margin-left: 6px; }
+  input, textarea, select { width: 100%; padding: 11px 13px; font: 14px 'Inter', sans-serif; border:1.5px solid var(--border); border-radius: var(--r-md); background:#fff; }
+  input:focus, textarea:focus, select:focus { outline:0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .check-row { display:flex; align-items:center; gap: 10px; padding: 10px 12px; border:1.5px solid var(--border); border-radius:10px; cursor:pointer; margin: 8px 0; font-size: 14px; }
+  .check-row input { width:auto; margin: 0; }
+  .check-row.done { border-color: var(--green); background: #f0fdf4; }
+
+  .pay-opt { display:flex; align-items:center; gap:8px; font-size:14px; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; cursor:pointer; margin: 6px 0; }
   .pay-opt:has(input:checked) { border-color: var(--blue); background: var(--blue-l); }
-  .pay-opt input { width: auto; margin: 0; }
-  .btn { display: block; width: 100%; padding: 14px; background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md); font: 600 15px 'Inter', sans-serif; cursor: pointer; margin-top: 22px; }
-  .btn:hover { background: var(--blue-2); }
-  .btn:disabled { opacity: .55; cursor: not-allowed; }
-  .err { display:none; margin-top:14px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
-  .err.show { display: block; }
+  .pay-opt input { width:auto; margin:0; }
+
+  .person-row { background: var(--bg-2); border:1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+  .person-row h3 { margin:0 0 6px; font-family:'Fraunces',serif; font-size: 14px; color: var(--blue); }
+
+  .btn { padding: 12px 22px; border-radius: var(--r-md); font: 600 14px 'Inter'; cursor:pointer; border:1.5px solid transparent; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-2); }
+  .btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-outline { background:#fff; color: var(--blue); border:1.5px solid var(--border); padding: 10px 14px; border-radius:10px; font: 600 13px 'Inter'; cursor:pointer; width:100%; text-align:left; margin: 4px 0; }
+  .btn-outline.done { border-color: var(--green); background: #f0fdf4; }
+
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display:block; }
+  .nav-row { display:flex; justify-content:space-between; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+  .sig-wrap { position:relative; border:2px dashed var(--border); border-radius: 10px; background: #fff; height: 140px; }
+  .sig-wrap canvas { display:block; width:100%; height:100%; touch-action:none; }
+  .sig-wrap.signed { border-style: solid; border-color: var(--green); background: #f0fdf4; }
+  .sig-clear { position:absolute; right: 10px; top: 8px; font-size: 11px; padding: 4px 10px; background:#fff; border:1px solid var(--border); border-radius: 6px; cursor:pointer; }
+  .sig-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .scrim { position: fixed; inset: 0; background: rgba(15,23,42,.65); display:none; align-items:center; justify-content:center; padding:22px; z-index: 90; }
+  .scrim.open { display:flex; }
+  .modal-card { background:#fff; max-width: 520px; width:100%; border-radius: 18px; padding: 26px 28px; max-height: 80vh; overflow-y: auto; }
+  .modal-card h2 { font-family:'Fraunces',serif; font-size: 20px; }
+  .modal-card .policy { font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-wrap; margin: 14px 0; }
+
   .ok { padding: 32px; text-align: center; }
   .ok h1 { color: var(--green); }
+
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
 <header><a href="/" class="logo"><span class="logo-dot"></span> Poolside</a></header>
+
 <main>
-  <form class="card" id="form" onsubmit="event.preventDefault(); submitApplication()">
-    <h1 id="title">Apply for membership</h1>
-    <p class="lede" id="lede">Tell us a bit about your family. The board reviews each application — once approved, you'll get an email link to set up your member sign-in.</p>
-
-    <label>Family name</label>
-    <input id="family_name" placeholder="The Smith Family" required>
-
-    <label>Primary contact name</label>
-    <input id="primary_name" placeholder="Jane Smith" required>
-
-    <div class="row2">
-      <div><label>Email</label><input id="primary_email" type="email" placeholder="jane@example.com"></div>
-      <div><label>Phone</label><input id="primary_phone" type="tel" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)"></div>
+  <form class="card" id="form" onsubmit="event.preventDefault();">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <h1 id="title">Apply for membership</h1>
+      <div class="step-counter"><span id="step-num">1</span> of 4</div>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Provide an email or a phone — both is best.</p>
+    <div class="progress"><div class="progress-fill" id="progress" style="width:25%"></div></div>
+    <p class="lede" id="lede">A few quick steps. Your info goes to the board for review and you'll get an email link to sign in once approved.</p>
 
-    <label>Address <span class="opt">(optional)</span></label>
-    <input id="address" placeholder="123 Maple St">
-    <div class="row2" style="margin-top:6px">
-      <div><label>City</label><input id="city"></div>
-      <div><label>Zip</label><input id="zip"></div>
+    <!-- Step 1 — Family + contact -->
+    <div class="step" data-step="1">
+      <h2>Family info</h2>
+
+      <label class="check-row" style="margin-top:0">
+        <input type="checkbox" id="is_new_member" checked>
+        <span>I'm a new applicant (uncheck if you're a returning family)</span>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="need_new_fob">
+        <span>I need a new key fob</span>
+      </label>
+
+      <label>Family last name *</label>
+      <input id="family_name" placeholder="Smith">
+
+      <label>Prior fob # <span class="opt">(returning members only)</span></label>
+      <input id="prior_fob_number" placeholder="e.g. 4821">
+
+      <label>Street address *</label>
+      <input id="address" placeholder="123 Maple St">
+      <div class="row2"><div><label>City</label><input id="city"></div><div><label>Zip</label><input id="zip"></div></div>
+
+      <label>Primary phone *</label>
+      <input id="primary_phone" type="tel" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)">
+
+      <label>Primary email *</label>
+      <input id="primary_email" type="email" placeholder="you@example.com">
+
+      <label>Secondary email <span class="opt">(optional, for invoices)</span></label>
+      <input id="alt_email" type="email">
+
+      <label>Emergency contact (name + phone) *</label>
+      <input id="emergency_contact" placeholder="Jane Smith — (555) 555-9999">
     </div>
 
-    <div class="row2" style="margin-top:10px">
-      <div><label># Adults</label><input type="number" id="num_adults" min="0" value="2"></div>
-      <div><label># Kids</label><input type="number" id="num_kids" min="0" value="0"></div>
+    <!-- Step 2 — Adults + children -->
+    <div class="step" data-step="2" style="display:none">
+      <h2>Family members</h2>
+      <p class="lede" style="margin-top:0">Tell us who's on the membership. We'll create a Poolside account for each adult after approval.</p>
+
+      <div class="row2">
+        <div>
+          <label>Adults</label>
+          <select id="acount" onchange="rebuildPeople()">
+            <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+          </select>
+        </div>
+        <div>
+          <label>Children</label>
+          <select id="ccount" onchange="rebuildPeople()">
+            <option selected>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="adultsBox"></div>
+      <div id="childrenBox"></div>
     </div>
 
-    <label>Anything else? <span class="opt">(optional — referred by, special requests, etc.)</span></label>
-    <textarea id="body" maxlength="2000"></textarea>
+    <!-- Step 3 — Policies + signatures -->
+    <div class="step" data-step="3" style="display:none">
+      <h2>Policies & signatures</h2>
+      <p class="lede" style="margin-top:0">Open each one, then check the box. Signatures unlock once all policies are accepted.</p>
 
-    <label style="margin-top:14px">How would you like to pay dues?</label>
-    <div style="display:flex;flex-direction:column;gap:6px">
+      <button type="button" class="btn-outline" id="btn-rules"  onclick="openPolicy('rules')">📜 1. Membership Rules</button>
+      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-rules" disabled onchange="checkAccepted()"><span>I accept the Membership Rules</span></label>
+
+      <button type="button" class="btn-outline" id="btn-guest"  onclick="openPolicy('guest')">👥 2. Guest Policy</button>
+      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-guest" disabled onchange="checkAccepted()"><span>I accept the Guest Policy</span></label>
+
+      <button type="button" class="btn-outline" id="btn-party"  onclick="openPolicy('party')">🎂 3. Party Policy</button>
+      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-party" disabled onchange="checkAccepted()"><span>I accept the Party Policy</span></label>
+
+      <button type="button" class="btn-outline" id="btn-sitter" onclick="openPolicy('sitter')">🧒 4. Sitter Policy</button>
+      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-sitter" disabled onchange="checkAccepted()"><span>I accept the Sitter Policy</span></label>
+
+      <button type="button" class="btn-outline" id="btn-waiver" onclick="openPolicy('waiver')">⚠️ 5. Liability Waiver</button>
+      <label class="check-row" style="margin:0 0 14px"><input type="checkbox" id="agree-waiver" disabled onchange="checkAccepted()"><span>I accept the Liability Waiver</span></label>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+
+      <div id="sig-locked-hint" style="font-size:13px;color:var(--muted);background:var(--bg-2);padding:10px 14px;border-radius:8px;margin-bottom:10px">
+        ✍️ Signatures unlock after you accept all five policies above.
+      </div>
+
+      <div id="sig-area" style="display:none">
+        <label>Primary applicant signature *</label>
+        <div class="sig-wrap" id="sig-primary-wrap">
+          <canvas id="sig-primary"></canvas>
+          <button type="button" class="sig-clear" onclick="clearSig('primary')">Clear</button>
+        </div>
+        <p class="sig-hint">Sign with your finger / mouse — applies to all adults on this application.</p>
+
+        <div id="guardian-area" style="display:none">
+          <label style="margin-top:14px">Parent / guardian signature <span class="opt">(on behalf of all minors)</span> *</label>
+          <div class="sig-wrap" id="sig-guardian-wrap">
+            <canvas id="sig-guardian"></canvas>
+            <button type="button" class="sig-clear" onclick="clearSig('guardian')">Clear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 — Payment + submit -->
+    <div class="step" data-step="4" style="display:none">
+      <h2>Payment</h2>
+      <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
       <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked> 💸 Venmo — admin verifies, then you're set</label>
       <label class="pay-opt"><input type="radio" name="payment_method" value="stripe"> 💳 Credit card via Stripe — instant approval</label>
       <label class="pay-opt"><input type="radio" name="payment_method" value=""> Decide later</label>
-    </div>
-    <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't wired yet — we'll email you a payment link after the board approves.</p>
+      <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't wired yet — we'll email you a payment link after the board approves.</p>
 
-    <button class="btn" id="submit-btn" type="submit">Submit application</button>
-    <div id="err" class="err"></div>
+      <label style="margin-top:18px">Anything else? <span class="opt">(referred by, special requests, etc.)</span></label>
+      <textarea id="body" maxlength="2000"></textarea>
+    </div>
+
+    <div class="err" id="err"></div>
+
+    <div class="nav-row">
+      <button type="button" class="btn btn-ghost" id="back-btn" onclick="goBack()" style="visibility:hidden">← Back</button>
+      <button type="button" class="btn btn-primary" id="next-btn" onclick="goNext()">Next →</button>
+    </div>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;text-align:center">Already a member? <a href="/m/login.html">Sign in</a></p>
   </form>
 </main>
+
+<!-- Policy modal -->
+<div class="scrim" id="policy-scrim" onclick="if (event.target === this) closePolicy()">
+  <div class="modal-card">
+    <h2 id="policy-title">Policy</h2>
+    <div class="policy" id="policy-body">…</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn btn-ghost" onclick="closePolicy()">Close</button>
+      <button type="button" class="btn btn-primary" id="policy-accept-btn" onclick="acceptPolicy()">✓ I Accept</button>
+    </div>
+  </div>
+</div>
+
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
+
+// Placeholder policy text — admin can customize per-tenant in a later release.
+const POLICIES = {
+  rules:  { title: 'Membership Rules',  body: 'Members must abide by all posted club rules. Use of the pool is at your own risk; no lifeguard is on duty unless explicitly noted. Children under 12 must be accompanied by a parent or guardian. Glass containers are prohibited on the pool deck. The board reserves the right to modify these rules.' },
+  guest:  { title: 'Guest Policy',      body: 'Members may bring up to 4 guests per visit, registered at the gate. Guest fees apply per the current schedule. Members are responsible for their guests\' conduct. Repeated guest visits by the same individual may require sponsorship to convert to a membership.' },
+  party:  { title: 'Party Policy',      body: 'Private parties must be reserved at least 14 days in advance through the member dashboard. Party host is responsible for additional cleanup; insurance certificates required for events over 30 guests. Pool may not be exclusively reserved during open hours.' },
+  sitter: { title: 'Sitter Policy',     body: 'Babysitters and au pairs are welcome to accompany member children to the pool but must be at least 16 years of age and pass a swim test. Sitter passes are issued by the membership chair on request.' },
+  waiver: { title: 'Liability Waiver',  body: 'I acknowledge that swimming and pool use carry inherent risks, including injury or drowning. I release the club, its board, employees, and volunteers from any liability for injury, damage, or loss arising from my (or my family\'s) use of the facilities. I confirm that all named members can swim or will be supervised by a competent adult at all times.' },
+};
+
+const ACCEPTED = { rules: false, guest: false, party: false, sitter: false, waiver: false };
+
+let CURRENT_STEP = 1;
+const TOTAL_STEPS = 4;
 
 function getSlug() {
   const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
@@ -107,7 +253,6 @@ function getSlug() {
   return m[1].toLowerCase();
 }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
 function formatPhoneInput(el) {
   const digits = el.value.replace(/\D/g, '').slice(0, 10);
   if (!digits.length) { el.value = ''; return; }
@@ -116,15 +261,250 @@ function formatPhoneInput(el) {
   el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
 }
 
+// Step 2 — dynamic adult/child rows
+function rebuildPeople() {
+  const a = parseInt(document.getElementById('acount').value, 10) || 1;
+  const c = parseInt(document.getElementById('ccount').value, 10) || 0;
+  const aBox = document.getElementById('adultsBox');
+  const cBox = document.getElementById('childrenBox');
+  aBox.innerHTML = '';
+  for (let i = 0; i < a; i++) {
+    aBox.insertAdjacentHTML('beforeend', `
+      <div class="person-row">
+        <h3>${i === 0 ? 'Adult #1 (primary contact)' : `Adult #${i+1}`}</h3>
+        <label>Full name *</label>
+        <input data-adult="${i}" data-field="name" placeholder="${i === 0 ? 'Jane Smith' : 'Other adult'}">
+        <div class="row2">
+          <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
+          <div><label>Email${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="email" type="email"></div>
+        </div>
+      </div>
+    `);
+  }
+  cBox.innerHTML = '';
+  for (let i = 0; i < c; i++) {
+    cBox.insertAdjacentHTML('beforeend', `
+      <div class="person-row">
+        <h3>Child #${i+1}</h3>
+        <label>Full name *</label>
+        <input data-child="${i}" data-field="name">
+        <div class="row2">
+          <div><label>Date of birth</label><input data-child="${i}" data-field="dob" type="date"></div>
+          <div><label>Allergies / notes</label><input data-child="${i}" data-field="allergies" placeholder="Optional"></div>
+        </div>
+      </div>
+    `);
+  }
+}
+
+// Step 3 — policies
+let CURRENT_POLICY = null;
+function openPolicy(name) {
+  CURRENT_POLICY = name;
+  document.getElementById('policy-title').textContent = POLICIES[name].title;
+  document.getElementById('policy-body').textContent = POLICIES[name].body;
+  document.getElementById('policy-scrim').classList.add('open');
+}
+function closePolicy() { document.getElementById('policy-scrim').classList.remove('open'); }
+function acceptPolicy() {
+  if (!CURRENT_POLICY) return;
+  ACCEPTED[CURRENT_POLICY] = true;
+  document.getElementById('agree-' + CURRENT_POLICY).disabled = false;
+  document.getElementById('agree-' + CURRENT_POLICY).checked = true;
+  document.getElementById('btn-' + CURRENT_POLICY).classList.add('done');
+  closePolicy();
+  checkAccepted();
+}
+function checkAccepted() {
+  for (const k of Object.keys(ACCEPTED)) {
+    ACCEPTED[k] = document.getElementById('agree-' + k).checked;
+  }
+  const all = Object.values(ACCEPTED).every(Boolean);
+  document.getElementById('sig-locked-hint').style.display = all ? 'none' : 'block';
+  document.getElementById('sig-area').style.display = all ? 'block' : 'none';
+  if (all) initSigPads();
+}
+
+// Step 3 — signature pads (mounted lazily so canvas size resolves correctly)
+let SIG_PRIMARY = null, SIG_GUARDIAN = null;
+function initSigPads() {
+  const primaryC = document.getElementById('sig-primary');
+  if (!SIG_PRIMARY && primaryC) {
+    fitCanvas(primaryC);
+    SIG_PRIMARY = new SignaturePad(primaryC, { backgroundColor: 'rgba(0,0,0,0)' });
+    SIG_PRIMARY.addEventListener('endStroke', () => {
+      document.getElementById('sig-primary-wrap').classList.toggle('signed', !SIG_PRIMARY.isEmpty());
+    });
+  }
+  const c = parseInt(document.getElementById('ccount').value, 10) || 0;
+  const guardianBox = document.getElementById('guardian-area');
+  guardianBox.style.display = c > 0 ? 'block' : 'none';
+  if (c > 0) {
+    const guardianC = document.getElementById('sig-guardian');
+    if (!SIG_GUARDIAN && guardianC) {
+      fitCanvas(guardianC);
+      SIG_GUARDIAN = new SignaturePad(guardianC, { backgroundColor: 'rgba(0,0,0,0)' });
+      SIG_GUARDIAN.addEventListener('endStroke', () => {
+        document.getElementById('sig-guardian-wrap').classList.toggle('signed', !SIG_GUARDIAN.isEmpty());
+      });
+    }
+  }
+}
+function fitCanvas(canvas) {
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width  = canvas.offsetWidth * ratio;
+  canvas.height = canvas.offsetHeight * ratio;
+  canvas.getContext('2d').scale(ratio, ratio);
+}
+function clearSig(which) {
+  if (which === 'primary' && SIG_PRIMARY) {
+    SIG_PRIMARY.clear();
+    document.getElementById('sig-primary-wrap').classList.remove('signed');
+  }
+  if (which === 'guardian' && SIG_GUARDIAN) {
+    SIG_GUARDIAN.clear();
+    document.getElementById('sig-guardian-wrap').classList.remove('signed');
+  }
+}
+
+// Wizard navigation
+function showStep(n) {
+  CURRENT_STEP = n;
+  document.querySelectorAll('.step').forEach(el => {
+    el.style.display = (parseInt(el.dataset.step) === n) ? 'block' : 'none';
+  });
+  document.getElementById('step-num').textContent = n;
+  document.getElementById('progress').style.width = (n / TOTAL_STEPS * 100) + '%';
+  document.getElementById('back-btn').style.visibility = (n === 1) ? 'hidden' : 'visible';
+  document.getElementById('next-btn').textContent = (n === TOTAL_STEPS) ? 'Submit application →' : 'Next →';
+}
+function goBack() { if (CURRENT_STEP > 1) showStep(CURRENT_STEP - 1); }
+function goNext() {
+  const errEl = document.getElementById('err'); errEl.classList.remove('show');
+  if (CURRENT_STEP === 1) {
+    const fam   = document.getElementById('family_name').value.trim();
+    const addr  = document.getElementById('address').value.trim();
+    const phone = document.getElementById('primary_phone').value.trim();
+    const email = document.getElementById('primary_email').value.trim();
+    const emerg = document.getElementById('emergency_contact').value.trim();
+    if (!fam)   return show('Family last name is required');
+    if (!addr)  return show('Address is required');
+    if (!phone) return show('Primary phone is required');
+    if (!email) return show('Primary email is required');
+    if (!emerg) return show('Emergency contact is required');
+  } else if (CURRENT_STEP === 2) {
+    const adults = collectAdults();
+    if (!adults.length || !adults[0].name) return show('At least one adult name is required');
+    if (!adults[0].name) return show('Primary adult name is required');
+    const kids = collectChildren();
+    const kidCount = parseInt(document.getElementById('ccount').value, 10) || 0;
+    if (kids.length !== kidCount) return show('Fill in every child\'s name (or set Children to a smaller number)');
+  } else if (CURRENT_STEP === 3) {
+    if (!Object.values(ACCEPTED).every(Boolean)) return show('Open and accept all five policies');
+    if (!SIG_PRIMARY || SIG_PRIMARY.isEmpty()) return show('Please add the primary applicant signature');
+    const c = parseInt(document.getElementById('ccount').value, 10) || 0;
+    if (c > 0 && (!SIG_GUARDIAN || SIG_GUARDIAN.isEmpty())) return show('Please add the parent/guardian signature for the children');
+  } else if (CURRENT_STEP === 4) {
+    return submitApplication();
+  }
+  showStep(CURRENT_STEP + 1);
+  if (CURRENT_STEP === 2) rebuildPeople();
+}
+function show(msg) { const el = document.getElementById('err'); el.textContent = msg; el.classList.add('show'); }
+
+// Stripe-not-yet hint
+document.addEventListener('change', (e) => {
+  if (e.target.name !== 'payment_method') return;
+  const hint = document.getElementById('stripe-hint');
+  if (hint) hint.style.display = e.target.value === 'stripe' ? 'block' : 'none';
+});
+
+// Collect adults / children from the dynamic builder
+function collectAdults() {
+  const out = [];
+  const a = parseInt(document.getElementById('acount').value, 10) || 0;
+  for (let i = 0; i < a; i++) {
+    const name  = document.querySelector(`[data-adult="${i}"][data-field="name"]`)?.value.trim() || '';
+    const phone = document.querySelector(`[data-adult="${i}"][data-field="phone"]`)?.value.trim() || '';
+    const email = document.querySelector(`[data-adult="${i}"][data-field="email"]`)?.value.trim().toLowerCase() || '';
+    if (name) out.push({ name, phone: phone || null, email: email || null });
+  }
+  return out;
+}
+function collectChildren() {
+  const out = [];
+  const c = parseInt(document.getElementById('ccount').value, 10) || 0;
+  for (let i = 0; i < c; i++) {
+    const name = document.querySelector(`[data-child="${i}"][data-field="name"]`)?.value.trim() || '';
+    const dob  = document.querySelector(`[data-child="${i}"][data-field="dob"]`)?.value || null;
+    const all  = document.querySelector(`[data-child="${i}"][data-field="allergies"]`)?.value.trim() || '';
+    if (name) out.push({ name, dob: dob || null, allergies: all || null });
+  }
+  return out;
+}
+
+async function submitApplication() {
+  const slug = getSlug();
+  if (!slug) return show('No club detected from URL');
+  const errEl = document.getElementById('err'); errEl.classList.remove('show');
+  const adults = collectAdults();
+  const children = collectChildren();
+
+  // Primary contact = first adult; family fields take from form
+  const get = (id) => document.getElementById(id).value.trim();
+  const primary = adults[0] || {};
+  const payload = {
+    action: 'submit', slug,
+    family_name: get('family_name') + (get('family_name').endsWith(' Family') ? '' : ' Family'),
+    primary_name: primary.name,
+    primary_email: primary.email || get('primary_email').toLowerCase(),
+    primary_phone: primary.phone || get('primary_phone'),
+    address: get('address') || null,
+    city:    get('city') || null,
+    zip:     get('zip') || null,
+    num_adults: adults.length,
+    num_kids:   children.length,
+    body:    get('body') || null,
+    payment_method: (document.querySelector('input[name="payment_method"]:checked')?.value || '') || null,
+
+    is_new_member:    document.getElementById('is_new_member').checked,
+    need_new_fob:     document.getElementById('need_new_fob').checked,
+    prior_fob_number: get('prior_fob_number') || null,
+    alt_email:        get('alt_email') || null,
+    emergency_contact: get('emergency_contact'),
+
+    adults, children,
+    waivers: { ...ACCEPTED },
+    signature_primary:  SIG_PRIMARY  && !SIG_PRIMARY.isEmpty()  ? SIG_PRIMARY.toDataURL('image/png')  : null,
+    signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
+  };
+
+  const btn = document.getElementById('next-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Submitting…';
+  try {
+    const res = await fetch(APPLY_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Submission failed');
+    document.getElementById('form').className = 'card ok';
+    document.getElementById('form').innerHTML = `
+      <h1>🎉 Got it!</h1>
+      <p class="lede">Your application is in the queue. The board will review and reach out within a few days.</p>
+      <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
+    `;
+  } catch (e) { show(e.message); btn.disabled = false; btn.textContent = orig; }
+}
+
 (async () => {
   const slug = getSlug();
   if (!slug) {
     document.getElementById('title').textContent = 'Wrong URL';
     document.getElementById('lede').textContent = "Visit a club's subdomain to apply (e.g. yourclub.poolsideapp.com/apply.html).";
-    document.getElementById('submit-btn').disabled = true;
+    document.getElementById('next-btn').disabled = true;
     return;
   }
-  // Look up tenant for branded title
   try {
     const r = await fetch(`${SUPABASE_URL}/functions/v1/tenant_public`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -138,58 +518,8 @@ function formatPhoneInput(el) {
       }
     }
   } catch { /* keep generic */ }
+  rebuildPeople();
 })();
-
-// Show the Stripe-not-yet hint when the user picks Stripe
-document.addEventListener('change', (e) => {
-  if (e.target.name !== 'payment_method') return;
-  const hint = document.getElementById('stripe-hint');
-  if (!hint) return;
-  hint.style.display = e.target.value === 'stripe' ? 'block' : 'none';
-});
-
-async function submitApplication() {
-  const errEl = document.getElementById('err');
-  errEl.classList.remove('show');
-  const slug = getSlug();
-  if (!slug) return;
-  const get = (id) => document.getElementById(id).value.trim();
-  const family_name = get('family_name');
-  const primary_name = get('primary_name');
-  const primary_email = get('primary_email') || null;
-  const primary_phone = get('primary_phone') || null;
-  const payment_method = (document.querySelector('input[name="payment_method"]:checked')?.value || '') || null;
-  if (!family_name || !primary_name) { errEl.textContent = 'Family + primary name are required'; errEl.classList.add('show'); return; }
-  if (!primary_email && !primary_phone) { errEl.textContent = 'Provide an email or a phone'; errEl.classList.add('show'); return; }
-
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Submitting…';
-  try {
-    const res = await fetch(APPLY_URL, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        action: 'submit', slug,
-        family_name, primary_name, primary_email, primary_phone,
-        address: get('address') || null,
-        city:    get('city') || null,
-        zip:     get('zip') || null,
-        num_adults: get('num_adults') || 2,
-        num_kids:   get('num_kids') || 0,
-        body:    get('body') || null,
-        payment_method,
-      }),
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Submission failed');
-    document.getElementById('form').className = 'card ok';
-    document.getElementById('form').innerHTML = `
-      <h1>🎉 Got it!</h1>
-      <p class="lede">Your application is in the queue. The board will review and reach out within a few days.</p>
-      <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
-    `;
-  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
-  finally { btn.disabled = false; btn.textContent = orig; }
-}
 </script>
 </body>
 </html>

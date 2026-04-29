@@ -101,7 +101,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, created_at, updated_at';
 
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'venmo']);
 
@@ -144,6 +144,46 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Invalid payment method' }, 400);
     }
 
+    // Full-detail fields (BE parity): adults, children, waivers, signatures
+    const adultsArr   = Array.isArray(body.adults)   ? body.adults   as Array<Record<string, unknown>> : [];
+    const childrenArr = Array.isArray(body.children) ? body.children as Array<Record<string, unknown>> : [];
+
+    // Validate per-adult shape if provided. Adults must each have a name; phone normalization happens here.
+    const adults_json: Array<Record<string, unknown>> = [];
+    for (const a of adultsArr) {
+      const nm = String(a?.name ?? '').trim();
+      if (!nm) continue;  // skip empty rows from the dynamic builder
+      const ap = String(a?.phone ?? '').trim();
+      const apE = ap ? normalizePhoneE164(ap) : null;
+      if (ap && !apE) return jsonResponse({ ok: false, error: `Invalid phone for ${nm}` }, 400);
+      adults_json.push({
+        name: nm,
+        email: a?.email ? String(a.email).trim().toLowerCase() : null,
+        phone: apE,
+        signature: typeof a?.signature === 'string' ? String(a.signature).slice(0, 200000) : null,
+      });
+    }
+    const children_json: Array<Record<string, unknown>> = [];
+    for (const c of childrenArr) {
+      const nm = String(c?.name ?? '').trim();
+      if (!nm) continue;
+      children_json.push({
+        name: nm,
+        dob: c?.dob ? String(c.dob) : null,
+        allergies: c?.allergies ? String(c.allergies).slice(0, 500) : null,
+      });
+    }
+
+    const waivers = (body.waivers ?? {}) as Record<string, unknown>;
+    const waivers_accepted: Record<string, boolean> = {};
+    for (const k of ['rules','guest','party','sitter','waiver']) {
+      waivers_accepted[k] = waivers[k] === true;
+    }
+    const allWaiversAccepted = Object.values(waivers_accepted).every(Boolean);
+
+    const sigPrimary  = typeof body.signature_primary  === 'string' ? String(body.signature_primary).slice(0, 200000)  : null;
+    const sigGuardian = typeof body.signature_guardian === 'string' ? String(body.signature_guardian).slice(0, 200000) : null;
+
     const { data, error } = await sb.from('applications').insert({
       tenant_id: tenant.id,
       family_name, primary_name,
@@ -152,15 +192,25 @@ Deno.serve(async (req) => {
       address: strOrNull(body.address),
       city:    strOrNull(body.city),
       zip:     strOrNull(body.zip),
-      num_adults: intOrDefault(body.num_adults, 2),
-      num_kids:   intOrDefault(body.num_kids, 0),
+      num_adults: adults_json.length || intOrDefault(body.num_adults, 2),
+      num_kids:   children_json.length || intOrDefault(body.num_kids, 0),
       body:    strOrNull(body.body),
       payment_method,
       payment_status: 'unpaid',
+      is_new_member:    body.is_new_member !== false,
+      need_new_fob:     body.need_new_fob === true,
+      prior_fob_number: strOrNull(body.prior_fob_number),
+      alt_email:        body.alt_email ? String(body.alt_email).trim().toLowerCase() : null,
+      adults_json,
+      children_json,
+      waivers_accepted,
+      accepted_at: allWaiversAccepted ? new Date().toISOString() : null,
+      signature_primary:  sigPrimary,
+      signature_guardian: sigGuardian,
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
-      `Application submitted: ${family_name} (${primary_name})`);
+      `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
     return jsonResponse({ ok: true, application_id: data.id, payment_method });
   }
 
@@ -239,6 +289,54 @@ Deno.serve(async (req) => {
       // Roll back the household
       await sb.from('households').delete().eq('id', hh.id);
       return jsonResponse({ ok: false, error: pmErr.message }, 500);
+    }
+
+    // ── Populate the rest of the family from adults_json + children_json ──
+    // Skip adults_json[0] when its name matches primary_name (avoid duplicate).
+    const adults = Array.isArray(app.adults_json) ? app.adults_json as Array<Record<string, unknown>> : [];
+    const children = Array.isArray(app.children_json) ? app.children_json as Array<Record<string, unknown>> : [];
+
+    let createdExtraMembers = 0;
+    for (let i = 0; i < adults.length; i++) {
+      const a = adults[i];
+      const aName = String(a?.name ?? '').trim();
+      if (!aName) continue;
+      // First adult is the primary already inserted — skip if it matches
+      if (i === 0 && aName.toLowerCase() === String(app.primary_name).trim().toLowerCase()) continue;
+      const aPhone = a?.phone ? String(a.phone) : null;
+      // Skip if phone clashes with primary's phone (safety)
+      if (aPhone && aPhone === app.primary_phone) continue;
+      const { error: spErr } = await sb.from('household_members').insert({
+        tenant_id: TID, household_id: hh.id,
+        name: aName,
+        phone_e164: aPhone,
+        email: a?.email ? String(a.email).toLowerCase() : null,
+        role: 'adult',
+        can_unlock_gate: true, can_book_parties: false,
+        active: true,
+        confirmed_at: new Date().toISOString(),
+      });
+      if (!spErr) createdExtraMembers++;
+    }
+    for (const c of children) {
+      const cName = String(c?.name ?? '').trim();
+      if (!cName) continue;
+      // Determine role by DOB if provided (teen >= 13)
+      let role = 'child';
+      if (c?.dob) {
+        const yrs = (Date.now() - new Date(String(c.dob)).getTime()) / (365.25 * 86400_000);
+        if (yrs >= 13) role = 'teen';
+      }
+      const { error: chErr } = await sb.from('household_members').insert({
+        tenant_id: TID, household_id: hh.id,
+        name: cName,
+        role,
+        can_unlock_gate: role === 'teen',
+        can_book_parties: false,
+        active: true,
+        confirmed_at: new Date().toISOString(),
+      });
+      if (!chErr) createdExtraMembers++;
     }
 
     const decided_by = payload.synthetic ? null : payload.sub;
@@ -320,10 +418,11 @@ Deno.serve(async (req) => {
     }
 
     await audit(sb, TID, decided_by, 'tenant_admin', 'application.approve', id,
-      `Approved ${app.family_name}; created household ${hh.id}`);
+      `Approved ${app.family_name}; household + ${1 + createdExtraMembers} member${createdExtraMembers === 0 ? '' : 's'} created`);
     return jsonResponse({
       ok: true,
       household_id: hh.id, primary_id: pm.id,
+      members_created: 1 + createdExtraMembers,
       welcome_sent, welcome_dev_link,
     });
   }
