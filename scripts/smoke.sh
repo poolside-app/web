@@ -147,6 +147,14 @@ check_post "member_auth me rejects anon" \
   '{"action":"me"}' \
   'Not authenticated'
 
+check_post "tenant_metrics rejects anon" \
+  "${SUPA}/functions/v1/tenant_metrics" \
+  '{"action":"get"}' \
+  'Not authenticated'
+
+check_status "admin /club/admin/impact.html"  "${HOST}/club/admin/impact.html"   "200"
+check       "impact page wires the API"        "${HOST}/club/admin/impact.html"   "tenant_metrics"
+
 echo
 echo "── Member magic-link round trip (no auth, but real DB write) ──"
 check_post "member_auth.start (generic ok response)" \

@@ -63,3 +63,7 @@ verify_jwt = false
 # ICS calendar import — subscriptions stored in settings.value.calendar_imports
 [functions.events_import]
 verify_jwt = false
+
+# Aggregated time-saved / dollar-value metrics for the Impact admin page
+[functions.tenant_metrics]
+verify_jwt = false

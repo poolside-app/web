@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Impact — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+
+  main { flex: 1; padding: 32px 22px; max-width: 880px; width: 100%; margin: 0 auto; }
+
+  /* Hero stat */
+  .hero {
+    background: linear-gradient(135deg, var(--blue), var(--blue-2));
+    color: #fff; border-radius: var(--r-lg); padding: 36px 32px;
+    margin-bottom: 22px; box-shadow: 0 12px 36px rgba(10, 59, 92, .18);
+    text-align: center;
+  }
+  .hero .eyebrow {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: rgba(255,255,255,.65);
+    background: rgba(255,255,255,.12); padding: 4px 12px; border-radius: 999px;
+    margin-bottom: 14px;
+  }
+  .hero .big {
+    font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+    font-size: clamp(48px, 9vw, 84px); line-height: 1; letter-spacing: -.02em;
+  }
+  .hero .units { font-size: 15px; opacity: .82; margin-top: 6px; }
+  .hero .dollars {
+    margin-top: 18px; font-size: 14px;
+    background: rgba(255,255,255,.12); padding: 8px 14px;
+    border-radius: 999px; display: inline-block;
+  }
+  .hero .since { font-size: 12px; opacity: .6; margin-top: 12px; }
+
+  .card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 18px;
+  }
+
+  .row {
+    display: grid; grid-template-columns: 1fr auto; gap: 14px;
+    padding: 12px 4px; border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .label { font-weight: 600; font-size: 14px; }
+  .row .why { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .row .right { text-align: right; }
+  .row .right .count { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; color: var(--blue); }
+  .row .right .ms { font-size: 12px; color: var(--muted); }
+
+  /* Bar visualization */
+  .bar-wrap {
+    background: var(--bg-2); height: 8px; border-radius: 999px;
+    overflow: hidden; margin-top: 8px;
+  }
+  .bar { height: 100%; background: linear-gradient(90deg, var(--blue), var(--blue-2)); border-radius: 999px; }
+
+  .rate-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 14px 0; border-top: 1px solid var(--border); margin-top: 12px;
+  }
+  .rate-row label { font-size: 13px; color: var(--muted); }
+  .rate-row input[type="number"] {
+    width: 100px; padding: 8px 12px; font: 14px 'Inter';
+    border: 1.5px solid var(--border); border-radius: 8px;
+  }
+  .btn { padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--blue); background: var(--blue); color: #fff; font: 600 13px 'Inter'; cursor: pointer; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/impact.html" class="on">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div id="root">
+    <div class="empty">Crunching the numbers…</div>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const METRICS_URL  = `${SUPABASE_URL}/functions/v1/tenant_metrics`;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function fmtNum(n) { return Number(n).toLocaleString(); }
+function fmtMoney(n) { return '$' + Number(n).toLocaleString(); }
+function fmtSinceDays(iso) {
+  if (!iso) return '';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400_000);
+  if (days < 1)   return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 14)  return `${days} days ago`;
+  if (days < 60)  return `${Math.round(days / 7)} weeks ago`;
+  if (days < 730) return `${Math.round(days / 30)} months ago`;
+  return `${Math.round(days / 365)} years ago`;
+}
+
+function render(data) {
+  const total = data.totals;
+  const cats = data.categories || [];
+  const maxMinutes = Math.max(1, ...cats.map(c => c.minutes));
+
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="hero">
+      <div class="eyebrow">Volunteer time saved</div>
+      <div class="big">${fmtNum(total.hours)}</div>
+      <div class="units">hours saved · since this club joined Poolside${data.since ? ' (' + fmtSinceDays(data.since) + ')' : ''}</div>
+      <div class="dollars">≈ <b>${fmtMoney(total.dollars)}</b> at $${data.hourly_rate}/hr volunteer time</div>
+      <div class="since">Tweak your hourly-rate assumption below.</div>
+    </div>
+
+    <div class="card">
+      <h2>Where the time went</h2>
+      ${cats.length ? cats.map(c => `
+        <div class="row">
+          <div>
+            <div class="label">${escapeHtml(c.label)}</div>
+            <div class="why">${escapeHtml(c.why)}</div>
+            <div class="bar-wrap" style="margin-top:8px">
+              <div class="bar" style="width:${Math.round((c.minutes / maxMinutes) * 100)}%"></div>
+            </div>
+          </div>
+          <div class="right">
+            <div class="count">${fmtNum(c.count)}</div>
+            <div class="ms">${fmtNum(Math.round(c.minutes / 60 * 10) / 10)} hrs</div>
+          </div>
+        </div>
+      `).join('') : '<div class="empty">No activity yet — add a household, post a message, or import a calendar to start the counter.</div>'}
+
+      <div class="rate-row">
+        <label for="rate-input">Volunteer time worth</label>
+        <span style="color:var(--blue);font-weight:600">$</span>
+        <input type="number" id="rate-input" min="1" max="500" value="${data.hourly_rate}">
+        <span style="color:var(--muted);font-size:13px">per hour</span>
+        <button class="btn" id="rate-save" onclick="saveRate()">Save</button>
+        <span style="font-size:12px;color:var(--muted);flex-basis:100%;line-height:1.5;margin-top:4px">
+          Default $25/hr is conservative — most boards estimate volunteer hours at $25–$50.
+        </span>
+      </div>
+    </div>
+
+    <p style="font-size:12px;color:var(--muted);text-align:center">
+      Time estimates assume what a volunteer would spend doing each task by hand — directory updates, calendar entry, party-confirmation phone tag, newsletter assembly, password resets. Tune the per-task figures by reaching out to <a href="mailto:doug@poolsideapp.com">support</a> if your reality differs.
+    </p>
+  `;
+}
+
+async function saveRate() {
+  const btn = document.getElementById('rate-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const newRate = parseFloat(document.getElementById('rate-input').value);
+    if (!Number.isFinite(newRate) || newRate < 1) throw new Error('Pick a positive hourly rate');
+    // Read-modify-write so we don't stomp other settings
+    const cur = await call(SETTINGS_URL, 'get');
+    if (!cur.ok) throw new Error(cur.error || 'Could not load settings');
+    const value = { ...(cur.settings || {}), value_per_hour: newRate };
+    const r = await call(SETTINGS_URL, 'save', { value });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    await refresh();
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function refresh() {
+  try {
+    const data = await call(METRICS_URL, 'get');
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    render(data);
+  } catch (e) {
+    document.getElementById('root').innerHTML = `<div class="empty" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Impact — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>
