@@ -73,6 +73,19 @@ async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
+async function audit(
+  sb: ReturnType<typeof createClient>,
+  tenant_id: string, actor_id: string | null, actor_kind: string,
+  kind: string, entity_id: string | null, summary: string,
+) {
+  try {
+    await sb.from('audit_log').insert({
+      tenant_id, kind, entity_type: 'application', entity_id,
+      summary, actor_id, actor_kind, actor_label: null,
+    });
+  } catch { /* never break the operation */ }
+}
 function intOrDefault(v: unknown, d: number): number {
   if (v === null || v === undefined || v === '') return d;
   const n = Number(v);
@@ -146,6 +159,8 @@ Deno.serve(async (req) => {
       payment_status: 'unpaid',
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
+      `Application submitted: ${family_name} (${primary_name})`);
     return jsonResponse({ ok: true, application_id: data.id, payment_method });
   }
 
@@ -304,6 +319,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    await audit(sb, TID, decided_by, 'tenant_admin', 'application.approve', id,
+      `Approved ${app.family_name}; created household ${hh.id}`);
     return jsonResponse({
       ok: true,
       household_id: hh.id, primary_id: pm.id,
@@ -347,13 +364,16 @@ Deno.serve(async (req) => {
       }).eq('id', app.household_id).eq('tenant_id', TID);
     }
 
-    // Audit log
+    // Audit log (per-application)
     await sb.from('application_actions').insert({
       application_id: id, tenant_id: TID,
       kind: method === 'stripe' ? 'stripe_paid' : 'venmo_verified',
       body: strOrNull(body.note) ?? null,
       actor_id: verified_by,
     });
+    // Audit log (tenant-wide)
+    await audit(sb, TID, verified_by, 'tenant_admin', 'application.verify_payment', id,
+      `Verified ${method} payment for ${app.family_name}`);
 
     return jsonResponse({ ok: true });
   }

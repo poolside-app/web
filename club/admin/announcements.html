@@ -129,6 +129,7 @@
   <a href="/club/admin/settings.html">Settings</a>
   <a href="/club/wizard.html">Wizard</a>
 </nav>
+<script src="/js/admin-flags.js"></script>
 
 <main>
   <div class="toolbar">
@@ -318,6 +319,7 @@ async function quickPin(id, pinned) {
     if (!me.ok) { logout(); return; }
     document.title = `Announcements — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
   } catch { logout(); return; }
   await refresh();
 })();

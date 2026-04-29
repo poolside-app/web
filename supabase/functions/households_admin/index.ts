@@ -87,6 +87,24 @@ function intOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
+async function audit(
+  sb: ReturnType<typeof createClient>,
+  tenant_id: string, payload: Payload,
+  kind: string, entity_type: string, entity_id: string | null, summary: string,
+  metadata?: Record<string, unknown>,
+) {
+  try {
+    await sb.from('audit_log').insert({
+      tenant_id, kind, entity_type, entity_id,
+      summary,
+      actor_id: payload.sub === '00000000-0000-0000-0000-000000000000' ? null : payload.sub,
+      actor_kind: 'tenant_admin',
+      actor_label: null,
+      metadata: metadata ?? null,
+    });
+  } catch { /* audit failures should never break the operation */ }
+}
+
 const HH_FIELDS = [
   'id','family_name','tier','fob_number','dues_paid_for_year','paid_until_year',
   'address','city','zip','emergency_contact','notes','active','created_at',
@@ -206,6 +224,7 @@ Deno.serve(async (req) => {
       await sb.from('households').delete().eq('id', hh.id);
       return jsonResponse({ ok: false, error: pmErr.message }, 500);
     }
+    await audit(sb, TID, payload, 'household.create', 'household', hh.id, `Created household: ${family_name}`);
     return jsonResponse({ ok: true, household_id: hh.id, primary_id: pm.id });
   }
 
@@ -243,6 +262,8 @@ Deno.serve(async (req) => {
     const { error } = await sb.from('households')
       .update(patch).eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await audit(sb, TID, payload, 'household.update', 'household', id,
+      `Updated household ${patch.family_name ?? id}`, patch);
     return jsonResponse({ ok: true });
   }
 
@@ -266,6 +287,7 @@ Deno.serve(async (req) => {
       await sb.from('member_sessions').delete()
         .in('member_id', hmIds.map((r: { id: string }) => r.id));
     }
+    await audit(sb, TID, payload, 'household.delete', 'household', id, `Soft-deleted household ${id}`);
     return jsonResponse({ ok: true });
   }
 

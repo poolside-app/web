@@ -488,6 +488,123 @@ def member_start_generic_response():
 
 step('member_auth.start returns generic ok',  member_start_generic_response)
 
+# ── 10. Audit log captures writes ────────────────────────────────────────
+section('Audit log')
+
+AUDIT_HH_ID = None
+
+def audit_create_household():
+    global AUDIT_HH_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {
+        'action': 'create_household',
+        'family_name': f'Audit Test {STAMP}',
+        'primary': {'name': f'Audit {STAMP}', 'phone_e164': f'+1555{STAMP}1234'},
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    AUDIT_HH_ID = r['household_id']
+    track('households', AUDIT_HH_ID)
+
+def audit_log_has_create():
+    r = post(f'{SUPABASE_URL}/functions/v1/audit_admin', {'action': 'list', 'entity_type': 'household'}, TOKEN_A)
+    assert r.get('ok'), f'audit list: {r}'
+    found = any(e['entity_id'] == AUDIT_HH_ID and e['kind'] == 'household.create' for e in r.get('entries', []))
+    assert found, 'household.create not in audit log'
+
+def audit_rejects_anon():
+    r = post(f'{SUPABASE_URL}/functions/v1/audit_admin', {'action': 'list'})
+    assert not r.get('ok'), 'audit_admin should reject anon'
+
+def audit_isolation():
+    # Tenant B's audit log should NOT include tenant A's events
+    r = post(f'{SUPABASE_URL}/functions/v1/audit_admin', {'action': 'list'}, TOKEN_B)
+    assert r.get('ok')
+    assert not any(e['entity_id'] == AUDIT_HH_ID for e in r.get('entries', [])), 'audit log leaks across tenants'
+
+step('create household triggers audit',     audit_create_household)
+step('audit log has household.create',      audit_log_has_create)
+step('audit_admin rejects anon',            audit_rejects_anon)
+step('audit log respects tenant isolation', audit_isolation)
+
+# ── 11. Feature flags surfaced through me ────────────────────────────────
+section('Feature flags via tenant_admin_auth.me')
+
+def me_returns_features():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {'action': 'me'}, TOKEN_A)
+    assert r.get('ok'), f'me: {r}'
+    assert 'features' in (r.get('tenant') or {}), 'tenant.features missing from me response'
+
+step('me() returns tenant.features',  me_returns_features)
+
+# ── 12. Member-side household management ─────────────────────────────────
+section('Member-side household management')
+
+# We need a real member with role='primary' to test against. Use the
+# household we created in section 1 (isolation test) — its primary was
+# inserted with role='primary' by households_admin.create_household.
+M_TID = TENANT_A_ID
+M_SLUG = SLUG_A
+M_PRIMARY_ID = None  # will resolve from DB
+M_HID = None
+M_ADDED_ID = None
+
+def fetch_primary():
+    global M_PRIMARY_ID, M_HID
+    rows = mgmt_query(
+        f"select hm.id, hm.household_id from public.household_members hm "
+        f"where hm.tenant_id = '{TENANT_A_ID}' and hm.role = 'primary' and hm.active = true "
+        f"and hm.household_id = '{A_HOUSEHOLD_ID}' limit 1;"
+    )
+    assert rows, 'no primary member to use for member-token tests'
+    M_PRIMARY_ID = rows[0]['id']
+    M_HID = rows[0]['household_id']
+
+def member_add_housemate():
+    global M_ADDED_ID
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {
+        'action': 'add_household_member',
+        'name': f'Member-Add {STAMP}',
+        'role': 'adult',
+        'phone_e164': f'+1555{STAMP}5678',
+    }, tok)
+    assert r.get('ok'), f'add: {r}'
+    M_ADDED_ID = r['member_id']
+
+def non_primary_cannot_add():
+    # Pretend to be the housemate we just added (role='adult') and try to add
+    tok = member_jwt(M_ADDED_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {
+        'action': 'add_household_member',
+        'name': 'Should fail',
+        'role': 'adult',
+        'phone_e164': f'+1555{STAMP}9876',
+    }, tok)
+    assert not r.get('ok'), 'non-primary should NOT be able to add members'
+
+def member_remove_housemate():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {
+        'action': 'remove_household_member',
+        'id': M_ADDED_ID,
+    }, tok)
+    assert r.get('ok'), f'remove: {r}'
+    rows = mgmt_query(f"select active from public.household_members where id = '{M_ADDED_ID}';")
+    assert rows and rows[0]['active'] is False, 'remove did not soft-delete'
+
+def member_cannot_remove_primary():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {
+        'action': 'remove_household_member',
+        'id': M_PRIMARY_ID,
+    }, tok)
+    assert not r.get('ok'), 'primary should not be removable via this action'
+
+step('resolve a primary member',           fetch_primary)
+step('primary can add housemate',          member_add_housemate)
+step('non-primary CANNOT add housemate',   non_primary_cannot_add)
+step('primary can remove housemate',       member_remove_housemate)
+step('primary cannot remove themselves',   member_cannot_remove_primary)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 

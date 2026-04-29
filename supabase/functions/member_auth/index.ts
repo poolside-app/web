@@ -420,6 +420,159 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── Household management (primary contact only) ───────────────────────
+  // Primaries can manage their own household roster without going through
+  // an admin. The JWT carries hid (household id) — never trust the client
+  // to specify that.
+  async function requirePrimary() {
+    const { data: me } = await sb.from('household_members')
+      .select('id, role, household_id, active')
+      .eq('id', payload.sub as string).maybeSingle();
+    if (!me || !me.active) return { error: 'Member not found', code: 401 };
+    if (me.role !== 'primary') return { error: 'Only the primary contact can manage household members', code: 403 };
+    if (me.household_id !== payload.hid) return { error: 'Household mismatch', code: 403 };
+    return { me };
+  }
+
+  if (action === 'add_household_member') {
+    const r = await requirePrimary();
+    if ('error' in r && r.error) return jsonResponse({ ok: false, error: r.error }, r.code);
+
+    const b = body as Record<string, unknown>;
+    const name = String(b.name ?? '').trim();
+    const role = String(b.role ?? '').trim();
+    if (!name) return jsonResponse({ ok: false, error: 'Name required' }, 400);
+    if (!['adult','teen','child'].includes(role)) {
+      return jsonResponse({ ok: false, error: 'Role must be adult, teen, or child' }, 400);
+    }
+
+    const phoneRaw = String(b.phone_e164 ?? '').trim();
+    let phone: string | null = null;
+    if (phoneRaw) {
+      const digits = phoneRaw.replace(/[^\d+]/g, '');
+      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone = digits;
+      else if (/^\d{10}$/.test(digits)) phone = '+1' + digits;
+      else if (/^1\d{10}$/.test(digits)) phone = '+' + digits;
+      else return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
+    } else if (role !== 'child') {
+      return jsonResponse({ ok: false, error: 'Phone required for adults and teens' }, 400);
+    }
+    if (phone) {
+      const { data: clash } = await sb.from('household_members')
+        .select('id').eq('tenant_id', payload.tid as string).eq('phone_e164', phone)
+        .eq('active', true).maybeSingle();
+      if (clash) return jsonResponse({ ok: false, error: 'Phone number already in use' }, 409);
+    }
+
+    const { data: ins, error } = await sb.from('household_members').insert({
+      tenant_id: payload.tid as string,
+      household_id: payload.hid as string,
+      name, phone_e164: phone,
+      email: typeof b.email === 'string' && b.email ? String(b.email).trim().toLowerCase() : null,
+      role,
+      can_unlock_gate: b.can_unlock_gate !== false,
+      can_book_parties: b.can_book_parties === true,
+      active: true,
+      confirmed_at: new Date().toISOString(),
+      added_by: payload.sub as string,
+    }).select('id').single();
+    if (error) {
+      const msg = /household_member_cap/.test(error.message)
+        ? 'Household is at its 8-person limit' : error.message;
+      return jsonResponse({ ok: false, error: msg }, 400);
+    }
+    // Audit log
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid as string,
+        kind: 'household_member.add', entity_type: 'household_member', entity_id: ins.id,
+        summary: `Primary added ${name} to their household`,
+        actor_id: payload.sub as string, actor_kind: 'member',
+      });
+    } catch { /* ignore */ }
+    return jsonResponse({ ok: true, member_id: ins.id });
+  }
+
+  if (action === 'remove_household_member') {
+    const r = await requirePrimary();
+    if ('error' in r && r.error) return jsonResponse({ ok: false, error: r.error }, r.code);
+
+    const id = String((body as Record<string, unknown>).id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: target } = await sb.from('household_members')
+      .select('id, role, name, household_id').eq('id', id).maybeSingle();
+    if (!target) return jsonResponse({ ok: false, error: 'Member not found' }, 404);
+    if (target.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Not your household' }, 403);
+    if (target.role === 'primary') {
+      return jsonResponse({ ok: false, error: 'Primary contact can\'t remove themselves; ask the club admin instead' }, 400);
+    }
+    const { error } = await sb.from('household_members')
+      .update({ active: false }).eq('id', id);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await sb.from('member_sessions').delete().eq('member_id', id);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid as string,
+        kind: 'household_member.remove', entity_type: 'household_member', entity_id: id,
+        summary: `Primary removed ${target.name} from their household`,
+        actor_id: payload.sub as string, actor_kind: 'member',
+      });
+    } catch { /* ignore */ }
+    return jsonResponse({ ok: true });
+  }
+
+  if (action === 'update_household_member') {
+    const r = await requirePrimary();
+    if ('error' in r && r.error) return jsonResponse({ ok: false, error: r.error }, r.code);
+
+    const b = body as Record<string, unknown>;
+    const id = String(b.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: target } = await sb.from('household_members')
+      .select('id, role, household_id, phone_e164').eq('id', id).maybeSingle();
+    if (!target) return jsonResponse({ ok: false, error: 'Member not found' }, 404);
+    if (target.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Not your household' }, 403);
+
+    const patch: Record<string, unknown> = {};
+    if (b.name !== undefined) {
+      const v = String(b.name ?? '').trim();
+      if (!v) return jsonResponse({ ok: false, error: 'Name cannot be empty' }, 400);
+      patch.name = v;
+    }
+    if (b.email !== undefined) {
+      const v = String(b.email ?? '').trim().toLowerCase();
+      patch.email = v || null;
+    }
+    if (b.phone_e164 !== undefined) {
+      const raw = String(b.phone_e164 ?? '').trim();
+      if (!raw) {
+        if (target.role === 'primary') return jsonResponse({ ok: false, error: 'Primary must have a phone' }, 400);
+        patch.phone_e164 = null;
+      } else {
+        const digits = raw.replace(/[^\d+]/g, '');
+        let norm: string | null = null;
+        if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) norm = digits;
+        else if (/^\d{10}$/.test(digits)) norm = '+1' + digits;
+        else if (/^1\d{10}$/.test(digits)) norm = '+' + digits;
+        if (!norm) return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
+        if (norm !== target.phone_e164) {
+          const { data: clash } = await sb.from('household_members')
+            .select('id').eq('tenant_id', payload.tid as string).eq('phone_e164', norm)
+            .eq('active', true).neq('id', id).maybeSingle();
+          if (clash) return jsonResponse({ ok: false, error: 'Phone number already in use' }, 409);
+        }
+        patch.phone_e164 = norm;
+      }
+    }
+    if (b.can_unlock_gate  !== undefined) patch.can_unlock_gate  = !!b.can_unlock_gate;
+    if (b.can_book_parties !== undefined) patch.can_book_parties = !!b.can_book_parties;
+    if (Object.keys(patch).length === 0) return jsonResponse({ ok: true, noop: true });
+
+    const { error } = await sb.from('household_members').update(patch).eq('id', id);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true });
+  }
+
   if (action === 'logout') {
     return jsonResponse({ ok: true });
   }

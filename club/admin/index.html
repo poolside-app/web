@@ -100,6 +100,7 @@
   <a href="/club/admin/settings.html">Settings</a>
   <a href="/club/wizard.html">Wizard</a>
 </nav>
+<script src="/js/admin-flags.js"></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
@@ -162,6 +163,7 @@ document.getElementById('signout').addEventListener('click', logout);
   const { user, tenant } = data;
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
+    if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {});
 
   if (user.impersonated) {
     const banner = document.createElement('div');

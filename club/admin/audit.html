@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Activity log — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+
+  main { flex:1; padding: 28px 22px; max-width: 980px; width:100%; margin: 0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .filter-row { display:flex; gap:6px; flex-wrap: wrap; }
+  .filter-row button { padding:8px 14px; border:1.5px solid var(--border); background:#fff; border-radius:999px; font:600 12px 'Inter'; cursor:pointer; color:var(--muted); }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  input[type="search"] { padding:9px 12px; border:1.5px solid var(--border); border-radius:var(--r-md); width:240px; font:14px 'Inter'; }
+
+  .day-group { margin-bottom: 22px; }
+  .day-head { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 0 6px 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+
+  .entry {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 10px 14px; background: #fff;
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    margin-bottom: 6px;
+  }
+  .entry .ts { color: var(--muted); font-size: 11px; min-width: 70px; flex-shrink: 0; padding-top: 2px; }
+  .entry .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--blue-l); font-size: 14px; }
+  .entry.public .icon  { background: #ddd6fe; }
+  .entry.member .icon  { background: #cffafe; }
+  .entry .body { flex: 1; min-width: 0; font-size: 13px; }
+  .entry .summary { color: var(--text); }
+  .entry .meta    { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.tenant_admin { background: var(--bg-2); color: var(--text); }
+  .pill.public       { background: #ddd6fe; color: #5b21b6; }
+  .pill.member       { background: #cffafe; color: #155e75; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/applications.html">Applications</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html">Documents</a>
+  <a href="/club/admin/audit.html" class="on">Activity log</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Activity log</h1>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="search" type="search" placeholder="🔍 Search…" oninput="applySearch()">
+      <div class="filter-row" id="entity-filter">
+        <button class="on"             data-entity="">All</button>
+        <button data-entity="application">Applications</button>
+        <button data-entity="household">Households</button>
+        <button data-entity="event">Events</button>
+      </div>
+    </div>
+  </div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<script src="/js/admin-flags.js"></script>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUDIT_URL = `${SUPABASE_URL}/functions/v1/audit_admin`;
+const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+let CACHE = []; let ENTITY = '';
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(AUDIT_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+const ICONS = {
+  'household.create': '🏠', 'household.update': '✏️', 'household.delete': '🗑',
+  'application.submit': '📨', 'application.approve': '✅',
+  'application.verify_payment': '💸', 'application.reject': '❌',
+  'event.create': '📅', 'party.approve': '🎉',
+};
+function iconFor(kind) { return ICONS[kind] || '📝'; }
+
+function fmtTime(iso) { return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+function fmtDay(iso) {
+  const d = new Date(iso);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  const dayOnly = new Date(d); dayOnly.setHours(0,0,0,0);
+  if (dayOnly.getTime() === today.getTime()) return 'Today';
+  if (dayOnly.getTime() === yesterday.getTime()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function applySearch() {
+  const q = (document.getElementById('search')?.value || '').trim().toLowerCase();
+  let rows = ENTITY ? CACHE.filter(e => e.entity_type === ENTITY) : CACHE.slice();
+  if (q) rows = rows.filter(e =>
+    (e.summary    || '').toLowerCase().includes(q) ||
+    (e.kind       || '').toLowerCase().includes(q) ||
+    (e.actor_label|| '').toLowerCase().includes(q));
+  render(rows);
+}
+
+function render(entries) {
+  const list = document.getElementById('list');
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty">No matching activity.</div>`;
+    return;
+  }
+  // Group by day
+  const groups = new Map();
+  for (const e of entries) {
+    const k = fmtDay(e.created_at);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  }
+  const out = [];
+  for (const [day, items] of groups) {
+    out.push(`<div class="day-group"><div class="day-head">${escapeHtml(day)}</div>`);
+    for (const e of items) {
+      out.push(`
+        <div class="entry ${escapeHtml(e.actor_kind || '')}">
+          <div class="ts">${escapeHtml(fmtTime(e.created_at))}</div>
+          <div class="icon">${iconFor(e.kind)}</div>
+          <div class="body">
+            <div class="summary">${escapeHtml(e.summary || e.kind)}</div>
+            <div class="meta"><span class="pill ${escapeHtml(e.actor_kind || '')}">${escapeHtml(e.actor_kind || '?')}</span> · ${escapeHtml(e.entity_type)} · <code>${escapeHtml(e.kind)}</code></div>
+          </div>
+        </div>
+      `);
+    }
+    out.push(`</div>`);
+  }
+  list.innerHTML = out.join('');
+}
+
+document.querySelectorAll('#entity-filter button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#entity-filter button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    ENTITY = b.dataset.entity;
+    applySearch();
+  });
+});
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Activity log — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply(me.tenant.features || {});
+  } catch { logout(); return; }
+  try {
+    const data = await call('list', { limit: 200 });
+    if (!data.ok) throw new Error(data.error || 'Failed');
+    CACHE = data.entries || [];
+    applySearch();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

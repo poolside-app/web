@@ -79,3 +79,7 @@ verify_jwt = false
 # Network-wide metrics for the provider analytics dashboard
 [functions.provider_metrics]
 verify_jwt = false
+
+# Per-tenant audit log reader (writes happen inline in other functions)
+[functions.audit_admin]
+verify_jwt = false

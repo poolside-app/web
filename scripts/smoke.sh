@@ -157,6 +157,16 @@ check_post "provider_metrics rejects anon" \
   '{}' \
   'Not authenticated'
 
+check_post "audit_admin rejects anon" \
+  "${SUPA}/functions/v1/audit_admin" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_status "audit page exists"           "${HOST}/club/admin/audit.html" "200"
+check       "audit page wires the API"     "${HOST}/club/admin/audit.html" "audit_admin"
+check_status "shared admin-flags.js"       "${HOST}/js/admin-flags.js"     "200"
+check       "admin-flags.js exports apply" "${HOST}/js/admin-flags.js"     "PoolsideFlags"
+
 check_status "provider /admin/analytics.html" "${ROOT}/admin/analytics.html" "200"
 check       "analytics page wires API"        "${ROOT}/admin/analytics.html" "provider_metrics"
 

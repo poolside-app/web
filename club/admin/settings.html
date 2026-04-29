@@ -119,6 +119,7 @@
   <a href="/club/admin/settings.html" class="on">Settings</a>
   <a href="/club/wizard.html">Wizard</a>
 </nav>
+<script src="/js/admin-flags.js"></script>
 
 <main>
   <div class="toolbar">
@@ -507,6 +508,7 @@ async function save() {
     TENANT = me.tenant;
     document.title = `Settings — ${TENANT.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
   } catch (e) { logout(); return; }
   try {
     const data = await call(SETTINGS_URL, 'get');
