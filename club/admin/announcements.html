@@ -133,7 +133,10 @@
 <main>
   <div class="toolbar">
     <h1>Announcements</h1>
-    <button class="btn" onclick="openCreate()">+ New post</button>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="search" type="search" placeholder="🔍 Search posts…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
+      <button class="btn" onclick="openCreate()">+ New post</button>
+    </div>
   </div>
 
   <div id="list">
@@ -219,14 +222,25 @@ function render(posts) {
   `).join('');
 }
 
+let CACHE = [];
 async function refresh() {
   try {
     const data = await call('list');
     if (!data.ok) throw new Error(data.error || 'Failed to load');
-    render(data.posts || []);
+    CACHE = data.posts || [];
+    applySearch();
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function applySearch() {
+  const q = (document.getElementById('search')?.value || '').trim().toLowerCase();
+  if (!q) { render(CACHE); return; }
+  const filtered = CACHE.filter(p =>
+    (p.title || '').toLowerCase().includes(q) ||
+    (p.body  || '').toLowerCase().includes(q));
+  render(filtered);
 }
 
 function openCreate() {

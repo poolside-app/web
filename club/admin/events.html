@@ -244,6 +244,7 @@
         <button data-range="past">Past</button>
         <button data-range="all">All</button>
       </div>
+      <input id="search" type="search" placeholder="🔍 Search events…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:200px;font:14px/1.4 'Inter'">
       <a id="ics-link" target="_blank" rel="noopener" class="btn-ghost btn" style="text-decoration:none">📆 iCal feed</a>
       <button class="btn-ghost btn" onclick="openImport()">📥 Import</button>
       <button class="btn" onclick="openCreate()">+ New event</button>
@@ -481,10 +482,19 @@ function render(events) {
   list.innerHTML = out.join('');
 }
 
+function searchFilter(events) {
+  const q = (document.getElementById('search')?.value || '').trim().toLowerCase();
+  if (!q) return events;
+  return events.filter(ev =>
+    (ev.title    || '').toLowerCase().includes(q) ||
+    (ev.body     || '').toLowerCase().includes(q) ||
+    (ev.location || '').toLowerCase().includes(q));
+}
+
+let LIST_CACHE = [];
 async function refresh() {
   try {
     if (VIEW === 'month') {
-      // Always load 'all' for the month view so prev/next nav has data ready.
       const data = await call('list', { range: 'all' });
       if (!data.ok) throw new Error(data.error || 'Failed to load');
       CACHE_ALL = data.events || [];
@@ -492,11 +502,33 @@ async function refresh() {
     } else {
       const data = await call('list', { range: RANGE });
       if (!data.ok) throw new Error(data.error || 'Failed to load');
-      render(data.events || []);
+      LIST_CACHE = data.events || [];
+      render(searchFilter(LIST_CACHE));
     }
   } catch (e) {
     const target = VIEW === 'month' ? document.getElementById('month-view') : document.getElementById('list');
     target.innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function applySearch() {
+  if (VIEW === 'month') {
+    // For the month view, re-render the grid with a filtered events array
+    const filtered = searchFilter(CACHE_ALL);
+    if (window.PoolsideCalendar) {
+      const opens  = fmtHourLabel(SETTINGS?.pool?.opens_at);
+      const closes = fmtHourLabel(SETTINGS?.pool?.closes_at);
+      const openHoursLabel = (opens && closes) ? `${opens}–${closes}` : null;
+      PoolsideCalendar.render({
+        rootEl: document.getElementById('month-view'),
+        events: filtered,
+        openHoursLabel,
+        onDayClick: dayCellClick,
+        onChipClick: openEdit,
+      });
+    }
+  } else {
+    render(searchFilter(LIST_CACHE));
   }
 }
 

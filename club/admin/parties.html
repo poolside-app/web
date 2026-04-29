@@ -112,6 +112,7 @@
 <main>
   <div class="toolbar">
     <h1>Party requests</h1>
+    <input id="search" type="search" placeholder="🔍 Search…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:200px;font:14px/1.4 'Inter'">
     <div class="filter-row" id="status-filter">
       <button class="on" data-status="pending">Pending</button>
       <button data-status="approved">Approved</button>
@@ -239,12 +240,23 @@ function render(rows) {
 }
 
 let CACHE = [];
+function applySearch() {
+  const q = (document.getElementById('search')?.value || '').trim().toLowerCase();
+  if (!q) { render(CACHE); return; }
+  const filtered = CACHE.filter(b =>
+    (b.title || '').toLowerCase().includes(q) ||
+    (b.body  || '').toLowerCase().includes(q) ||
+    (b.location || '').toLowerCase().includes(q) ||
+    (b.household?.family_name || '').toLowerCase().includes(q) ||
+    (b.requester?.name        || '').toLowerCase().includes(q));
+  render(filtered);
+}
 async function refresh() {
   try {
     const data = await call('list', { status: STATUS });
     if (!data.ok) throw new Error(data.error || 'Failed to load');
     CACHE = data.bookings || [];
-    render(CACHE);
+    applySearch();
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }

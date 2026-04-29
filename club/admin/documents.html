@@ -96,7 +96,10 @@
 <main>
   <div class="toolbar">
     <h1>Documents</h1>
-    <button class="btn" onclick="openCreate()">+ Add document</button>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="search" type="search" placeholder="🔍 Search documents…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
+      <button class="btn" onclick="openCreate()">+ Add document</button>
+    </div>
   </div>
 
   <div id="list"><div class="empty">Loading…</div></div>
@@ -181,26 +184,37 @@ function iconForUrl(url) {
 }
 
 let CACHE = [];
+function applySearch() {
+  const q = (document.getElementById('search')?.value || '').trim().toLowerCase();
+  const list = document.getElementById('list');
+  const visible = q
+    ? CACHE.filter(d =>
+        (d.title || '').toLowerCase().includes(q) ||
+        (d.description || '').toLowerCase().includes(q))
+    : CACHE;
+  if (!visible.length) {
+    list.innerHTML = q
+      ? `<div class="empty"><h2>No matches</h2>Nothing matches "${escapeHtml(q)}".</div>`
+      : `<div class="empty"><h2>No documents yet</h2>Upload your member handbook, club rules, application form, etc.</div>`;
+    return;
+  }
+  list.innerHTML = visible.map(d => `
+    <div class="doc" onclick='openEdit(${JSON.stringify(d).replace(/'/g, "&#39;")})'>
+      <div class="doc-icon">${iconForUrl(d.url)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="doc-title">${escapeHtml(d.title)} <span class="pill ${escapeHtml(d.visibility)}">${escapeHtml(d.visibility)}</span></div>
+        ${d.description ? `<div class="doc-desc">${escapeHtml(d.description)}</div>` : ''}
+      </div>
+      <a href="${escapeAttr(d.url)}" target="_blank" rel="noopener" class="btn-ghost btn btn-sm" onclick="event.stopPropagation()" style="text-decoration:none;flex-shrink:0">↗ Open</a>
+    </div>
+  `).join('');
+}
 async function refresh() {
   try {
     const data = await call(DOCS_URL, 'list');
     if (!data.ok) throw new Error(data.error || 'Failed to load');
     CACHE = (data.documents || []).filter(d => d.active);
-    const list = document.getElementById('list');
-    if (!CACHE.length) {
-      list.innerHTML = `<div class="empty"><h2>No documents yet</h2>Upload your member handbook, club rules, application form, etc.</div>`;
-      return;
-    }
-    list.innerHTML = CACHE.map(d => `
-      <div class="doc" onclick='openEdit(${JSON.stringify(d).replace(/'/g, "&#39;")})'>
-        <div class="doc-icon">${iconForUrl(d.url)}</div>
-        <div style="flex:1;min-width:0">
-          <div class="doc-title">${escapeHtml(d.title)} <span class="pill ${escapeHtml(d.visibility)}">${escapeHtml(d.visibility)}</span></div>
-          ${d.description ? `<div class="doc-desc">${escapeHtml(d.description)}</div>` : ''}
-        </div>
-        <a href="${escapeAttr(d.url)}" target="_blank" rel="noopener" class="btn-ghost btn btn-sm" onclick="event.stopPropagation()" style="text-decoration:none;flex-shrink:0">↗ Open</a>
-      </div>
-    `).join('');
+    applySearch();
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }
