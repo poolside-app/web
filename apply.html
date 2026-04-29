@@ -44,7 +44,7 @@
 <body>
 <header><a href="/" class="logo"><span class="logo-dot"></span> Poolside</a></header>
 <main>
-  <form class="card" id="form" onsubmit="event.preventDefault(); submit()">
+  <form class="card" id="form" onsubmit="event.preventDefault(); submitApplication()">
     <h1 id="title">Apply for membership</h1>
     <p class="lede" id="lede">Tell us a bit about your family. The board reviews each application — once approved, you'll get an email link to set up your member sign-in.</p>
 
@@ -125,7 +125,7 @@ function formatPhoneInput(el) {
   } catch { /* keep generic */ }
 })();
 
-async function submit() {
+async function submitApplication() {
   const errEl = document.getElementById('err');
   errEl.classList.remove('show');
   const slug = getSlug();
