@@ -68,6 +68,10 @@ check_status "tenant /club/admin/"  "${HOST}/club/admin/login.html" "200"
 check_status "shared calendar.js"   "${HOST}/js/calendar.js"        "200"
 check_status "shared calendar.css"  "${HOST}/js/calendar.css"       "200"
 check       "calendar.js exposes widget" "${HOST}/js/calendar.js" "PoolsideCalendar"
+check_status "provider /admin/cockpit.html" "${ROOT}/admin/cockpit.html" "200"
+check       "cockpit page wires the runner" "${ROOT}/admin/cockpit.html" "Run end-to-end"
+check_status "admin events page (after refactor)" "${HOST}/club/admin/events.html" "200"
+check       "admin events imports calendar.js" "${HOST}/club/admin/events.html" "/js/calendar.js"
 
 echo
 echo "── Edge Functions (public) ──"

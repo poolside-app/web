@@ -57,6 +57,7 @@
 .pcal-lesson    { background: #ddd6fe; color: #5b21b6; }
 .pcal-meeting   { background: #dcfce7; color: #14532d; }
 .pcal-social    { background: #fae8ff; color: #86198f; }
+.pcal-chip.pcal-imported { border-left: 2px solid currentColor; padding-left: 4px; }
 .pcal-more {
   font: 600 10px 'Inter', system-ui, sans-serif; color: var(--muted, #64748b);
   padding-left: 4px; cursor: pointer;

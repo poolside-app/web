@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Calendar — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/js/calendar.css">
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -336,6 +337,7 @@
 
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
+<script src="/js/calendar.js"></script>
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
@@ -501,88 +503,26 @@ document.querySelectorAll('#view-toggle button').forEach(b => {
   });
 });
 
-// ── Month-grid view ────────────────────────────────────────────────────
+// ── Month-grid view (uses /js/calendar.js shared widget) ──────────────
 function renderMonth() {
   const root = document.getElementById('month-view');
-  const cur = MONTH_CURSOR;
-  const monthName = cur.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-
-  // Calendar bounds: pad to start on Sunday + end on Saturday.
-  const firstDay = new Date(cur.getFullYear(), cur.getMonth(), 1);
-  const lastDay  = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
-  const start = new Date(firstDay); start.setDate(start.getDate() - start.getDay());          // Sun
-  const end   = new Date(lastDay);  end.setDate(end.getDate() + (6 - end.getDay()));          // Sat
-
-  // Bucket events by yyyy-mm-dd local date
-  const byDay = new Map();
-  for (const ev of CACHE_ALL) {
-    const d = new Date(ev.starts_at);
-    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    if (!byDay.has(k)) byDay.set(k, []);
-    byDay.get(k).push(ev);
+  const opens  = fmtHourLabel(SETTINGS?.pool?.opens_at);
+  const closes = fmtHourLabel(SETTINGS?.pool?.closes_at);
+  const openHoursLabel = (opens && closes) ? `${opens}–${closes}` : null;
+  if (!window.PoolsideCalendar) {
+    root.innerHTML = '<div class="empty">Calendar widget failed to load.</div>';
+    return;
   }
-
-  const today = new Date(); today.setHours(0,0,0,0);
-  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-  let cellsHtml = dows.map(d => `<div class="dow">${d}</div>`).join('');
-  const cursorD = new Date(start);
-  while (cursorD <= end) {
-    const k = `${cursorD.getFullYear()}-${String(cursorD.getMonth()+1).padStart(2,'0')}-${String(cursorD.getDate()).padStart(2,'0')}`;
-    const otherMonth = cursorD.getMonth() !== cur.getMonth();
-    const isToday    = cursorD.getTime() === today.getTime();
-    const dayEvents  = byDay.get(k) || [];
-    const visible    = dayEvents.slice(0, 3);
-    const overflow   = dayEvents.length - visible.length;
-    const dateAttr   = `${cursorD.getFullYear()}-${String(cursorD.getMonth()+1).padStart(2,'0')}-${String(cursorD.getDate()).padStart(2,'0')}`;
-    const opens = !otherMonth ? fmtHourLabel(SETTINGS?.pool?.opens_at) : null;
-    const closes = !otherMonth ? fmtHourLabel(SETTINGS?.pool?.closes_at) : null;
-    const hoursLabel = (opens && closes) ? `${opens}–${closes}` : '';
-    cellsHtml += `
-      <div class="day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}"
-           data-date="${dateAttr}"
-           onclick="dayCellClick('${dateAttr}', event)">
-        <div class="num">${cursorD.getDate()}</div>
-        ${hoursLabel ? `<div class="hours">${hoursLabel}</div>` : ''}
-        ${visible.map(ev => `
-          <div class="chip ${escapeHtml(ev.kind)} ${ev.source_url ? 'imported' : ''}" title="${escapeHtml(ev.title)}${ev.source_url ? '\n(imported)' : ''}"
-               onclick="event.stopPropagation(); openEdit(${JSON.stringify(ev).replace(/'/g, '&#39;')})">
-            ${escapeHtml(KIND_ICON[ev.kind] || '')} ${escapeHtml(ev.title)}
-          </div>
-        `).join('')}
-        ${overflow > 0 ? `<div class="more">+ ${overflow} more</div>` : ''}
-      </div>
-    `;
-    cursorD.setDate(cursorD.getDate() + 1);
-  }
-
-  root.innerHTML = `
-    <div class="cal-head">
-      <h2>${escapeHtml(monthName)}</h2>
-      <div class="nav">
-        <button onclick="monthShift(-1)" aria-label="Previous month">‹</button>
-        <button class="today" onclick="monthGoToday()">Today</button>
-        <button onclick="monthShift(1)" aria-label="Next month">›</button>
-      </div>
-    </div>
-    <div class="cal-grid">${cellsHtml}</div>
-  `;
+  PoolsideCalendar.render({
+    rootEl: root,
+    events: CACHE_ALL,
+    openHoursLabel,
+    onDayClick: dayCellClick,
+    onChipClick: openEdit,
+  });
 }
 
-function monthShift(delta) {
-  const d = new Date(MONTH_CURSOR);
-  d.setMonth(d.getMonth() + delta);
-  MONTH_CURSOR = d;
-  renderMonth();
-}
-function monthGoToday() {
-  const d = new Date(); d.setDate(1); d.setHours(0,0,0,0);
-  MONTH_CURSOR = d;
-  renderMonth();
-}
-
-function dayCellClick(dateStr, ev) {
-  // Click empty space in a day → open the create modal seeded to that date
+function dayCellClick(dateStr) {
   const d = new Date(dateStr + 'T18:00:00');
   document.getElementById('m-heading').textContent = 'New event';
   document.getElementById('m-id').value = '';

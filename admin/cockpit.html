@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Test cockpit — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #f5f7fa; color: var(--text);
+    font: 14px/1.5 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 14px; }
+
+  header {
+    background: #fff; padding: 12px 22px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .logo {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 16px;
+    color: var(--blue); text-decoration: none;
+  }
+  .logo-dot { width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); }
+  header h1 { font-size: 18px; }
+
+  select, button, input {
+    font: inherit; padding: 7px 12px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--text); cursor: pointer;
+  }
+  button { font-weight: 600; }
+  button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  button.primary:hover { background: var(--blue-2); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+
+  .grow { flex: 1; }
+
+  .toolbar {
+    background: #fff; padding: 10px 22px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  }
+  .toolbar .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    background: var(--bg-2); color: var(--muted);
+  }
+  .pill.green { background: #dcfce7; color: #14532d; }
+  .pill.red   { background: #fee2e2; color: #7f1d1d; }
+  .pill.amber { background: #fef3c7; color: #92400e; }
+
+  /* Frames row */
+  main {
+    flex: 1; display: grid; gap: 10px; padding: 10px;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr;
+    min-height: 0;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 720px)  { main { grid-template-columns: 1fr; } }
+
+  .frame {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--r-md);
+    overflow: hidden; display: flex; flex-direction: column; min-height: 480px;
+    box-shadow: var(--shadow);
+  }
+  .frame .head {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; background: var(--bg-2);
+    font-size: 12px; font-weight: 600; color: var(--muted);
+  }
+  .frame .head .title { flex: 1; color: var(--blue); font-size: 13px; }
+  .frame .head a { font-size: 11px; text-decoration: none; padding: 4px 8px; border-radius: 6px; background: #fff; }
+  .frame .head a:hover { background: var(--blue-l); }
+  .frame iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+  .frame .placeholder {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); padding: 22px; text-align: center;
+  }
+
+  /* E2E results panel */
+  .e2e-panel {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #0f172a; color: #f1f5f9; max-height: 60vh; overflow-y: auto;
+    box-shadow: 0 -8px 24px rgba(0,0,0,.18);
+    transform: translateY(100%); transition: transform .25s;
+    z-index: 100;
+  }
+  .e2e-panel.open { transform: translateY(0); }
+  .e2e-panel header {
+    background: #1e293b; color: #fff; border: 0; padding: 10px 18px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .e2e-panel .body { padding: 12px 18px 22px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.55; }
+  .e2e-step { padding: 4px 0; display: flex; gap: 8px; align-items: flex-start; }
+  .e2e-step .marker { flex-shrink: 0; width: 18px; }
+  .e2e-step .name { flex: 1; }
+  .e2e-step .ms   { color: #64748b; }
+  .e2e-step.pass .marker { color: #4ade80; }
+  .e2e-step.fail .marker { color: #f87171; }
+  .e2e-step.fail .err { color: #fca5a5; padding-left: 26px; white-space: pre-wrap; }
+  .e2e-summary { font-weight: 700; padding: 8px 0; border-top: 1px solid #334155; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/admin/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <h1>🧪 Test cockpit</h1>
+  <span style="color:var(--muted);font-size:12px">Visual eyeballing + end-to-end checks · single page</span>
+  <div class="grow"></div>
+  <a href="/admin/" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to admin</a>
+</header>
+
+<div class="toolbar">
+  <label style="font-weight:600;font-size:12px;color:var(--muted)">Tenant</label>
+  <select id="tenant-pick"></select>
+  <button onclick="reloadFrames()">↻ Reload frames</button>
+  <button class="primary" id="run-btn" onclick="runE2e()">🧪 Run end-to-end</button>
+  <span class="pill" id="last-deploy">deploy: …</span>
+  <span class="pill" id="last-smoke">smoke: …</span>
+  <span class="pill" id="last-e2e">e2e: never</span>
+  <button onclick="document.getElementById('e2e-panel').classList.toggle('open')" style="font-size:12px">Toggle E2E log</button>
+</div>
+
+<main>
+  <div class="frame">
+    <div class="head">
+      <span class="title">🌐 Public landing</span>
+      <span id="public-host" style="font-size:11px"></span>
+      <a id="public-open" target="_blank">↗ open</a>
+    </div>
+    <div class="placeholder" id="public-ph">Pick a tenant…</div>
+    <iframe id="public-frame" style="display:none"></iframe>
+  </div>
+
+  <div class="frame">
+    <div class="head">
+      <span class="title">📱 Member dashboard</span>
+      <a id="member-open" target="_blank">↗ open</a>
+    </div>
+    <div class="placeholder" id="member-ph">Pick a tenant…</div>
+    <iframe id="member-frame" style="display:none"></iframe>
+  </div>
+
+  <div class="frame">
+    <div class="head">
+      <span class="title">🔑 Tenant admin</span>
+      <a id="admin-open" target="_blank">↗ open</a>
+    </div>
+    <div class="placeholder" id="admin-ph">Pick a tenant…</div>
+    <iframe id="admin-frame" style="display:none"></iframe>
+  </div>
+</main>
+
+<div class="e2e-panel" id="e2e-panel">
+  <header>
+    <b>End-to-end log</b>
+    <span style="color:#94a3b8" id="e2e-status">idle</span>
+    <div class="grow" style="flex:1"></div>
+    <button onclick="document.getElementById('e2e-panel').classList.remove('open')" style="background:transparent;border:0;color:#94a3b8">✕ close</button>
+  </header>
+  <div class="body" id="e2e-body"><i style="color:#94a3b8">Click "Run end-to-end" to exercise the create / read / update / delete pipeline against the selected tenant.</i></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const TENANTS_FN = `${SUPABASE_URL}/functions/v1/tenants_admin`;
+const PUBLIC_FN  = `${SUPABASE_URL}/functions/v1/tenant_public`;
+const HH_FN      = `${SUPABASE_URL}/functions/v1/households_admin`;
+const EV_FN      = `${SUPABASE_URL}/functions/v1/events_admin`;
+const POSTS_FN   = `${SUPABASE_URL}/functions/v1/posts_admin`;
+const ME_FN      = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let TENANTS = [];
+let SELECTED = null;
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function providerToken() { return localStorage.getItem('poolside_provider_token'); }
+
+function gotoLogin() { window.location.href = '/admin/login.html?next=/admin/cockpit.html'; }
+
+async function call(url, action, extra = {}) {
+  const t = providerToken();
+  if (!t) { gotoLogin(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { gotoLogin(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+async function callPublic(slug) {
+  const res = await fetch(PUBLIC_FN, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug }),
+  });
+  return res.json();
+}
+
+async function loadTenants() {
+  try {
+    const data = await call(TENANTS_FN, 'list');
+    if (!data.ok) throw new Error(data.error || 'Failed to load tenants');
+    TENANTS = (data.tenants || []).filter(t => t.status !== 'churned');
+    const sel = document.getElementById('tenant-pick');
+    sel.innerHTML = TENANTS.map(t =>
+      `<option value="${t.id}">${escapeHtml(t.display_name)} · ${escapeHtml(t.slug)}.poolsideapp.com</option>`
+    ).join('');
+    if (TENANTS.length) {
+      // Default to bishopestates if present, otherwise first
+      const def = TENANTS.find(t => t.slug === 'bishopestates') ?? TENANTS[0];
+      sel.value = def.id;
+      SELECTED = def;
+      await loadFrames();
+    }
+  } catch (e) {
+    document.getElementById('tenant-pick').innerHTML = `<option>${escapeHtml(e.message)}</option>`;
+  }
+}
+
+document.getElementById('tenant-pick').addEventListener('change', async (e) => {
+  SELECTED = TENANTS.find(t => t.id === e.target.value);
+  await loadFrames();
+});
+
+async function loadFrames() {
+  if (!SELECTED) return;
+  const slug = SELECTED.slug;
+  const host = `https://${slug}.poolsideapp.com`;
+  document.getElementById('public-host').textContent = `${slug}.poolsideapp.com`;
+  document.getElementById('public-open').href = `${host}/`;
+  document.getElementById('public-frame').src = `${host}/`;
+  document.getElementById('public-frame').style.display = 'block';
+  document.getElementById('public-ph').style.display = 'none';
+
+  // Mint impersonation tokens for both member + admin frames in parallel
+  document.getElementById('member-ph').textContent = 'Minting member token…';
+  document.getElementById('admin-ph').textContent = 'Minting admin token…';
+  document.getElementById('member-frame').style.display = 'none';
+  document.getElementById('admin-frame').style.display = 'none';
+  document.getElementById('member-ph').style.display = 'flex';
+  document.getElementById('admin-ph').style.display = 'flex';
+
+  try {
+    const [m, a] = await Promise.all([
+      call(TENANTS_FN, 'impersonate_member', { tenant_id: SELECTED.id }),
+      call(TENANTS_FN, 'impersonate',        { tenant_id: SELECTED.id }),
+    ]);
+    if (m.ok) {
+      const url = `${host}/m/#bootstrap=${encodeURIComponent(m.token)}`;
+      document.getElementById('member-frame').src = url;
+      document.getElementById('member-frame').style.display = 'block';
+      document.getElementById('member-ph').style.display = 'none';
+      document.getElementById('member-open').href = url;
+    } else {
+      document.getElementById('member-ph').textContent = `Member: ${m.error}`;
+    }
+    if (a.ok) {
+      const url = `${host}/club/admin/#bootstrap=${encodeURIComponent(a.token)}`;
+      document.getElementById('admin-frame').src = url;
+      document.getElementById('admin-frame').style.display = 'block';
+      document.getElementById('admin-ph').style.display = 'none';
+      document.getElementById('admin-open').href = url;
+    } else {
+      document.getElementById('admin-ph').textContent = `Admin: ${a.error}`;
+    }
+  } catch (e) {
+    document.getElementById('member-ph').textContent = e.message;
+    document.getElementById('admin-ph').textContent = e.message;
+  }
+}
+
+function reloadFrames() {
+  ['public-frame','member-frame','admin-frame'].forEach(id => {
+    const f = document.getElementById(id);
+    if (f.src) f.src = f.src;  // bust cache by reassigning
+  });
+}
+
+// ── End-to-end test runner ──────────────────────────────────────────────
+function logStep(state, name, ms, err) {
+  const body = document.getElementById('e2e-body');
+  if (state === 'reset') { body.innerHTML = ''; return; }
+  const marker = state === 'pass' ? '✓' : state === 'fail' ? '✗' : '·';
+  const html = `
+    <div class="e2e-step ${state}">
+      <span class="marker">${marker}</span>
+      <span class="name">${escapeHtml(name)}</span>
+      <span class="ms">${ms != null ? ms + 'ms' : ''}</span>
+    </div>
+    ${err ? `<div class="err">${escapeHtml(err)}</div>` : ''}
+  `;
+  body.insertAdjacentHTML('beforeend', html);
+  body.scrollTop = body.scrollHeight;
+}
+
+async function runStep(name, fn) {
+  const t0 = performance.now();
+  try {
+    const r = await fn();
+    const ms = Math.round(performance.now() - t0);
+    logStep('pass', name, ms);
+    return { ok: true, value: r };
+  } catch (e) {
+    const ms = Math.round(performance.now() - t0);
+    logStep('fail', name, ms, e.message);
+    return { ok: false, error: e };
+  }
+}
+
+async function runE2e() {
+  if (!SELECTED) return;
+  document.getElementById('e2e-panel').classList.add('open');
+  document.getElementById('e2e-status').textContent = 'running…';
+  document.getElementById('run-btn').disabled = true;
+  logStep('reset');
+  logStep('info', `Target: ${SELECTED.display_name} (${SELECTED.slug}.poolsideapp.com)`);
+  const stamp = Date.now().toString().slice(-6);
+  let tenantToken = null;
+  let createdHhId = null, createdEvId = null, createdPostId = null;
+  let pass = 0, fail = 0;
+
+  const wrap = async (name, fn) => {
+    const r = await runStep(name, fn);
+    if (r.ok) pass++; else fail++;
+    return r;
+  };
+
+  await (async () => {
+    // 1. Mint impersonation token
+    const r1 = await wrap('impersonate tenant admin', async () => {
+      const d = await call(TENANTS_FN, 'impersonate', { tenant_id: SELECTED.id });
+      if (!d.ok) throw new Error(d.error || 'mint failed');
+      tenantToken = d.token;
+    });
+    if (!r1.ok) return;
+
+    const tenantCall = async (url, action, extra = {}) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tenantToken}` },
+        body: JSON.stringify({ action, ...extra }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || `${action} failed`);
+      return d;
+    };
+
+    // 2. tenant_admin_auth.me
+    await wrap('tenant_admin_auth.me', async () => {
+      const d = await tenantCall(ME_FN, 'me');
+      if (!d.tenant?.slug) throw new Error('no tenant in me response');
+    });
+
+    // 3. Create a household
+    const familyName = `E2E Test Family ${stamp}`;
+    const phone = `+1555${String(stamp).padStart(3,'0').slice(-3)}${String(Date.now()).slice(-4)}`;
+    await wrap('households_admin.create_household', async () => {
+      const d = await tenantCall(HH_FN, 'create_household', {
+        family_name: familyName,
+        primary: { name: `E2E Tester ${stamp}`, phone_e164: phone },
+      });
+      createdHhId = d.household_id;
+    });
+
+    // 4. List households — verify ours is there
+    await wrap('households_admin.list — our household appears', async () => {
+      const d = await tenantCall(HH_FN, 'list');
+      if (!d.households?.find(h => h.id === createdHhId)) {
+        throw new Error('created household not in list');
+      }
+    });
+
+    // 5. Create event
+    const evTitle = `E2E test event ${stamp}`;
+    const startsAt = new Date(Date.now() + 7 * 86400_000).toISOString();
+    await wrap('events_admin.create', async () => {
+      const d = await tenantCall(EV_FN, 'create', { title: evTitle, starts_at: startsAt, kind: 'event' });
+      createdEvId = d.event.id;
+    });
+
+    // 6. Create post
+    const postTitle = `E2E post ${stamp}`;
+    await wrap('posts_admin.create', async () => {
+      const d = await tenantCall(POSTS_FN, 'create', { title: postTitle, body: 'Smoke test body' });
+      createdPostId = d.post.id;
+    });
+
+    // 7. Public surface should now reflect the event + post
+    await wrap('tenant_public reflects new event + post', async () => {
+      const d = await callPublic(SELECTED.slug);
+      if (!d.ok) throw new Error('tenant_public not ok');
+      if (!d.events?.find(e => e.id === createdEvId)) throw new Error('event not in public events');
+      if (!d.posts?.find(p => p.id === createdPostId)) throw new Error('post not in public posts');
+    });
+
+    // 8. Update post (rename)
+    await wrap('posts_admin.update', async () => {
+      await tenantCall(POSTS_FN, 'update', { id: createdPostId, title: postTitle + ' edited' });
+    });
+
+    // 9. Soft-delete the household
+    await wrap('households_admin.delete_household', async () => {
+      await tenantCall(HH_FN, 'delete_household', { id: createdHhId });
+    });
+
+    // 10. Soft-delete the event
+    await wrap('events_admin.delete', async () => {
+      await tenantCall(EV_FN, 'delete', { id: createdEvId });
+    });
+
+    // 11. Soft-delete the post
+    await wrap('posts_admin.delete', async () => {
+      await tenantCall(POSTS_FN, 'delete', { id: createdPostId });
+    });
+
+    // 12. tenant_public no longer shows them
+    await wrap('tenant_public no longer shows the test rows', async () => {
+      const d = await callPublic(SELECTED.slug);
+      if (d.events?.find(e => e.id === createdEvId)) throw new Error('event still in public events');
+      if (d.posts?.find(p => p.id === createdPostId)) throw new Error('post still in public posts');
+    });
+  })();
+
+  // Summary
+  const total = pass + fail;
+  const body = document.getElementById('e2e-body');
+  const summaryHtml = `<div class="e2e-summary" style="color:${fail ? '#fca5a5' : '#4ade80'}">
+    ${fail === 0 ? '✓' : '✗'} ${pass}/${total} passed${fail > 0 ? ` · ${fail} failed` : ''}
+  </div>`;
+  body.insertAdjacentHTML('beforeend', summaryHtml);
+  document.getElementById('e2e-status').textContent = fail === 0 ? '✓ all green' : `✗ ${fail} failed`;
+
+  // Update toolbar pill
+  const pill = document.getElementById('last-e2e');
+  pill.textContent = `e2e: ${pass}/${total} · just now`;
+  pill.classList.remove('green','red','amber');
+  pill.classList.add(fail === 0 ? 'green' : 'red');
+  localStorage.setItem('cockpit_last_e2e', JSON.stringify({ pass, total, at: Date.now() }));
+
+  document.getElementById('run-btn').disabled = false;
+
+  // Refresh frames so visual surfaces match the now-clean state
+  setTimeout(reloadFrames, 500);
+}
+
+// On load: show last cached deploy / smoke info if known
+(function loadCached() {
+  const e = localStorage.getItem('cockpit_last_e2e');
+  if (e) {
+    try {
+      const v = JSON.parse(e);
+      const ago = Math.round((Date.now() - v.at) / 60000);
+      const pill = document.getElementById('last-e2e');
+      pill.textContent = `e2e: ${v.pass}/${v.total} · ${ago}m ago`;
+      pill.classList.add(v.pass === v.total ? 'green' : 'red');
+    } catch {}
+  }
+  // We don't have a cron-y "last deploy" feed yet — show the page-load time
+  document.getElementById('last-deploy').textContent = `loaded: ${new Date().toLocaleTimeString()}`;
+  document.getElementById('last-smoke').textContent = `smoke: run ./scripts/smoke.sh`;
+})();
+
+if (!providerToken()) gotoLogin();
+else loadTenants();
+</script>
+</body>
+</html>

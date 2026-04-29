@@ -87,7 +87,7 @@
     m.classList.add('open');
   }
 
-  function render({ rootEl, events, openHoursLabel }) {
+  function render({ rootEl, events, openHoursLabel, onDayClick, onChipClick }) {
     if (!rootEl) return;
 
     const cursor = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
@@ -131,12 +131,14 @@
         const overflow   = dayEvents.length - visible.length;
         const hours = (!otherMonth && openHoursLabel)
           ? `<div class="pcal-hours">${escapeHtml(openHoursLabel)}</div>` : '';
+        const dayDataAttr = `${cur.getFullYear()}-${pad(cur.getMonth()+1)}-${pad(cur.getDate())}`;
         html += `
-          <div class="pcal-day ${otherMonth ? 'pcal-other' : ''} ${isToday ? 'pcal-today-cell' : ''}">
+          <div class="pcal-day ${otherMonth ? 'pcal-other' : ''} ${isToday ? 'pcal-today-cell' : ''}"
+               data-day="${dayDataAttr}">
             <div class="pcal-num">${cur.getDate()}</div>
             ${hours}
             ${visible.map(ev => `
-              <div class="pcal-chip pcal-${escapeHtml(ev.kind)}" data-k="${k}" data-id="${escapeHtml(ev.id)}" title="${escapeHtml(ev.title)}">
+              <div class="pcal-chip pcal-${escapeHtml(ev.kind)} ${ev.source_url ? 'pcal-imported' : ''}" data-k="${k}" data-id="${escapeHtml(ev.id)}" title="${escapeHtml(ev.title)}${ev.source_url ? ' (imported)' : ''}">
                 ${escapeHtml(KIND_ICON[ev.kind] || '')} ${escapeHtml(ev.title)}
               </div>
             `).join('')}
@@ -162,21 +164,39 @@
       });
 
       rootEl.querySelectorAll('.pcal-chip').forEach(c => {
-        c.addEventListener('click', () => {
+        c.addEventListener('click', (e) => {
+          e.stopPropagation();
           const evs = byDay.get(c.dataset.k) || [];
           const ev = evs.find(e => String(e.id) === c.dataset.id);
-          if (ev) showEvent(ev);
+          if (!ev) return;
+          if (typeof onChipClick === 'function') onChipClick(ev);
+          else showEvent(ev);
         });
       });
 
       // "+ N more" → show first overflow event for now (could expand to a
       // day-list popover later)
       rootEl.querySelectorAll('.pcal-more').forEach(c => {
-        c.addEventListener('click', () => {
+        c.addEventListener('click', (e) => {
+          e.stopPropagation();
           const evs = byDay.get(c.dataset.k) || [];
-          if (evs.length) showEvent(evs[3]);
+          if (evs.length) {
+            if (typeof onChipClick === 'function') onChipClick(evs[3]);
+            else showEvent(evs[3]);
+          }
         });
       });
+
+      // Click empty space in a day cell → onDayClick(date) when supplied
+      // (admin uses this to create a new event seeded for that date).
+      if (typeof onDayClick === 'function') {
+        rootEl.querySelectorAll('.pcal-day').forEach(d => {
+          d.style.cursor = 'pointer';
+          d.addEventListener('click', () => {
+            if (d.dataset.day) onDayClick(d.dataset.day);
+          });
+        });
+      }
     }
     draw();
   }
