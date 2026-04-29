@@ -146,6 +146,32 @@
   .chip.meeting   { background: #dcfce7; color: #14532d; }
   .chip.social    { background: #fae8ff; color: #86198f; }
   .more { font-size: 10px; color: var(--muted); padding-left: 4px; }
+  .day .hours {
+    font-size: 9px; color: var(--muted); margin-top: -2px;
+    letter-spacing: .02em; padding-bottom: 2px;
+  }
+  .chip.imported {
+    border-left: 2px solid currentColor;
+    padding-left: 4px;
+  }
+  .imported-tag {
+    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;
+    background: var(--bg-2); color: var(--muted); margin-left: 6px; letter-spacing: .04em;
+  }
+
+  /* Import modal */
+  .sub-row {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 10px; padding: 12px 14px; border: 1.5px solid var(--border);
+    border-radius: 10px; margin-bottom: 8px;
+  }
+  .sub-row .sub-name { font-weight: 600; font-size: 14px; }
+  .sub-row .sub-url  { font-size: 11px; color: var(--muted); word-break: break-all; }
+  .sub-row .sub-stat { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .preview-list { margin-top: 8px; max-height: 240px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+  .preview-list .item { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .preview-list .item:last-child { border-bottom: 0; }
 
   @media (max-width: 700px) {
     .day { min-height: 64px; padding: 4px; }
@@ -215,6 +241,7 @@
         <button data-range="all">All</button>
       </div>
       <a id="ics-link" target="_blank" rel="noopener" class="btn-ghost btn" style="text-decoration:none">📆 iCal feed</a>
+      <button class="btn-ghost btn" onclick="openImport()">📥 Import</button>
       <button class="btn" onclick="openCreate()">+ New event</button>
     </div>
   </div>
@@ -269,12 +296,53 @@
   </div>
 </div>
 
+<!-- Import modal -->
+<div class="scrim" id="import-scrim">
+  <div class="modal" style="max-width: 640px">
+    <h2>Import calendars</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px">
+      Subscribe to an ICS feed (Google Calendar's "Secret address in iCal format", swim-league schedules, etc.).
+      Refresh re-fetches latest. Imported events show alongside native ones — your direct edits live separately.
+    </p>
+
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:14px 0 8px">Subscriptions</h3>
+    <div id="subs-list">
+      <div class="empty" style="padding:14px;font-size:13px">No subscriptions yet.</div>
+    </div>
+
+    <hr style="margin:18px 0;border:0;border-top:1px solid var(--border)">
+
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:0 0 8px">+ Add a calendar feed</h3>
+    <label>Calendar URL <span style="color:var(--muted);font-weight:500;font-size:11px">(must be public ICS — not "shareable" Google share link)</span></label>
+    <input id="imp-url" type="url" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
+    <div class="row2">
+      <div><label>Display name</label><input id="imp-name" placeholder="Swim team schedule"></div>
+      <div><label>Color tag <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input id="imp-color" type="color" value="#06b6d4"></div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn btn-ghost" id="imp-preview-btn" onclick="previewImport()">Preview</button>
+      <button class="btn" id="imp-go-btn" onclick="commitImport()" disabled>Import →</button>
+    </div>
+
+    <div id="imp-preview" style="display:none;margin-top:14px"></div>
+    <div class="err" id="imp-err"></div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeImport()">Close</button>
+    </div>
+  </div>
+</div>
+
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
+const IMPORT_URL = `${SUPABASE_URL}/functions/v1/events_import`;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+let SETTINGS = {};
 
 let RANGE = 'upcoming';
 let VIEW = 'month';
@@ -292,15 +360,29 @@ function logout() {
 document.getElementById('signout').addEventListener('click', logout);
 
 async function call(action, extra = {}) {
+  return await callAt(EVENTS_URL, action, extra);
+}
+async function callAt(url, action, extra = {}) {
   const t = token();
   if (!t) { logout(); throw new Error('Not signed in'); }
-  const res = await fetch(EVENTS_URL, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
     body: JSON.stringify({ action, ...extra }),
   });
   if (res.status === 401) { logout(); throw new Error('Session expired'); }
   return res.json();
+}
+
+function fmtHourLabel(hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = String(hhmm).split(':');
+  let hh = parseInt(h, 10);
+  if (!Number.isFinite(hh)) return null;
+  const ap = hh < 12 ? 'A' : 'P';
+  if (hh === 0) hh = 12;
+  else if (hh > 12) hh -= 12;
+  return (m === '00' ? `${hh}${ap}` : `${hh}:${m}${ap}`);
 }
 
 const KIND_ICON = {
@@ -367,7 +449,7 @@ function render(events) {
         <div class="event" onclick='openEdit(${JSON.stringify(ev).replace(/'/g, "&#39;")})'>
           <div class="event-icon ${escapeHtml(ev.kind)}">${KIND_ICON[ev.kind] || '📅'}</div>
           <div class="event-body">
-            <div class="event-title">${escapeHtml(ev.title)}</div>
+            <div class="event-title">${escapeHtml(ev.title)}${ev.source_url ? '<span class="imported-tag">IMPORTED</span>' : ''}</div>
             <div class="event-meta">${escapeHtml(KIND_LABEL[ev.kind] || ev.kind)} · ${escapeHtml(fmtTimeRange(ev))}</div>
             ${ev.location ? `<div class="event-loc">📍 ${escapeHtml(ev.location)}</div>` : ''}
           </div>
@@ -453,13 +535,17 @@ function renderMonth() {
     const visible    = dayEvents.slice(0, 3);
     const overflow   = dayEvents.length - visible.length;
     const dateAttr   = `${cursorD.getFullYear()}-${String(cursorD.getMonth()+1).padStart(2,'0')}-${String(cursorD.getDate()).padStart(2,'0')}`;
+    const opens = !otherMonth ? fmtHourLabel(SETTINGS?.pool?.opens_at) : null;
+    const closes = !otherMonth ? fmtHourLabel(SETTINGS?.pool?.closes_at) : null;
+    const hoursLabel = (opens && closes) ? `${opens}–${closes}` : '';
     cellsHtml += `
       <div class="day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}"
            data-date="${dateAttr}"
            onclick="dayCellClick('${dateAttr}', event)">
         <div class="num">${cursorD.getDate()}</div>
+        ${hoursLabel ? `<div class="hours">${hoursLabel}</div>` : ''}
         ${visible.map(ev => `
-          <div class="chip ${escapeHtml(ev.kind)}" title="${escapeHtml(ev.title)}"
+          <div class="chip ${escapeHtml(ev.kind)} ${ev.source_url ? 'imported' : ''}" title="${escapeHtml(ev.title)}${ev.source_url ? '\n(imported)' : ''}"
                onclick="event.stopPropagation(); openEdit(${JSON.stringify(ev).replace(/'/g, '&#39;')})">
             ${escapeHtml(KIND_ICON[ev.kind] || '')} ${escapeHtml(ev.title)}
           </div>
@@ -600,6 +686,130 @@ async function del() {
   }
 }
 
+// ── Import modal ───────────────────────────────────────────────────────
+function openImport() {
+  document.getElementById('imp-url').value = '';
+  document.getElementById('imp-name').value = '';
+  document.getElementById('imp-color').value = '#06b6d4';
+  document.getElementById('imp-preview').style.display = 'none';
+  document.getElementById('imp-preview').innerHTML = '';
+  document.getElementById('imp-go-btn').disabled = true;
+  document.getElementById('imp-err').classList.remove('show');
+  refreshSubs();
+  document.getElementById('import-scrim').classList.add('open');
+}
+function closeImport() { document.getElementById('import-scrim').classList.remove('open'); }
+
+async function refreshSubs() {
+  const list = document.getElementById('subs-list');
+  try {
+    const data = await callAt(IMPORT_URL, 'list');
+    if (!data.ok) throw new Error(data.error || 'Failed to load subscriptions');
+    const subs = data.subscriptions || [];
+    if (!subs.length) {
+      list.innerHTML = `<div class="empty" style="padding:14px;font-size:13px">No subscriptions yet.</div>`;
+      return;
+    }
+    list.innerHTML = subs.map(s => {
+      const last = s.last_synced_at ? new Date(s.last_synced_at).toLocaleString() : 'never';
+      const sm = s.last_summary || {};
+      const stats = `Added ${sm.added ?? 0} · Updated ${sm.updated ?? 0} · Removed ${sm.removed ?? 0}${sm.skipped_recurring ? ' · Skipped ' + sm.skipped_recurring + ' recurring' : ''}`;
+      return `<div class="sub-row">
+        <div style="flex:1;min-width:0">
+          <div class="sub-name">${escapeHtml(s.name || s.url)}</div>
+          <div class="sub-url">${escapeHtml(s.url)}</div>
+          <div class="sub-stat">Last refreshed: ${escapeHtml(last)} — ${escapeHtml(stats)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn-sm btn-ghost btn" style="padding:6px 12px" onclick="refreshSub('${encodeURIComponent(s.url)}')">↻ Refresh</button>
+          <button class="btn-sm btn-danger btn" style="padding:6px 12px" onclick="removeSub('${encodeURIComponent(s.url)}', '${escapeAttr(s.name || s.url)}')">Remove</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty" style="padding:14px;color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+
+async function previewImport() {
+  const url = document.getElementById('imp-url').value.trim();
+  const errEl = document.getElementById('imp-err');
+  const prev = document.getElementById('imp-preview');
+  errEl.classList.remove('show');
+  if (!url) { errEl.textContent = 'Enter a URL'; errEl.classList.add('show'); return; }
+  const btn = document.getElementById('imp-preview-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Fetching…';
+  try {
+    const data = await callAt(IMPORT_URL, 'preview', { source: 'url', url });
+    if (!data.ok) throw new Error(data.error || 'Preview failed');
+    const samples = (data.sample || []).map(s => `
+      <div class="item"><b>${escapeHtml(s.title)}</b> <span style="color:var(--muted)">· ${escapeHtml(KIND_LABEL[s.kind] || s.kind)} · ${escapeHtml(new Date(s.starts_at).toLocaleString())}</span></div>
+    `).join('') || '<div class="item"><i>No upcoming events in feed</i></div>';
+    prev.innerHTML = `
+      <div style="padding:10px 14px;background:var(--bg-2);border-radius:10px">
+        <b>${data.total_events} events</b> ready to import${data.skipped_recurring ? ` · <span style="color:#92400e">${data.skipped_recurring} recurring skipped (we don't expand RRULE yet)</span>` : ''}.
+      </div>
+      <div class="preview-list">${samples}</div>
+    `;
+    prev.style.display = 'block';
+    document.getElementById('imp-go-btn').disabled = data.total_events === 0;
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+    prev.style.display = 'none';
+    document.getElementById('imp-go-btn').disabled = true;
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function commitImport() {
+  const url   = document.getElementById('imp-url').value.trim();
+  const name  = document.getElementById('imp-name').value.trim() || null;
+  const color = document.getElementById('imp-color').value;
+  const errEl = document.getElementById('imp-err');
+  errEl.classList.remove('show');
+  const btn = document.getElementById('imp-go-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Importing…';
+  try {
+    const data = await callAt(IMPORT_URL, 'import', { url, name, color });
+    if (!data.ok) throw new Error(data.error || 'Import failed');
+    const s = data.summary;
+    alert(`Imported: ${s.added} added · ${s.updated} updated · ${s.removed} removed${s.skipped_recurring ? '\n' + s.skipped_recurring + ' recurring events skipped' : ''}`);
+    document.getElementById('imp-url').value = '';
+    document.getElementById('imp-name').value = '';
+    document.getElementById('imp-preview').style.display = 'none';
+    await refreshSubs();
+    await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function refreshSub(encUrl) {
+  const url = decodeURIComponent(encUrl);
+  try {
+    const data = await callAt(IMPORT_URL, 'refresh', { url });
+    if (!data.ok) throw new Error(data.error || 'Refresh failed');
+    const s = data.summary;
+    alert(`Refreshed: ${s.added} added · ${s.updated} updated · ${s.removed} removed`);
+    await refreshSubs();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function removeSub(encUrl, name) {
+  const url = decodeURIComponent(encUrl);
+  const nameDecoded = name.replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  if (!confirm(`Remove subscription "${nameDecoded}"?\n\nImported events from this feed will be hidden too. (Choose Cancel if you only want to keep the events.)`)) return;
+  try {
+    const data = await callAt(IMPORT_URL, 'remove', { url, delete_events: true });
+    if (!data.ok) throw new Error(data.error || 'Remove failed');
+    await refreshSubs();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
 (async () => {
   if (!token()) { logout(); return; }
   try {
@@ -614,6 +824,11 @@ async function del() {
     document.getElementById('ics-link').href =
       `${SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug=${encodeURIComponent(me.tenant.slug)}`;
   } catch { logout(); return; }
+  // Load tenant settings so we can render pool open/close hours per day
+  try {
+    const s = await callAt(SETTINGS_URL, 'get');
+    if (s.ok) SETTINGS = s.settings || {};
+  } catch { SETTINGS = {}; }
   await refresh();
 })();
 </script>
