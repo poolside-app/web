@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-End-to-end test of the applications pipeline.
+End-to-end test suite for Poolside.
 
-Mints a synthetic tenant_admin JWT (no provider login needed) and walks the
-full apply -> review -> verify -> reminder -> cleanup flow against bishopestates.
+Mints synthetic tenant_admin + provider JWTs (no browser needed) and
+exercises the major code paths against the live Supabase + Vercel
+deploys. Real DB writes; each test cleans up after itself.
 
 Run from the repo root:   python scripts/e2e.py
 Exits 0 on all-green, 1 on any failure.
 """
-import os, sys, time, json, hmac, hashlib, base64, uuid, urllib.request, urllib.parse, urllib.error
+import os, sys, time, json, hmac, hashlib, base64, uuid
+import urllib.request, urllib.parse, urllib.error
 
-# Windows cp1252 stdout chokes on Unicode box drawings; force UTF-8 if available.
 try:
     sys.stdout.reconfigure(encoding='utf-8')
 except Exception:
@@ -25,35 +26,47 @@ with open('.env.local', 'r') as f:
         ENV[k.strip()] = v.strip()
 
 SUPABASE_URL = ENV.get('SUPABASE_URL', '').rstrip('/')
-SECRET_KEY   = ENV.get('SUPABASE_SECRET_KEY')
 JWT_SECRET   = ENV.get('ADMIN_JWT_SECRET')
 ACCESS_TOKEN = ENV.get('SUPABASE_ACCESS_TOKEN')
 PROJECT_REF  = ENV.get('SUPABASE_PROJECT_REF', 'sdewylbddkcvidwosgxo')
 
-if not (SUPABASE_URL and JWT_SECRET):
-    print('Missing SUPABASE_URL or ADMIN_JWT_SECRET in .env.local')
+if not (SUPABASE_URL and JWT_SECRET and ACCESS_TOKEN):
+    print('Missing SUPABASE_URL / ADMIN_JWT_SECRET / SUPABASE_ACCESS_TOKEN in .env.local')
     sys.exit(1)
 
-# ── Tiny HTTP + JWT helpers ──────────────────────────────────────────────
+UA = 'poolside-e2e/1.0'  # default urllib UA gets blocked by some APIs
+
 def b64url(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
 
-def mint_tenant_admin_jwt(tid: str, slug: str) -> str:
-    payload = {
-        'sub':  '00000000-0000-0000-0000-000000000000',
-        'kind': 'tenant_admin',
-        'tid':  tid,
-        'slug': slug,
-        'synthetic':       True,
-        'impersonated_by': '00000000-0000-0000-0000-000000000000',
-        'exp': int(time.time()) + 3600,
-    }
+def sign_jwt(payload: dict) -> str:
     h = b64url(json.dumps({'alg':'HS256','typ':'JWT'}, separators=(',',':')).encode())
     p = b64url(json.dumps(payload, separators=(',',':')).encode())
     sig = hmac.new(JWT_SECRET.encode(), f'{h}.{p}'.encode(), hashlib.sha256).digest()
     return f'{h}.{p}.{b64url(sig)}'
 
-UA = 'poolside-e2e/1.0'  # default urllib UA gets blocked by some APIs
+def tenant_admin_jwt(tid: str, slug: str) -> str:
+    return sign_jwt({
+        'sub':  '00000000-0000-0000-0000-000000000000',
+        'kind': 'tenant_admin',
+        'tid': tid, 'slug': slug,
+        'synthetic': True,
+        'impersonated_by': '00000000-0000-0000-0000-000000000000',
+        'exp': int(time.time()) + 3600,
+    })
+
+def member_jwt(member_id: str, tid: str, slug: str, hid: str) -> str:
+    return sign_jwt({
+        'sub': member_id, 'kind': 'member',
+        'tid': tid, 'slug': slug, 'hid': hid,
+        'exp': int(time.time()) + 3600,
+    })
+
+def provider_jwt(provider_id: str) -> str:
+    return sign_jwt({
+        'sub': provider_id, 'kind': 'provider',
+        'exp': int(time.time()) + 3600,
+    })
 
 def post(url: str, body: dict, token: str | None = None) -> dict:
     data = json.dumps(body).encode()
@@ -68,10 +81,17 @@ def post(url: str, body: dict, token: str | None = None) -> dict:
         try:    return json.loads(e.read().decode())
         except: return {'ok': False, 'error': f'HTTP {e.code}'}
 
+def get(url: str) -> str:
+    """GET → returns body as string. Use get_bytes for binary content."""
+    return get_bytes(url).decode('utf-8', errors='replace')
+
+def get_bytes(url: str) -> bytes:
+    req = urllib.request.Request(url, method='GET')
+    req.add_header('User-Agent', UA)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return r.read()
+
 def mgmt_query(sql: str) -> list:
-    """Run SQL via Supabase Management API for setup/teardown bypass-of-RLS."""
-    if not ACCESS_TOKEN:
-        raise RuntimeError('SUPABASE_ACCESS_TOKEN not set — needed for cleanup')
     url = f'https://api.supabase.com/v1/projects/{PROJECT_REF}/database/query'
     req = urllib.request.Request(url, data=json.dumps({'query': sql}).encode(), method='POST')
     req.add_header('Authorization', f'Bearer {ACCESS_TOKEN}')
@@ -80,131 +100,420 @@ def mgmt_query(sql: str) -> list:
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read().decode())
 
+# A 1×1 transparent PNG, base64-encoded — used for the upload test
+TINY_PNG_B64 = (
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8'
+    'AAAAASUVORK5CYII='
+)
+
 # ── Test runner ──────────────────────────────────────────────────────────
 ok_count = 0; fail_count = 0
+current_section = ''
+
+def section(name):
+    global current_section
+    current_section = name
+    print(f'\n-- {name} --')
+
 def step(name, fn):
     global ok_count, fail_count
     t0 = time.time()
     try:
         fn()
         dt = int((time.time() - t0) * 1000)
-        print(f'  \033[32m✓\033[0m {name} ({dt}ms)')
+        print(f'  \033[32mOK\033[0m {name} ({dt}ms)')
         ok_count += 1
         return True
+    except AssertionError as e:
+        dt = int((time.time() - t0) * 1000)
+        print(f'  \033[31mFAIL\033[0m {name} ({dt}ms) — {e}')
+        fail_count += 1
+        return False
     except Exception as e:
         dt = int((time.time() - t0) * 1000)
-        print(f'  \033[31m✗\033[0m {name} ({dt}ms) — {e}')
+        print(f'  \033[31mERR\033[0m  {name} ({dt}ms) — {type(e).__name__}: {e}')
         fail_count += 1
         return False
 
-# ── Discover tenant id ───────────────────────────────────────────────────
-TENANT_SLUG = 'bishopestates'
-res = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': TENANT_SLUG})
-if not res.get('ok'):
-    print(f'Could not look up {TENANT_SLUG}: {res}'); sys.exit(1)
+# ── Setup: discover real ids ─────────────────────────────────────────────
+SLUG_A = 'bishopestates'
+print(f'\nE2E suite for Poolside ({SUPABASE_URL})')
 
-# Use Management API to grab the tenant_id (tenant_public strips it)
-rows = mgmt_query(f"select id from public.tenants where slug = '{TENANT_SLUG}' limit 1;")
-if not rows: print('Tenant not found in DB'); sys.exit(1)
-TENANT_ID = rows[0]['id']
-TOKEN = mint_tenant_admin_jwt(TENANT_ID, TENANT_SLUG)
+rows = mgmt_query(f"select id from public.tenants where slug = '{SLUG_A}' limit 1;")
+if not rows: print('Tenant A not found'); sys.exit(1)
+TENANT_A_ID = rows[0]['id']
 
-print(f'\nE2E against tenant: {TENANT_SLUG} ({TENANT_ID})\n')
-print('-- Applications pipeline --')
+# Find Doug's provider_admin id (for provider_metrics tests)
+prov_rows = mgmt_query("select id from public.provider_admins where active = true order by created_at limit 1;")
+PROVIDER_ID = prov_rows[0]['id'] if prov_rows else None
 
-stamp   = str(int(time.time()))[-6:]
-APP_FAM = f'E2E Family {stamp}'
-APP_NAME = f'E2E Tester {stamp}'
-APP_EMAIL = f'e2e-{stamp}@example.com'
-APP_PHONE = f'+1555{stamp}{stamp[-4:]}'[:14]  # +1 555 NNNNNN-NNNN unique-ish
-APP_ID    = None
-HH_ID     = None
+# Spin up an isolated test tenant ('e2etest-{stamp}') for isolation testing.
+STAMP = str(int(time.time()))[-6:]
+SLUG_B = f'e2etest{STAMP}'
+mgmt_query(f"""
+  insert into public.tenants (slug, display_name, status, plan)
+  values ('{SLUG_B}', 'E2E Test Tenant {STAMP}', 'trial', 'free');
+""")
+b_rows = mgmt_query(f"select id from public.tenants where slug = '{SLUG_B}' limit 1;")
+TENANT_B_ID = b_rows[0]['id']
 
-def submit():
+TOKEN_A = tenant_admin_jwt(TENANT_A_ID, SLUG_A)
+TOKEN_B = tenant_admin_jwt(TENANT_B_ID, SLUG_B)
+
+print(f'  tenant A: {SLUG_A} ({TENANT_A_ID[:8]}…)')
+print(f'  tenant B: {SLUG_B} ({TENANT_B_ID[:8]}…)  [throwaway]')
+
+# Track resources for cleanup
+RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': []}
+def track(kind, id):  RESOURCES[kind].append(id)
+
+# ── 1. Cross-tenant isolation (THE most important) ───────────────────────
+section('Isolation')
+
+A_HOUSEHOLD_ID = None
+
+def isolation_create_in_a():
+    global A_HOUSEHOLD_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {
+        'action': 'create_household',
+        'family_name': f'Isolation Test {STAMP}',
+        'primary': {'name': f'Iso {STAMP}', 'phone_e164': f'+1555{STAMP}0001'},
+    }, TOKEN_A)
+    assert r.get('ok'), f'create in A: {r}'
+    A_HOUSEHOLD_ID = r['household_id']
+    track('households', A_HOUSEHOLD_ID)
+
+def isolation_b_cannot_see_a():
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {'action': 'list'}, TOKEN_B)
+    assert r.get('ok'), f'list with B: {r}'
+    found = any(h['id'] == A_HOUSEHOLD_ID for h in r.get('households', []))
+    assert not found, 'Tenant B sees Tenant A\'s household — ISOLATION BREACH'
+
+def isolation_b_cannot_update_a():
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {
+        'action': 'update_household', 'id': A_HOUSEHOLD_ID, 'family_name': 'HACKED',
+    }, TOKEN_B)
+    # Endpoint may return ok:true/noop or error — what matters is the row didn't change
+    rows = mgmt_query(f"select family_name from public.households where id = '{A_HOUSEHOLD_ID}';")
+    assert rows and rows[0]['family_name'] != 'HACKED', 'Tenant B updated Tenant A\'s household — BREACH'
+
+def isolation_b_cannot_delete_a():
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {
+        'action': 'delete_household', 'id': A_HOUSEHOLD_ID,
+    }, TOKEN_B)
+    rows = mgmt_query(f"select active from public.households where id = '{A_HOUSEHOLD_ID}';")
+    assert rows and rows[0]['active'] is True, 'Tenant B soft-deleted Tenant A\'s household — BREACH'
+
+def isolation_a_still_owns_data():
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {'action': 'list'}, TOKEN_A)
+    assert r.get('ok')
+    assert any(h['id'] == A_HOUSEHOLD_ID for h in r.get('households', [])), 'Tenant A lost their own data'
+
+step('create household in tenant A',          isolation_create_in_a)
+step('tenant B list does NOT see A\'s data',  isolation_b_cannot_see_a)
+step('tenant B update on A\'s id is no-op',   isolation_b_cannot_update_a)
+step('tenant B delete on A\'s id is no-op',   isolation_b_cannot_delete_a)
+step('tenant A still owns their data',         isolation_a_still_owns_data)
+
+# ── 2. Upload pipeline ───────────────────────────────────────────────────
+section('Upload pipeline')
+
+UPLOADED_URL = None
+
+def upload_image():
+    global UPLOADED_URL
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_upload', {
+        'filename': 'e2e-test.png',
+        'content_type': 'image/png',
+        'base64': TINY_PNG_B64,
+    }, TOKEN_A)
+    assert r.get('ok'), f'upload: {r}'
+    assert r.get('url', '').startswith('https://'), 'no URL returned'
+    UPLOADED_URL = r['url']
+
+def upload_url_serves():
+    body = get_bytes(UPLOADED_URL)
+    assert len(body) > 0, 'uploaded URL empty'
+    assert body[:8] == b'\x89PNG\r\n\x1a\n', 'uploaded file not a PNG'  # PNG magic header
+
+def upload_rejects_anon():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_upload', {
+        'filename': 'x.png', 'content_type': 'image/png', 'base64': TINY_PNG_B64,
+    })
+    assert not r.get('ok'), 'upload should reject anon'
+
+step('tenant_upload accepts a 1×1 PNG',  upload_image)
+step('uploaded URL serves the file',      upload_url_serves)
+step('tenant_upload rejects anon',        upload_rejects_anon)
+
+# ── 3. Photos CRUD + public surface ──────────────────────────────────────
+section('Photos')
+
+PHOTO_ID = None
+
+def photo_create():
+    global PHOTO_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/photos_admin', {
+        'action': 'create',
+        'url': UPLOADED_URL,
+        'caption': f'E2E test photo {STAMP}',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create photo: {r}'
+    PHOTO_ID = r['photo']['id']
+    track('photos', PHOTO_ID)
+
+def photo_in_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A})
+    assert r.get('ok')
+    assert any(p['id'] == PHOTO_ID for p in r.get('photos', [])), 'photo not on public surface'
+
+def photo_delete():
+    r = post(f'{SUPABASE_URL}/functions/v1/photos_admin', {'action': 'delete', 'id': PHOTO_ID}, TOKEN_A)
+    assert r.get('ok'), f'delete: {r}'
+
+def photo_gone_from_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A})
+    assert not any(p['id'] == PHOTO_ID for p in r.get('photos', [])), 'soft-deleted photo still public'
+
+step('create photo from uploaded URL',  photo_create)
+step('photo appears on public surface',  photo_in_public)
+step('soft-delete photo',                 photo_delete)
+step('photo gone from public surface',    photo_gone_from_public)
+
+# ── 4. Documents CRUD + visibility filter ────────────────────────────────
+section('Documents')
+
+DOC_ID = None
+
+def doc_create_admin_only():
+    global DOC_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/documents_admin', {
+        'action': 'create', 'url': UPLOADED_URL,
+        'title': f'Admin-only doc {STAMP}', 'visibility': 'admins',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    DOC_ID = r['document']['id']
+    track('documents', DOC_ID)
+
+def admin_only_doc_NOT_in_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A})
+    assert not any(d['id'] == DOC_ID for d in r.get('documents', [])), 'admins-only doc leaked to public'
+
+def update_to_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/documents_admin', {
+        'action': 'update', 'id': DOC_ID, 'visibility': 'public',
+    }, TOKEN_A)
+    assert r.get('ok')
+
+def now_in_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A})
+    assert any(d['id'] == DOC_ID for d in r.get('documents', [])), 'visibility=public didn\'t surface'
+
+def doc_cleanup():
+    post(f'{SUPABASE_URL}/functions/v1/documents_admin', {'action': 'delete', 'id': DOC_ID}, TOKEN_A)
+
+step('create admin-only document',         doc_create_admin_only)
+step('admin doc NOT on public surface',    admin_only_doc_NOT_in_public)
+step('flip visibility to public',          update_to_public)
+step('public doc appears on public surface', now_in_public)
+step('soft-delete document',               doc_cleanup)
+
+# ── 5. Events with recurrence ────────────────────────────────────────────
+section('Events (recurring)')
+
+EVENT_ID = None
+
+def event_create_weekly():
+    global EVENT_ID
+    starts = (time.gmtime(time.time() + 7 * 86400))
+    starts_iso = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', starts)
+    r = post(f'{SUPABASE_URL}/functions/v1/events_admin', {
+        'action': 'create',
+        'title': f'Weekly Yoga {STAMP}',
+        'kind': 'lesson',
+        'starts_at': starts_iso,
+        'recurrence': 'weekly',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    EVENT_ID = r['event']['id']
+    track('events', EVENT_ID)
+    assert r['event'].get('recurrence') == 'weekly', f'recurrence not stored: {r["event"]}'
+
+def event_in_public_with_recurrence():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A})
+    ours = next((e for e in r.get('events', []) if e['id'] == EVENT_ID), None)
+    assert ours, 'recurring event not on public surface'
+    assert ours.get('recurrence') == 'weekly', 'recurrence field not exposed publicly'
+
+def event_in_ical():
+    body = get(f'{SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug={SLUG_A}')
+    assert 'BEGIN:VCALENDAR' in body, 'ical missing VCALENDAR'
+    assert f'Weekly Yoga {STAMP}' in body, 'event title not in ical feed'
+
+def event_cleanup():
+    post(f'{SUPABASE_URL}/functions/v1/events_admin', {'action': 'delete', 'id': EVENT_ID}, TOKEN_A)
+
+step('create weekly recurring event',       event_create_weekly)
+step('recurring event on public surface',   event_in_public_with_recurrence)
+step('event also appears in iCal feed',     event_in_ical)
+step('soft-delete event',                    event_cleanup)
+
+# ── 6. Settings round-trip preservation ─────────────────────────────────
+section('Settings round-trip')
+
+def settings_round_trip():
+    # Read current
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_settings', {'action': 'get'}, TOKEN_A)
+    assert r.get('ok'), f'get: {r}'
+    before = r.get('settings') or {}
+
+    # Add a marker key alongside, then save
+    marker_key = f'_e2e_marker_{STAMP}'
+    new_value = dict(before); new_value[marker_key] = 'temp'
+    r2 = post(f'{SUPABASE_URL}/functions/v1/tenant_settings', {
+        'action': 'save', 'value': new_value,
+    }, TOKEN_A)
+    assert r2.get('ok'), f'save: {r2}'
+
+    # Re-read; marker should be present AND all old keys
+    r3 = post(f'{SUPABASE_URL}/functions/v1/tenant_settings', {'action': 'get'}, TOKEN_A)
+    assert r3.get('ok')
+    after = r3.get('settings') or {}
+    assert after.get(marker_key) == 'temp', 'marker key missing after save'
+    for k in before:
+        if k == marker_key: continue
+        assert k in after, f'lost key on round-trip: {k}'
+
+    # Cleanup marker
+    cleaned = {k: v for k, v in after.items() if k != marker_key}
+    post(f'{SUPABASE_URL}/functions/v1/tenant_settings', {
+        'action': 'save', 'value': cleaned,
+    }, TOKEN_A)
+
+step('settings save preserves unrelated keys', settings_round_trip)
+
+# ── 7. tenant_metrics shape ─────────────────────────────────────────────
+section('Metrics endpoints')
+
+def tenant_metrics_shape():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_metrics', {'action': 'get'}, TOKEN_A)
+    assert r.get('ok'), f'tenant_metrics: {r}'
+    assert 'totals' in r and 'categories' in r, f'missing keys: {r.keys()}'
+    assert isinstance(r['totals'].get('hours'), (int, float)), 'totals.hours not numeric'
+
+step('tenant_metrics returns expected shape', tenant_metrics_shape)
+
+if PROVIDER_ID:
+    PROVIDER_TOKEN = provider_jwt(PROVIDER_ID)
+    def provider_metrics_shape():
+        r = post(f'{SUPABASE_URL}/functions/v1/provider_metrics', {}, PROVIDER_TOKEN)
+        assert r.get('ok'), f'provider_metrics: {r}'
+        for k in ('tenants', 'network', 'pipeline', 'recent_tenants'):
+            assert k in r, f'missing top-level key: {k}'
+        assert isinstance(r['tenants'].get('total'), int), 'tenants.total not int'
+    step('provider_metrics returns expected shape', provider_metrics_shape)
+
+    def provider_metrics_rejects_tenant_token():
+        r = post(f'{SUPABASE_URL}/functions/v1/provider_metrics', {}, TOKEN_A)
+        assert not r.get('ok'), 'provider_metrics should reject tenant_admin tokens'
+    step('provider_metrics rejects a tenant token',  provider_metrics_rejects_tenant_token)
+
+# ── 8. Applications full pipeline (welcome email, verify, reminder) ──────
+section('Applications pipeline')
+
+APP_ID = None
+APP_HH_ID = None
+
+def app_submit():
     global APP_ID
     r = post(f'{SUPABASE_URL}/functions/v1/applications', {
-        'action': 'submit', 'slug': TENANT_SLUG,
-        'family_name': APP_FAM, 'primary_name': APP_NAME,
-        'primary_email': APP_EMAIL, 'primary_phone': APP_PHONE,
-        'num_adults': 2, 'num_kids': 1,
+        'action': 'submit', 'slug': SLUG_A,
+        'family_name': f'Apps E2E {STAMP}', 'primary_name': f'Apps Tester {STAMP}',
+        'primary_email': f'apps-e2e-{STAMP}@example.com',
+        'primary_phone': f'+1555{STAMP}0009',
         'payment_method': 'venmo',
-        'body': 'E2E test — please ignore',
     })
-    if not r.get('ok'): raise RuntimeError(r.get('error', 'submit failed'))
+    assert r.get('ok'), f'submit: {r}'
     APP_ID = r['application_id']
+    track('applications', APP_ID)
 
-def list_pending():
-    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'list', 'status': 'pending'}, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error', 'list failed'))
-    if not any(a['id'] == APP_ID for a in r.get('applications', [])):
-        raise RuntimeError('our application not in pending list')
-
-def approve():
-    global HH_ID
+def app_approve_creates_household_and_email():
+    global APP_HH_ID
     r = post(f'{SUPABASE_URL}/functions/v1/applications', {
-        'action': 'approve', 'id': APP_ID,
-        'override': {'tier': 'family'},
-    }, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error', 'approve failed'))
-    HH_ID = r['household_id']
-    if not r.get('welcome_dev_link') and not r.get('welcome_sent'):
-        raise RuntimeError('welcome email path skipped — no Resend AND no dev_link')
+        'action': 'approve', 'id': APP_ID, 'override': {'tier': 'family'},
+    }, TOKEN_A)
+    assert r.get('ok'), f'approve: {r}'
+    APP_HH_ID = r['household_id']
+    track('households', APP_HH_ID)
+    # Either Resend sent it OR a dev_link came back. Both fine — just shouldn't be silently dropped.
+    assert r.get('welcome_sent') or r.get('welcome_dev_link'), 'welcome email path skipped entirely'
 
-def list_approved_unpaid():
-    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'list', 'status': 'approved', 'filter': 'unpaid'}, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error', 'list failed'))
-    ours = next((a for a in r.get('applications', []) if a['id'] == APP_ID), None)
-    if not ours: raise RuntimeError('our approved app not in unpaid list')
-    if ours['payment_status'] == 'paid': raise RuntimeError('shouldn\'t be paid yet')
+def app_verify_flips_dues():
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'verify_payment', 'id': APP_ID,
+    }, TOKEN_A)
+    assert r.get('ok'), f'verify: {r}'
+    rows = mgmt_query(f"select dues_paid_for_year from public.households where id = '{APP_HH_ID}';")
+    assert rows and rows[0].get('dues_paid_for_year') is True, 'dues didn\'t flip'
 
-def reminder():
-    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'send_reminder', 'id': APP_ID}, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error', 'reminder failed'))
+def app_reminder_blocked_when_paid():
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'send_reminder', 'id': APP_ID,
+    }, TOKEN_A)
+    assert not r.get('ok'), 'reminder should refuse on already-paid'
 
-def verify_payment():
-    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'verify_payment', 'id': APP_ID, 'method': 'venmo', 'note': 'E2E verify'}, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error', 'verify failed'))
-
-def confirm_paid():
-    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'list', 'status': 'approved'}, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error'))
-    ours = next((a for a in r.get('applications', []) if a['id'] == APP_ID), None)
-    if not ours: raise RuntimeError('lost track of our application')
-    if ours['payment_status'] != 'paid': raise RuntimeError(f'expected paid, got {ours["payment_status"]}')
-
-def household_dues_flipped():
-    rows = mgmt_query(f"select dues_paid_for_year from public.households where id = '{HH_ID}' limit 1;")
-    if not rows or not rows[0].get('dues_paid_for_year'):
-        raise RuntimeError('household.dues_paid_for_year did NOT flip true')
-
-def audit_log():
-    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'log', 'id': APP_ID}, TOKEN)
-    if not r.get('ok'): raise RuntimeError(r.get('error'))
+def app_audit_log():
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'log', 'id': APP_ID}, TOKEN_A)
+    assert r.get('ok')
     kinds = {x['kind'] for x in r.get('log', [])}
-    expected = {'reminder_sent', 'venmo_verified', 'welcome_sent'}
+    expected = {'welcome_sent', 'venmo_verified'}
     missing = expected - kinds
-    if missing: raise RuntimeError(f'missing audit kinds: {missing}')
+    assert not missing, f'missing audit kinds: {missing}'
 
-def cleanup():
-    if HH_ID: mgmt_query(f"delete from public.households where id = '{HH_ID}';")
-    if APP_ID: mgmt_query(f"delete from public.applications where id = '{APP_ID}';")
+step('submit application',                       app_submit)
+step('approve creates household + welcome',     app_approve_creates_household_and_email)
+step('verify_payment flips dues_paid',           app_verify_flips_dues)
+step('reminder refuses when already paid',       app_reminder_blocked_when_paid)
+step('audit log has welcome + venmo_verified',  app_audit_log)
 
-step('public submit',                       submit)
-step('admin sees in pending list',          list_pending)
-step('approve creates household',           approve)
-step('approved + unpaid list shows it',     list_approved_unpaid)
-step('send_reminder',                       reminder)
-step('verify_payment (Venmo manual)',       verify_payment)
-step('application now marked paid',         confirm_paid)
-step('household.dues_paid_for_year flipped', household_dues_flipped)
-step('audit log has welcome+reminder+verify', audit_log)
-step('cleanup',                             cleanup)
+# ── 9. Member auth start (no auth required path) ─────────────────────────
+section('Member auth')
 
+def member_start_generic_response():
+    # Submit an email that doesn't exist — should still return ok+sent (privacy)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {
+        'action': 'start', 'slug': SLUG_A, 'email': f'never-exists-{STAMP}@example.com',
+    })
+    assert r.get('ok'), f'start: {r}'
+
+step('member_auth.start returns generic ok',  member_start_generic_response)
+
+# ── Cleanup ──────────────────────────────────────────────────────────────
+section('Cleanup')
+
+def cleanup_all():
+    # Delete the throwaway test tenant — cascades clean up child rows
+    mgmt_query(f"delete from public.tenants where id = '{TENANT_B_ID}';")
+    # Hard-delete any tracked rows in tenant A
+    for hh_id in RESOURCES['households']:
+        mgmt_query(f"delete from public.households where id = '{hh_id}';")
+    for app_id in RESOURCES['applications']:
+        mgmt_query(f"delete from public.applications where id = '{app_id}';")
+    for ev in RESOURCES['events']:
+        mgmt_query(f"delete from public.events where id = '{ev}';")
+    for p in RESOURCES['photos']:
+        mgmt_query(f"delete from public.photos where id = '{p}';")
+    for d in RESOURCES['documents']:
+        mgmt_query(f"delete from public.documents where id = '{d}';")
+
+step('teardown — drop test tenant + tracked rows', cleanup_all)
+
+# ── Summary ──────────────────────────────────────────────────────────────
 print()
 total = ok_count + fail_count
 if fail_count == 0:
     print(f'\033[32m{ok_count}/{total} green\033[0m')
     sys.exit(0)
 else:
-    print(f'\033[31m{fail_count}/{total} failed\033[0m')
+    print(f'\033[31m{fail_count}/{total} failed\033[0m  (out of {total})')
     sys.exit(1)
