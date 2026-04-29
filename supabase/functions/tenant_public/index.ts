@@ -89,15 +89,20 @@ Deno.serve(async (req) => {
     .limit(5);
   const posts = postsData ?? [];
 
-  // Next 5 upcoming events (starting now or later, soonest first).
-  const nowIso = new Date().toISOString();
+  // Wider event window so the month-grid calendar on public + member pages
+  // has data to draw past, current, and future months without re-fetching.
+  // Clients still derive a "next 5 upcoming" view client-side for the
+  // Coming-up section.
+  const since = new Date(Date.now() - 60  * 86400_000).toISOString();
+  const until = new Date(Date.now() + 365 * 86400_000).toISOString();
   const { data: eventsData } = await sb.from('events')
-    .select('id, title, body, kind, location, starts_at, ends_at, all_day')
+    .select('id, title, body, kind, location, starts_at, ends_at, all_day, source_url')
     .eq('tenant_id', tenant.id)
     .eq('active', true)
-    .gte('starts_at', nowIso)
+    .gte('starts_at', since)
+    .lte('starts_at', until)
     .order('starts_at', { ascending: true })
-    .limit(5);
+    .limit(300);
   const events = eventsData ?? [];
 
   // Photo gallery — admin-curated order, capped at 24 for landing-page weight.

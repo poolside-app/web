@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/js/calendar.css">
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -226,6 +227,8 @@
 
 <div id="root"></div>
 
+<script src="/js/calendar.js"></script>
+
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
   <button class="close" onclick="closeLightbox()" aria-label="Close">×</button>
   <button class="nav prev" onclick="lbStep(-1)" aria-label="Previous">‹</button>
@@ -340,8 +343,22 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') lbStep(+1);
 });
 
+function fmtHourLabel(hhmm) {
+  if (!hhmm) return null;
+  const m = String(hhmm).split(':');
+  let h = parseInt(m[0], 10);
+  if (!Number.isFinite(h)) return null;
+  const ap = h < 12 ? 'A' : 'P';
+  if (h === 0) h = 12; else if (h > 12) h -= 12;
+  return m[1] === '00' ? `${h}${ap}` : `${h}:${m[1]}${ap}`;
+}
+
 function renderTenant(t, ps, posts, events, photos) {
   GALLERY = photos || [];
+
+  // Coming-up = next 5 upcoming derived from the wider events list.
+  const nowMs = Date.now();
+  const upcoming = (events || []).filter(e => new Date(e.starts_at).getTime() >= nowMs).slice(0, 5);
   document.title = `${t.display_name} — ${ps?.club?.location || 'Poolside'}`;
   document.getElementById('club-name').textContent = t.display_name;
 
@@ -389,7 +406,7 @@ function renderTenant(t, ps, posts, events, photos) {
       </div>
     </section>
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
-    ${(events && events.length) ? `
+    ${(upcoming && upcoming.length) ? `
       <section class="events">
         <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
           Coming up
@@ -398,7 +415,7 @@ function renderTenant(t, ps, posts, events, photos) {
             📆 Subscribe to calendar
           </a>
         </h2>
-        ${events.map(ev => `
+        ${upcoming.map(ev => `
           <div class="ev">
             ${eventDateBadge(ev)}
             <div class="ev-body">
@@ -410,6 +427,10 @@ function renderTenant(t, ps, posts, events, photos) {
         `).join('')}
       </section>
     ` : ''}
+    <section class="events" style="padding-top: 8px">
+      <h2>Full calendar</h2>
+      <div id="public-calendar"></div>
+    </section>
     ${(photos && photos.length) ? `
       <section class="gallery">
         <h2>Photos</h2>
@@ -435,6 +456,18 @@ function renderTenant(t, ps, posts, events, photos) {
       </section>
     ` : ''}
   `;
+
+  // Render the shared month-grid widget after the HTML is in place.
+  const calOpens  = fmtHourLabel(ps?.pool?.opens_at);
+  const calCloses = fmtHourLabel(ps?.pool?.closes_at);
+  const openHoursLabel = (calOpens && calCloses) ? `${calOpens}–${calCloses}` : null;
+  if (window.PoolsideCalendar) {
+    PoolsideCalendar.render({
+      rootEl: document.getElementById('public-calendar'),
+      events: events || [],
+      openHoursLabel,
+    });
+  }
 }
 
 (async () => {

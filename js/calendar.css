@@ -1,0 +1,93 @@
+/* =============================================================================
+ * PoolsideCalendar — shared month-grid widget
+ * =============================================================================
+ * Self-contained CSS for the read-only month grid + event-detail modal used on
+ * the public landing and member dashboard. Pulls in CSS variables from the
+ * host page when present (--blue, --bg-2, etc.) and falls back to defaults.
+ * ============================================================================= */
+
+.pcal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0 4px; gap: 12px; flex-wrap: wrap; }
+.pcal-month { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 600; color: var(--blue, #0a3b5c); margin: 0; }
+.pcal-nav { display: flex; gap: 6px; }
+.pcal-nav-btn {
+  width: 36px; height: 36px; border: 1.5px solid var(--border, #e5e7eb);
+  background: #fff; border-radius: 10px; cursor: pointer;
+  font: 600 16px 'Inter', system-ui, sans-serif; color: var(--blue, #0a3b5c);
+}
+.pcal-nav-btn:hover { background: var(--blue-l, #e6eef5); }
+.pcal-nav-btn.pcal-today { width: auto; padding: 0 14px; font-size: 12px; }
+
+.pcal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+  background: var(--border, #e5e7eb); border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px; overflow: hidden;
+}
+.pcal-dow {
+  background: var(--bg-2, #f7f3eb); padding: 8px 6px;
+  font: 700 11px/1 'Inter', system-ui, sans-serif;
+  color: var(--muted, #64748b); text-transform: uppercase; letter-spacing: .06em; text-align: center;
+}
+.pcal-day {
+  background: #fff; min-height: 90px; padding: 6px 6px 4px;
+  display: flex; flex-direction: column; gap: 2px; overflow: hidden;
+}
+.pcal-other { background: #fafbfc; }
+.pcal-other .pcal-num { color: #cbd5e1; }
+.pcal-today-cell .pcal-num { background: var(--blue, #0a3b5c); color: #fff; }
+.pcal-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 12px 'Inter', system-ui, sans-serif; color: var(--text, #0f172a);
+}
+.pcal-hours {
+  font: 600 9px 'Inter', system-ui, sans-serif; color: var(--muted, #64748b);
+  letter-spacing: .02em; padding-bottom: 2px;
+}
+.pcal-chip {
+  font: 600 10px 'Inter', system-ui, sans-serif;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--blue-l, #e6eef5); color: var(--blue, #0a3b5c);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.pcal-chip:hover { filter: brightness(.95); }
+.pcal-party     { background: #fef3c7; color: #92400e; }
+.pcal-swim_meet { background: #cffafe; color: #155e75; }
+.pcal-closure   { background: #fee2e2; color: #7f1d1d; }
+.pcal-holiday   { background: #fce7f3; color: #9d174d; }
+.pcal-lesson    { background: #ddd6fe; color: #5b21b6; }
+.pcal-meeting   { background: #dcfce7; color: #14532d; }
+.pcal-social    { background: #fae8ff; color: #86198f; }
+.pcal-more {
+  font: 600 10px 'Inter', system-ui, sans-serif; color: var(--muted, #64748b);
+  padding-left: 4px; cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .pcal-day { min-height: 60px; padding: 4px; }
+  .pcal-num { width: 18px; height: 18px; font-size: 10px; }
+  .pcal-chip { font-size: 9px; padding: 1px 4px; }
+  .pcal-hours { font-size: 8px; }
+}
+
+/* Event-detail modal */
+.pcal-modal {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.pcal-modal.open { display: flex; }
+.pcal-modal-card {
+  background: #fff; border-radius: 16px; padding: 26px;
+  max-width: 460px; width: 100%; box-shadow: 0 20px 60px rgba(10, 59, 92, .25);
+  position: relative; font-family: 'Inter', system-ui, sans-serif;
+}
+.pcal-modal-close {
+  position: absolute; top: 10px; right: 12px;
+  background: transparent; border: 0; font-size: 24px; cursor: pointer;
+  color: var(--muted, #64748b); line-height: 1;
+}
+.pcal-modal-kind { font-size: 12px; color: var(--muted, #64748b); margin-bottom: 4px; letter-spacing: .04em; }
+.pcal-modal-title { font-family: 'Fraunces', Georgia, serif; font-weight: 600; margin: 0 0 8px; font-size: 22px; color: var(--blue, #0a3b5c); line-height: 1.2; }
+.pcal-modal-time { font-size: 14px; color: var(--text, #0f172a); margin-bottom: 6px; }
+.pcal-modal-loc  { font-size: 13px; color: var(--blue, #0a3b5c); margin-bottom: 8px; }
+.pcal-modal-body { font-size: 14px; line-height: 1.55; color: var(--text, #0f172a); margin-top: 10px; white-space: pre-wrap; word-break: break-word; }

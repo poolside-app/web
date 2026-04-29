@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Club — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/js/calendar.css">
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -224,6 +225,8 @@
     </div>
   </div>
 </div>
+
+<script src="/js/calendar.js"></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
   <button class="close" onclick="closeLightbox()" aria-label="Close">×</button>
@@ -596,6 +599,11 @@ async function submitProfile() {
       ${eventsHtml}
     </div>
 
+    <div class="card">
+      <h2>Calendar</h2>
+      <div id="member-calendar"></div>
+    </div>
+
     <div class="card" id="parties-card">
       <h2>Your party requests</h2>
       <div class="empty">Loading…</div>
@@ -613,6 +621,28 @@ async function submitProfile() {
       ${postsHtml}
     </div>
   `;
+
+  // Render shared month-grid widget. Reuse the same fmtHourLabel logic the
+  // public landing page uses so the daily open/close hint matches.
+  const fmtHr = (hhmm) => {
+    if (!hhmm) return null;
+    const m = String(hhmm).split(':');
+    let h = parseInt(m[0], 10);
+    if (!Number.isFinite(h)) return null;
+    const ap = h < 12 ? 'A' : 'P';
+    if (h === 0) h = 12; else if (h > 12) h -= 12;
+    return m[1] === '00' ? `${h}${ap}` : `${h}:${m[1]}${ap}`;
+  };
+  const calOpens  = fmtHr(publicData.public_settings?.pool?.opens_at);
+  const calCloses = fmtHr(publicData.public_settings?.pool?.closes_at);
+  const calLabel  = (calOpens && calCloses) ? `${calOpens}–${calCloses}` : null;
+  if (window.PoolsideCalendar) {
+    PoolsideCalendar.render({
+      rootEl: document.getElementById('member-calendar'),
+      events: publicData.events || [],
+      openHoursLabel: calLabel,
+    });
+  }
 
   if (user.can_book_parties) {
     refreshParties();
