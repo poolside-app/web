@@ -63,7 +63,11 @@ check_status "marketing root"       "${ROOT}/"                     "200"
 check_status "marketing /home.html" "${ROOT}/home.html"            "200"
 check_status "tenant landing"       "${HOST}/"                     "200"
 check_status "tenant /m/login"      "${HOST}/m/login.html"         "200"
+check_status "tenant /m/"           "${HOST}/m/"                   "200"
 check_status "tenant /club/admin/"  "${HOST}/club/admin/login.html" "200"
+check_status "shared calendar.js"   "${HOST}/js/calendar.js"        "200"
+check_status "shared calendar.css"  "${HOST}/js/calendar.css"       "200"
+check       "calendar.js exposes widget" "${HOST}/js/calendar.js" "PoolsideCalendar"
 
 echo
 echo "── Edge Functions (public) ──"
