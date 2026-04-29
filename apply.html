@@ -31,6 +31,13 @@
   textarea { resize: vertical; min-height: 80px; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .row3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  .pay-opt {
+    display: flex; align-items: center; gap: 8px; font-size: 14px;
+    padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px;
+    cursor: pointer; transition: border .12s;
+  }
+  .pay-opt:has(input:checked) { border-color: var(--blue); background: var(--blue-l); }
+  .pay-opt input { width: auto; margin: 0; }
   .btn { display: block; width: 100%; padding: 14px; background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md); font: 600 15px 'Inter', sans-serif; cursor: pointer; margin-top: 22px; }
   .btn:hover { background: var(--blue-2); }
   .btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -74,6 +81,14 @@
 
     <label>Anything else? <span class="opt">(optional — referred by, special requests, etc.)</span></label>
     <textarea id="body" maxlength="2000"></textarea>
+
+    <label style="margin-top:14px">How would you like to pay dues?</label>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked> 💸 Venmo — admin verifies, then you're set</label>
+      <label class="pay-opt"><input type="radio" name="payment_method" value="stripe"> 💳 Credit card via Stripe — instant approval</label>
+      <label class="pay-opt"><input type="radio" name="payment_method" value=""> Decide later</label>
+    </div>
+    <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't wired yet — we'll email you a payment link after the board approves.</p>
 
     <button class="btn" id="submit-btn" type="submit">Submit application</button>
     <div id="err" class="err"></div>
@@ -125,6 +140,14 @@ function formatPhoneInput(el) {
   } catch { /* keep generic */ }
 })();
 
+// Show the Stripe-not-yet hint when the user picks Stripe
+document.addEventListener('change', (e) => {
+  if (e.target.name !== 'payment_method') return;
+  const hint = document.getElementById('stripe-hint');
+  if (!hint) return;
+  hint.style.display = e.target.value === 'stripe' ? 'block' : 'none';
+});
+
 async function submitApplication() {
   const errEl = document.getElementById('err');
   errEl.classList.remove('show');
@@ -135,6 +158,7 @@ async function submitApplication() {
   const primary_name = get('primary_name');
   const primary_email = get('primary_email') || null;
   const primary_phone = get('primary_phone') || null;
+  const payment_method = (document.querySelector('input[name="payment_method"]:checked')?.value || '') || null;
   if (!family_name || !primary_name) { errEl.textContent = 'Family + primary name are required'; errEl.classList.add('show'); return; }
   if (!primary_email && !primary_phone) { errEl.textContent = 'Provide an email or a phone'; errEl.classList.add('show'); return; }
 
@@ -152,6 +176,7 @@ async function submitApplication() {
         num_adults: get('num_adults') || 2,
         num_kids:   get('num_kids') || 0,
         body:    get('body') || null,
+        payment_method,
       }),
     });
     const data = await res.json();

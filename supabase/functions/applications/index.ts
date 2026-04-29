@@ -58,6 +58,9 @@ function strOrNull(v: unknown): string | null {
   const s = String(v).trim();
   return s ? s : null;
 }
+function escapeHtml(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
+}
 function intOrDefault(v: unknown, d: number): number {
   if (v === null || v === undefined || v === '') return d;
   const n = Number(v);
@@ -73,7 +76,9 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, created_at, updated_at';
+
+const VALID_PAYMENT_METHODS = new Set(['stripe', 'venmo']);
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -109,6 +114,11 @@ Deno.serve(async (req) => {
     if (rawPhone && !phone) return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
     if (!email && !phone)   return jsonResponse({ ok: false, error: 'Provide an email or a phone (or both)' }, 400);
 
+    const payment_method = strOrNull(body.payment_method);
+    if (payment_method && !VALID_PAYMENT_METHODS.has(payment_method)) {
+      return jsonResponse({ ok: false, error: 'Invalid payment method' }, 400);
+    }
+
     const { data, error } = await sb.from('applications').insert({
       tenant_id: tenant.id,
       family_name, primary_name,
@@ -120,9 +130,11 @@ Deno.serve(async (req) => {
       num_adults: intOrDefault(body.num_adults, 2),
       num_kids:   intOrDefault(body.num_kids, 0),
       body:    strOrNull(body.body),
+      payment_method,
+      payment_status: 'unpaid',
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, application_id: data.id });
+    return jsonResponse({ ok: true, application_id: data.id, payment_method });
   }
 
   // Admin actions below — verify tenant admin
@@ -134,8 +146,15 @@ Deno.serve(async (req) => {
 
   if (action === 'list') {
     const status = String(body.status ?? 'pending');
+    const filter = String(body.filter ?? '');  // 'unpaid' | 'overdue' | ''
     let q = sb.from('applications').select(FIELDS).eq('tenant_id', TID);
     if (status !== 'all') q = q.eq('status', status);
+    if (filter === 'unpaid')  q = q.in('payment_status', ['unpaid', 'pending']);
+    if (filter === 'overdue') {
+      // approved + still unpaid + decided more than 10 days ago
+      const tenDaysAgo = new Date(Date.now() - 10 * 86400_000).toISOString();
+      q = q.eq('status', 'approved').in('payment_status', ['unpaid','pending']).lt('decided_at', tenDaysAgo);
+    }
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true, applications: data ?? [] });
@@ -206,6 +225,140 @@ Deno.serve(async (req) => {
     }).eq('id', id);
 
     return jsonResponse({ ok: true, household_id: hh.id, primary_id: pm.id });
+  }
+
+  // ── verify_payment (manual, used for Venmo flow) ──────────────────────
+  // Membership coordinator clicks "Verify Venmo" — flips application to
+  // paid AND flips household.dues_paid_for_year=true. Stamps verified_at /
+  // verified_by for audit. Idempotent — safe to call twice.
+  if (action === 'verify_payment') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const method = strOrNull(body.method) ?? 'venmo';
+
+    const { data: app } = await sb.from('applications').select(FIELDS)
+      .eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.status !== 'approved') {
+      return jsonResponse({ ok: false, error: 'Approve the application first' }, 409);
+    }
+
+    const verified_by = payload.synthetic ? null : payload.sub;
+    const now = new Date().toISOString();
+    const { error: updErr } = await sb.from('applications').update({
+      payment_status: 'paid',
+      payment_method: method,
+      paid_at: now,
+      verified_at: now,
+      verified_by,
+      updated_at: now,
+    }).eq('id', id).eq('tenant_id', TID);
+    if (updErr) return jsonResponse({ ok: false, error: updErr.message }, 500);
+
+    // Flip the household's dues flag
+    if (app.household_id) {
+      await sb.from('households').update({
+        dues_paid_for_year: true,
+        paid_until_year: new Date().getFullYear(),
+      }).eq('id', app.household_id).eq('tenant_id', TID);
+    }
+
+    // Audit log
+    await sb.from('application_actions').insert({
+      application_id: id, tenant_id: TID,
+      kind: method === 'stripe' ? 'stripe_paid' : 'venmo_verified',
+      body: strOrNull(body.note) ?? null,
+      actor_id: verified_by,
+    });
+
+    return jsonResponse({ ok: true });
+  }
+
+  // ── send_reminder ─────────────────────────────────────────────────────
+  // Records the reminder + bumps the counter. The actual email/SMS is
+  // wired to whatever notification infra is configured (Resend if keys
+  // are set, else dev_link in the response so admin can copy-paste).
+  if (action === 'send_reminder') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+
+    const { data: app } = await sb.from('applications').select(FIELDS)
+      .eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.payment_status === 'paid') {
+      return jsonResponse({ ok: false, error: 'Already paid — no reminder needed' }, 409);
+    }
+    if (!app.primary_email && !app.primary_phone) {
+      return jsonResponse({ ok: false, error: 'Application has no contact info to remind' }, 400);
+    }
+
+    // Try Resend if a key exists; fall back to "dev mode" return.
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+    const { data: tenant } = await sb.from('tenants')
+      .select('display_name, slug').eq('id', TID).maybeSingle();
+    const clubName = tenant?.display_name || 'Your club';
+    const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
+    let sent = false;
+    let dev_link: string | null = null;
+
+    if (RESEND_API_KEY && app.primary_email) {
+      const html = `
+        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Friendly reminder from ${clubName}</h2>
+          <p style="margin:0 0 14px;color:#64748b">Hi ${escapeHtml(app.primary_name)} — your application to ${escapeHtml(clubName)} was approved, but we haven't received your dues payment yet.</p>
+          <p style="margin:0 0 14px;color:#64748b">Please send your dues to complete the membership and we'll get your account fully active.</p>
+          <p style="margin:24px 0">
+            <a href="${clubUrl}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Visit ${escapeHtml(clubName)}</a>
+          </p>
+          <p style="margin:0;color:#94a3b8;font-size:12px">This is automated — reply to this email if you have questions.</p>
+        </div>
+      `;
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: [app.primary_email],
+            subject: `Reminder: dues for ${clubName}`,
+            html,
+          }),
+        });
+        sent = res.ok;
+      } catch { /* fall through to dev mode */ }
+    }
+    if (!sent) {
+      dev_link = `mailto:${app.primary_email ?? ''}?subject=${encodeURIComponent(`Reminder: dues for ${clubName}`)}&body=${encodeURIComponent(`Hi ${app.primary_name},\n\nYour application to ${clubName} was approved, but we haven't received your dues payment yet. Please send your dues to complete your membership.\n\n${clubUrl}\n`)}`;
+    }
+
+    const now = new Date().toISOString();
+    await sb.from('applications').update({
+      reminder_count: (app.reminder_count ?? 0) + 1,
+      last_reminder_at: now,
+      updated_at: now,
+    }).eq('id', id).eq('tenant_id', TID);
+
+    await sb.from('application_actions').insert({
+      application_id: id, tenant_id: TID,
+      kind: 'reminder_sent',
+      body: sent ? 'email via Resend' : 'dev mode (mailto link returned)',
+      actor_id: payload.synthetic ? null : payload.sub,
+    });
+
+    return jsonResponse({ ok: true, sent, dev_link });
+  }
+
+  // ── log (audit trail viewer) ──────────────────────────────────────────
+  if (action === 'log') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data, error } = await sb.from('application_actions')
+      .select('id, kind, body, actor_id, created_at')
+      .eq('application_id', id).eq('tenant_id', TID)
+      .order('created_at', { ascending: false }).limit(50);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, log: data ?? [] });
   }
 
   if (action === 'reject') {

@@ -52,6 +52,11 @@
   .pill.pending  { background: #fef3c7; color: #92400e; }
   .pill.approved { background: #dcfce7; color: #14532d; }
   .pill.rejected { background: #fee2e2; color: #7f1d1d; }
+  .pill.unpaid   { background: #fee2e2; color: #7f1d1d; }
+  .pill.paid     { background: #dcfce7; color: #14532d; }
+  .pill.stripe   { background: #ddd6fe; color: #5b21b6; }
+  .pill.venmo    { background: #cffafe; color: #155e75; }
+  .pill.overdue  { background: #fee2e2; color: #7f1d1d; }
   .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
 
   .scrim { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
@@ -89,11 +94,18 @@
 <main>
   <div class="toolbar">
     <h1>Applications</h1>
-    <div class="filter-row" id="status-filter">
-      <button class="on" data-status="pending">Pending</button>
-      <button data-status="approved">Approved</button>
-      <button data-status="rejected">Rejected</button>
-      <button data-status="all">All</button>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      <div class="filter-row" id="status-filter">
+        <button class="on" data-status="pending">Pending</button>
+        <button data-status="approved">Approved</button>
+        <button data-status="rejected">Rejected</button>
+        <button data-status="all">All</button>
+      </div>
+      <div class="filter-row" id="payment-filter" style="border-left:1px solid var(--border);padding-left:14px">
+        <button class="on" data-filter="">Any payment</button>
+        <button data-filter="unpaid">Unpaid</button>
+        <button data-filter="overdue">Overdue 10d+</button>
+      </div>
     </div>
   </div>
   <div id="list"><div class="empty">Loading…</div></div>
@@ -125,10 +137,12 @@
     <input id="m-admin_notes">
 
     <div class="err" id="m-err"></div>
-    <div class="modal-foot">
+    <div class="modal-foot" style="flex-wrap:wrap">
+      <button class="btn btn-ghost" id="m-remind" style="display:none" onclick="reminderClick()">📧 Send reminder</button>
       <button class="btn btn-ghost" onclick="closeM()">Close</button>
       <button class="btn btn-danger" id="m-reject" onclick="rej()">Reject</button>
       <button class="btn btn-success" id="m-approve" onclick="appr()">Approve & create household →</button>
+      <button class="btn btn-success" id="m-verify" style="display:none" onclick="verifyClick()">✓ Verify Venmo payment</button>
     </div>
   </div>
 </div>
@@ -141,6 +155,7 @@ const APPS_URL = `${SUPABASE_URL}/functions/v1/applications`;
 const ME_URL   = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
 let STATUS = 'pending';
+let FILTER = '';
 let SELECTED = null;
 let CACHE = [];
 
@@ -180,6 +195,14 @@ document.querySelectorAll('#status-filter button').forEach(b => {
     refresh();
   });
 });
+document.querySelectorAll('#payment-filter button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#payment-filter button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    FILTER = b.dataset.filter;
+    refresh();
+  });
+});
 
 function render(rows) {
   const list = document.getElementById('list');
@@ -193,7 +216,7 @@ function render(rows) {
       <div class="app" data-id="${a.id}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
           <div style="flex:1;min-width:0">
-            <h3>${escapeHtml(a.family_name)} <span class="pill ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span></h3>
+            <h3 style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${escapeHtml(a.family_name)} <span class="pill ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span> ${paymentBadges(a)}</h3>
             <div class="meta">${escapeHtml(a.primary_name)}${a.primary_email ? ' · ' + escapeHtml(a.primary_email) : ''}${a.primary_phone ? ' · ' + escapeHtml(fmtPhone(a.primary_phone)) : ''} · ${a.num_adults} adults / ${a.num_kids} kids (${total} total)</div>
             ${a.body ? `<div class="body">${escapeHtml(a.body)}</div>` : ''}
             ${a.admin_notes ? `<div class="note">📝 ${escapeHtml(a.admin_notes)}</div>` : ''}
@@ -208,13 +231,27 @@ function render(rows) {
 
 async function refresh() {
   try {
-    const data = await call('list', { status: STATUS });
+    const data = await call('list', { status: STATUS, filter: FILTER });
     if (!data.ok) throw new Error(data.error || 'Failed to load');
     CACHE = data.applications || [];
     render(CACHE);
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function paymentBadges(a) {
+  const out = [];
+  if (a.payment_method) out.push(`<span class="pill ${escapeHtml(a.payment_method)}">${a.payment_method === 'stripe' ? '💳 Stripe' : '💸 Venmo'}</span>`);
+  if (a.status === 'approved' && a.payment_status !== 'paid') {
+    const ageDays = a.decided_at ? Math.floor((Date.now() - new Date(a.decided_at).getTime()) / 86400_000) : 0;
+    out.push(`<span class="pill unpaid">Unpaid${ageDays >= 10 ? ' · ' + ageDays + 'd' : ''}</span>`);
+    if (ageDays >= 10) out.push(`<span class="pill overdue">Overdue</span>`);
+  } else if (a.payment_status === 'paid') {
+    out.push(`<span class="pill paid">Paid</span>`);
+  }
+  if (a.reminder_count > 0) out.push(`<span class="pill" style="background:var(--bg-2);color:var(--muted)">${a.reminder_count}× reminded</span>`);
+  return out.join(' ');
 }
 
 function openModal(id, rows) {
@@ -236,6 +273,12 @@ function openModal(id, rows) {
   document.getElementById('m-err').classList.remove('show');
   document.getElementById('m-approve').style.display = a.status === 'pending' ? 'inline-block' : 'none';
   document.getElementById('m-reject').style.display  = a.status === 'pending' ? 'inline-block' : 'none';
+  // Verify button shows on approved + unpaid applications
+  document.getElementById('m-verify').style.display =
+    (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
+  // Remind button shows on approved + unpaid
+  document.getElementById('m-remind').style.display =
+    (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
   document.getElementById('scrim').classList.add('open');
 }
 function closeM() { document.getElementById('scrim').classList.remove('open'); }
@@ -265,6 +308,38 @@ async function rej() {
   try {
     const data = await call('reject', { id: SELECTED.id, admin_notes: document.getElementById('m-admin_notes').value.trim() || null });
     if (!data.ok) throw new Error(data.error || 'Reject failed');
+    closeM();
+    await refresh();
+  } catch (e) { document.getElementById('m-err').textContent = e.message; document.getElementById('m-err').classList.add('show'); }
+}
+
+async function verifyClick() {
+  if (!SELECTED) return;
+  if (!confirm(`Mark Venmo payment from ${SELECTED.family_name} as verified?\n\nThis flips dues_paid_for_year=true on their household.`)) return;
+  try {
+    const data = await call('verify_payment', {
+      id: SELECTED.id,
+      method: SELECTED.payment_method || 'venmo',
+      note: document.getElementById('m-admin_notes').value.trim() || null,
+    });
+    if (!data.ok) throw new Error(data.error || 'Verify failed');
+    closeM();
+    await refresh();
+  } catch (e) { document.getElementById('m-err').textContent = e.message; document.getElementById('m-err').classList.add('show'); }
+}
+
+async function reminderClick() {
+  if (!SELECTED) return;
+  try {
+    const data = await call('send_reminder', { id: SELECTED.id });
+    if (!data.ok) throw new Error(data.error || 'Reminder failed');
+    if (data.dev_link) {
+      // Email isn't configured — open the mailto link so admin can fire it themselves
+      const open = confirm("Email isn't configured yet (no Resend key). Open a pre-filled mailto draft instead?");
+      if (open) window.open(data.dev_link, '_blank');
+    } else {
+      alert('✓ Reminder email sent.');
+    }
     closeM();
     await refresh();
   } catch (e) { document.getElementById('m-err').textContent = e.message; document.getElementById('m-err').classList.add('show'); }
