@@ -51,7 +51,8 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
 }
 
 const VALID_KINDS = new Set(['event','party','swim_meet','social','closure','holiday','lesson','meeting']);
-const FIELDS = 'id, tenant_id, title, body, kind, location, starts_at, ends_at, all_day, active, created_at, updated_at';
+const VALID_RECURRENCE = new Set(['weekly', 'monthly']);
+const FIELDS = 'id, tenant_id, title, body, kind, location, starts_at, ends_at, all_day, active, recurrence, recurrence_until, created_at, updated_at';
 
 function strOrNull(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -112,12 +113,19 @@ Deno.serve(async (req) => {
     }
 
     const created_by = payload.synthetic ? null : payload.sub;
+    const recurrence = strOrNull(body.recurrence);
+    if (recurrence && !VALID_RECURRENCE.has(recurrence)) {
+      return jsonResponse({ ok: false, error: 'Recurrence must be weekly or monthly' }, 400);
+    }
+    const recurrence_until = isoOrNull(body.recurrence_until);
     const { data, error } = await sb.from('events').insert({
       tenant_id: TID, title, starts_at, ends_at,
       body:      strOrNull(body.body),
       location:  strOrNull(body.location),
       kind,
       all_day:   !!body.all_day,
+      recurrence,
+      recurrence_until,
       created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
@@ -150,6 +158,12 @@ Deno.serve(async (req) => {
     if (body.ends_at  !== undefined) patch.ends_at  = isoOrNull(body.ends_at);
     if (body.all_day  !== undefined) patch.all_day  = !!body.all_day;
     if (body.active   !== undefined) patch.active   = !!body.active;
+    if (body.recurrence !== undefined) {
+      const r = strOrNull(body.recurrence);
+      if (r && !VALID_RECURRENCE.has(r)) return jsonResponse({ ok: false, error: 'Recurrence must be weekly or monthly' }, 400);
+      patch.recurrence = r;
+    }
+    if (body.recurrence_until !== undefined) patch.recurrence_until = isoOrNull(body.recurrence_until);
 
     const { data, error } = await sb.from('events')
       .update(patch).eq('id', id).eq('tenant_id', TID)

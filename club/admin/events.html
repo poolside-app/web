@@ -221,6 +221,7 @@
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
   <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/applications.html">Applications</a>
   <a href="/club/admin/events.html" class="on">Calendar</a>
   <a href="/club/admin/parties.html">Parties</a>
   <a href="/club/admin/announcements.html">Announcements</a>
@@ -286,6 +287,21 @@
 
     <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
     <input id="m-location" placeholder="The clubhouse / Side lawn / etc.">
+
+    <div class="row2">
+      <div>
+        <label>Repeat</label>
+        <select id="m-recurrence">
+          <option value="">Doesn't repeat</option>
+          <option value="weekly">Every week</option>
+          <option value="monthly">Every month</option>
+        </select>
+      </div>
+      <div>
+        <label>Repeat until <span style="color:var(--muted);font-weight:500;font-size:11px">(optional — defaults to 2 yrs)</span></label>
+        <input type="date" id="m-recurrence_until">
+      </div>
+    </div>
 
     <label>Details <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
     <textarea id="m-body" placeholder="What members should know — RSVP, what to bring, etc."></textarea>
@@ -533,6 +549,8 @@ function dayCellClick(dateStr) {
   document.getElementById('m-location').value = '';
   document.getElementById('m-body').value = '';
   document.getElementById('m-all_day').checked = false;
+  document.getElementById('m-recurrence').value = '';
+  document.getElementById('m-recurrence_until').value = '';
   document.getElementById('m-starts_at').value = toLocalInput(d.toISOString());
   const e = new Date(d.getTime() + 2 * 60 * 60 * 1000);
   document.getElementById('m-ends_at').value = toLocalInput(e.toISOString());
@@ -558,6 +576,8 @@ function openCreate() {
   document.getElementById('m-location').value = '';
   document.getElementById('m-body').value = '';
   document.getElementById('m-all_day').checked = false;
+  document.getElementById('m-recurrence').value = '';
+  document.getElementById('m-recurrence_until').value = '';
   const start = defaultStart();
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
   document.getElementById('m-starts_at').value = toLocalInput(start.toISOString());
@@ -574,6 +594,8 @@ function openEdit(ev) {
   document.getElementById('m-location').value = ev.location || '';
   document.getElementById('m-body').value = ev.body || '';
   document.getElementById('m-all_day').checked = !!ev.all_day;
+  document.getElementById('m-recurrence').value = ev.recurrence || '';
+  document.getElementById('m-recurrence_until').value = ev.recurrence_until ? ev.recurrence_until.slice(0, 10) : '';
   document.getElementById('m-starts_at').value = toLocalInput(ev.starts_at);
   document.getElementById('m-ends_at').value   = toLocalInput(ev.ends_at);
   document.getElementById('m-delete').style.display = 'inline-block';
@@ -592,6 +614,9 @@ async function save() {
   const location = document.getElementById('m-location').value.trim() || null;
   const body = document.getElementById('m-body').value.trim() || null;
   const all_day = document.getElementById('m-all_day').checked;
+  const recurrence = document.getElementById('m-recurrence').value || null;
+  const ru = document.getElementById('m-recurrence_until').value;
+  const recurrence_until = ru ? new Date(ru + 'T23:59:59').toISOString() : null;
 
   const errEl = document.getElementById('m-err');
   errEl.classList.remove('show');
@@ -603,8 +628,8 @@ async function save() {
   try {
     const action = id ? 'update' : 'create';
     const payload = id
-      ? { id, title, kind, location, body, all_day, starts_at, ends_at }
-      :     { title, kind, location, body, all_day, starts_at, ends_at };
+      ? { id, title, kind, location, body, all_day, starts_at, ends_at, recurrence, recurrence_until }
+      :     { title, kind, location, body, all_day, starts_at, ends_at, recurrence, recurrence_until };
     const data = await call(action, payload);
     if (!data.ok) throw new Error(data.error || 'Save failed');
     closeM();

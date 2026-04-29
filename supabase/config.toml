@@ -71,3 +71,7 @@ verify_jwt = false
 # Per-tenant documents (handbook, applications, financials)
 [functions.documents_admin]
 verify_jwt = false
+
+# Membership applications: public submit + admin review
+[functions.applications]
+verify_jwt = false

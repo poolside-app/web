@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apply for membership — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 30px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
+  main { flex: 1; padding: 32px 22px; display: flex; align-items: center; justify-content: center; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 32px 30px; box-shadow: var(--shadow); max-width: 540px; width: 100%; }
+  .lede { color: var(--muted); margin: 8px 0 22px; font-size: 14px; }
+  label { display: block; font-weight: 600; font-size: 12px; margin: 14px 0 4px; }
+  label .opt { font-weight: 500; color: var(--muted); text-transform: none; font-size: 11px; margin-left: 6px; }
+  input, textarea { width: 100%; padding: 11px 13px; font: 14px 'Inter', sans-serif; border: 1.5px solid var(--border); border-radius: var(--r-md); background: #fff; }
+  input:focus, textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  textarea { resize: vertical; min-height: 80px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  .btn { display: block; width: 100%; padding: 14px; background: var(--blue); color: #fff; border: 0; border-radius: var(--r-md); font: 600 15px 'Inter', sans-serif; cursor: pointer; margin-top: 22px; }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .err { display:none; margin-top:14px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+  .ok { padding: 32px; text-align: center; }
+  .ok h1 { color: var(--green); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header><a href="/" class="logo"><span class="logo-dot"></span> Poolside</a></header>
+<main>
+  <form class="card" id="form" onsubmit="event.preventDefault(); submit()">
+    <h1 id="title">Apply for membership</h1>
+    <p class="lede" id="lede">Tell us a bit about your family. The board reviews each application — once approved, you'll get an email link to set up your member sign-in.</p>
+
+    <label>Family name</label>
+    <input id="family_name" placeholder="The Smith Family" required>
+
+    <label>Primary contact name</label>
+    <input id="primary_name" placeholder="Jane Smith" required>
+
+    <div class="row2">
+      <div><label>Email</label><input id="primary_email" type="email" placeholder="jane@example.com"></div>
+      <div><label>Phone</label><input id="primary_phone" type="tel" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)"></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Provide an email or a phone — both is best.</p>
+
+    <label>Address <span class="opt">(optional)</span></label>
+    <input id="address" placeholder="123 Maple St">
+    <div class="row2" style="margin-top:6px">
+      <div><label>City</label><input id="city"></div>
+      <div><label>Zip</label><input id="zip"></div>
+    </div>
+
+    <div class="row2" style="margin-top:10px">
+      <div><label># Adults</label><input type="number" id="num_adults" min="0" value="2"></div>
+      <div><label># Kids</label><input type="number" id="num_kids" min="0" value="0"></div>
+    </div>
+
+    <label>Anything else? <span class="opt">(optional — referred by, special requests, etc.)</span></label>
+    <textarea id="body" maxlength="2000"></textarea>
+
+    <button class="btn" id="submit-btn" type="submit">Submit application</button>
+    <div id="err" class="err"></div>
+    <p style="font-size:13px;color:var(--muted);margin-top:18px;text-align:center">Already a member? <a href="/m/login.html">Sign in</a></p>
+  </form>
+</main>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
+
+function getSlug() {
+  const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  if (!m || ['www','admin','api','app'].includes(m[1].toLowerCase())) return null;
+  return m[1].toLowerCase();
+}
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function formatPhoneInput(el) {
+  const digits = el.value.replace(/\D/g, '').slice(0, 10);
+  if (!digits.length) { el.value = ''; return; }
+  if (digits.length < 4) { el.value = `(${digits}`; return; }
+  if (digits.length < 7) { el.value = `(${digits.slice(0,3)})-${digits.slice(3)}`; return; }
+  el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
+(async () => {
+  const slug = getSlug();
+  if (!slug) {
+    document.getElementById('title').textContent = 'Wrong URL';
+    document.getElementById('lede').textContent = "Visit a club's subdomain to apply (e.g. yourclub.poolsideapp.com/apply.html).";
+    document.getElementById('submit-btn').disabled = true;
+    return;
+  }
+  // Look up tenant for branded title
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/tenant_public`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.ok && d.tenant) {
+        document.title = `Apply — ${d.tenant.display_name}`;
+        document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
+      }
+    }
+  } catch { /* keep generic */ }
+})();
+
+async function submit() {
+  const errEl = document.getElementById('err');
+  errEl.classList.remove('show');
+  const slug = getSlug();
+  if (!slug) return;
+  const get = (id) => document.getElementById(id).value.trim();
+  const family_name = get('family_name');
+  const primary_name = get('primary_name');
+  const primary_email = get('primary_email') || null;
+  const primary_phone = get('primary_phone') || null;
+  if (!family_name || !primary_name) { errEl.textContent = 'Family + primary name are required'; errEl.classList.add('show'); return; }
+  if (!primary_email && !primary_phone) { errEl.textContent = 'Provide an email or a phone'; errEl.classList.add('show'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Submitting…';
+  try {
+    const res = await fetch(APPLY_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'submit', slug,
+        family_name, primary_name, primary_email, primary_phone,
+        address: get('address') || null,
+        city:    get('city') || null,
+        zip:     get('zip') || null,
+        num_adults: get('num_adults') || 2,
+        num_kids:   get('num_kids') || 0,
+        body:    get('body') || null,
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Submission failed');
+    document.getElementById('form').className = 'card ok';
+    document.getElementById('form').innerHTML = `
+      <h1>🎉 Got it!</h1>
+      <p class="lede">Your application is in the queue. The board will review and reach out within a few days.</p>
+      <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
+    `;
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+</script>
+</body>
+</html>

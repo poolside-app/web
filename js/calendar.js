@@ -93,12 +93,45 @@
     const cursor = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
     const today  = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
 
+    // Bucket events by yyyy-mm-dd, expanding 'weekly' / 'monthly'
+    // recurrence forward through the recurrence_until horizon (capped at
+    // ~2 years from the original start to keep things bounded).
     const byDay = new Map();
-    for (const ev of (events || [])) {
-      const k = dateKey(new Date(ev.starts_at));
+    function addToDay(ev, dateOverride) {
+      const k = dateKey(dateOverride || new Date(ev.starts_at));
       if (!byDay.has(k)) byDay.set(k, []);
-      byDay.get(k).push(ev);
+      // For recurring instances we synthesize a virtual event with adjusted dates
+      // so the modal shows the right time when clicked.
+      if (dateOverride) {
+        const orig = new Date(ev.starts_at);
+        const delta = dateOverride.getTime() - new Date(orig.getFullYear(), orig.getMonth(), orig.getDate()).getTime();
+        const virt = { ...ev, starts_at: new Date(new Date(ev.starts_at).getTime() + delta).toISOString() };
+        if (ev.ends_at) virt.ends_at = new Date(new Date(ev.ends_at).getTime() + delta).toISOString();
+        byDay.get(k).push(virt);
+      } else {
+        byDay.get(k).push(ev);
+      }
     }
+
+    const HORIZON_MS = 730 * 86400_000;  // 2 years
+    for (const ev of (events || [])) {
+      addToDay(ev);  // original occurrence
+      if (!ev.recurrence) continue;
+      const start = new Date(ev.starts_at);
+      const until = ev.recurrence_until ? new Date(ev.recurrence_until)
+        : new Date(start.getTime() + HORIZON_MS);
+      if (isNaN(until.getTime())) continue;
+      const cur = new Date(start);
+      // Step forward until we exceed `until`. Cap iterations defensively.
+      for (let i = 0; i < 600; i++) {
+        if (ev.recurrence === 'weekly') cur.setDate(cur.getDate() + 7);
+        else if (ev.recurrence === 'monthly') cur.setMonth(cur.getMonth() + 1);
+        else break;
+        if (cur > until) break;
+        addToDay(ev, new Date(cur));
+      }
+    }
+
     // Sort each day's events by start time so the chip order is deterministic
     for (const arr of byDay.values()) arr.sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
 

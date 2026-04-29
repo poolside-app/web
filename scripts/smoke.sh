@@ -157,6 +157,16 @@ check_post "documents_admin rejects anon" \
   '{"action":"list"}' \
   'Not authenticated'
 
+check_post "applications.list rejects anon" \
+  "${SUPA}/functions/v1/applications" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_status "public /apply.html"                "${HOST}/apply.html"                "200"
+check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
+check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"
+check       "admin apps page wires the API"       "${HOST}/club/admin/applications.html" "applications"
+
 check_status "admin /club/admin/impact.html"     "${HOST}/club/admin/impact.html"     "200"
 check       "impact page wires the API"           "${HOST}/club/admin/impact.html"     "tenant_metrics"
 check_status "admin /club/admin/documents.html"  "${HOST}/club/admin/documents.html"  "200"

@@ -419,6 +419,7 @@ function renderTenant(t, ps, posts, events, photos, documents) {
         ${location ? `<p class="location">📍 ${escapeHtml(location)}</p>` : ''}
         <div class="actions">
           <a class="btn" href="/m/login.html">Member sign in</a>
+          <a class="btn ghost" href="/apply.html">Apply for membership</a>
           ${ps?.payments?.venmo_handle
             ? `<a class="btn ghost" href="https://venmo.com/${escapeAttr(ps.payments.venmo_handle)}" target="_blank" rel="noopener">Pay dues via Venmo</a>`
             : ''}

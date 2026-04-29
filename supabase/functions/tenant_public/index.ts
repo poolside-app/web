@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
   const since = new Date(Date.now() - 60  * 86400_000).toISOString();
   const until = new Date(Date.now() + 365 * 86400_000).toISOString();
   const { data: eventsData } = await sb.from('events')
-    .select('id, title, body, kind, location, starts_at, ends_at, all_day, source_url')
+    .select('id, title, body, kind, location, starts_at, ends_at, all_day, source_url, recurrence, recurrence_until')
     .eq('tenant_id', tenant.id)
     .eq('active', true)
     .gte('starts_at', since)
