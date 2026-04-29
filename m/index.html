@@ -444,6 +444,103 @@ async function refreshParties() {
   } catch { /* ignore — non-critical */ }
 }
 
+// ── Programs (sign-ups) ─────────────────────────────────────────────────
+async function callPrograms(action, extra = {}) {
+  const t = token();
+  const slug = getSlug();
+  const headers = { 'content-type': 'application/json' };
+  if (t) headers.authorization = `Bearer ${t}`;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/programs`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ action, slug, ...extra }),
+  });
+  return res.json();
+}
+function fmtProgramSchedule(p) {
+  const days = (p.weekdays || '').split(',').filter(Boolean).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
+  const tm = (p.start_time && p.end_time) ? ` · ${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)}`
+    : p.start_time ? ` · ${p.start_time.slice(0,5)}` : '';
+  const dr = (p.start_date && p.end_date) ? ` · ${new Date(p.start_date).toLocaleDateString()}–${new Date(p.end_date).toLocaleDateString()}`
+    : p.start_date ? ` · from ${new Date(p.start_date).toLocaleDateString()}` : '';
+  return (days || '—') + tm + dr;
+}
+function fmtProgramPrice(c) { if (!c) return 'Free'; return '$' + (c / 100).toFixed(2); }
+
+async function refreshPrograms() {
+  const card = document.getElementById('programs-card');
+  if (!card) return;
+  try {
+    const [pubRes, mineRes] = await Promise.all([
+      callPrograms('list_public'),
+      callPrograms('my_bookings'),
+    ]);
+    const programs = pubRes.programs || [];
+    const mine     = mineRes.bookings || [];
+    const myActive = mine.filter(b => b.status !== 'cancelled');
+
+    if (!programs.length && !myActive.length) {
+      card.innerHTML = `<h2>Programs &amp; sign-ups</h2><div class="empty">No programs offered right now.</div>`;
+      return;
+    }
+
+    const myProgIds = new Set(myActive.map(b => (b.program?.id) || b.program_id));
+
+    const offerHtml = programs.map(p => {
+      const left = p.spots_left ?? p.capacity ?? 0;
+      const already = myProgIds.has(p.id);
+      const btn = already
+        ? `<span class="pill party-approved">Signed up</span>`
+        : (left === 0
+            ? `<button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="bookProgram('${p.id}', '${escapeAttr(p.name)}', true)">Join waitlist</button>`
+            : `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="bookProgram('${p.id}', '${escapeAttr(p.name)}', false)">Sign up</button>`);
+      return `
+        <div class="party-row">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle">${escapeHtml(p.name)}</div>
+            <div class="pmeta">${escapeHtml(fmtProgramSchedule(p))} · ${escapeHtml(fmtProgramPrice(p.price_cents))}${p.instructor ? ' · ' + escapeHtml(p.instructor) : ''}</div>
+            ${p.description ? `<div class="pnote" style="font-style:normal;color:var(--text)">${escapeHtml(p.description)}</div>` : ''}
+          </div>
+          <div style="flex-shrink:0">${btn}</div>
+        </div>`;
+    }).join('');
+
+    const mineHtml = myActive.length ? `
+      <h3 style="margin:14px 0 4px;font-family:'Fraunces',serif;font-weight:600;font-size:14px;color:var(--blue)">Your sign-ups</h3>
+      ${myActive.map(b => {
+        const p = b.program || {};
+        return `
+          <div class="party-row">
+            <div style="flex:1;min-width:0">
+              <div class="ptitle">${escapeHtml(p.name || 'Program')}</div>
+              <div class="pmeta">${escapeHtml(b.participant_name)} · ${b.paid ? '<span style="color:var(--green);font-weight:600">paid</span>' : 'unpaid'}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+              <span class="pill party-${b.status === 'confirmed' ? 'approved' : (b.status === 'waitlisted' ? 'pending' : 'cancelled')}">${escapeHtml(b.status)}</span>
+              <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="cancelProgramBooking('${b.id}')">Cancel</button>
+            </div>
+          </div>`;
+      }).join('')}
+    ` : '';
+
+    card.innerHTML = `<h2>Programs &amp; sign-ups</h2>${offerHtml || ''}${mineHtml}`;
+  } catch (e) {
+    card.innerHTML = `<h2>Programs &amp; sign-ups</h2><div class="empty">Couldn't load programs. ${escapeHtml(e.message || '')}</div>`;
+  }
+}
+async function bookProgram(programId, programName, isWaitlist) {
+  const participant_name = prompt(`Who is signing up for "${programName}"?`, ME_USER?.name || '');
+  if (!participant_name) return;
+  const r = await callPrograms('book', { program_id: programId, participant_name });
+  if (!r.ok) { alert(r.error || 'Sign-up failed'); return; }
+  await refreshPrograms();
+}
+async function cancelProgramBooking(bid) {
+  if (!confirm('Cancel this sign-up?')) return;
+  const r = await callPrograms('cancel_booking', { booking_id: bid });
+  if (!r.ok) { alert(r.error || 'Cancel failed'); return; }
+  await refreshPrograms();
+}
+
 // ── Profile flow ───────────────────────────────────────────────────────
 function openProfileModal() {
   if (!ME_USER) return;
@@ -641,6 +738,11 @@ async function submitProfile() {
       <div class="empty">Loading…</div>
     </div>
 
+    <div class="card" id="programs-card">
+      <h2>Programs &amp; sign-ups</h2>
+      <div class="empty">Loading…</div>
+    </div>
+
     ${documentsHtml ? `
       <div class="card">
         <h2>Documents</h2>
@@ -682,6 +784,8 @@ async function submitProfile() {
       openHoursLabel: calLabel,
     });
   }
+
+  refreshPrograms();
 
   if (user.can_book_parties) {
     refreshParties();

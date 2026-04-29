@@ -130,7 +130,19 @@ Deno.serve(async (req) => {
     .limit(24);
   const photos = photosData ?? [];
 
+  // Active programs (swim lessons / yoga / camp). Spots-left would require a
+  // count(*) per program — skip on the public payload to keep this read cheap;
+  // the dedicated `programs.list_public` action fills in spots_left when the
+  // member actually opens the booking surface.
+  const { data: programsData } = await sb.from('programs')
+    .select('id, name, description, audience, weekdays, start_time, end_time, start_date, end_date, capacity, price_cents, instructor, location')
+    .eq('tenant_id', tenant.id)
+    .eq('active', true)
+    .order('start_date', { ascending: true, nullsFirst: false })
+    .limit(50);
+  const programs = programsData ?? [];
+
   // Strip the internal id from the response — clients don't need it.
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos, documents });
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos, documents, programs });
 });

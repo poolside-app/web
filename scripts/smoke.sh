@@ -101,6 +101,11 @@ check_post "tenant_public has photos shape" \
   "{\"slug\":\"${SLUG}\"}" \
   '"photos"'
 
+check_post "tenant_public has programs shape" \
+  "${SUPA}/functions/v1/tenant_public" \
+  "{\"slug\":\"${SLUG}\"}" \
+  '"programs"'
+
 check_post "tenant_public 404 unknown slug" \
   "${SUPA}/functions/v1/tenant_public" \
   '{"slug":"thisclubdoesnotexist__"}' \
