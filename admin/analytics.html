@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Network analytics — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: #f5f7fa; color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 16px; margin-bottom: 14px; color: var(--blue); }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); }
+  header { background:#fff; padding: 14px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  main { flex: 1; padding: 32px 22px; max-width: 1100px; width: 100%; margin: 0 auto; }
+
+  .section-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .stat-card {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .stat-card .lbl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+  .stat-card .val { font-family:'Fraunces', serif; font-size: 32px; font-weight: 600; color: var(--blue); margin-top: 6px; line-height: 1; }
+  .stat-card .sub { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius: var(--r-lg); padding: 26px; box-shadow: var(--shadow); margin-bottom: 22px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--bg-2); }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.active   { background: #dcfce7; color: #14532d; }
+  .pill.trial    { background: #fef3c7; color: #92400e; }
+  .pill.suspended{ background: #fee2e2; color: #7f1d1d; }
+  .pill.churned  { background: #f3f4f6; color: #4b5563; }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  .pipeline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 720px) { .pipeline-grid { grid-template-columns: 1fr; } }
+  .pipeline-grid .stat-card .lbl { color: var(--blue); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/admin/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <a href="/admin/" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to admin</a>
+</header>
+
+<main>
+  <h1>📈 Network analytics</h1>
+  <p style="color:var(--muted);font-size:14px;margin:8px 0 22px">Across-tenant rollup. Refreshes on page load.</p>
+
+  <div id="root">
+    <div class="empty">Loading…</div>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const METRICS_URL  = `${SUPABASE_URL}/functions/v1/provider_metrics`;
+
+function token() { return localStorage.getItem('poolside_provider_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmt(n) { return Number(n || 0).toLocaleString(); }
+function gotoLogin() { window.location.href = '/admin/login.html?next=/admin/analytics.html'; }
+
+(async () => {
+  if (!token()) { gotoLogin(); return; }
+  let data;
+  try {
+    const res = await fetch(METRICS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({}),
+    });
+    if (res.status === 401) { gotoLogin(); return; }
+    data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+  } catch (e) {
+    document.getElementById('root').innerHTML = `<div class="empty" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  const t = data.tenants, n = data.network, p = data.pipeline;
+  const recent = data.recent_tenants || [];
+
+  document.getElementById('root').innerHTML = `
+    <h2>Tenants</h2>
+    <div class="section-row">
+      <div class="stat-card"><div class="lbl">Active</div><div class="val">${fmt(t.active)}</div><div class="sub">currently paying / live</div></div>
+      <div class="stat-card"><div class="lbl">Trial</div><div class="val">${fmt(t.trial)}</div><div class="sub">in their 14-day trial</div></div>
+      <div class="stat-card"><div class="lbl">Total</div><div class="val">${fmt(t.total)}</div><div class="sub">${fmt(t.churned)} churned</div></div>
+      <div class="stat-card"><div class="lbl">New (7d / 30d)</div><div class="val">${fmt(t.new_7d)} <span style="color:var(--muted);font-size:18px">/ ${fmt(t.new_30d)}</span></div><div class="sub">recent signups</div></div>
+    </div>
+
+    <h2>Network footprint</h2>
+    <div class="section-row">
+      <div class="stat-card"><div class="lbl">Households</div><div class="val">${fmt(n.households)}</div></div>
+      <div class="stat-card"><div class="lbl">Members</div><div class="val">${fmt(n.members)}</div></div>
+      <div class="stat-card"><div class="lbl">Events</div><div class="val">${fmt(n.events)}</div></div>
+      <div class="stat-card"><div class="lbl">Posts</div><div class="val">${fmt(n.posts)}</div></div>
+      <div class="stat-card"><div class="lbl">Photos</div><div class="val">${fmt(n.photos)}</div></div>
+      <div class="stat-card"><div class="lbl">Documents</div><div class="val">${fmt(n.documents)}</div></div>
+      <div class="stat-card"><div class="lbl">Member sign-ins (7d)</div><div class="val">${fmt(n.member_sign_ins_7d)}</div><div class="sub">${fmt(n.member_sign_ins_total)} all-time</div></div>
+    </div>
+
+    <h2>Pipeline</h2>
+    <div class="pipeline-grid">
+      <div class="card">
+        <h3 style="font-size:14px;margin:0 0 14px;color:var(--blue)">Applications</h3>
+        <div class="section-row" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0">
+          <div class="stat-card" style="background:#fffbeb"><div class="lbl">Pending</div><div class="val">${fmt(p.applications_pending)}</div></div>
+          <div class="stat-card"><div class="lbl">Approved</div><div class="val">${fmt(p.applications_approved)}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:14px;margin:0 0 14px;color:var(--blue)">Parties</h3>
+        <div class="section-row" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0">
+          <div class="stat-card" style="background:#fffbeb"><div class="lbl">Pending</div><div class="val">${fmt(p.parties_pending)}</div></div>
+          <div class="stat-card"><div class="lbl">Approved</div><div class="val">${fmt(p.parties_approved)}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:22px">
+      <h3 style="font-size:14px;margin:0 0 14px;color:var(--blue)">Recent tenants</h3>
+      ${recent.length === 0 ? `<div class="empty">No tenants yet.</div>` : `
+        <table>
+          <thead><tr><th>Club</th><th>Subdomain</th><th>Plan</th><th>Status</th><th>Households</th><th>Joined</th></tr></thead>
+          <tbody>
+            ${recent.map(t => `
+              <tr>
+                <td><b>${escapeHtml(t.display_name)}</b></td>
+                <td><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank" style="font-size:13px">${escapeHtml(t.slug)}.poolsideapp.com</a></td>
+                <td>${escapeHtml(t.plan || '—')}</td>
+                <td><span class="pill ${escapeHtml(t.status)}">${escapeHtml((t.status || '').toUpperCase())}</span></td>
+                <td>${fmt(t.household_count)}</td>
+                <td style="font-size:12px;color:var(--muted)">${escapeHtml(new Date(t.created_at).toLocaleDateString())}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>

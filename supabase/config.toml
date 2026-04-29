@@ -75,3 +75,7 @@ verify_jwt = false
 # Membership applications: public submit + admin review
 [functions.applications]
 verify_jwt = false
+
+# Network-wide metrics for the provider analytics dashboard
+[functions.provider_metrics]
+verify_jwt = false

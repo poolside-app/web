@@ -152,6 +152,14 @@ check_post "tenant_metrics rejects anon" \
   '{"action":"get"}' \
   'Not authenticated'
 
+check_post "provider_metrics rejects anon" \
+  "${SUPA}/functions/v1/provider_metrics" \
+  '{}' \
+  'Not authenticated'
+
+check_status "provider /admin/analytics.html" "${ROOT}/admin/analytics.html" "200"
+check       "analytics page wires API"        "${ROOT}/admin/analytics.html" "provider_metrics"
+
 check_post "documents_admin rejects anon" \
   "${SUPA}/functions/v1/documents_admin" \
   '{"action":"list"}' \
