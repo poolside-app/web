@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Guest passes — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin-bottom: 12px; } h3 { font-size: 15px; margin: 0 0 8px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 960px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-row button { padding: 8px 14px; border: 1.5px solid var(--border); background: #fff; border-radius: 999px; font: 600 12px 'Inter'; cursor: pointer; color: var(--muted); }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:hover { background: var(--blue-2); }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-success { background: var(--green); color: #fff; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .pack { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 20px; margin-bottom: 10px; box-shadow: var(--shadow); display:grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; }
+  .pack:hover { border-color: var(--blue); }
+  .pack h3 { font-size: 15px; margin: 0; }
+  .pack .meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.paid { background: #dcfce7; color: #14532d; }
+  .pill.unpaid { background: #fee2e2; color: #7f1d1d; }
+  .pill.exp   { background: #fef3c7; color: #92400e; }
+  .pill.used { background: #f3f4f6; color: #4b5563; }
+  .pill.open { background: #dbeafe; color: #1e3a8a; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+  .scrim { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
+  .scrim.open { display: flex; }
+  .modal { background: #fff; border-radius: var(--r-lg); padding: 26px; width: 100%; max-width: 540px; box-shadow: 0 20px 60px rgba(10,59,92,.18); }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal textarea, .modal select { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+  .use-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .use-row:last-child { border-bottom: 0; }
+  .use-row small { color: var(--muted); display: block; font-size: 11px; }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/applications.html">Applications</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/programs.html">Programs</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/volunteer.html">Volunteer</a>
+  <a href="/club/admin/guest-passes.html" class="on">Passes</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html">Documents</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+
+<main>
+  <div class="toolbar">
+    <div>
+      <h1>Guest passes</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Pre-paid bundles members redeem at the gate. Single-use also works (just issue a 1-pack).</div>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <div class="filter-row" id="filter">
+        <button class="on" data-filter="">All active</button>
+        <button data-filter="unpaid">Unpaid only</button>
+      </div>
+      <button class="btn" onclick="openIssue()">+ Issue passes</button>
+    </div>
+  </div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<!-- Issue modal -->
+<div class="scrim" id="scrim-issue">
+  <div class="modal">
+    <h2>Issue guest passes</h2>
+    <label>Household *</label>
+    <select id="i-household"><option value="">— select household —</option></select>
+    <div class="row2">
+      <div><label>Count *</label><input id="i-count" type="number" min="1" value="10"></div>
+      <div><label>Price ($)</label><input id="i-price" type="number" min="0" step="0.01" value="40"></div>
+    </div>
+    <div class="row2">
+      <div><label>Label</label><input id="i-label" maxlength="80" value="10-pack"></div>
+      <div><label>Expires</label><input id="i-expires" type="date"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:14px">
+      <input id="i-paid" type="checkbox" style="width:auto;margin:0">
+      <span style="font-weight:500;font-size:13px">Already paid</span>
+    </label>
+    <label>Notes</label>
+    <textarea id="i-notes" maxlength="400" placeholder="e.g. paid Venmo 5/6"></textarea>
+    <div class="err" id="i-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeIssue()">Cancel</button>
+      <button class="btn" onclick="issue()">Issue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Usage modal -->
+<div class="scrim" id="scrim-usage">
+  <div class="modal" style="max-width:560px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+      <div>
+        <h2 id="u-title">Pack usage</h2>
+        <div id="u-meta" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <button class="btn btn-sm" onclick="closeUsage()">Close</button>
+    </div>
+    <hr style="margin:14px 0;border:0;border-top:1px solid var(--border)">
+    <div id="u-body" style="font-size:13px"></div>
+    <div class="modal-foot" id="u-foot">
+      <button class="btn btn-success" onclick="adminRedeem()">+ Redeem one (admin)</button>
+      <button class="btn btn-danger" onclick="archive()">Archive pack</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const URL_BASE     = `${SUPABASE_URL}/functions/v1/guest_passes`;
+const HH_URL       = `${SUPABASE_URL}/functions/v1/households_admin`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let CACHE = [];
+let HOUSEHOLDS = [];
+let FILTER = '';
+let CURRENT = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(URL_BASE, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+async function callHH(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(HH_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  return res.json();
+}
+
+document.querySelectorAll('#filter button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#filter button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    FILTER = b.dataset.filter;
+    refresh();
+  });
+});
+
+function fmtPrice(c) { if (!c) return 'Free'; return '$' + (c / 100).toFixed(2); }
+function render() {
+  const list = document.getElementById('list');
+  if (!CACHE.length) { list.innerHTML = `<div class="empty">No active packs. Click <b>+ Issue passes</b> to create one.</div>`; return; }
+  list.innerHTML = CACHE.map(p => {
+    const status = p.expired ? '<span class="pill exp">expired</span>'
+      : (p.remaining === 0 ? '<span class="pill used">used up</span>'
+      : `<span class="pill open">${p.remaining}/${p.total_count} left</span>`);
+    const pay = p.paid ? '<span class="pill paid">paid</span>' : '<span class="pill unpaid">unpaid</span>';
+    return `
+      <div class="pack" data-id="${p.id}">
+        <div>
+          <h3>${escapeHtml(p.family_name || '—')} · ${escapeHtml(p.label)} ${status} ${pay}</h3>
+          <div class="meta">${escapeHtml(fmtPrice(p.price_cents))}${p.expires_on ? ' · expires ' + escapeHtml(new Date(p.expires_on).toLocaleDateString()) : ''}${p.notes ? ' · ' + escapeHtml(p.notes) : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="openUsage('${p.id}')">Usage (${p.used_count})</button>
+          ${p.paid ? '' : `<button class="btn btn-sm btn-success" onclick="markPaid('${p.id}')">Mark paid</button>`}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const data = await call('list', FILTER === 'unpaid' ? { only_unpaid: true } : {});
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    CACHE = data.packs || [];
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadHouseholds() {
+  try {
+    const r = await callHH('list');
+    if (r.ok) HOUSEHOLDS = (r.households || []).filter(h => h.active);
+  } catch { /* ignore */ }
+  const sel = document.getElementById('i-household');
+  sel.innerHTML = '<option value="">— select household —</option>' +
+    HOUSEHOLDS.map(h => `<option value="${h.id}">${escapeHtml(h.family_name)}</option>`).join('');
+}
+
+function openIssue() {
+  document.getElementById('i-household').value = '';
+  document.getElementById('i-count').value = '10';
+  document.getElementById('i-price').value = '40';
+  document.getElementById('i-label').value = '10-pack';
+  document.getElementById('i-expires').value = '';
+  document.getElementById('i-paid').checked = false;
+  document.getElementById('i-notes').value = '';
+  document.getElementById('i-err').classList.remove('show');
+  document.getElementById('scrim-issue').classList.add('open');
+}
+function closeIssue() { document.getElementById('scrim-issue').classList.remove('open'); }
+
+async function issue() {
+  const errEl = document.getElementById('i-err'); errEl.classList.remove('show');
+  const payload = {
+    household_id: document.getElementById('i-household').value,
+    total_count:  Math.max(1, parseInt(document.getElementById('i-count').value, 10) || 1),
+    label:        document.getElementById('i-label').value.trim() || null,
+    price_cents:  Math.round((parseFloat(document.getElementById('i-price').value) || 0) * 100),
+    expires_on:   document.getElementById('i-expires').value || null,
+    paid:         document.getElementById('i-paid').checked,
+    notes:        document.getElementById('i-notes').value.trim() || null,
+  };
+  if (!payload.household_id) { errEl.textContent = 'Pick a household'; errEl.classList.add('show'); return; }
+  const r = await call('issue', payload);
+  if (!r.ok) { errEl.textContent = r.error || 'Issue failed'; errEl.classList.add('show'); return; }
+  closeIssue(); await refresh();
+}
+
+async function markPaid(pid) {
+  const r = await call('mark_paid', { pack_id: pid, paid: true });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await refresh();
+}
+
+async function openUsage(pid) {
+  const r = await call('usage', { pack_id: pid });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  CURRENT = r.pack;
+  document.getElementById('u-title').textContent = `${r.pack.label} (${r.pack.remaining}/${r.pack.total_count} left)`;
+  document.getElementById('u-meta').textContent = `${r.uses.length} redemption${r.uses.length === 1 ? '' : 's'}${r.pack.expires_on ? ' · expires ' + new Date(r.pack.expires_on).toLocaleDateString() : ''}`;
+  document.getElementById('u-body').innerHTML = r.uses.length
+    ? r.uses.map(u => `
+        <div class="use-row">
+          <div>${escapeHtml(u.guest_name)}<small>${escapeHtml(u.redeemed_by_label || '—')}${u.notes ? ' · ' + escapeHtml(u.notes) : ''}</small></div>
+          <div style="color:var(--muted)">${escapeHtml(new Date(u.redeemed_at).toLocaleString())}</div>
+        </div>`).join('')
+    : `<div class="empty" style="padding:30px;border-radius:10px">No redemptions yet.</div>`;
+  document.getElementById('scrim-usage').classList.add('open');
+}
+function closeUsage() { document.getElementById('scrim-usage').classList.remove('open'); CURRENT = null; }
+
+async function adminRedeem() {
+  if (!CURRENT) return;
+  const guest_name = prompt('Guest name?');
+  if (!guest_name) return;
+  const r = await call('admin_redeem', { pack_id: CURRENT.id, guest_name });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await openUsage(CURRENT.id); await refresh();
+}
+async function archive() {
+  if (!CURRENT) return;
+  if (!confirm(`Archive "${CURRENT.label}"? Unused passes are voided.`)) return;
+  const r = await call('archive', { pack_id: CURRENT.id });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  closeUsage(); await refresh();
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Guest passes — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
+  } catch { logout(); return; }
+  await Promise.all([loadHouseholds(), refresh()]);
+})();
+</script>
+</body>
+</html>

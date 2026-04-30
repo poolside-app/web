@@ -164,7 +164,7 @@ print(f'  tenant A: {SLUG_A} ({TENANT_A_ID[:8]}…)')
 print(f'  tenant B: {SLUG_B} ({TENANT_B_ID[:8]}…)  [throwaway]')
 
 # Track resources for cleanup
-RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'campaigns': [], 'volunteer_opps': []}
+RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'campaigns': [], 'volunteer_opps': [], 'guest_pass_packs': []}
 def track(kind, id):  RESOURCES[kind].append(id)
 
 # ── 1. Cross-tenant isolation (THE most important) ───────────────────────
@@ -968,6 +968,91 @@ step('admin roster includes signup',        vol_admin_roster_sees_signup)
 step('member cancels their signup',         vol_member_cancel)
 step('cross-tenant isolation on volunteer', vol_isolation)
 
+# ── 17. Guest passes (punch cards) ───────────────────────────────────────
+section('Guest passes')
+
+GP_PACK_ID = None
+
+def gp_admin_issue_unpaid():
+    global GP_PACK_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'issue', 'household_id': A_HOUSEHOLD_ID,
+        'total_count': 3, 'price_cents': 1500,
+        'label': f'E2E 3-pack {STAMP}',
+    }, TOKEN_A)
+    assert r.get('ok'), f'issue: {r}'
+    GP_PACK_ID = r['pack']['id']
+    track('guest_pass_packs', GP_PACK_ID)
+    assert r['pack']['paid'] is False
+    assert r['pack']['remaining'] == 3
+
+def gp_member_redeem_blocked_unpaid():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'redeem', 'pack_id': GP_PACK_ID,
+        'guest_name': f'Guest A {STAMP}',
+    }, tok)
+    assert not r.get('ok'), 'should refuse to redeem an unpaid pack'
+
+def gp_admin_marks_paid():
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'mark_paid', 'pack_id': GP_PACK_ID, 'paid': True,
+    }, TOKEN_A)
+    assert r.get('ok') and r['pack']['paid'] is True, f'mark_paid: {r}'
+
+def gp_member_redeems_one():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'redeem', 'pack_id': GP_PACK_ID,
+        'guest_name': f'Guest A {STAMP}',
+    }, tok)
+    assert r.get('ok'), f'redeem: {r}'
+    assert r['pack']['used_count'] == 1, f'used_count not incremented: {r}'
+    assert r['pack']['remaining'] == 2
+
+def gp_member_my_packs_lists_it():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', { 'action': 'my_packs' }, tok)
+    assert r.get('ok'), f'my_packs: {r}'
+    found = next((p for p in r.get('packs', []) if p['id'] == GP_PACK_ID), None)
+    assert found, 'pack missing from my_packs'
+    assert found['remaining'] == 2
+
+def gp_overuse_blocked():
+    # Burn the remaining 2, then a third redeem should fail.
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r1 = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'redeem', 'pack_id': GP_PACK_ID, 'guest_name': 'g2',
+    }, tok)
+    r2 = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'redeem', 'pack_id': GP_PACK_ID, 'guest_name': 'g3',
+    }, tok)
+    assert r1.get('ok') and r2.get('ok'), 'middle redemptions failed'
+    r3 = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'redeem', 'pack_id': GP_PACK_ID, 'guest_name': 'g4',
+    }, tok)
+    assert not r3.get('ok'), 'pack should refuse over-redemption'
+
+def gp_admin_usage_log_complete():
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', { 'action': 'usage', 'pack_id': GP_PACK_ID }, TOKEN_A)
+    assert r.get('ok'), f'usage: {r}'
+    assert len(r.get('uses', [])) == 3, f'expected 3 uses, got {len(r.get("uses", []))}'
+
+def gp_isolation():
+    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', { 'action': 'list' }, TOKEN_B)
+    assert r.get('ok')
+    leak = any(p['id'] == GP_PACK_ID for p in r.get('packs', []))
+    assert not leak, 'tenant B sees tenant A pack (ISOLATION FAIL)'
+
+step('admin issues unpaid pack',           gp_admin_issue_unpaid)
+step('redeem refused while unpaid',        gp_member_redeem_blocked_unpaid)
+step('admin marks pack paid',              gp_admin_marks_paid)
+step('member redeems one (decrements)',    gp_member_redeems_one)
+step('my_packs reflects remaining',        gp_member_my_packs_lists_it)
+step('over-redemption blocked',            gp_overuse_blocked)
+step('admin usage log shows all redeems',  gp_admin_usage_log_complete)
+step('cross-tenant isolation on packs',    gp_isolation)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -991,6 +1076,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.campaigns where id = '{cid}';")
     for vid in RESOURCES['volunteer_opps']:
         mgmt_query(f"delete from public.volunteer_opportunities where id = '{vid}';")
+    for gid in RESOURCES['guest_pass_packs']:
+        mgmt_query(f"delete from public.guest_pass_packs where id = '{gid}';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 

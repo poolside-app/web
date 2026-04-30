@@ -224,6 +224,14 @@ check_post "volunteer.list_public returns ok" \
 check_status "admin /club/admin/volunteer" "${HOST}/club/admin/volunteer.html" "200"
 check       "admin volunteer page wires the API" "${HOST}/club/admin/volunteer.html" "/functions/v1/volunteer"
 
+check_post "guest_passes.list rejects anon" \
+  "${SUPA}/functions/v1/guest_passes" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_status "admin /club/admin/guest-passes" "${HOST}/club/admin/guest-passes.html" "200"
+check       "admin guest-passes page wires the API" "${HOST}/club/admin/guest-passes.html" "/functions/v1/guest_passes"
+
 check_status "public /apply.html"                "${HOST}/apply.html"                "200"
 check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
 check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"

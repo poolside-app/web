@@ -98,3 +98,8 @@ verify_jwt = false
 # helpers, swim-meet timers). Public list + member signup + admin manage.
 [functions.volunteer]
 verify_jwt = false
+
+# Guest pass packs (punch-card model) + redemption log. Atomic decrement
+# via optimistic UPDATE … WHERE used_count = X to prevent over-redemption.
+[functions.guest_passes]
+verify_jwt = false

@@ -630,6 +630,69 @@ async function volunteerCancel(sid) {
   await refreshVolunteer();
 }
 
+// ── Guest passes ────────────────────────────────────────────────────────
+async function callPasses(action, extra = {}) {
+  const t = token();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/guest_passes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  return res.json();
+}
+async function refreshGuestPasses() {
+  const card = document.getElementById('passes-card');
+  const body = document.getElementById('passes-body');
+  if (!card || !body) return;
+  try {
+    const r = await callPasses('my_packs');
+    if (!r.ok) { card.style.display = 'none'; return; }
+    const packs = r.packs || [];
+    const uses  = r.recent_uses || [];
+    if (!packs.length && !uses.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const packsHtml = packs.length ? packs.map(p => {
+      const status = p.expired ? '<span class="pill party-cancelled">expired</span>'
+        : (!p.paid ? '<span class="pill party-pending">unpaid</span>'
+        : (p.remaining === 0 ? '<span class="pill party-cancelled">used up</span>'
+        : `<span class="pill party-approved">${p.remaining} left</span>`));
+      const canRedeem = p.paid && !p.expired && p.remaining > 0;
+      return `
+        <div class="party-row">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle">${escapeHtml(p.label)} <span style="font-size:11px;color:var(--muted);font-weight:400">(${p.used_count}/${p.total_count} used)</span></div>
+            <div class="pmeta">${p.expires_on ? 'expires ' + new Date(p.expires_on).toLocaleDateString() + ' · ' : ''}${p.notes ? escapeHtml(p.notes) : ''}</div>
+          </div>
+          <div style="flex-shrink:0;display:flex;align-items:center;gap:8px">
+            ${status}
+            ${canRedeem ? `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="redeemPass('${p.id}')">Redeem</button>` : ''}
+          </div>
+        </div>`;
+    }).join('') : '<div style="color:var(--muted);font-size:13px;padding:8px 0">No active passes. Ask the club admin to issue some.</div>';
+
+    const usesHtml = uses.length ? `
+      <h3 style="margin:14px 0 4px;font-family:'Fraunces',serif;font-weight:600;font-size:14px;color:var(--blue)">Recent guests</h3>
+      ${uses.slice(0, 8).map(u => `
+        <div class="party-row">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle" style="font-size:13px">${escapeHtml(u.guest_name)}</div>
+            <div class="pmeta">${escapeHtml(new Date(u.redeemed_at).toLocaleString())}${u.redeemed_by_label ? ' · by ' + escapeHtml(u.redeemed_by_label) : ''}</div>
+          </div>
+        </div>`).join('')}` : '';
+
+    body.className = '';
+    body.innerHTML = packsHtml + usesHtml;
+  } catch { /* ignore */ }
+}
+async function redeemPass(packId) {
+  const guest_name = prompt('Guest name?');
+  if (!guest_name) return;
+  const r = await callPasses('redeem', { pack_id: packId, guest_name });
+  if (!r.ok) { alert(r.error || 'Redemption failed'); return; }
+  await refreshGuestPasses();
+}
+
 // ── Member directory ────────────────────────────────────────────────────
 async function refreshDirectory() {
   try {
@@ -910,6 +973,11 @@ async function submitProfile() {
       <div id="volunteer-body" class="empty">Loading…</div>
     </div>
 
+    <div class="card" id="passes-card" style="display:none">
+      <h2>Guest passes</h2>
+      <div id="passes-body" class="empty">Loading…</div>
+    </div>
+
     <div class="card" id="directory-card" style="display:none">
       <h2>Member directory</h2>
       <div id="directory-body" class="empty">Loading…</div>
@@ -959,6 +1027,7 @@ async function submitProfile() {
 
   refreshPrograms();
   refreshVolunteer();
+  refreshGuestPasses();
   refreshDirectory();
   showCampaignPopup();
 
