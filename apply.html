@@ -281,7 +281,7 @@
     new MutationObserver(syncBack).observe(origObs, { attributes: true, attributeFilter: ['style'] });
   })();
 </script>
-<footer style="padding-bottom:80px">Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30f</span></footer>
+<footer style="padding-bottom:80px">Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30g</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -321,8 +321,6 @@ function paintVenmoQR() {
 // Falls back to a single placeholder if fetch fails so the form still works.
 let POLICIES = {};
 const ACCEPT_REQUIRED = new Set();
-
-const ACCEPTED = { rules: false, guest: false, party: false, sitter: false, waiver: false };
 
 let CURRENT_STEP = 1;
 const TOTAL_STEPS = 4;
