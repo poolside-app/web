@@ -46,8 +46,31 @@
     settings:      'a[href="/club/admin/settings.html"]',
   };
 
-  function apply(features, user) {
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s) {
+    return String(s ?? '').replace(/["'<>&]/g, c => ({'"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  }
+
+  function brandHeader(tenant) {
+    if (!tenant) return;
+    const a = document.querySelector('header .logo');
+    if (!a) return;
+    const name = tenant.display_name || 'Poolside';
+    const logoUrl = tenant.branding && tenant.branding.logo_url;
+    a.setAttribute('href', '/club/admin/');
+    a.setAttribute('title', name);
+    if (logoUrl) {
+      a.innerHTML = `<img src="${escapeAttr(logoUrl)}" alt="${escapeAttr(name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> ${escapeHtml(name)}`;
+    } else {
+      a.innerHTML = `<span class="logo-dot"></span> ${escapeHtml(name)}`;
+    }
+  }
+
+  function apply(features, user, tenant) {
     features = features || {};
+    if (tenant) brandHeader(tenant);
 
     // Layer 1: feature flags (hide entire features tenants didn't enable)
     for (const [flag, selector] of Object.entries(FEATURE_NAV)) {
@@ -80,5 +103,5 @@
     }
   }
 
-  window.PoolsideFlags = { apply };
+  window.PoolsideFlags = { apply, brandHeader };
 })();

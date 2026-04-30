@@ -350,7 +350,7 @@ async function del() {
     if (!me.ok) { logout(); return; }
     document.title = `Documents — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user);
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant);
   } catch { logout(); return; }
   await refresh();
 })();

@@ -720,7 +720,7 @@ async function deactivateAdmin(id, name) {
     ME_USER = me.user;
     document.title = `Settings — ${TENANT.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user);
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant);
   } catch (e) { logout(); return; }
   try {
     const data = await call(SETTINGS_URL, 'get');

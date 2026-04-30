@@ -212,14 +212,16 @@ Deno.serve(async (req) => {
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
     ]);
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 401);
-    const features = ((settings?.value ?? {}) as Record<string, unknown>).features ?? {};
+    const settingsValue = (settings?.value ?? {}) as Record<string, unknown>;
+    const features = settingsValue.features ?? {};
+    const branding = settingsValue.branding ?? {};
 
     // Synthetic impersonation tokens have no real admin_users row — fall
     // back to a synthetic user identity sourced from the JWT itself.
     if ((!user || !user.active) && payload.synthetic) {
       return jsonResponse({
         ok: true,
-        tenant: { ...tenant, features },
+        tenant: { ...tenant, features, branding },
         user: {
           id: payload.sub,
           email: 'provider@poolsideapp.com',
@@ -236,7 +238,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok: true,
-      tenant: { ...tenant, features },
+      tenant: { ...tenant, features, branding },
       user: {
         ...user,
         scopes: user.scopes ?? [],
