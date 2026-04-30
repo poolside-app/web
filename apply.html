@@ -220,9 +220,16 @@
     <div class="err" id="err-top" style="margin-bottom:14px"></div>
     <div class="err" id="err"></div>
 
+    <div id="tap-debug" style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0;padding:6px;background:#fef9c3;border-radius:6px">
+      Tap counter: <b id="tap-count">0</b> · last action: <span id="tap-last">none</span>
+    </div>
+
     <div class="nav-row">
       <button type="button" class="btn btn-ghost" id="back-btn" onclick="goBack()" style="visibility:hidden">← Back</button>
-      <button type="button" class="btn btn-primary" id="next-btn" onclick="goNext()">Next →</button>
+      <button type="button" class="btn btn-primary" id="next-btn"
+              onclick="goNext()"
+              ontouchstart="window.__tapCount = (window.__tapCount||0)+1; var c=document.getElementById('tap-count'); if(c)c.textContent=window.__tapCount; var l=document.getElementById('tap-last'); if(l)l.textContent='touchstart @ '+new Date().toLocaleTimeString();"
+              style="position:relative;z-index:10">Next →</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;text-align:center">Already a member? <a href="/m/login.html">Sign in</a></p>
   </form>
@@ -240,7 +247,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30b</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30c</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -471,12 +478,12 @@ function showStep(n) {
 }
 function goBack() { if (CURRENT_STEP > 1) showStep(CURRENT_STEP - 1); }
 function goNext() {
-  // Visible button-press acknowledgement so users on slow phones can tell
-  // their tap actually registered (even if validation then blocks them).
+  // Bump the visible tap counter so users can confirm their click reached JS.
+  window.__tapCount = (window.__tapCount || 0) + 1;
+  const c = document.getElementById('tap-count'); if (c) c.textContent = window.__tapCount;
+  const l = document.getElementById('tap-last'); if (l) l.textContent = 'goNext @ ' + new Date().toLocaleTimeString();
   const btn = document.getElementById('next-btn');
   if (btn) { btn.style.opacity = '0.6'; setTimeout(() => { btn.style.opacity = ''; }, 150); }
-  // Wrap the whole flow in a try/catch so any unexpected error surfaces
-  // as a visible message rather than failing silently.
   try { return _goNext(); } catch (e) { show('Error: ' + (e && e.message ? e.message : e)); }
 }
 function _goNext() {
