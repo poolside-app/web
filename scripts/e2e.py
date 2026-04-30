@@ -164,7 +164,7 @@ print(f'  tenant A: {SLUG_A} ({TENANT_A_ID[:8]}…)')
 print(f'  tenant B: {SLUG_B} ({TENANT_B_ID[:8]}…)  [throwaway]')
 
 # Track resources for cleanup
-RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'campaigns': []}
+RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'campaigns': [], 'volunteer_opps': []}
 def track(kind, id):  RESOURCES[kind].append(id)
 
 # ── 1. Cross-tenant isolation (THE most important) ───────────────────────
@@ -887,6 +887,87 @@ step('member opts in via profile',     dir_opt_in_via_profile)
 step('directory now includes them',    dir_now_lists_me)
 step('cross-tenant directory isolation', dir_isolation)
 
+# ── 16. Volunteer opportunities ──────────────────────────────────────────
+section('Volunteer signups')
+
+VOL_OPP_ID = None
+VOL_SIGNUP_ID = None
+
+def vol_admin_create():
+    global VOL_OPP_ID
+    future = '2099-06-15T18:00:00Z'  # safely in the future
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', {
+        'action': 'create',
+        'title': f'E2E Snack Bar {STAMP}',
+        'description': 'Saturday meet shift',
+        'starts_at': future,
+        'slots_needed': 2,
+        'location': 'Snack bar',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    VOL_OPP_ID = r['opportunity']['id']
+    track('volunteer_opps', VOL_OPP_ID)
+
+def vol_public_list():
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'list_public', 'slug': SLUG_A })
+    assert r.get('ok'), f'list_public: {r}'
+    found = next((o for o in r.get('opportunities', []) if o['id'] == VOL_OPP_ID), None)
+    assert found, 'opportunity not in public list'
+    assert found['slots_filled'] == 0
+
+def vol_member_signup():
+    global VOL_SIGNUP_ID
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', {
+        'action': 'signup', 'opportunity_id': VOL_OPP_ID,
+        'volunteer_name': f'Volunteer {STAMP}',
+        'member_id': M_PRIMARY_ID,
+    }, tok)
+    assert r.get('ok'), f'signup: {r}'
+    VOL_SIGNUP_ID = r['signup']['id']
+
+def vol_my_signups():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'my_signups' }, tok)
+    assert r.get('ok'), f'my_signups: {r}'
+    found = next((s for s in r.get('signups', []) if s['id'] == VOL_SIGNUP_ID), None)
+    assert found, 'signup not in my_signups'
+
+def vol_capacity_block():
+    # capacity=2, primary already took one; the same member can't sign up twice (unique)
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', {
+        'action': 'signup', 'opportunity_id': VOL_OPP_ID,
+        'volunteer_name': 'Duplicate', 'member_id': M_PRIMARY_ID,
+    }, tok)
+    assert not r.get('ok'), 'should have rejected duplicate signup'
+
+def vol_admin_roster_sees_signup():
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'roster', 'opportunity_id': VOL_OPP_ID }, TOKEN_A)
+    assert r.get('ok'), f'roster: {r}'
+    found = next((s for s in r.get('signups', []) if s['id'] == VOL_SIGNUP_ID), None)
+    assert found, 'admin roster missing signup'
+
+def vol_member_cancel():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'cancel_signup', 'signup_id': VOL_SIGNUP_ID }, tok)
+    assert r.get('ok'), f'cancel: {r}'
+
+def vol_isolation():
+    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'list' }, TOKEN_B)
+    assert r.get('ok')
+    leak = any(o['id'] == VOL_OPP_ID for o in r.get('opportunities', []))
+    assert not leak, 'tenant B sees tenant A volunteer opp (ISOLATION FAIL)'
+
+step('admin creates volunteer opportunity', vol_admin_create)
+step('public list_public surfaces it',      vol_public_list)
+step('member signs up',                     vol_member_signup)
+step('my_signups returns it',               vol_my_signups)
+step('duplicate signup blocked',            vol_capacity_block)
+step('admin roster includes signup',        vol_admin_roster_sees_signup)
+step('member cancels their signup',         vol_member_cancel)
+step('cross-tenant isolation on volunteer', vol_isolation)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -908,6 +989,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.programs where id = '{pid}';")
     for cid in RESOURCES['campaigns']:
         mgmt_query(f"delete from public.campaigns where id = '{cid}';")
+    for vid in RESOURCES['volunteer_opps']:
+        mgmt_query(f"delete from public.volunteer_opportunities where id = '{vid}';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 

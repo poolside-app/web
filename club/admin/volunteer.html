@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Campaigns — Poolside</title>
+<title>Volunteer — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -17,7 +17,7 @@
   body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
   a { color: var(--blue); }
   h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
-  h1 { font-size: 26px; } h2 { font-size: 18px; margin-bottom: 12px; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin-bottom: 12px; } h3 { font-size: 15px; margin: 0 0 8px; }
   .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
   .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
   header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
@@ -34,35 +34,31 @@
   .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
   .btn-danger { background: var(--red); color: #fff; }
   .btn-sm { padding: 6px 12px; font-size: 12px; }
-  .camp { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px 22px; margin-bottom: 12px; box-shadow: var(--shadow); cursor: pointer; }
-  .camp:hover { border-color: var(--blue); }
-  .camp h3 { font-size: 16px; }
-  .camp .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .camp .body { font-size: 13px; margin-top: 8px; line-height: 1.5; white-space: pre-wrap; }
+  .opp { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px 22px; margin-bottom: 12px; box-shadow: var(--shadow); cursor: pointer; }
+  .opp:hover { border-color: var(--blue); }
+  .opp h3 { font-size: 16px; }
+  .opp .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .opp .desc { font-size: 13px; color: var(--text); margin-top: 6px; line-height: 1.5; }
   .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  .pill.on { background: #dcfce7; color: #14532d; }
-  .pill.off { background: #f3f4f6; color: #4b5563; }
-  .pill.fundraiser { background: #fef3c7; color: #92400e; }
-  .pill.event { background: #dbeafe; color: #1e3a8a; }
-  .pill.signup { background: #dcfce7; color: #14532d; }
-  .pill.announcement { background: #e0e7ff; color: #3730a3; }
+  .pill.full { background: #fee2e2; color: #7f1d1d; }
+  .pill.open { background: #dcfce7; color: #14532d; }
+  .pill.inact { background: #f3f4f6; color: #4b5563; }
   .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
   .scrim { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
   .scrim.open { display: flex; }
   .modal { background: #fff; border-radius: var(--r-lg); padding: 26px; width: 100%; max-width: 580px; box-shadow: 0 20px 60px rgba(10,59,92,.18); }
   .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
   .modal input, .modal textarea, .modal select { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
-  .modal textarea { resize: vertical; min-height: 80px; }
+  .modal textarea { resize: vertical; min-height: 70px; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
   .modal-foot .left { margin-right: auto; }
   .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
   .err.show { display: block; }
-  .preview { background: linear-gradient(135deg, var(--blue), var(--blue-2)); color: #fff; border-radius: 14px; padding: 18px; margin-top: 8px; }
-  .preview .pe { font-size: 32px; }
-  .preview .pt { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; margin: 6px 0 4px; }
-  .preview .pb { font-size: 13px; opacity: .9; line-height: 1.5; }
-  .preview .pcta { display: inline-block; margin-top: 10px; background: #fff; color: var(--blue); padding: 8px 16px; border-radius: 10px; font-weight: 600; font-size: 13px; text-decoration: none; }
+  .roster-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .roster-row:last-child { border-bottom: 0; }
+  .roster-row .who { font-size: 14px; }
+  .roster-row .who small { color: var(--muted); display: block; font-size: 11px; }
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -79,8 +75,8 @@
   <a href="/club/admin/programs.html">Programs</a>
   <a href="/club/admin/parties.html">Parties</a>
   <a href="/club/admin/announcements.html">Announcements</a>
-  <a href="/club/admin/campaigns.html" class="on">Campaigns</a>
-  <a href="/club/admin/volunteer.html">Volunteer</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/volunteer.html" class="on">Volunteer</a>
   <a href="/club/admin/photos.html">Photos</a>
   <a href="/club/admin/documents.html">Documents</a>
   <a href="/club/admin/impact.html">Impact</a>
@@ -91,53 +87,29 @@
 <main>
   <div class="toolbar">
     <div>
-      <h1>Campaigns</h1>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Pop-up modals shown to members on app open. Best for one-shot pushes (RSVPs, fundraisers, signup links).</div>
+      <h1>Volunteer</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Snack-bar shifts, swim-meet timers, party helpers — anywhere you need a few volunteers.</div>
     </div>
-    <button class="btn" onclick="openCreate()">+ New campaign</button>
+    <button class="btn" onclick="openCreate()">+ New opportunity</button>
   </div>
   <div id="list"><div class="empty">Loading…</div></div>
 </main>
 
-<div class="scrim" id="scrim">
+<div class="scrim" id="scrim-edit">
   <div class="modal">
-    <h2 id="m-title">New campaign</h2>
+    <h2 id="m-title">New opportunity</h2>
     <label>Title *</label>
-    <input id="m-name" maxlength="140" placeholder="e.g. Annual fund drive">
+    <input id="m-name" maxlength="140" placeholder="e.g. Snack-bar shift Saturday meet">
+    <label>Description</label>
+    <textarea id="m-description" maxlength="800" placeholder="What the volunteer will do, what to bring, who to coordinate with."></textarea>
     <div class="row2">
-      <div>
-        <label>Kind</label>
-        <select id="m-kind">
-          <option value="announcement">Announcement</option>
-          <option value="event">Event</option>
-          <option value="fundraiser">Fundraiser</option>
-          <option value="signup">Signup</option>
-        </select>
-      </div>
-      <div>
-        <label>Audience</label>
-        <select id="m-audience">
-          <option value="members">Members only</option>
-          <option value="public">Public landing only</option>
-          <option value="both">Both</option>
-        </select>
-      </div>
+      <div><label>Starts *</label><input id="m-starts_at" type="datetime-local"></div>
+      <div><label>Ends</label><input id="m-ends_at" type="datetime-local"></div>
     </div>
     <div class="row2">
-      <div><label>Emoji</label><input id="m-emoji" maxlength="4" placeholder="📣"></div>
-      <div></div>
+      <div><label>Slots needed</label><input id="m-slots" type="number" min="1" value="2"></div>
+      <div><label>Location</label><input id="m-location" maxlength="120" placeholder="e.g. Snack bar"></div>
     </div>
-    <label>Body</label>
-    <textarea id="m-body" maxlength="800" placeholder="A few sentences. Members see it as a pop-up — keep it short."></textarea>
-    <div class="row2">
-      <div><label>Button label</label><input id="m-cta_label" maxlength="40" placeholder="e.g. Donate now"></div>
-      <div><label>Button URL</label><input id="m-cta_url" type="url" placeholder="https://…"></div>
-    </div>
-    <div class="row2">
-      <div><label>Starts</label><input id="m-starts_at" type="datetime-local"></div>
-      <div><label>Ends <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input id="m-ends_at" type="datetime-local"></div>
-    </div>
-    <div id="m-preview"></div>
     <div class="err" id="m-err"></div>
     <div class="modal-foot">
       <button class="btn btn-danger left" id="m-delete" style="display:none" onclick="del()">Archive</button>
@@ -147,15 +119,30 @@
   </div>
 </div>
 
+<div class="scrim" id="scrim-roster">
+  <div class="modal" style="max-width:520px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+      <div>
+        <h2 id="r-title">Volunteers</h2>
+        <div id="r-meta" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <button class="btn btn-sm" onclick="closeRoster()">Close</button>
+    </div>
+    <hr style="margin:14px 0;border:0;border-top:1px solid var(--border)">
+    <div id="r-list"></div>
+  </div>
+</div>
+
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
-const URL_BASE     = `${SUPABASE_URL}/functions/v1/campaigns`;
+const URL_BASE     = `${SUPABASE_URL}/functions/v1/volunteer`;
 const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
 let CACHE = [];
 let EDITING = null;
+let ROSTER_OPP = null;
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -175,128 +162,88 @@ async function call(action, extra = {}) {
 }
 
 function fmtDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
-function isLive(c) {
-  if (!c.active) return false;
-  const now = Date.now();
-  if (new Date(c.starts_at).getTime() > now) return false;
-  if (c.ends_at && new Date(c.ends_at).getTime() < now) return false;
-  return true;
-}
+function toLocalInput(iso) { if (!iso) return ''; const d = new Date(iso); if (isNaN(d.getTime())) return ''; const pad = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fromLocalInput(v) { if (!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString(); }
 
 function render() {
   const list = document.getElementById('list');
-  if (!CACHE.length) { list.innerHTML = `<div class="empty">No campaigns yet. Click <b>+ New campaign</b>.</div>`; return; }
-  list.innerHTML = CACHE.map(c => `
-    <div class="camp" data-id="${c.id}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
-        <div style="flex:1;min-width:0">
-          <h3>${c.emoji || '📣'} ${escapeHtml(c.title)} <span class="pill ${escapeHtml(c.kind)}">${escapeHtml(c.kind)}</span> ${isLive(c) ? '<span class="pill on">live</span>' : '<span class="pill off">' + (c.active ? 'scheduled' : 'archived') + '</span>'}</h3>
-          <div class="meta">${escapeHtml(c.audience)} · ${escapeHtml(fmtDate(c.starts_at))}${c.ends_at ? ' → ' + escapeHtml(fmtDate(c.ends_at)) : ' (no end)'}${c.cta_label ? ' · CTA: ' + escapeHtml(c.cta_label) : ''}</div>
-          ${c.body ? `<div class="body">${escapeHtml(c.body)}</div>` : ''}
+  if (!CACHE.length) { list.innerHTML = `<div class="empty">No upcoming volunteer opportunities. Click <b>+ New opportunity</b>.</div>`; return; }
+  list.innerHTML = CACHE.map(o => {
+    const filled = o.slots_filled ?? 0;
+    const need = o.slots_needed ?? 0;
+    const isFull = filled >= need;
+    return `
+      <div class="opp" data-id="${o.id}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+          <div style="flex:1;min-width:0">
+            <h3>${escapeHtml(o.title)} ${o.active ? (isFull ? '<span class="pill full">filled</span>' : `<span class="pill open">${filled}/${need}</span>`) : '<span class="pill inact">archived</span>'}</h3>
+            <div class="meta">${escapeHtml(fmtDate(o.starts_at))}${o.ends_at ? ' → ' + escapeHtml(new Date(o.ends_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})) : ''}${o.location ? ' · ' + escapeHtml(o.location) : ''}</div>
+            ${o.description ? `<div class="desc">${escapeHtml(o.description)}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn btn-sm" onclick="event.stopPropagation();openRoster('${o.id}')">Roster (${filled})</button>
+            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEdit('${o.id}')">Edit</button>
+          </div>
         </div>
-      </div>
-    </div>
-  `).join('');
-  list.querySelectorAll('.camp').forEach(el => el.addEventListener('click', () => openEdit(el.dataset.id)));
+      </div>`;
+  }).join('');
 }
 
 async function refresh() {
   try {
     const data = await call('list');
     if (!data.ok) throw new Error(data.error || 'Failed to load');
-    CACHE = data.campaigns || [];
+    CACHE = data.opportunities || [];
     render();
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }
 }
 
-function toLocalInput(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function fromLocalInput(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-function paintPreview() {
-  const title = document.getElementById('m-name').value || 'Campaign title';
-  const body  = document.getElementById('m-body').value;
-  const emoji = document.getElementById('m-emoji').value || '📣';
-  const ctaL  = document.getElementById('m-cta_label').value;
-  const ctaU  = document.getElementById('m-cta_url').value;
-  document.getElementById('m-preview').innerHTML = `
-    <div style="font-size:11px;color:var(--muted);font-weight:600;margin:14px 0 4px">PREVIEW</div>
-    <div class="preview">
-      <div class="pe">${escapeHtml(emoji)}</div>
-      <div class="pt">${escapeHtml(title)}</div>
-      ${body ? `<div class="pb">${escapeHtml(body)}</div>` : ''}
-      ${ctaL ? `<a class="pcta" href="${escapeHtml(ctaU || '#')}" target="_blank" rel="noopener">${escapeHtml(ctaL)}</a>` : ''}
-    </div>`;
-}
-['m-name','m-body','m-emoji','m-cta_label','m-cta_url'].forEach(id => {
-  document.getElementById(id).addEventListener('input', paintPreview);
-});
-
 function openCreate() {
   EDITING = null;
-  document.getElementById('m-title').textContent = 'New campaign';
+  document.getElementById('m-title').textContent = 'New opportunity';
   document.getElementById('m-delete').style.display = 'none';
   document.getElementById('m-name').value = '';
-  document.getElementById('m-body').value = '';
-  document.getElementById('m-emoji').value = '📣';
-  document.getElementById('m-kind').value = 'announcement';
-  document.getElementById('m-audience').value = 'members';
-  document.getElementById('m-cta_label').value = '';
-  document.getElementById('m-cta_url').value = '';
-  const now = new Date(); now.setSeconds(0,0);
-  document.getElementById('m-starts_at').value = toLocalInput(now.toISOString());
+  document.getElementById('m-description').value = '';
+  document.getElementById('m-slots').value = '2';
+  document.getElementById('m-location').value = '';
+  const start = new Date(); start.setDate(start.getDate() + 7); start.setHours(10, 0, 0, 0);
+  document.getElementById('m-starts_at').value = toLocalInput(start.toISOString());
   document.getElementById('m-ends_at').value = '';
   document.getElementById('m-err').classList.remove('show');
-  paintPreview();
-  document.getElementById('scrim').classList.add('open');
+  document.getElementById('scrim-edit').classList.add('open');
 }
 
 function openEdit(id) {
-  const c = CACHE.find(x => x.id === id);
-  if (!c) return;
-  EDITING = c;
-  document.getElementById('m-title').textContent = 'Edit campaign';
-  document.getElementById('m-delete').style.display = c.active ? 'inline-block' : 'none';
-  document.getElementById('m-name').value = c.title || '';
-  document.getElementById('m-body').value = c.body || '';
-  document.getElementById('m-emoji').value = c.emoji || '📣';
-  document.getElementById('m-kind').value = c.kind || 'announcement';
-  document.getElementById('m-audience').value = c.audience || 'members';
-  document.getElementById('m-cta_label').value = c.cta_label || '';
-  document.getElementById('m-cta_url').value = c.cta_url || '';
-  document.getElementById('m-starts_at').value = toLocalInput(c.starts_at);
-  document.getElementById('m-ends_at').value   = toLocalInput(c.ends_at);
+  const o = CACHE.find(x => x.id === id);
+  if (!o) return;
+  EDITING = o;
+  document.getElementById('m-title').textContent = 'Edit opportunity';
+  document.getElementById('m-delete').style.display = o.active ? 'inline-block' : 'none';
+  document.getElementById('m-name').value = o.title || '';
+  document.getElementById('m-description').value = o.description || '';
+  document.getElementById('m-slots').value = o.slots_needed ?? 1;
+  document.getElementById('m-location').value = o.location || '';
+  document.getElementById('m-starts_at').value = toLocalInput(o.starts_at);
+  document.getElementById('m-ends_at').value   = toLocalInput(o.ends_at);
   document.getElementById('m-err').classList.remove('show');
-  paintPreview();
-  document.getElementById('scrim').classList.add('open');
+  document.getElementById('scrim-edit').classList.add('open');
 }
-function closeM() { document.getElementById('scrim').classList.remove('open'); }
+function closeM() { document.getElementById('scrim-edit').classList.remove('open'); }
 
 async function save() {
   const errEl = document.getElementById('m-err'); errEl.classList.remove('show');
   const payload = {
-    title:     document.getElementById('m-name').value.trim(),
-    body:      document.getElementById('m-body').value.trim(),
-    emoji:     document.getElementById('m-emoji').value.trim() || '📣',
-    kind:      document.getElementById('m-kind').value,
-    audience:  document.getElementById('m-audience').value,
-    cta_label: document.getElementById('m-cta_label').value.trim(),
-    cta_url:   document.getElementById('m-cta_url').value.trim(),
-    starts_at: fromLocalInput(document.getElementById('m-starts_at').value),
-    ends_at:   fromLocalInput(document.getElementById('m-ends_at').value),
+    title:        document.getElementById('m-name').value.trim(),
+    description:  document.getElementById('m-description').value.trim(),
+    slots_needed: Math.max(0, parseInt(document.getElementById('m-slots').value, 10) || 0),
+    location:     document.getElementById('m-location').value.trim(),
+    starts_at:    fromLocalInput(document.getElementById('m-starts_at').value),
+    ends_at:      fromLocalInput(document.getElementById('m-ends_at').value),
   };
-  if (!payload.title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
+  if (!payload.title)     { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
+  if (!payload.starts_at) { errEl.textContent = 'Start time is required'; errEl.classList.add('show'); return; }
   try {
     const r = EDITING ? await call('update', { id: EDITING.id, ...payload }) : await call('create', payload);
     if (!r.ok) throw new Error(r.error || 'Save failed');
@@ -306,10 +253,40 @@ async function save() {
 
 async function del() {
   if (!EDITING) return;
-  if (!confirm('Archive this campaign? Members will stop seeing the pop-up.')) return;
+  if (!confirm(`Archive "${EDITING.title}"? Existing volunteers stay; new sign-ups are blocked.`)) return;
   const r = await call('delete', { id: EDITING.id });
   if (!r.ok) { document.getElementById('m-err').textContent = r.error || 'Delete failed'; document.getElementById('m-err').classList.add('show'); return; }
   closeM(); await refresh();
+}
+
+async function openRoster(id) {
+  const r = await call('roster', { opportunity_id: id });
+  if (!r.ok) { alert(r.error || 'Failed to load roster'); return; }
+  ROSTER_OPP = r.opportunity;
+  document.getElementById('r-title').textContent = r.opportunity.title;
+  document.getElementById('r-meta').textContent = `${fmtDate(r.opportunity.starts_at)} · need ${r.opportunity.slots_needed}`;
+  const list = document.getElementById('r-list');
+  if (!r.signups.length) {
+    list.innerHTML = `<div class="empty" style="padding:30px;border-radius:10px">No volunteers yet.</div>`;
+  } else {
+    list.innerHTML = r.signups.map(s => `
+      <div class="roster-row">
+        <div class="who">
+          <div>${escapeHtml(s.volunteer_name)} <span class="pill ${s.status === 'confirmed' ? 'open' : 'inact'}">${escapeHtml(s.status)}</span></div>
+          <small>${escapeHtml(s.family_name || '—')}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</small>
+        </div>
+        ${s.status !== 'cancelled' ? `<button class="btn btn-sm btn-danger" onclick="cancelSignup('${s.id}')">Cancel</button>` : ''}
+      </div>`).join('');
+  }
+  document.getElementById('scrim-roster').classList.add('open');
+}
+function closeRoster() { document.getElementById('scrim-roster').classList.remove('open'); ROSTER_OPP = null; }
+async function cancelSignup(sid) {
+  if (!confirm('Cancel this signup?')) return;
+  const r = await call('cancel_admin', { signup_id: sid });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await openRoster(ROSTER_OPP.id);
+  await refresh();
 }
 
 (async () => {
@@ -321,7 +298,7 @@ async function del() {
       body: JSON.stringify({ action: 'me' }),
     }).then(r => r.json());
     if (!me.ok) { logout(); return; }
-    document.title = `Campaigns — ${me.tenant.display_name}`;
+    document.title = `Volunteer — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
   } catch { logout(); return; }

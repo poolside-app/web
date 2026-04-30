@@ -93,3 +93,8 @@ verify_jwt = false
 # a modal on app open. Public list + tenant_admin CRUD.
 [functions.campaigns]
 verify_jwt = false
+
+# Volunteer opportunities — one-shot signup slots (snack-bar shifts, party
+# helpers, swim-meet timers). Public list + member signup + admin manage.
+[functions.volunteer]
+verify_jwt = false

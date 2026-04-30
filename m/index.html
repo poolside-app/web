@@ -546,6 +546,90 @@ async function cancelProgramBooking(bid) {
   await refreshPrograms();
 }
 
+// ── Volunteer signups ───────────────────────────────────────────────────
+async function callVolunteer(action, extra = {}) {
+  const t = token();
+  const slug = getSlug();
+  const headers = { 'content-type': 'application/json' };
+  if (t) headers.authorization = `Bearer ${t}`;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/volunteer`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ action, slug, ...extra }),
+  });
+  return res.json();
+}
+async function refreshVolunteer() {
+  const card = document.getElementById('volunteer-card');
+  const body = document.getElementById('volunteer-body');
+  if (!card || !body) return;
+  try {
+    const [pubRes, mineRes] = await Promise.all([
+      callVolunteer('list_public'),
+      callVolunteer('my_signups'),
+    ]);
+    const opps = (pubRes.opportunities || []);
+    const mine = (mineRes.signups || []).filter(s => s.status !== 'cancelled');
+    if (!opps.length && !mine.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const myOppIds = new Set(mine.map(s => (s.opportunity?.id) || s.opportunity_id));
+    const offerHtml = opps.map(o => {
+      const filled = o.slots_filled ?? 0;
+      const need   = o.slots_needed ?? 0;
+      const isFull = filled >= need;
+      const already = myOppIds.has(o.id);
+      const btn = already
+        ? '<span class="pill party-approved">Signed up</span>'
+        : (isFull
+            ? '<span class="pill party-cancelled">Filled</span>'
+            : `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="volunteerSignup('${o.id}', '${escapeAttr(o.title)}')">Sign up</button>`);
+      const when = new Date(o.starts_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      return `
+        <div class="party-row">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle">${escapeHtml(o.title)} <span style="font-size:11px;color:var(--muted);font-weight:400">(${filled}/${need})</span></div>
+            <div class="pmeta">${escapeHtml(when)}${o.location ? ' · ' + escapeHtml(o.location) : ''}</div>
+            ${o.description ? `<div class="pnote" style="font-style:normal;color:var(--text)">${escapeHtml(o.description)}</div>` : ''}
+          </div>
+          <div style="flex-shrink:0">${btn}</div>
+        </div>`;
+    }).join('');
+
+    const mineHtml = mine.length ? `
+      <h3 style="margin:14px 0 4px;font-family:'Fraunces',serif;font-weight:600;font-size:14px;color:var(--blue)">You're signed up for</h3>
+      ${mine.map(s => {
+        const o = s.opportunity || {};
+        const when = o.starts_at ? new Date(o.starts_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+        return `
+          <div class="party-row">
+            <div style="flex:1;min-width:0">
+              <div class="ptitle">${escapeHtml(o.title || 'Opportunity')}</div>
+              <div class="pmeta">${escapeHtml(s.volunteer_name)} · ${escapeHtml(when)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+              <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="volunteerCancel('${s.id}')">Cancel</button>
+            </div>
+          </div>`;
+      }).join('')}` : '';
+
+    body.className = '';
+    body.innerHTML = (offerHtml || '<div class="empty">No openings right now.</div>') + mineHtml;
+  } catch { /* ignore */ }
+}
+async function volunteerSignup(oppId, oppTitle) {
+  const volunteer_name = prompt(`Sign up for "${oppTitle}" — what name should we list?`, ME_USER?.name || '');
+  if (!volunteer_name) return;
+  const r = await callVolunteer('signup', { opportunity_id: oppId, volunteer_name });
+  if (!r.ok) { alert(r.error || 'Sign-up failed'); return; }
+  await refreshVolunteer();
+}
+async function volunteerCancel(sid) {
+  if (!confirm('Cancel this volunteer slot?')) return;
+  const r = await callVolunteer('cancel_signup', { signup_id: sid });
+  if (!r.ok) { alert(r.error || 'Cancel failed'); return; }
+  await refreshVolunteer();
+}
+
 // ── Member directory ────────────────────────────────────────────────────
 async function refreshDirectory() {
   try {
@@ -821,6 +905,11 @@ async function submitProfile() {
       <div class="empty">Loading…</div>
     </div>
 
+    <div class="card" id="volunteer-card" style="display:none">
+      <h2>Volunteer</h2>
+      <div id="volunteer-body" class="empty">Loading…</div>
+    </div>
+
     <div class="card" id="directory-card" style="display:none">
       <h2>Member directory</h2>
       <div id="directory-body" class="empty">Loading…</div>
@@ -869,6 +958,7 @@ async function submitProfile() {
   }
 
   refreshPrograms();
+  refreshVolunteer();
   refreshDirectory();
   showCampaignPopup();
 
