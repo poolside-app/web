@@ -112,3 +112,8 @@ verify_jwt = false
 # waiver, plus any custom ones the club adds). Public list_public + admin CRUD.
 [functions.policies]
 verify_jwt = false
+
+# Admin task queue — board-member to-do list, scoped by role.
+# Filters tasks by caller's scopes; owner-role admins see everything.
+[functions.admin_tasks]
+verify_jwt = false

@@ -211,7 +211,51 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
       `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
+    // Enqueue an admin task — both membership chair and treasurer
+    // (treasurer cares because the app declares a payment method).
+    try {
+      await sb.from('admin_tasks').insert({
+        tenant_id: tenant.id,
+        target_scopes: ['applications'],
+        kind: 'application.submitted',
+        summary: `New application: ${family_name} (${primary_name})`,
+        link_url: '/club/admin/applications.html',
+        source_kind: 'application', source_id: data.id,
+      });
+    } catch { /* best-effort — never fails submission */ }
     return jsonResponse({ ok: true, application_id: data.id, payment_method });
+  }
+
+  // ── claim_venmo_paid (member-side: "I paid via Venmo") ─────────────────
+  // Public action — anyone with the application id can flag it. We dedupe
+  // on (source_id, kind) so multiple taps don't multi-notify the treasurer.
+  if (action === 'claim_venmo_paid') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, family_name, primary_name, payment_status, status')
+      .eq('id', id).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.payment_status === 'paid') {
+      return jsonResponse({ ok: false, error: 'Already marked paid — no action needed' }, 409);
+    }
+    // Dedupe: don't add a second open claim for the same app
+    const { data: existing } = await sb.from('admin_tasks')
+      .select('id').eq('tenant_id', app.tenant_id).eq('source_kind', 'application')
+      .eq('source_id', app.id).eq('kind', 'venmo.claim')
+      .is('completed_at', null).is('dismissed_at', null).maybeSingle();
+    if (existing) return jsonResponse({ ok: true, deduped: true });
+    await sb.from('admin_tasks').insert({
+      tenant_id: app.tenant_id,
+      target_scopes: ['payments', 'applications'],
+      kind: 'venmo.claim',
+      summary: `${app.family_name}: ${app.primary_name} reports paid via Venmo — verify`,
+      link_url: '/club/admin/payments.html',
+      source_kind: 'application', source_id: app.id,
+    });
+    await audit(sb, app.tenant_id, null, 'public', 'application.venmo_claim', app.id,
+      `${app.family_name} claimed Venmo payment`);
+    return jsonResponse({ ok: true });
   }
 
   // Admin actions below — verify tenant admin
@@ -419,6 +463,14 @@ Deno.serve(async (req) => {
 
     await audit(sb, TID, decided_by, 'tenant_admin', 'application.approve', id,
       `Approved ${app.family_name}; household + ${1 + createdExtraMembers} member${createdExtraMembers === 0 ? '' : 's'} created`);
+
+    // Close the "review application" task that was opened on submit.
+    await sb.from('admin_tasks')
+      .update({ completed_at: new Date().toISOString(), completed_by: decided_by })
+      .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id)
+      .eq('kind', 'application.submitted')
+      .is('completed_at', null);
+
     return jsonResponse({
       ok: true,
       household_id: hh.id, primary_id: pm.id,
@@ -473,6 +525,12 @@ Deno.serve(async (req) => {
     // Audit log (tenant-wide)
     await audit(sb, TID, verified_by, 'tenant_admin', 'application.verify_payment', id,
       `Verified ${method} payment for ${app.family_name}`);
+
+    // Close any related open Venmo-claim or application-submitted tasks.
+    await sb.from('admin_tasks')
+      .update({ completed_at: now, completed_by: verified_by })
+      .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id)
+      .is('completed_at', null);
 
     return jsonResponse({ ok: true });
   }

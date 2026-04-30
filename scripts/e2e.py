@@ -1253,6 +1253,119 @@ step('admin can edit body text',            pol_admin_updates_body)
 step('cross-tenant isolation on policies',  pol_isolation)
 step('archive hides from public list',      pol_archive_hides_from_public)
 
+# ── 21. Admin scopes + tasks ─────────────────────────────────────────────
+section('Admin scopes + task queue')
+
+ROLE_INVITE_ID = None
+ROLE_INVITE_PW = None
+ROLE_INVITE_EMAIL = f'roletest-e2e-{STAMP}@example.com'
+ROLE_TOKEN = None
+TASK_APP_ID = None
+
+def role_templates_listed():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', { 'action': 'list_role_templates' }, TOKEN_A)
+    assert r.get('ok'), f'list_role_templates: {r}'
+    keys = {t['key'] for t in r.get('templates', [])}
+    assert {'owner', 'treasurer', 'membership', 'events', 'communications'}.issubset(keys), f'missing templates: {keys}'
+
+def role_invite_with_template():
+    global ROLE_INVITE_ID, ROLE_INVITE_PW
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'invite_admin',
+        'display_name': f'E2E Treasurer {STAMP}',
+        'email': ROLE_INVITE_EMAIL,
+        'role_template': 'treasurer',
+    }, TOKEN_A)
+    assert r.get('ok'), f'invite: {r}'
+    assert r.get('role_template') == 'treasurer'
+    assert 'payments' in r.get('scopes', []), 'treasurer should have payments scope'
+    ROLE_INVITE_ID = r['admin_id']
+    ROLE_INVITE_PW = r['temp_password']
+
+def role_login_returns_scopes():
+    global ROLE_TOKEN
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'login', 'slug': SLUG_A,
+        'email': ROLE_INVITE_EMAIL, 'password': ROLE_INVITE_PW,
+    })
+    assert r.get('ok'), f'login: {r}'
+    assert r.get('user', {}).get('role_template') == 'treasurer'
+    assert 'payments' in r.get('user', {}).get('scopes', []), 'treasurer login missing payments scope'
+    ROLE_TOKEN = r['token']
+
+def role_custom_scopes_flip_template():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'update_admin_role',
+        'id': ROLE_INVITE_ID, 'role_template': 'treasurer',
+        'scopes': ['payments', 'photos'],   # not the canonical treasurer set
+    }, TOKEN_A)
+    assert r.get('ok'), f'update: {r}'
+    assert r.get('role_template') == 'custom', f'template should flip to custom, got {r.get("role_template")}'
+
+def role_app_submit_creates_task():
+    global TASK_APP_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'submit', 'slug': SLUG_A,
+        'family_name': f'TaskTest {STAMP}',
+        'primary_name': f'Task Tester {STAMP}',
+        'primary_email': f'task-e2e-{STAMP}@example.com',
+        'primary_phone': f'+1555{STAMP}7777',
+        'payment_method': 'venmo',
+    })
+    assert r.get('ok'), f'submit: {r}'
+    TASK_APP_ID = r['application_id']
+    track('applications', TASK_APP_ID)
+    # Owner sees all tasks
+    tasks = post(f'{SUPABASE_URL}/functions/v1/admin_tasks', { 'action': 'list' }, TOKEN_A)
+    assert tasks.get('ok'), f'list tasks: {tasks}'
+    found = next((t for t in tasks.get('tasks', []) if t['source_id'] == TASK_APP_ID and t['kind'] == 'application.submitted'), None)
+    assert found, 'application.submitted task not enqueued'
+    assert 'applications' in (found.get('target_scopes') or [])
+
+def role_venmo_claim_creates_task():
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'claim_venmo_paid', 'id': TASK_APP_ID,
+    })
+    assert r.get('ok'), f'claim: {r}'
+    tasks = post(f'{SUPABASE_URL}/functions/v1/admin_tasks', { 'action': 'list' }, TOKEN_A)
+    assert tasks.get('ok')
+    found = next((t for t in tasks.get('tasks', []) if t['source_id'] == TASK_APP_ID and t['kind'] == 'venmo.claim'), None)
+    assert found, 'venmo.claim task not enqueued'
+    # Should target both payments + applications
+    assert 'payments' in (found.get('target_scopes') or [])
+
+def role_venmo_claim_dedupes():
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'claim_venmo_paid', 'id': TASK_APP_ID,
+    })
+    assert r.get('ok')
+    assert r.get('deduped') is True, 'second claim should dedupe, not insert another task'
+
+def role_complete_task_closes_for_everyone():
+    tasks = post(f'{SUPABASE_URL}/functions/v1/admin_tasks', { 'action': 'list' }, TOKEN_A)
+    venmo = next(t for t in tasks.get('tasks', []) if t['source_id'] == TASK_APP_ID and t['kind'] == 'venmo.claim')
+    r = post(f'{SUPABASE_URL}/functions/v1/admin_tasks', { 'action': 'complete', 'id': venmo['id'] }, TOKEN_A)
+    assert r.get('ok')
+    tasks2 = post(f'{SUPABASE_URL}/functions/v1/admin_tasks', { 'action': 'list' }, TOKEN_A)
+    leak = any(t['id'] == venmo['id'] for t in tasks2.get('tasks', []))
+    assert not leak, 'completed task still in open list'
+
+def role_isolation_other_tenant():
+    tasks = post(f'{SUPABASE_URL}/functions/v1/admin_tasks', { 'action': 'list' }, TOKEN_B)
+    assert tasks.get('ok')
+    leak = any(t['source_id'] == TASK_APP_ID for t in tasks.get('tasks', []))
+    assert not leak, 'tenant B sees tenant A tasks (ISOLATION FAIL)'
+
+step('list_role_templates returns expected set', role_templates_listed)
+step('invite with role template assigns scopes', role_invite_with_template)
+step('login carries scopes + role_template',     role_login_returns_scopes)
+step('custom scopes flip template to "custom"',  role_custom_scopes_flip_template)
+step('app.submit auto-creates an admin task',    role_app_submit_creates_task)
+step('claim_venmo_paid creates payments task',   role_venmo_claim_creates_task)
+step('repeated claim is deduped (no spam)',      role_venmo_claim_dedupes)
+step('complete closes task for everyone',        role_complete_task_closes_for_everyone)
+step('cross-tenant isolation on admin_tasks',    role_isolation_other_tenant)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -1280,8 +1393,13 @@ def cleanup_all():
         mgmt_query(f"delete from public.guest_pass_packs where id = '{gid}';")
     # Test-created admins (deactivated above, hard-delete here)
     mgmt_query(f"delete from public.admin_users where username like 'coadmin-e2e-%@example.com';")
+    mgmt_query(f"delete from public.admin_users where username like 'roletest-e2e-%@example.com';")
     # Test-created custom policy (archived above, hard-delete here)
     mgmt_query(f"delete from public.policies where title like 'E2E Pet Policy %';")
+    # Auto-created admin tasks for tracked applications cascade via FK on tenant delete,
+    # but tenant A persists across runs — clean tasks tied to tracked apps.
+    for app_id in RESOURCES['applications']:
+        mgmt_query(f"delete from public.admin_tasks where source_kind = 'application' and source_id = '{app_id}';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 

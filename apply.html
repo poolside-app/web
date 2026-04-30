@@ -562,12 +562,43 @@ async function submitApplication() {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Submission failed');
+    const appId = data.application_id;
+    const venmoHandle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
+    const isVenmo = (document.querySelector('input[name="payment_method"]:checked')?.value || '') === 'venmo';
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. The board will review and reach out within a few days.</p>
+      ${isVenmo && venmoHandle ? `
+        <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2)">
+          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Already paid via Venmo?</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">If you sent your dues to <b>@${escapeHtml(venmoHandle.replace(/^@+/, ''))}</b>, tap below to alert the treasurer to verify.</div>
+          <button id="claim-paid-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px 'Inter';cursor:pointer">I paid via Venmo →</button>
+          <div id="claim-result" style="display:none;margin-top:10px;padding:10px;background:#dcfce7;color:#14532d;border-radius:8px;font-size:13px"></div>
+        </div>
+      ` : ''}
       <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
     `;
+    const claimBtn = document.getElementById('claim-paid-btn');
+    if (claimBtn) claimBtn.addEventListener('click', async () => {
+      claimBtn.disabled = true; claimBtn.textContent = 'Sending…';
+      try {
+        const cr = await fetch(APPLY_URL, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'claim_venmo_paid', id: appId }),
+        }).then(r => r.json());
+        const out = document.getElementById('claim-result');
+        out.style.display = 'block';
+        out.textContent = cr.ok ? '✓ Treasurer notified. They\'ll mark your dues paid once verified.' : (cr.error || 'Failed');
+        if (!cr.ok) { out.style.background = '#fee2e2'; out.style.color = '#7f1d1d'; }
+      } catch (e) {
+        const out = document.getElementById('claim-result');
+        out.style.display = 'block'; out.style.background = '#fee2e2'; out.style.color = '#7f1d1d';
+        out.textContent = e.message;
+      } finally {
+        claimBtn.disabled = true; claimBtn.textContent = '✓ Sent';
+      }
+    });
   } catch (e) { show(e.message); btn.disabled = false; btn.textContent = orig; }
 }
 

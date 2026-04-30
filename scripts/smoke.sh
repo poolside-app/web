@@ -253,6 +253,11 @@ check_post "policies.list_public returns ok" \
 check_status "admin /club/admin/policies" "${HOST}/club/admin/policies.html" "200"
 check       "admin policies page wires the API" "${HOST}/club/admin/policies.html" "/functions/v1/policies"
 
+check_post "admin_tasks.list rejects anon" \
+  "${SUPA}/functions/v1/admin_tasks" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
 check_status "public /apply.html"                "${HOST}/apply.html"                "200"
 check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
 check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"

@@ -294,6 +294,25 @@
         <div><label>Their name</label><input id="i-display_name" placeholder="Jane Smith"></div>
         <div><label>Their email</label><input id="i-email" type="email" placeholder="jane@example.com"></div>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
+        <div>
+          <label>Role</label>
+          <select id="i-role">
+            <option value="membership">Membership Chair</option>
+            <option value="treasurer">Treasurer</option>
+            <option value="events">Events / Programs</option>
+            <option value="communications">Communications / Marketing</option>
+            <option value="owner">Owner / President (full access)</option>
+          </select>
+        </div>
+        <div><label>Phone <span style="color:var(--muted);font-size:11px">(SMS login when Twilio is wired)</span></label><input id="i-phone" placeholder="(555) 555-5555"></div>
+      </div>
+
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600">Customize what they can see</summary>
+        <div id="i-scopes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;margin-top:10px;padding:14px;background:var(--bg-2);border-radius:10px"></div>
+      </details>
+
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
         <button class="btn" id="invite-btn" onclick="inviteAdmin()">Send invite</button>
       </div>
@@ -554,23 +573,69 @@ let ME_USER = null;
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+let ROLE_TEMPLATES = {};
+let ALL_SCOPES = [];
+
+async function loadRoleTemplates() {
+  try {
+    const r = await call(ME_URL, 'list_role_templates');
+    if (!r.ok) return;
+    ROLE_TEMPLATES = {};
+    (r.templates || []).forEach(t => { ROLE_TEMPLATES[t.key] = t; });
+    ALL_SCOPES = r.all_scopes || [];
+    paintScopePicker();
+  } catch { /* ignore */ }
+}
+
+function paintScopePicker() {
+  const box = document.getElementById('i-scopes');
+  if (!box) return;
+  const role = document.getElementById('i-role').value;
+  const tpl = ROLE_TEMPLATES[role];
+  const tplScopes = new Set((tpl && tpl.scopes) || []);
+  const isOwner = role === 'owner';
+  box.innerHTML = ALL_SCOPES.map(s => {
+    const checked = isOwner || tplScopes.has(s) ? 'checked' : '';
+    const disabled = isOwner ? 'disabled' : '';
+    return `
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;font-weight:500">
+        <input type="checkbox" data-scope="${s}" ${checked} ${disabled} style="width:auto;margin:0">
+        ${s}
+      </label>`;
+  }).join('');
+  if (isOwner) {
+    box.insertAdjacentHTML('afterbegin', '<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin-bottom:4px">Owners have full access — no scope checks.</div>');
+  }
+}
+
+function collectScopes() {
+  const role = document.getElementById('i-role').value;
+  if (role === 'owner') return null;  // sentinel: server applies template
+  return [...document.querySelectorAll('#i-scopes input[type=checkbox]:checked')].map(cb => cb.dataset.scope);
+}
+
 async function loadAdmins() {
   try {
     const r = await call(ME_URL, 'list_admins');
     if (!r.ok) throw new Error(r.error || 'Failed to load admins');
     const list = document.getElementById('admins-list');
     if (!r.admins.length) { list.innerHTML = '<div style="color:var(--muted);font-size:13px">Just you so far.</div>'; return; }
+    const ROLE_LABELS = { owner: 'Owner', treasurer: 'Treasurer', membership: 'Membership', events: 'Events', communications: 'Comms', custom: 'Custom' };
     list.innerHTML = r.admins.map(a => {
       const isMe = ME_USER && a.id === ME_USER.id;
       const last = a.last_login_at ? new Date(a.last_login_at).toLocaleDateString() : 'never';
+      const roleLabel = ROLE_LABELS[a.role_template || 'owner'] || a.role_template;
+      const roleColor = a.role_template === 'owner' ? '#0a3b5c' : '#3730a3';
+      const roleBg    = a.role_template === 'owner' ? '#e6eef5' : '#e0e7ff';
       return `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:#fff">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:14px">${escapeHtml(a.display_name || a.username)}${isMe ? ' <span style="font-size:10px;background:var(--blue-l);color:var(--blue);padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">you</span>' : ''}${a.is_default_pw ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">temp pw</span>' : ''}${!a.active ? ' <span style="font-size:10px;background:#f3f4f6;color:#4b5563;padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">inactive</span>' : ''}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(a.username)} · last login ${escapeHtml(last)}</div>
+            <div style="font-weight:600;font-size:14px">${escapeHtml(a.display_name || a.username)}${isMe ? ' <span style="font-size:10px;background:var(--blue-l);color:var(--blue);padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">you</span>' : ''} <span style="font-size:10px;background:${roleBg};color:${roleColor};padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(roleLabel)}</span>${a.is_default_pw ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">temp pw</span>' : ''}${!a.active ? ' <span style="font-size:10px;background:#f3f4f6;color:#4b5563;padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">inactive</span>' : ''}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(a.username)} · last login ${escapeHtml(last)}${(a.scopes && a.scopes.length) ? ' · scopes: ' + escapeHtml(a.scopes.join(', ')) : ''}</div>
           </div>
           ${a.active && !isMe ? `
             <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn" style="padding:6px 12px;font-size:11px;background:transparent;color:var(--blue);border:1.5px solid var(--border)" onclick="changeRole('${a.id}','${escapeHtml(a.display_name || a.username).replace(/'/g, '\\\'')}','${escapeHtml(a.role_template || 'membership')}')">Change role</button>
               <button class="btn" style="padding:6px 12px;font-size:11px;background:transparent;color:var(--blue);border:1.5px solid var(--border)" onclick="resetAdmin('${a.id}','${escapeHtml(a.display_name || a.username).replace(/'/g, '\\\'')}')">Reset PW</button>
               <button class="btn" style="padding:6px 12px;font-size:11px;background:transparent;color:var(--red);border:1.5px solid var(--border)" onclick="deactivateAdmin('${a.id}','${escapeHtml(a.display_name || a.username).replace(/'/g, '\\\'')}')">Remove</button>
             </div>` : ''}
@@ -581,16 +646,32 @@ async function loadAdmins() {
   }
 }
 
+async function changeRole(id, name, currentRole) {
+  const ROLE_OPTIONS = ['owner', 'treasurer', 'membership', 'events', 'communications'];
+  const choice = prompt(`Change ${name}'s role.\n\nOptions: ${ROLE_OPTIONS.join(', ')}\n\nCurrent: ${currentRole}`, currentRole);
+  if (!choice || !ROLE_OPTIONS.includes(choice.toLowerCase())) return;
+  const r = await call(ME_URL, 'update_admin_role', { id, role_template: choice.toLowerCase() });
+  if (!r.ok) { toast(r.error || 'Failed', 'err'); return; }
+  toast('Role updated.');
+  await loadAdmins();
+}
+
 async function inviteAdmin() {
   const btn = document.getElementById('invite-btn');
   const display_name = document.getElementById('i-display_name').value.trim();
   const email        = document.getElementById('i-email').value.trim().toLowerCase();
+  const role_template = document.getElementById('i-role').value;
+  const phone        = document.getElementById('i-phone').value.trim();
+  const scopes       = collectScopes();
   const result = document.getElementById('invite-result');
   result.style.display = 'none';
   if (!display_name || !email) { toast('Name and email are required', 'err'); return; }
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
   try {
-    const r = await call(ME_URL, 'invite_admin', { display_name, email, username: email });
+    const payload = { display_name, email, username: email, role_template };
+    if (scopes !== null) payload.scopes = scopes;
+    if (phone) payload.phone_e164 = phone;
+    const r = await call(ME_URL, 'invite_admin', payload);
     if (!r.ok) throw new Error(r.error || 'Invite failed');
     if (r.reactivated) {
       result.style.display = 'block';
@@ -639,7 +720,7 @@ async function deactivateAdmin(id, name) {
     ME_USER = me.user;
     document.title = `Settings — ${TENANT.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user);
   } catch (e) { logout(); return; }
   try {
     const data = await call(SETTINGS_URL, 'get');
@@ -648,6 +729,8 @@ async function deactivateAdmin(id, name) {
     populate(LAST_SETTINGS);
   } catch (e) { showErr(e.message); }
   loadAdmins();
+  loadRoleTemplates();
+  document.getElementById('i-role').addEventListener('change', paintScopePicker);
 })();
 </script>
 </body>

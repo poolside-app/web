@@ -211,7 +211,7 @@ document.querySelectorAll('#entity-filter button').forEach(b => {
     if (!me.ok) { logout(); return; }
     document.title = `Activity log — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply(me.tenant.features || {});
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user);
   } catch { logout(); return; }
   try {
     const data = await call('list', { limit: 200 });

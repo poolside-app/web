@@ -124,6 +124,7 @@ const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
 const PROGRAMS_URL = `${SUPABASE_URL}/functions/v1/programs`;
 const VOLUNTEER_URL = `${SUPABASE_URL}/functions/v1/volunteer`;
 const CAMPAIGNS_URL = `${SUPABASE_URL}/functions/v1/campaigns`;
+const TASKS_URL = `${SUPABASE_URL}/functions/v1/admin_tasks`;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -174,7 +175,7 @@ document.getElementById('signout').addEventListener('click', logout);
   const { user, tenant } = data;
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
-    if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {});
+    if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user);
 
   if (user.impersonated) {
     const banner = document.createElement('div');
@@ -221,6 +222,12 @@ document.getElementById('signout').addEventListener('click', logout);
     <div class="card" id="activity-card">
       <h2>What needs your attention</h2>
       <div class="placeholder">Loading…</div>
+    </div>
+
+    <div class="card" id="tasks-card" style="display:none">
+      <h2>Your tasks</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to your role. First admin to handle one closes it for everyone.</p>
+      <div id="tasks-list"></div>
     </div>
 
     <div class="card">
@@ -324,7 +331,54 @@ document.getElementById('signout').addEventListener('click', logout);
     document.getElementById('activity-card').innerHTML = `<h2>What needs your attention</h2><div class="placeholder">Couldn't load activity feed.</div>`;
     ['pay-count','ev-count','prog-count','camp-count'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '–'; });
   }
+
+  // Per-role task queue (admin_tasks)
+  try {
+    const r = await fetch(TASKS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'list' }),
+    });
+    const tdata = await r.json();
+    if (!tdata.ok) throw new Error(tdata.error || 'Failed');
+    const tasks = tdata.tasks || [];
+    if (!tasks.length) return;
+    const card = document.getElementById('tasks-card');
+    const list = document.getElementById('tasks-list');
+    card.style.display = 'block';
+    const KIND_ICON = {
+      'application.submitted': '📨',
+      'venmo.claim':           '💸',
+      'party.requested':       '🎉',
+    };
+    list.innerHTML = tasks.map(t => {
+      const ageHours = Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / 3600_000));
+      const age = ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`;
+      return `
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff">
+          <div style="font-size:20px;flex-shrink:0">${KIND_ICON[t.kind] || '🔔'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${escapeHtml(t.summary)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(age)} · ${escapeHtml((t.target_scopes || []).join(', ') || 'owners')}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${t.link_url ? `<a href="${escapeHtml(t.link_url)}" style="padding:6px 12px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px 'Inter'">Open</a>` : ''}
+            <button onclick="completeTask('${t.id}')" style="padding:6px 12px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font:600 12px 'Inter';cursor:pointer">✓ Done</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch { /* non-critical */ }
 })();
+
+async function completeTask(id) {
+  const t = localStorage.getItem('poolside_tenant_token');
+  await fetch(`${SUPABASE_URL}/functions/v1/admin_tasks`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action: 'complete', id }),
+  });
+  window.location.reload();
+}
 </script>
 </body>
 </html>
