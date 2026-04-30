@@ -214,6 +214,7 @@
       <textarea id="body" maxlength="2000"></textarea>
     </div>
 
+    <div class="err" id="err-top" style="margin-bottom:14px"></div>
     <div class="err" id="err"></div>
 
     <div class="nav-row">
@@ -467,13 +468,26 @@ function showStep(n) {
 }
 function goBack() { if (CURRENT_STEP > 1) showStep(CURRENT_STEP - 1); }
 function goNext() {
+  // Visible button-press acknowledgement so users on slow phones can tell
+  // their tap actually registered (even if validation then blocks them).
+  const btn = document.getElementById('next-btn');
+  if (btn) { btn.style.opacity = '0.6'; setTimeout(() => { btn.style.opacity = ''; }, 150); }
+  // Wrap the whole flow in a try/catch so any unexpected error surfaces
+  // as a visible message rather than failing silently.
+  try { return _goNext(); } catch (e) { show('Error: ' + (e && e.message ? e.message : e)); }
+}
+function _goNext() {
   const errEl = document.getElementById('err'); errEl.classList.remove('show');
+  const errTop = document.getElementById('err-top'); if (errTop) errTop.classList.remove('show');
   if (CURRENT_STEP === 1) {
     const fam   = document.getElementById('family_name');
     const addr  = document.getElementById('address');
     const phone = document.getElementById('primary_phone');
     const email = document.getElementById('primary_email');
     const emerg = document.getElementById('emergency_contact');
+    if (!fam || !addr || !phone || !email || !emerg) {
+      return show('Form missing fields — try refreshing the page (cache may be stale).');
+    }
     if (!fam.value.trim())   return showField(fam,   'Family last name is required');
     if (!addr.value.trim())  return showField(addr,  'Address is required');
     if (!phone.value.trim()) return showField(phone, 'Primary phone is required');
@@ -497,18 +511,32 @@ function goNext() {
   showStep(CURRENT_STEP + 1);
   if (CURRENT_STEP === 2) rebuildPeople();
 }
+
+// Belt-and-suspenders click handler so even if the inline onclick attribute
+// is interfered with (some browsers + content blockers do this), the button
+// still works.
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('next-btn');
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => goNext());
+  }
+});
 function show(msg) {
-  const el = document.getElementById('err');
-  el.textContent = msg;
-  el.classList.add('show');
-  // Scroll the error into view — the most common "Next button doesn't work"
-  // complaint is the user not seeing the validation error below the button.
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Show the error in BOTH locations so it's visible no matter where the
+  // user is scrolled. Top banner catches eyes; bottom pill is next to the
+  // button. iOS Safari sometimes ignores smooth-scroll, so we use 'auto'
+  // and scroll to the top banner.
+  const top = document.getElementById('err-top');
+  const bot = document.getElementById('err');
+  if (top) { top.textContent = msg; top.classList.add('show'); }
+  if (bot) { bot.textContent = msg; bot.classList.add('show'); }
+  if (top) top.scrollIntoView({ behavior: 'auto', block: 'center' });
 }
 function showField(input, msg) {
   show(msg);
   if (input) {
-    input.focus();
+    try { input.focus({ preventScroll: false }); } catch { input.focus(); }
     input.style.borderColor = '#dc2626';
     input.style.boxShadow = '0 0 0 3px rgba(220,38,38,.15)';
     input.addEventListener('input', () => {
