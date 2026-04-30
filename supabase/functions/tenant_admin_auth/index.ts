@@ -219,5 +219,109 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── Co-admin management ────────────────────────────────────────────────
+  // Volunteer boards rotate. The first admin (from tenant_signup) needs to
+  // grant access to the treasurer + secretary + president without dragging
+  // Doug in. Anyone with an active admin_users row can manage their peers
+  // — board self-governance, no super-admin tier required.
+
+  if (action === 'list_admins') {
+    const { data, error } = await sb.from('admin_users')
+      .select('id, username, email, display_name, notify_pref, is_default_pw, is_super, active, last_login_at, created_at')
+      .eq('tenant_id', payload.tid)
+      .order('created_at', { ascending: true });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, admins: data ?? [] });
+  }
+
+  if (action === 'invite_admin') {
+    const usernameRaw = String(body.username ?? '').trim().toLowerCase();
+    const email       = String(body.email ?? '').trim().toLowerCase();
+    const display_name = String(body.display_name ?? '').trim();
+    const username = usernameRaw || email;
+    if (!username || !username.includes('@')) {
+      return jsonResponse({ ok: false, error: 'Email-shaped username is required' }, 400);
+    }
+    if (!display_name) return jsonResponse({ ok: false, error: 'Name is required' }, 400);
+
+    // Make sure they don't already exist on this tenant
+    const { data: clash } = await sb.from('admin_users').select('id, active')
+      .eq('tenant_id', payload.tid).eq('username', username).maybeSingle();
+    if (clash) {
+      if (clash.active) return jsonResponse({ ok: false, error: 'That admin already exists' }, 409);
+      // Reactivate stale row
+      await sb.from('admin_users').update({ active: true, display_name, email: email || username }).eq('id', clash.id);
+      return jsonResponse({ ok: true, admin_id: clash.id, reactivated: true });
+    }
+
+    // Generate a temporary password — admin must change on first login.
+    const bytes = new Uint8Array(9);
+    crypto.getRandomValues(bytes);
+    const tempPw = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '').slice(0, 12);
+    const hash = await bcrypt.hash(tempPw, 10);
+
+    const { data, error } = await sb.from('admin_users').insert({
+      tenant_id: payload.tid,
+      username, email: email || username, display_name,
+      password_hash: hash,
+      notify_pref: 'email',
+      is_default_pw: true, active: true,
+    }).select('id, username, display_name, email').single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid, kind: 'admin.invited', entity_type: 'admin_user', entity_id: data.id,
+        summary: `Invited ${display_name} (${username}) as a co-admin`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+      });
+    } catch { /* ignore */ }
+
+    // For now we hand the temporary password back to the caller so the
+    // inviting admin can share it directly. When Resend is wired up this
+    // will become an email + a one-time link.
+    return jsonResponse({ ok: true, admin_id: data.id, temp_password: tempPw });
+  }
+
+  if (action === 'deactivate_admin') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    if (id === payload.sub) return jsonResponse({ ok: false, error: 'Can\'t deactivate yourself' }, 400);
+    // Don't strand the tenant — refuse if this is the last active admin
+    const { count } = await sb.from('admin_users').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', payload.tid).eq('active', true);
+    if ((count ?? 0) <= 1) {
+      return jsonResponse({ ok: false, error: 'At least one admin must remain active' }, 400);
+    }
+    const { error } = await sb.from('admin_users').update({ active: false })
+      .eq('id', id).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid, kind: 'admin.deactivated', entity_type: 'admin_user', entity_id: id,
+        summary: 'Co-admin deactivated', actor_id: payload.sub, actor_kind: 'tenant_admin',
+      });
+    } catch { /* ignore */ }
+    return jsonResponse({ ok: true });
+  }
+
+  if (action === 'reset_admin_password') {
+    // Reset a peer's password — generates a fresh temp, returns it to caller
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: target } = await sb.from('admin_users').select('id, tenant_id, active')
+      .eq('id', id).maybeSingle();
+    if (!target || target.tenant_id !== payload.tid) return jsonResponse({ ok: false, error: 'Admin not found' }, 404);
+    const bytes = new Uint8Array(9);
+    crypto.getRandomValues(bytes);
+    const tempPw = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '').slice(0, 12);
+    const hash = await bcrypt.hash(tempPw, 10);
+    const { error } = await sb.from('admin_users')
+      .update({ password_hash: hash, is_default_pw: true })
+      .eq('id', id).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, temp_password: tempPw });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

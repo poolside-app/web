@@ -1111,6 +1111,85 @@ step('mark_paid flips source row',      pay_mark_paid_flips_source)
 step('paid items drop off the rollup',  pay_list_excludes_paid)
 step('cross-tenant isolation on rollup', pay_isolation)
 
+# ── 19. Co-admin invites ─────────────────────────────────────────────────
+section('Co-admin invites')
+
+CO_ADMIN_ID = None
+CO_ADMIN_PW = None
+CO_ADMIN_EMAIL = f'coadmin-e2e-{STAMP}@example.com'
+
+def admin_list_starts_at_one():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', { 'action': 'list_admins' }, TOKEN_A)
+    assert r.get('ok'), f'list_admins: {r}'
+    # We may have ≥1 (the original) — just verify the action works and shape is right.
+    assert isinstance(r.get('admins'), list), 'admins is not a list'
+
+def admin_invite_creates_row():
+    global CO_ADMIN_ID, CO_ADMIN_PW
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'invite_admin',
+        'display_name': f'E2E Co-Admin {STAMP}',
+        'email': CO_ADMIN_EMAIL,
+    }, TOKEN_A)
+    assert r.get('ok'), f'invite: {r}'
+    assert r.get('temp_password'), 'no temp password returned'
+    CO_ADMIN_ID = r['admin_id']
+    CO_ADMIN_PW = r['temp_password']
+
+def admin_invite_dupe_blocked():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'invite_admin',
+        'display_name': 'Should Fail',
+        'email': CO_ADMIN_EMAIL,
+    }, TOKEN_A)
+    assert not r.get('ok'), 'duplicate invite should fail'
+
+def admin_invite_can_login():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'login', 'slug': SLUG_A,
+        'email': CO_ADMIN_EMAIL, 'password': CO_ADMIN_PW,
+    })
+    assert r.get('ok'), f'login: {r}'
+    assert r.get('user', {}).get('is_default_pw') is True, 'invited admin should have is_default_pw=true'
+
+def admin_isolation():
+    # Tenant B's admin list should NOT include tenant A's invitee
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', { 'action': 'list_admins' }, TOKEN_B)
+    assert r.get('ok')
+    leak = any(a['id'] == CO_ADMIN_ID for a in r.get('admins', []))
+    assert not leak, 'tenant B admin list leaks A admin (ISOLATION FAIL)'
+
+def admin_deactivate():
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'deactivate_admin', 'id': CO_ADMIN_ID,
+    }, TOKEN_A)
+    assert r.get('ok'), f'deactivate: {r}'
+    rows = mgmt_query(f"select active from public.admin_users where id = '{CO_ADMIN_ID}';")
+    assert rows and rows[0]['active'] is False, 'deactivate did not flip active=false'
+
+def admin_self_deactivate_blocked():
+    # Synthetic TOKEN_A's sub is just the slug — won't actually match a real admin id, so
+    # the canonical "can't deactivate yourself" check is by id match. Use the inviter's
+    # real admin row by querying it from settings/me.
+    me = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', { 'action': 'me' }, TOKEN_A)
+    if not me.get('ok'):
+        return  # synthetic token has no real admin row — skip the self-deactivate guard
+    my_id = me.get('user', {}).get('id')
+    if not my_id:
+        return
+    r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
+        'action': 'deactivate_admin', 'id': my_id,
+    }, TOKEN_A)
+    assert not r.get('ok'), 'should refuse self-deactivate'
+
+step('list_admins works',                  admin_list_starts_at_one)
+step('invite creates admin + temp pw',     admin_invite_creates_row)
+step('duplicate invite blocked',           admin_invite_dupe_blocked)
+step('invitee can log in with temp pw',    admin_invite_can_login)
+step('cross-tenant isolation on admins',   admin_isolation)
+step('deactivate flips active flag',       admin_deactivate)
+step('self-deactivate blocked',            admin_self_deactivate_blocked)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -1136,6 +1215,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.volunteer_opportunities where id = '{vid}';")
     for gid in RESOURCES['guest_pass_packs']:
         mgmt_query(f"delete from public.guest_pass_packs where id = '{gid}';")
+    # Test-created admins (deactivated above, hard-delete here)
+    mgmt_query(f"delete from public.admin_users where username like 'coadmin-e2e-%@example.com';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 

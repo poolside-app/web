@@ -282,6 +282,23 @@
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
     <button class="btn" id="save-btn-2" onclick="save()">Save changes</button>
   </div>
+
+  <div class="card" id="admins-card" style="margin-top:18px">
+    <h2>Club admins</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Anyone listed here can sign in to this admin dashboard. Each admin needs their own login — no shared accounts.</p>
+    <div id="admins-list" style="margin-bottom:14px"><div style="font-size:13px;color:var(--muted)">Loading…</div></div>
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <h3 style="font-size:14px;margin:0 0 8px">Invite a co-admin</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label>Their name</label><input id="i-display_name" placeholder="Jane Smith"></div>
+        <div><label>Their email</label><input id="i-email" type="email" placeholder="jane@example.com"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
+        <button class="btn" id="invite-btn" onclick="inviteAdmin()">Send invite</button>
+      </div>
+      <div id="invite-result" style="display:none;margin-top:12px;padding:14px 16px;background:#dcfce7;border:1px solid #86efac;color:#14532d;border-radius:10px;font-size:13px"></div>
+    </div>
+  </div>
 </main>
 
 <div class="toast" id="toast">Saved.</div>
@@ -532,12 +549,93 @@ async function save() {
   }
 }
 
+let ME_USER = null;
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadAdmins() {
+  try {
+    const r = await call(ME_URL, 'list_admins');
+    if (!r.ok) throw new Error(r.error || 'Failed to load admins');
+    const list = document.getElementById('admins-list');
+    if (!r.admins.length) { list.innerHTML = '<div style="color:var(--muted);font-size:13px">Just you so far.</div>'; return; }
+    list.innerHTML = r.admins.map(a => {
+      const isMe = ME_USER && a.id === ME_USER.id;
+      const last = a.last_login_at ? new Date(a.last_login_at).toLocaleDateString() : 'never';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:#fff">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${escapeHtml(a.display_name || a.username)}${isMe ? ' <span style="font-size:10px;background:var(--blue-l);color:var(--blue);padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">you</span>' : ''}${a.is_default_pw ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">temp pw</span>' : ''}${!a.active ? ' <span style="font-size:10px;background:#f3f4f6;color:#4b5563;padding:2px 8px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">inactive</span>' : ''}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(a.username)} · last login ${escapeHtml(last)}</div>
+          </div>
+          ${a.active && !isMe ? `
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn" style="padding:6px 12px;font-size:11px;background:transparent;color:var(--blue);border:1.5px solid var(--border)" onclick="resetAdmin('${a.id}','${escapeHtml(a.display_name || a.username).replace(/'/g, '\\\'')}')">Reset PW</button>
+              <button class="btn" style="padding:6px 12px;font-size:11px;background:transparent;color:var(--red);border:1.5px solid var(--border)" onclick="deactivateAdmin('${a.id}','${escapeHtml(a.display_name || a.username).replace(/'/g, '\\\'')}')">Remove</button>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('admins-list').innerHTML = `<div style="color:var(--red);font-size:13px">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function inviteAdmin() {
+  const btn = document.getElementById('invite-btn');
+  const display_name = document.getElementById('i-display_name').value.trim();
+  const email        = document.getElementById('i-email').value.trim().toLowerCase();
+  const result = document.getElementById('invite-result');
+  result.style.display = 'none';
+  if (!display_name || !email) { toast('Name and email are required', 'err'); return; }
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const r = await call(ME_URL, 'invite_admin', { display_name, email, username: email });
+    if (!r.ok) throw new Error(r.error || 'Invite failed');
+    if (r.reactivated) {
+      result.style.display = 'block';
+      result.textContent = `Reactivated ${display_name} — they can sign in with their existing password.`;
+    } else {
+      result.style.display = 'block';
+      result.innerHTML = `
+        <b>${escapeHtml(display_name)}</b> invited.<br>
+        Share these credentials with them — they'll be prompted to change their password on first login:<br>
+        <div style="margin-top:8px;padding:10px;background:#fff;border:1px dashed var(--green);border-radius:8px;font-family:monospace;font-size:13px">
+          <div>Email: <b>${escapeHtml(email)}</b></div>
+          <div>Temp password: <b>${escapeHtml(r.temp_password)}</b></div>
+        </div>`;
+    }
+    document.getElementById('i-display_name').value = '';
+    document.getElementById('i-email').value = '';
+    await loadAdmins();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function resetAdmin(id, name) {
+  if (!confirm(`Reset password for ${name}?`)) return;
+  const r = await call(ME_URL, 'reset_admin_password', { id });
+  if (!r.ok) { toast(r.error || 'Failed', 'err'); return; }
+  alert(`New temporary password for ${name}:\n\n${r.temp_password}\n\nShare it with them — they'll be prompted to change it on first login.`);
+}
+
+async function deactivateAdmin(id, name) {
+  if (!confirm(`Remove ${name} as a club admin? They'll lose access immediately.`)) return;
+  const r = await call(ME_URL, 'deactivate_admin', { id });
+  if (!r.ok) { toast(r.error || 'Failed', 'err'); return; }
+  toast('Removed.');
+  await loadAdmins();
+}
+
 (async () => {
   if (!token()) { logout(); return; }
   try {
     const me = await call(ME_URL, 'me');
     if (!me.ok) { logout(); return; }
     TENANT = me.tenant;
+    ME_USER = me.user;
     document.title = `Settings — ${TENANT.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
@@ -548,6 +646,7 @@ async function save() {
     LAST_SETTINGS = data.settings || {};
     populate(LAST_SETTINGS);
   } catch (e) { showErr(e.message); }
+  loadAdmins();
 })();
 </script>
 </body>
