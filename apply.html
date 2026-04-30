@@ -79,25 +79,6 @@
 </head>
 <body>
 <header><a href="/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">…</span></a></header>
-<div id="diagnostic-strip" style="position:sticky;top:0;z-index:9999;background:#fef3c7;border-bottom:2px solid #f59e0b;padding:10px 16px;text-align:center;font-size:13px;font-family:Inter,sans-serif">
-  <button type="button" id="diag-btn" style="padding:10px 20px;background:#dc2626;color:#fff;border:0;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer">TAP THIS BUTTON</button>
-  <div style="margin-top:6px;color:#92400e">Diag taps: <b id="diag-count">0</b></div>
-</div>
-<script>
-  // Standalone script — should fire even if main script breaks.
-  (function () {
-    var btn = document.getElementById('diag-btn');
-    var ct = document.getElementById('diag-count');
-    if (!btn || !ct) return;
-    function bump(label) {
-      var n = (window.__diagCount || 0) + 1; window.__diagCount = n;
-      ct.textContent = n + ' (' + label + ' @ ' + new Date().toLocaleTimeString() + ')';
-    }
-    btn.onclick = function () { bump('click'); };
-    btn.addEventListener('touchend', function () { bump('touchend'); });
-    btn.addEventListener('pointerup', function () { bump('pointerup'); });
-  })();
-</script>
 <script>
   // Paint a slug-based fallback brand name BEFORE the main script loads so
   // visitors never see "Poolside" if the API call is slow or cached.
@@ -215,9 +196,13 @@
       </div>
     </div>
 
-    <!-- Step 4 — Payment + submit -->
+    <!-- Step 4 — Tier + payment + submit -->
     <div class="step" data-step="4" style="display:none">
-      <h2>Payment</h2>
+      <h2>Membership tier</h2>
+      <p class="lede" style="margin-top:0">Pick the level that fits your household. Admin can adjust on approval.</p>
+      <div id="tiers-box"><div style="color:var(--muted);font-size:13px">Loading tiers…</div></div>
+
+      <h2 style="margin-top:24px">Payment</h2>
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
       <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()"> 💸 Venmo — admin verifies, then you're set</label>
       <label class="pay-opt"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
@@ -239,18 +224,10 @@
     <div class="err" id="err-top" style="margin-bottom:14px"></div>
     <div class="err" id="err"></div>
 
-    <div id="tap-debug" style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0;padding:6px;background:#fef9c3;border-radius:6px">
-      Tap counter: <b id="tap-count">0</b> · last action: <span id="tap-last">none</span>
-    </div>
-
     <div class="nav-row">
       <button type="button" class="btn btn-ghost" id="back-btn" onclick="goBack()" style="visibility:hidden">← Back</button>
-      <button type="button" class="btn btn-primary" id="next-btn"
-              onclick="goNext()"
-              ontouchstart="window.__tapCount = (window.__tapCount||0)+1; var c=document.getElementById('tap-count'); if(c)c.textContent=window.__tapCount; var l=document.getElementById('tap-last'); if(l)l.textContent='touchstart @ '+new Date().toLocaleTimeString();"
-              style="position:relative;z-index:10">Next →</button>
+      <button type="button" class="btn btn-primary" id="next-btn" onclick="goNext()">Next →</button>
     </div>
-    <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:18px">If the Next button below isn't responding, try the fixed bar at the bottom of the screen.</p>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;text-align:center">Already a member? <a href="/m/login.html">Sign in</a></p>
   </div>
 </main>
@@ -267,26 +244,37 @@
   </div>
 </div>
 
-<div id="fixed-next-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-top:1px solid #e5e7eb;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 -4px 12px rgba(0,0,0,.05)">
-  <button type="button" id="fixed-back-btn" onclick="goBack()" style="visibility:hidden;padding:10px 14px;background:transparent;color:#0a3b5c;border:1.5px solid #e5e7eb;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">← Back</button>
-  <button type="button" id="fixed-next-btn" onclick="goNext()" style="padding:12px 24px;background:#0a3b5c;color:#fff;border:0;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;flex:1;max-width:240px">Next →</button>
-</div>
-<script>
-  // Mirror the back button's visibility state from the in-form one.
-  (function () {
-    var origObs = document.getElementById('back-btn');
-    var fb = document.getElementById('fixed-back-btn');
-    function syncBack() { if (origObs && fb) fb.style.visibility = origObs.style.visibility || 'visible'; }
-    syncBack();
-    new MutationObserver(syncBack).observe(origObs, { attributes: true, attributeFilter: ['style'] });
-  })();
-</script>
-<footer style="padding-bottom:80px">Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30g</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30h</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
 let TENANT_PUBLIC = null;  // populated on boot from tenant_public
+
+function paintTiers() {
+  const box = document.getElementById('tiers-box');
+  if (!box) return;
+  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  if (!tiers.length) {
+    box.innerHTML = '<div style="font-size:13px;color:var(--muted)">No tiers configured — admin will set yours on approval.</div>';
+    return;
+  }
+  box.innerHTML = tiers.map((t, i) => {
+    const slug = t.slug || ('tier_' + i);
+    const label = t.label || slug;
+    const price = (typeof t.price_cents === 'number' && t.price_cents > 0) ? '$' + (t.price_cents / 100).toFixed(2) + '/yr' : 'Contact for pricing';
+    const desc = t.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(t.description)}</div>` : '';
+    const checked = i === 0 ? 'checked' : '';
+    return `
+      <label class="pay-opt" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+        <input type="radio" name="tier_slug" value="${escapeAttr(slug)}" ${checked} style="margin-top:3px">
+        <div style="flex:1">
+          <div style="font-weight:600">${escapeHtml(label)} — <span style="color:var(--blue)">${escapeHtml(price)}</span></div>
+          ${desc}
+        </div>
+      </label>`;
+  }).join('');
+}
 
 function paintVenmoQR() {
   const block = document.getElementById('venmo-block');
@@ -298,7 +286,10 @@ function paintVenmoQR() {
   // Strip any leading @ the admin saved
   const h = handle.replace(/^@+/, '');
   const noteRaw = `${(TENANT_PUBLIC?.tenant?.display_name || 'Pool club')} membership dues`;
-  const url = `https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(h)}&note=${encodeURIComponent(noteRaw)}`;
+  // Modern Venmo deep link: handle goes in path, params as query. Universal
+  // link: opens the Venmo app on mobile if installed, falls through to the
+  // profile page on web. The legacy `?recipients=` format silently fails.
+  const url = `https://venmo.com/${encodeURIComponent(h)}?txn=pay&note=${encodeURIComponent(noteRaw)}`;
   const linkEl = document.getElementById('venmo-link');
   linkEl.href = url;
   document.getElementById('venmo-handle-line').textContent = `@${h}`;
@@ -644,6 +635,7 @@ async function submitApplication() {
     num_kids:   children.length,
     body:    get('body') || null,
     payment_method: (document.querySelector('input[name="payment_method"]:checked')?.value || '') || null,
+    tier_slug: (document.querySelector('input[name="tier_slug"]:checked')?.value || '') || null,
 
     is_new_member:    document.getElementById('is_new_member').checked,
     need_new_fob:     document.getElementById('need_new_fob').checked,
@@ -738,6 +730,7 @@ async function submitApplication() {
   } catch { /* keep generic */ }
   rebuildPeople();
   await loadPolicies();
+  paintTiers();
   paintVenmoQR();
 })();
 </script>

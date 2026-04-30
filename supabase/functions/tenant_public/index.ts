@@ -143,6 +143,12 @@ Deno.serve(async (req) => {
   const programs = programsData ?? [];
 
   // Strip the internal id from the response — clients don't need it.
+  // Membership tiers (Family / Single / Senior etc.) — admin defines the
+  // list via Settings → Tiers. Applicants pick one on Step 4 of the apply
+  // form. Empty array = no tier picker shown (graceful fallback).
+  const rawTiers = (settings?.value as Record<string, unknown> | undefined)?.membership_tiers;
+  const tiers = Array.isArray(rawTiers) ? rawTiers : [];
+
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos, documents, programs });
+  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos, documents, programs, tiers });
 });

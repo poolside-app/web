@@ -101,7 +101,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, created_at, updated_at';
 
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'venmo']);
 
@@ -207,6 +207,7 @@ Deno.serve(async (req) => {
       accepted_at: allWaiversAccepted ? new Date().toISOString() : null,
       signature_primary:  sigPrimary,
       signature_guardian: sigGuardian,
+      tier_slug: strOrNull(body.tier_slug),
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
@@ -299,7 +300,8 @@ Deno.serve(async (req) => {
     if (clash) return jsonResponse({ ok: false, error: 'Another active member already uses that phone number' }, 409);
 
     const ovr = (body.override ?? {}) as Record<string, unknown>;
-    const tier = strOrNull(ovr.tier) ?? 'family';
+    // Tier resolution order: admin override > applicant's selected tier > 'family' default
+    const tier = strOrNull(ovr.tier) ?? strOrNull(app.tier_slug) ?? 'family';
     const fob_number = strOrNull(ovr.fob_number);
     const paid_until_year = ovr.paid_until_year !== undefined && ovr.paid_until_year !== ''
       ? Math.trunc(Number(ovr.paid_until_year) || 0) : null;

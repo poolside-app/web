@@ -217,6 +217,13 @@
   </div>
 
   <div class="card">
+    <h2>Membership tiers</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Levels members pick from on the apply form. The first tier is the default. Leave price blank if you bill per-household manually.</p>
+    <div id="tiers-list" style="margin-bottom:12px"></div>
+    <button class="btn-ghost btn" type="button" onclick="addTier()" style="font-size:13px">+ Add tier</button>
+  </div>
+
+  <div class="card">
     <h2>Features</h2>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Tick what applies — admin tabs reveal accordingly.</p>
     <label class="feature">
@@ -500,6 +507,7 @@ function populate(s) {
   setChk('feat_guest_passes', s.features?.guest_passes ?? true);
   setChk('feat_keyfobs',      s.features?.keyfobs      ?? false);
   setChk('feat_gate',         s.features?.gate         ?? false);
+  paintTiers(Array.isArray(s.membership_tiers) ? s.membership_tiers : null);
   toggleFobDay();
 }
 
@@ -545,6 +553,7 @@ function collect(prevSettings) {
       keyfobs:      !!document.getElementById('feat_keyfobs').checked,
       gate:         !!document.getElementById('feat_gate').checked,
     },
+    membership_tiers: collectTiers(),
   };
 }
 
@@ -572,6 +581,50 @@ async function save() {
 let ME_USER = null;
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── Membership tiers editor ──────────────────────────────────────────────
+const TIER_DEFAULTS = [
+  { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members' },
+  { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },
+  { slug: 'senior', label: 'Senior',  price_cents: 25000, description: '65+' },
+];
+function paintTiers(tiers) {
+  const list = document.getElementById('tiers-list');
+  if (!list) return;
+  // First-time tenants get sensible defaults so they can edit, not start empty
+  const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
+  list.innerHTML = rows.map((t, i) => `
+    <div class="tier-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end" data-i="${i}">
+      <div><label style="font-size:11px;margin:0 0 2px">Label</label><input data-field="label" value="${(t.label || '').replace(/"/g, '&quot;')}" placeholder="Family"></div>
+      <div><label style="font-size:11px;margin:0 0 2px">Slug <span style="color:var(--muted);font-weight:400">(lowercase)</span></label><input data-field="slug" value="${(t.slug || '').replace(/"/g, '&quot;')}" placeholder="family"></div>
+      <div><label style="font-size:11px;margin:0 0 2px">Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}"></div>
+      <button type="button" onclick="this.parentElement.remove()" style="padding:8px 10px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px">×</button>
+      <div style="grid-column:1/-1"><label style="font-size:11px;margin:0 0 2px">Description (optional)</label><input data-field="description" value="${(t.description || '').replace(/"/g, '&quot;')}" placeholder="What this tier covers"></div>
+    </div>
+  `).join('');
+}
+function collectTiers() {
+  const out = [];
+  document.querySelectorAll('#tiers-list .tier-row').forEach(row => {
+    const get = (f) => (row.querySelector(`[data-field="${f}"]`) || {}).value || '';
+    const label = get('label').trim();
+    if (!label) return;
+    const slug = (get('slug').trim() || label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const price = parseFloat(get('price'));
+    const desc = get('description').trim();
+    out.push({
+      slug, label,
+      price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0,
+      description: desc || null,
+    });
+  });
+  return out;
+}
+function addTier() {
+  const tiers = collectTiers();
+  tiers.push({ slug: '', label: '', price_cents: 0, description: '' });
+  paintTiers(tiers);
+}
 
 let ROLE_TEMPLATES = {};
 let ALL_SCOPES = [];
