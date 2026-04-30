@@ -79,6 +79,25 @@
 </head>
 <body>
 <header><a href="/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">…</span></a></header>
+<div id="diagnostic-strip" style="position:sticky;top:0;z-index:9999;background:#fef3c7;border-bottom:2px solid #f59e0b;padding:10px 16px;text-align:center;font-size:13px;font-family:Inter,sans-serif">
+  <button type="button" id="diag-btn" style="padding:10px 20px;background:#dc2626;color:#fff;border:0;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer">TAP THIS BUTTON</button>
+  <div style="margin-top:6px;color:#92400e">Diag taps: <b id="diag-count">0</b></div>
+</div>
+<script>
+  // Standalone script — should fire even if main script breaks.
+  (function () {
+    var btn = document.getElementById('diag-btn');
+    var ct = document.getElementById('diag-count');
+    if (!btn || !ct) return;
+    function bump(label) {
+      var n = (window.__diagCount || 0) + 1; window.__diagCount = n;
+      ct.textContent = n + ' (' + label + ' @ ' + new Date().toLocaleTimeString() + ')';
+    }
+    btn.onclick = function () { bump('click'); };
+    btn.addEventListener('touchend', function () { bump('touchend'); });
+    btn.addEventListener('pointerup', function () { bump('pointerup'); });
+  })();
+</script>
 <script>
   // Paint a slug-based fallback brand name BEFORE the main script loads so
   // visitors never see "Poolside" if the API call is slow or cached.
@@ -247,7 +266,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30c</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30d</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
