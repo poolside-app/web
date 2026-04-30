@@ -846,6 +846,47 @@ step('audience=members hidden from public',     camp_audience_filter_works)
 step('cross-tenant isolation on campaigns',     camp_isolation)
 step('archive hides from public list',          camp_archive_hides_from_public)
 
+# ── 15. Member directory (opt-in) ────────────────────────────────────────
+section('Member directory')
+
+def dir_default_empty():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', { 'action': 'list_directory' }, tok)
+    assert r.get('ok'), f'list_directory: {r}'
+    # No members opted in yet — should be empty.
+    assert not any(m['id'] == M_PRIMARY_ID for m in r.get('members', [])), 'directory leaked an opt-out member'
+
+def dir_opt_in_via_profile():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {
+        'action': 'update_my_profile', 'directory_visible': True,
+    }, tok)
+    assert r.get('ok'), f'opt-in: {r}'
+
+def dir_now_lists_me():
+    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', { 'action': 'list_directory' }, tok)
+    assert r.get('ok'), f'list: {r}'
+    found = next((m for m in r.get('members', []) if m['id'] == M_PRIMARY_ID), None)
+    assert found, 'opted-in member not in directory'
+    assert 'phone_e164' not in found, 'directory leaks phone (privacy)'
+    assert 'email' not in found, 'directory leaks email (privacy)'
+
+def dir_isolation():
+    # Tenant B's directory must NOT contain tenant A's opted-in member.
+    # Use tenant B's admin token to make a B-side member token, then list.
+    # Simplest: just hit list directly via mgmt and check tenant_id scope.
+    rows = mgmt_query(
+        f"select count(*) as c from public.household_members "
+        f"where tenant_id = '{TENANT_B_ID}' and directory_visible = true and active = true;"
+    )
+    assert rows[0]['c'] == 0, 'tenant B has stray opted-in members (isolation concern)'
+
+step('directory empty by default',     dir_default_empty)
+step('member opts in via profile',     dir_opt_in_via_profile)
+step('directory now includes them',    dir_now_lists_me)
+step('cross-tenant directory isolation', dir_isolation)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 

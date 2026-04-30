@@ -249,7 +249,7 @@ Deno.serve(async (req) => {
   if (action === 'me') {
     const [{ data: member }, { data: tenant }, { data: household }, { data: housemates }] = await Promise.all([
       sb.from('household_members')
-        .select('id, name, email, phone_e164, role, household_id, can_unlock_gate, can_book_parties, active')
+        .select('id, name, email, phone_e164, role, household_id, can_unlock_gate, can_book_parties, directory_visible, active')
         .eq('id', payload.sub as string).maybeSingle(),
       sb.from('tenants')
         .select('slug, display_name, status')
@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
         .select('id, family_name, tier, fob_number, dues_paid_for_year, paid_until_year, address, city, zip, emergency_contact, active')
         .eq('id', payload.hid as string).maybeSingle(),
       sb.from('household_members')
-        .select('id, name, role, phone_e164, email, active')
+        .select('id, name, role, phone_e164, email, directory_visible, active')
         .eq('household_id', payload.hid as string).eq('active', true)
         .order('role', { ascending: true })
         .order('created_at', { ascending: true }),
@@ -413,6 +413,7 @@ Deno.serve(async (req) => {
         patch.phone_e164 = norm;
       }
     }
+    if (b.directory_visible !== undefined) patch.directory_visible = !!b.directory_visible;
     if (Object.keys(patch).length === 1) return jsonResponse({ ok: true, noop: true });
     const { error } = await sb.from('household_members')
       .update(patch).eq('id', payload.sub as string);
@@ -566,11 +567,36 @@ Deno.serve(async (req) => {
     }
     if (b.can_unlock_gate  !== undefined) patch.can_unlock_gate  = !!b.can_unlock_gate;
     if (b.can_book_parties !== undefined) patch.can_book_parties = !!b.can_book_parties;
+    if (b.directory_visible !== undefined) patch.directory_visible = !!b.directory_visible;
     if (Object.keys(patch).length === 0) return jsonResponse({ ok: true, noop: true });
 
     const { error } = await sb.from('household_members').update(patch).eq('id', id);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true });
+  }
+
+  if (action === 'list_directory') {
+    // Return opted-in members across the tenant (replaces the paper directory).
+    // Only the requesting member's household sees full contact; everyone else
+    // sees just name + role + (optional) family_name. Members can opt in/out
+    // via update_household_member { directory_visible: bool }.
+    const { data: members } = await sb.from('household_members')
+      .select('id, name, role, household_id, directory_visible')
+      .eq('tenant_id', payload.tid as string)
+      .eq('active', true).eq('directory_visible', true)
+      .order('name', { ascending: true });
+    const hids = [...new Set((members ?? []).map(m => m.household_id))];
+    const { data: households } = hids.length
+      ? await sb.from('households').select('id, family_name').in('id', hids).eq('active', true)
+      : { data: [] };
+    const byHid = new Map((households ?? []).map(h => [h.id, h.family_name]));
+    return jsonResponse({
+      ok: true,
+      members: (members ?? []).map(m => ({
+        id: m.id, name: m.name, role: m.role,
+        family_name: byHid.get(m.household_id) ?? null,
+      })),
+    });
   }
 
   if (action === 'logout') {

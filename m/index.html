@@ -218,6 +218,11 @@
     <input id="pr-email" type="email">
     <label>Phone</label>
     <input id="pr-phone" oninput="formatPhoneInput(this)">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:14px">
+      <input id="pr-directory" type="checkbox" style="width:auto;margin:0">
+      <span style="font-weight:500;font-size:13px">Show me in the member directory</span>
+    </label>
+    <div style="font-size:11px;color:var(--muted);margin:4px 0 0 26px">Other members will see your name + role. Off by default.</div>
     <div class="perr" id="pr-err"></div>
     <div class="pmodal-foot">
       <button class="btn btn-ghost" onclick="closeProfileModal()">Cancel</button>
@@ -541,6 +546,40 @@ async function cancelProgramBooking(bid) {
   await refreshPrograms();
 }
 
+// ── Member directory ────────────────────────────────────────────────────
+async function refreshDirectory() {
+  try {
+    const data = await callMember('list_directory');
+    if (!data.ok) return;
+    const members = data.members || [];
+    const card = document.getElementById('directory-card');
+    const body = document.getElementById('directory-body');
+    if (!card || !body) return;
+    if (!members.length) {
+      // Hide entirely if no one has opted in — nothing to show.
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    // Group by household for a more readable layout.
+    const byHh = new Map();
+    for (const m of members) {
+      const key = m.family_name || 'Unaffiliated';
+      if (!byHh.has(key)) byHh.set(key, []);
+      byHh.get(key).push(m);
+    }
+    body.className = '';
+    body.innerHTML = `
+      <p style="color:var(--muted);font-size:12px;margin:0 0 14px">${members.length} ${members.length === 1 ? 'member has' : 'members have'} opted in. ${ME_USER?.directory_visible ? '' : 'Toggle in <a onclick="openProfileModal();return false" href="#" style="cursor:pointer">your info</a> to be listed.'}</p>
+      ${[...byHh.entries()].map(([fam, list]) => `
+        <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-weight:600;font-size:13px;color:var(--blue)">${escapeHtml(fam)}</div>
+          <div style="margin-top:4px;font-size:13px">${list.map(m => `${escapeHtml(m.name)} <span style="color:var(--muted);font-size:11px">(${escapeHtml(m.role)})</span>`).join(' · ')}</div>
+        </div>`).join('')}
+    `;
+  } catch { /* ignore — non-critical */ }
+}
+
 // ── Campaign pop-up ─────────────────────────────────────────────────────
 async function showCampaignPopup() {
   try {
@@ -586,6 +625,7 @@ function openProfileModal() {
   // Display the stored E.164 in human-readable form for editing
   const phoneEl = document.getElementById('pr-phone');
   phoneEl.value = ME_USER.phone_e164 ? formatPhone(ME_USER.phone_e164) : '';
+  document.getElementById('pr-directory').checked = !!ME_USER.directory_visible;
   document.getElementById('pr-err').classList.remove('show');
   document.getElementById('profile-scrim').classList.add('open');
 }
@@ -600,6 +640,7 @@ async function submitProfile() {
       name:       document.getElementById('pr-name').value.trim() || null,
       email:      document.getElementById('pr-email').value.trim() || null,
       phone_e164: document.getElementById('pr-phone').value.trim() || null,
+      directory_visible: document.getElementById('pr-directory').checked,
     });
     if (!data.ok) throw new Error(data.error || 'Save failed');
     closeProfileModal();
@@ -780,6 +821,11 @@ async function submitProfile() {
       <div class="empty">Loading…</div>
     </div>
 
+    <div class="card" id="directory-card" style="display:none">
+      <h2>Member directory</h2>
+      <div id="directory-body" class="empty">Loading…</div>
+    </div>
+
     ${documentsHtml ? `
       <div class="card">
         <h2>Documents</h2>
@@ -823,6 +869,7 @@ async function submitProfile() {
   }
 
   refreshPrograms();
+  refreshDirectory();
   showCampaignPopup();
 
   if (user.can_book_parties) {
