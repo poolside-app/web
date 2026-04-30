@@ -1190,6 +1190,69 @@ step('cross-tenant isolation on admins',   admin_isolation)
 step('deactivate flips active flag',       admin_deactivate)
 step('self-deactivate blocked',            admin_self_deactivate_blocked)
 
+# ── 20. Editable policies ────────────────────────────────────────────────
+section('Policies (editable)')
+
+POL_ID = None
+
+def pol_seeded_for_existing_tenants():
+    # The migration seeds 5 default policies for every active tenant.
+    rows = mgmt_query(f"select count(*) as c from public.policies where tenant_id = '{TENANT_A_ID}';")
+    assert rows and rows[0]['c'] >= 5, f'expected 5+ default policies, got {rows[0]["c"]}'
+
+def pol_admin_lists_them():
+    r = post(f'{SUPABASE_URL}/functions/v1/policies', { 'action': 'list' }, TOKEN_A)
+    assert r.get('ok'), f'list: {r}'
+    slugs = {p['slug'] for p in r.get('policies', [])}
+    expected = {'rules', 'guest', 'party', 'sitter', 'waiver'}
+    missing = expected - slugs
+    assert not missing, f'missing default policy slugs: {missing}'
+
+def pol_public_list_visible():
+    r = post(f'{SUPABASE_URL}/functions/v1/policies', { 'action': 'list_public', 'slug': SLUG_A })
+    assert r.get('ok'), f'list_public: {r}'
+    assert len(r.get('policies', [])) >= 5, 'public list missing seeded policies'
+
+def pol_admin_creates_custom():
+    global POL_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/policies', {
+        'action': 'create',
+        'title': f'E2E Pet Policy {STAMP}',
+        'body':  'Replace this with your pet policy. No pets on deck.',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    POL_ID = r['policy']['id']
+
+def pol_admin_updates_body():
+    new_body = 'Updated body for E2E test pet policy.'
+    r = post(f'{SUPABASE_URL}/functions/v1/policies', {
+        'action': 'update', 'id': POL_ID, 'body': new_body,
+    }, TOKEN_A)
+    assert r.get('ok'), f'update: {r}'
+    rows = mgmt_query(f"select body from public.policies where id = '{POL_ID}';")
+    assert rows and rows[0]['body'] == new_body, 'update did not persist'
+
+def pol_isolation():
+    r = post(f'{SUPABASE_URL}/functions/v1/policies', { 'action': 'list' }, TOKEN_B)
+    assert r.get('ok')
+    leak = any(p['id'] == POL_ID for p in r.get('policies', []))
+    assert not leak, 'tenant B sees tenant A custom policy (ISOLATION FAIL)'
+
+def pol_archive_hides_from_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/policies', { 'action': 'delete', 'id': POL_ID }, TOKEN_A)
+    assert r.get('ok')
+    pub = post(f'{SUPABASE_URL}/functions/v1/policies', { 'action': 'list_public', 'slug': SLUG_A })
+    leak = any(p['id'] == POL_ID for p in pub.get('policies', []))
+    assert not leak, 'archived policy still visible on public list'
+
+step('default policies seeded by migration', pol_seeded_for_existing_tenants)
+step('admin list returns the 5 defaults',   pol_admin_lists_them)
+step('public list_public exposes them',     pol_public_list_visible)
+step('admin can add a custom policy',       pol_admin_creates_custom)
+step('admin can edit body text',            pol_admin_updates_body)
+step('cross-tenant isolation on policies',  pol_isolation)
+step('archive hides from public list',      pol_archive_hides_from_public)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -1217,6 +1280,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.guest_pass_packs where id = '{gid}';")
     # Test-created admins (deactivated above, hard-delete here)
     mgmt_query(f"delete from public.admin_users where username like 'coadmin-e2e-%@example.com';")
+    # Test-created custom policy (archived above, hard-delete here)
+    mgmt_query(f"delete from public.policies where title like 'E2E Pet Policy %';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 

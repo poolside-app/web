@@ -107,3 +107,8 @@ verify_jwt = false
 # Unified "who owes what" rollup across applications, programs, passes, dues.
 [functions.payments_admin]
 verify_jwt = false
+
+# Editable per-tenant apply-form policies (rules, guest, party, sitter,
+# waiver, plus any custom ones the club adds). Public list_public + admin CRUD.
+[functions.policies]
+verify_jwt = false

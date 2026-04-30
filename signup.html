@@ -147,23 +147,43 @@ async function fakeSubmit() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Sign-up failed');
 
-    // Successful — show a "we're spinning up your club" page that includes
-    // their slug + link to sign in. We can't redirect to <slug>.poolsideapp.com
-    // yet because the subdomain isn't auto-added to Vercel; for now we land
-    // them on a holding page they can use.
+    // Tenant created. Subdomain auto-provisioning is best-effort via Vercel
+    // API in tenant_signup; takes a few seconds for SSL to fan out. Show a
+    // countdown that auto-redirects, with a manual "Open now" fallback.
+    const targetUrl = `https://${data.slug}.poolsideapp.com/`;
     document.querySelector('.card').innerHTML = `
       <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
       <h1 style="margin-top:14px">🎉 You're in!</h1>
-      <p class="lede"><b>${escapeHtml(data.display_name)}</b> has been created on Poolside.</p>
+      <p class="lede"><b>${escapeHtml(data.display_name)}</b> is now live.</p>
       <div class="meta" style="background:#dcfce7;border-color:#86efac;color:#14532d">
         <span class="check">✓</span>
-        <div>
-          Your club's URL: <code>${escapeHtml(data.slug)}.poolsideapp.com</code><br>
-          <span style="font-size:11px">During the early-access phase Doug provisions each new subdomain manually — you'll get a confirmation email when it's live (usually within a few hours).</span>
+        <div style="flex:1">
+          Your club URL: <a href="${targetUrl}" id="club-link" target="_blank" rel="noopener" style="color:#14532d;font-weight:600;text-decoration:underline">${escapeHtml(data.slug)}.poolsideapp.com</a><br>
+          <span style="font-size:11px;color:#166534" id="provision-status">SSL is fanning out — sit tight, we'll auto-open your club site in <b id="countdown">30</b>s.</span>
         </div>
       </div>
-      <p class="small" style="margin-top:18px">Got questions? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:22px">
+        <button class="btn" id="open-now-btn" type="button" style="background:var(--blue);color:#fff;font-weight:600;border:0;padding:12px 22px;border-radius:10px;cursor:pointer;font-size:14px">Open my club site →</button>
+        <button class="btn" id="dashboard-btn" type="button" style="background:transparent;color:var(--blue);font-weight:600;border:1.5px solid var(--blue);padding:12px 22px;border-radius:10px;cursor:pointer;font-size:14px">Go to admin login</button>
+      </div>
+      <p class="small" style="margin-top:18px">Stuck? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
     `;
+    document.getElementById('open-now-btn').addEventListener('click', () => window.open(targetUrl, '_blank'));
+    document.getElementById('dashboard-btn').addEventListener('click', () => window.open(`${targetUrl}club/admin/login.html`, '_blank'));
+
+    // 30-second countdown then auto-redirect.
+    let secs = 30;
+    const tick = setInterval(() => {
+      secs -= 1;
+      const el = document.getElementById('countdown');
+      if (el) el.textContent = secs;
+      if (secs <= 0) {
+        clearInterval(tick);
+        const status = document.getElementById('provision-status');
+        if (status) status.textContent = 'Opening your club site now…';
+        window.location.href = targetUrl;
+      }
+    }, 1000);
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';

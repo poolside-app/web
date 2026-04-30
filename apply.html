@@ -6,6 +6,7 @@
 <title>Apply for membership — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -153,25 +154,12 @@
       <h2>Policies & signatures</h2>
       <p class="lede" style="margin-top:0">Open each one, then check the box. Signatures unlock once all policies are accepted.</p>
 
-      <button type="button" class="btn-outline" id="btn-rules"  onclick="openPolicy('rules')">📜 1. Membership Rules</button>
-      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-rules" disabled onchange="checkAccepted()"><span>I accept the Membership Rules</span></label>
-
-      <button type="button" class="btn-outline" id="btn-guest"  onclick="openPolicy('guest')">👥 2. Guest Policy</button>
-      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-guest" disabled onchange="checkAccepted()"><span>I accept the Guest Policy</span></label>
-
-      <button type="button" class="btn-outline" id="btn-party"  onclick="openPolicy('party')">🎂 3. Party Policy</button>
-      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-party" disabled onchange="checkAccepted()"><span>I accept the Party Policy</span></label>
-
-      <button type="button" class="btn-outline" id="btn-sitter" onclick="openPolicy('sitter')">🧒 4. Sitter Policy</button>
-      <label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-sitter" disabled onchange="checkAccepted()"><span>I accept the Sitter Policy</span></label>
-
-      <button type="button" class="btn-outline" id="btn-waiver" onclick="openPolicy('waiver')">⚠️ 5. Liability Waiver</button>
-      <label class="check-row" style="margin:0 0 14px"><input type="checkbox" id="agree-waiver" disabled onchange="checkAccepted()"><span>I accept the Liability Waiver</span></label>
+      <div id="policies-box"><div style="color:var(--muted);font-size:13px">Loading policies…</div></div>
 
       <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
 
       <div id="sig-locked-hint" style="font-size:13px;color:var(--muted);background:var(--bg-2);padding:10px 14px;border-radius:8px;margin-bottom:10px">
-        ✍️ Signatures unlock after you accept all five policies above.
+        ✍️ Signatures unlock after you accept the required policies.
       </div>
 
       <div id="sig-area" style="display:none">
@@ -196,10 +184,18 @@
     <div class="step" data-step="4" style="display:none">
       <h2>Payment</h2>
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
-      <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked> 💸 Venmo — admin verifies, then you're set</label>
-      <label class="pay-opt"><input type="radio" name="payment_method" value="stripe"> 💳 Credit card via Stripe — instant approval</label>
-      <label class="pay-opt"><input type="radio" name="payment_method" value=""> Decide later</label>
+      <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()"> 💸 Venmo — admin verifies, then you're set</label>
+      <label class="pay-opt"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
+      <label class="pay-opt"><input type="radio" name="payment_method" value="" onchange="paintVenmoQR()"> Decide later</label>
       <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't wired yet — we'll email you a payment link after the board approves.</p>
+
+      <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
+        <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Pay with Venmo</div>
+        <div id="venmo-qr" style="margin:10px auto;display:inline-block;background:#fff;padding:12px;border-radius:10px"></div>
+        <div style="font-size:12px;color:var(--muted);margin:10px 0 4px">Scan with your phone camera, or click below.</div>
+        <a id="venmo-link" target="_blank" rel="noopener" style="display:inline-block;padding:10px 18px;background:#3D95CE;color:#fff;border-radius:8px;font-weight:600;font-size:13px;text-decoration:none">Open Venmo →</a>
+        <div id="venmo-handle-line" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
+      </div>
 
       <label style="margin-top:18px">Anything else? <span class="opt">(referred by, special requests, etc.)</span></label>
       <textarea id="body" maxlength="2000"></textarea>
@@ -232,15 +228,41 @@
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
+let TENANT_PUBLIC = null;  // populated on boot from tenant_public
 
-// Placeholder policy text — admin can customize per-tenant in a later release.
-const POLICIES = {
-  rules:  { title: 'Membership Rules',  body: 'Members must abide by all posted club rules. Use of the pool is at your own risk; no lifeguard is on duty unless explicitly noted. Children under 12 must be accompanied by a parent or guardian. Glass containers are prohibited on the pool deck. The board reserves the right to modify these rules.' },
-  guest:  { title: 'Guest Policy',      body: 'Members may bring up to 4 guests per visit, registered at the gate. Guest fees apply per the current schedule. Members are responsible for their guests\' conduct. Repeated guest visits by the same individual may require sponsorship to convert to a membership.' },
-  party:  { title: 'Party Policy',      body: 'Private parties must be reserved at least 14 days in advance through the member dashboard. Party host is responsible for additional cleanup; insurance certificates required for events over 30 guests. Pool may not be exclusively reserved during open hours.' },
-  sitter: { title: 'Sitter Policy',     body: 'Babysitters and au pairs are welcome to accompany member children to the pool but must be at least 16 years of age and pass a swim test. Sitter passes are issued by the membership chair on request.' },
-  waiver: { title: 'Liability Waiver',  body: 'I acknowledge that swimming and pool use carry inherent risks, including injury or drowning. I release the club, its board, employees, and volunteers from any liability for injury, damage, or loss arising from my (or my family\'s) use of the facilities. I confirm that all named members can swim or will be supervised by a competent adult at all times.' },
-};
+function paintVenmoQR() {
+  const block = document.getElementById('venmo-block');
+  const method = document.querySelector('input[name="payment_method"]:checked')?.value || '';
+  const handle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
+  document.getElementById('stripe-hint').style.display = method === 'stripe' ? 'block' : 'none';
+  if (method !== 'venmo' || !handle) { block.style.display = 'none'; return; }
+  block.style.display = 'block';
+  // Strip any leading @ the admin saved
+  const h = handle.replace(/^@+/, '');
+  const noteRaw = `${(TENANT_PUBLIC?.tenant?.display_name || 'Pool club')} membership dues`;
+  const url = `https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(h)}&note=${encodeURIComponent(noteRaw)}`;
+  const linkEl = document.getElementById('venmo-link');
+  linkEl.href = url;
+  document.getElementById('venmo-handle-line').textContent = `@${h}`;
+  // Render QR
+  const qrBox = document.getElementById('venmo-qr');
+  qrBox.innerHTML = '';
+  if (typeof qrcode === 'function') {
+    const q = qrcode(0, 'M');
+    q.addData(url);
+    q.make();
+    qrBox.innerHTML = q.createImgTag(5, 8);
+    const img = qrBox.querySelector('img');
+    if (img) { img.style.display = 'block'; img.style.width = '180px'; img.style.height = '180px'; }
+  } else {
+    qrBox.innerHTML = '<div style="color:var(--muted);font-size:11px">QR library failed to load</div>';
+  }
+}
+
+// Tenant-editable policies — fetched from the `policies` Edge Function on boot.
+// Falls back to a single placeholder if fetch fails so the form still works.
+let POLICIES = {};
+const ACCEPT_REQUIRED = new Set();
 
 const ACCEPTED = { rules: false, guest: false, party: false, sitter: false, waiver: false };
 
@@ -297,29 +319,81 @@ function rebuildPeople() {
   }
 }
 
-// Step 3 — policies
+// Step 3 — policies (loaded dynamically per tenant)
 let CURRENT_POLICY = null;
+let ACCEPTED = {};
+async function loadPolicies() {
+  const slug = getSlug();
+  const box = document.getElementById('policies-box');
+  if (!slug) {
+    box.innerHTML = '<div style="color:var(--red);font-size:13px">Couldn\'t detect your club from this URL.</div>';
+    return;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/policies`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'list_public', slug }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to load policies');
+    POLICIES = {};
+    ACCEPT_REQUIRED.clear();
+    ACCEPTED = {};
+    (data.policies || []).forEach(p => {
+      POLICIES[p.slug] = p;
+      if (p.required_for_apply) {
+        ACCEPT_REQUIRED.add(p.slug);
+        ACCEPTED[p.slug] = false;
+      }
+    });
+    if (!data.policies.length) {
+      box.innerHTML = '<div style="color:var(--muted);font-size:13px">No policies configured for this club yet.</div>';
+      checkAccepted();
+      return;
+    }
+    box.innerHTML = (data.policies || []).map((p, i) => {
+      const requiredHint = p.required_for_apply ? '' : ' <span style="font-size:10px;color:var(--muted);font-weight:500">(info only)</span>';
+      const checkboxLine = p.required_for_apply
+        ? `<label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-${escapeAttr(p.slug)}" disabled onchange="checkAccepted()"><span>I accept the ${escapeHtml(p.title)}</span></label>`
+        : '';
+      return `
+        <button type="button" class="btn-outline" id="btn-${escapeAttr(p.slug)}" onclick="openPolicy('${escapeAttr(p.slug)}')">${i + 1}. ${escapeHtml(p.title)}${requiredHint}</button>
+        ${checkboxLine}
+      `;
+    }).join('');
+    checkAccepted();
+  } catch (e) {
+    box.innerHTML = `<div style="color:var(--red);font-size:13px">Couldn't load policies: ${escapeHtml(e.message)}</div>`;
+  }
+}
+function escapeAttr(s) { return String(s ?? '').replace(/["'<>&]/g, c => ({'"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
 function openPolicy(name) {
   CURRENT_POLICY = name;
-  document.getElementById('policy-title').textContent = POLICIES[name].title;
-  document.getElementById('policy-body').textContent = POLICIES[name].body;
+  const p = POLICIES[name]; if (!p) return;
+  document.getElementById('policy-title').textContent = p.title;
+  document.getElementById('policy-body').textContent = p.body;
+  // Hide the I-Accept button for info-only policies
+  document.getElementById('policy-accept-btn').style.display = ACCEPT_REQUIRED.has(name) ? 'inline-block' : 'none';
   document.getElementById('policy-scrim').classList.add('open');
 }
 function closePolicy() { document.getElementById('policy-scrim').classList.remove('open'); }
 function acceptPolicy() {
-  if (!CURRENT_POLICY) return;
+  if (!CURRENT_POLICY || !ACCEPT_REQUIRED.has(CURRENT_POLICY)) { closePolicy(); return; }
   ACCEPTED[CURRENT_POLICY] = true;
-  document.getElementById('agree-' + CURRENT_POLICY).disabled = false;
-  document.getElementById('agree-' + CURRENT_POLICY).checked = true;
-  document.getElementById('btn-' + CURRENT_POLICY).classList.add('done');
+  const cb = document.getElementById('agree-' + CURRENT_POLICY);
+  if (cb) { cb.disabled = false; cb.checked = true; }
+  const btn = document.getElementById('btn-' + CURRENT_POLICY);
+  if (btn) btn.classList.add('done');
   closePolicy();
   checkAccepted();
 }
 function checkAccepted() {
   for (const k of Object.keys(ACCEPTED)) {
-    ACCEPTED[k] = document.getElementById('agree-' + k).checked;
+    const cb = document.getElementById('agree-' + k);
+    if (cb) ACCEPTED[k] = cb.checked;
   }
-  const all = Object.values(ACCEPTED).every(Boolean);
+  const all = Object.keys(ACCEPTED).length === 0 || Object.values(ACCEPTED).every(Boolean);
   document.getElementById('sig-locked-hint').style.display = all ? 'none' : 'block';
   document.getElementById('sig-area').style.display = all ? 'block' : 'none';
   if (all) initSigPads();
@@ -474,7 +548,7 @@ async function submitApplication() {
     emergency_contact: get('emergency_contact'),
 
     adults, children,
-    waivers: { ...ACCEPTED },
+    waivers_accepted: { ...ACCEPTED },
     signature_primary:  SIG_PRIMARY  && !SIG_PRIMARY.isEmpty()  ? SIG_PRIMARY.toDataURL('image/png')  : null,
     signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
   };
@@ -513,12 +587,15 @@ async function submitApplication() {
     if (r.ok) {
       const d = await r.json();
       if (d.ok && d.tenant) {
+        TENANT_PUBLIC = d;
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
       }
     }
   } catch { /* keep generic */ }
   rebuildPeople();
+  await loadPolicies();
+  paintVenmoQR();
 })();
 </script>
 </body>
