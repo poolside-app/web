@@ -56,6 +56,9 @@ const MIN_PER_PHOTO             =  5; // curation + newsletter inclusion
 const MIN_PER_APPROVED_PARTY    = 25; // 20m phone tag + 5m confirmation email
 const MIN_PER_MEMBER_SIGN_IN    =  2; // password help / lookup avoided
 const MIN_PER_CALENDAR_REFRESH  = 30; // bulk swim-team / external schedule reentry
+const MIN_PER_APPLICATION       = 20; // paper form + transcribe to spreadsheet
+const MIN_PER_PROGRAM_BOOKING   = 10; // sign-up sheet + roster typing
+const MIN_PER_DOC_SHARED        = 12; // print/scan/email replaced by a link
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -92,6 +95,9 @@ Deno.serve(async (req) => {
     { count: photos },
     { count: approvedParties },
     { count: memberSignIns },
+    { count: applicationsApproved },
+    { count: programBookings },
+    { count: documentsShared },
     { data: importSubs },
   ] = await Promise.all([
     sb.from('household_members').select('id', { count: 'exact', head: true })
@@ -108,6 +114,12 @@ Deno.serve(async (req) => {
       .eq('tenant_id', TID).eq('status', 'approved'),
     sb.from('member_magic_links').select('id', { count: 'exact', head: true })
       .eq('tenant_id', TID).not('used_at', 'is', null),
+    sb.from('applications').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).eq('status', 'approved'),
+    sb.from('program_bookings').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).neq('status', 'cancelled'),
+    sb.from('documents').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).eq('active', true),
     sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle().then(r => {
       const v = (r.data?.value as Record<string, unknown> | undefined)?.calendar_imports;
       return { data: Array.isArray(v) ? v : [] };
@@ -125,6 +137,9 @@ Deno.serve(async (req) => {
     { key: 'photos',      label: 'Photos shared',             count: photos ?? 0,          minPerRow: MIN_PER_PHOTO,            why: 'no newsletter assembly' },
     { key: 'parties',     label: 'Parties booked & approved', count: approvedParties ?? 0, minPerRow: MIN_PER_APPROVED_PARTY,   why: 'request → approve → on the calendar' },
     { key: 'sign_ins',    label: 'Passwordless sign-ins',     count: memberSignIns ?? 0,   minPerRow: MIN_PER_MEMBER_SIGN_IN,   why: 'no password resets to chase' },
+    { key: 'apps',        label: 'Memberships approved',      count: applicationsApproved ?? 0, minPerRow: MIN_PER_APPLICATION,  why: 'paper form + spreadsheet entry replaced' },
+    { key: 'programs',    label: 'Program sign-ups',          count: programBookings ?? 0, minPerRow: MIN_PER_PROGRAM_BOOKING,  why: 'no clipboard at the desk' },
+    { key: 'docs',        label: 'Documents shared',          count: documentsShared ?? 0, minPerRow: MIN_PER_DOC_SHARED,       why: 'one link instead of email/print' },
   ].map(r => ({ ...r, minutes: r.count * r.minPerRow }));
 
   const totalMinutes = rows.reduce((s, r) => s + r.minutes, 0);

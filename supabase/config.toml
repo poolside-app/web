@@ -88,3 +88,8 @@ verify_jwt = false
 # Mixed surface: public list / member book / admin manage — all in one fn.
 [functions.programs]
 verify_jwt = false
+
+# In-app pop-up campaigns: announcements / events / fundraisers shown as
+# a modal on app open. Public list + tenant_admin CRUD.
+[functions.campaigns]
+verify_jwt = false

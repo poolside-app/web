@@ -198,6 +198,19 @@ check_post "programs.list_public returns ok" \
 check_status "admin /club/admin/programs" "${HOST}/club/admin/programs.html" "200"
 check       "admin programs page wires the API" "${HOST}/club/admin/programs.html" "/functions/v1/programs"
 
+check_post "campaigns.list rejects anon" \
+  "${SUPA}/functions/v1/campaigns" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_post "campaigns.list_active returns ok" \
+  "${SUPA}/functions/v1/campaigns" \
+  "{\"action\":\"list_active\",\"slug\":\"${SLUG}\"}" \
+  '"ok":true'
+
+check_status "admin /club/admin/campaigns" "${HOST}/club/admin/campaigns.html" "200"
+check       "admin campaigns page wires the API" "${HOST}/club/admin/campaigns.html" "/functions/v1/campaigns"
+
 check_status "public /apply.html"                "${HOST}/apply.html"                "200"
 check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
 check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"

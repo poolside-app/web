@@ -541,6 +541,43 @@ async function cancelProgramBooking(bid) {
   await refreshPrograms();
 }
 
+// ── Campaign pop-up ─────────────────────────────────────────────────────
+async function showCampaignPopup() {
+  try {
+    const slug = getSlug(); if (!slug) return;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/campaigns`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'list_active', slug, audience: 'members' }),
+    });
+    const data = await res.json();
+    if (!data.ok || !data.campaigns?.length) return;
+    // Find first not-yet-dismissed campaign
+    const dismissed = JSON.parse(localStorage.getItem('poolside_campaigns_dismissed') || '{}');
+    const c = data.campaigns.find(x => !dismissed[x.id]);
+    if (!c) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'scrim open';
+    wrap.style.zIndex = '120';
+    wrap.innerHTML = `
+      <div class="pmodal" style="max-width:440px;text-align:center;background:linear-gradient(135deg,var(--blue),var(--blue-2));color:#fff;padding:32px 26px">
+        <div style="font-size:48px;line-height:1">${escapeHtml(c.emoji || '📣')}</div>
+        <h2 style="font-family:'Fraunces',serif;font-size:22px;margin:14px 0 8px;color:#fff">${escapeHtml(c.title)}</h2>
+        ${c.body ? `<p style="opacity:.92;margin:0 0 18px;font-size:14px;line-height:1.55">${escapeHtml(c.body)}</p>` : ''}
+        ${c.cta_label && c.cta_url ? `<a href="${escapeAttr(c.cta_url)}" target="_blank" rel="noopener" style="display:inline-block;background:#fff;color:var(--blue);padding:11px 22px;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none">${escapeHtml(c.cta_label)} →</a>` : ''}
+        <div style="margin-top:18px"><button id="camp-close" style="background:transparent;border:1.5px solid rgba(255,255,255,.4);color:#fff;padding:8px 18px;border-radius:10px;font:600 12px 'Inter';cursor:pointer">Dismiss</button></div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = () => {
+      dismissed[c.id] = Date.now();
+      localStorage.setItem('poolside_campaigns_dismissed', JSON.stringify(dismissed));
+      wrap.remove();
+    };
+    wrap.querySelector('#camp-close').addEventListener('click', close);
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  } catch { /* non-critical */ }
+}
+
 // ── Profile flow ───────────────────────────────────────────────────────
 function openProfileModal() {
   if (!ME_USER) return;
@@ -786,6 +823,7 @@ async function submitProfile() {
   }
 
   refreshPrograms();
+  showCampaignPopup();
 
   if (user.can_book_parties) {
     refreshParties();

@@ -164,7 +164,7 @@ print(f'  tenant A: {SLUG_A} ({TENANT_A_ID[:8]}…)')
 print(f'  tenant B: {SLUG_B} ({TENANT_B_ID[:8]}…)  [throwaway]')
 
 # Track resources for cleanup
-RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': []}
+RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'campaigns': []}
 def track(kind, id):  RESOURCES[kind].append(id)
 
 # ── 1. Cross-tenant isolation (THE most important) ───────────────────────
@@ -778,6 +778,74 @@ step('member cancels their own booking',      prog_member_cancels_own_booking)
 step('cross-tenant isolation on programs',    prog_isolation)
 step('anon rejected for admin action',        prog_anon_blocked_for_admin_action)
 
+# ── 14. Campaigns (in-app pop-ups) ───────────────────────────────────────
+section('Campaigns (pop-ups)')
+
+CAMP_ID = None
+
+def camp_admin_create():
+    global CAMP_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
+        'action': 'create',
+        'title':  f'E2E Fund Drive {STAMP}',
+        'body':   'Help keep the snack bar open this season.',
+        'kind':   'fundraiser',
+        'audience': 'both',
+        'cta_label': 'Donate',
+        'cta_url':   'https://example.com/donate',
+        'starts_at': '2020-01-01T00:00:00Z',  # already started
+    }, TOKEN_A)
+    assert r.get('ok'), f'create: {r}'
+    CAMP_ID = r['campaign']['id']
+    track('campaigns', CAMP_ID)
+
+def camp_public_list_active():
+    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
+        'action': 'list_active', 'slug': SLUG_A, 'audience': 'public',
+    })
+    assert r.get('ok'), f'list_active: {r}'
+    found = next((c for c in r.get('campaigns', []) if c['id'] == CAMP_ID), None)
+    assert found, 'public list_active missing newly-created campaign (audience=both should match)'
+
+def camp_audience_filter_works():
+    # Create a members-only campaign; list_active(public) should NOT include it.
+    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
+        'action': 'create',
+        'title': f'E2E Members Only {STAMP}',
+        'audience': 'members',
+        'starts_at': '2020-01-01T00:00:00Z',
+    }, TOKEN_A)
+    assert r.get('ok'), f'create members-only: {r}'
+    track('campaigns', r['campaign']['id'])
+
+    pub = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
+        'action': 'list_active', 'slug': SLUG_A, 'audience': 'public',
+    })
+    assert pub.get('ok')
+    leak = next((c for c in pub.get('campaigns', []) if c['id'] == r['campaign']['id']), None)
+    assert not leak, 'members-only campaign leaked to public surface'
+
+def camp_isolation():
+    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', { 'action': 'list' }, TOKEN_B)
+    assert r.get('ok')
+    leak = any(c['id'] == CAMP_ID for c in r.get('campaigns', []))
+    assert not leak, 'tenant B sees tenant A campaign (ISOLATION FAIL)'
+
+def camp_archive_hides_from_public():
+    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', { 'action': 'delete', 'id': CAMP_ID }, TOKEN_A)
+    assert r.get('ok'), f'delete: {r}'
+    pub = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
+        'action': 'list_active', 'slug': SLUG_A, 'audience': 'public',
+    })
+    leak = any(c['id'] == CAMP_ID for c in pub.get('campaigns', []))
+    assert not leak, 'archived campaign still visible publicly'
+
+step('admin creates campaign',                  camp_admin_create)
+step('public list_active surfaces it',          camp_public_list_active)
+step('audience=members hidden from public',     camp_audience_filter_works)
+step('cross-tenant isolation on campaigns',     camp_isolation)
+step('archive hides from public list',          camp_archive_hides_from_public)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
@@ -797,6 +865,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.documents where id = '{d}';")
     for pid in RESOURCES['programs']:
         mgmt_query(f"delete from public.programs where id = '{pid}';")
+    for cid in RESOURCES['campaigns']:
+        mgmt_query(f"delete from public.campaigns where id = '{cid}';")
 
 step('teardown — drop test tenant + tracked rows', cleanup_all)
 
