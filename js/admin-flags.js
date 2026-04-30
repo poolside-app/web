@@ -16,6 +16,20 @@
 (function () {
   'use strict';
 
+  // Synchronous slug-based brand fallback. Runs the moment this script
+  // loads so the user never sees "Poolside" in the header while waiting
+  // for tenant_admin_auth.me to return. The async brand swap below
+  // refines this with the real display_name + uploaded logo.
+  try {
+    var m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+    var a = document.querySelector('header .logo');
+    if (a && m && m[1] && m[1] !== 'www') {
+      a.innerHTML = '<span class="logo-dot"></span> ' + (m[1].charAt(0).toUpperCase() + m[1].slice(1));
+    } else if (a) {
+      a.innerHTML = '<span class="logo-dot"></span>';
+    }
+  } catch (e) { /* defensive only */ }
+
   // Feature → nav selector (tenant-level toggles from settings.value.features)
   const FEATURE_NAV = {
     parties:       'a[href="/club/admin/parties.html"]',
