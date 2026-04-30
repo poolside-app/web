@@ -232,6 +232,14 @@ check_post "guest_passes.list rejects anon" \
 check_status "admin /club/admin/guest-passes" "${HOST}/club/admin/guest-passes.html" "200"
 check       "admin guest-passes page wires the API" "${HOST}/club/admin/guest-passes.html" "/functions/v1/guest_passes"
 
+check_post "payments_admin.list rejects anon" \
+  "${SUPA}/functions/v1/payments_admin" \
+  '{"action":"list"}' \
+  'Not authenticated'
+
+check_status "admin /club/admin/payments" "${HOST}/club/admin/payments.html" "200"
+check       "admin payments page wires the API" "${HOST}/club/admin/payments.html" "/functions/v1/payments_admin"
+
 check_status "public /apply.html"                "${HOST}/apply.html"                "200"
 check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
 check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"

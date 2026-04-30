@@ -103,3 +103,7 @@ verify_jwt = false
 # via optimistic UPDATE … WHERE used_count = X to prevent over-redemption.
 [functions.guest_passes]
 verify_jwt = false
+
+# Unified "who owes what" rollup across applications, programs, passes, dues.
+[functions.payments_admin]
+verify_jwt = false

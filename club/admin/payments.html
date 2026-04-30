@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Payments — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 980px; width: 100%; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-row button { padding: 8px 14px; border: 1.5px solid var(--border); background: #fff; border-radius: 999px; font: 600 12px 'Inter'; cursor: pointer; color: var(--muted); }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn { padding: 8px 14px; border-radius: var(--r-md); font: 600 12px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--green); color: #fff; }
+  .btn:hover { filter: brightness(.95); }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .stat { background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px 16px; }
+  .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  .stat .val { font-family: 'Fraunces', serif; font-size: 24px; color: var(--blue); margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+  th, td { padding: 12px 14px; text-align: left; font-size: 13px; }
+  th { background: var(--bg-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  tr { border-top: 1px solid var(--border); }
+  tr:first-child { border-top: 0; }
+  td.actions { text-align: right; }
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.dues       { background: #fef3c7; color: #92400e; }
+  .pill.application { background: #ddd6fe; color: #5b21b6; }
+  .pill.program    { background: #dbeafe; color: #1e3a8a; }
+  .pill.guest_pass { background: #cffafe; color: #155e75; }
+  .pill.aged       { background: #fee2e2; color: #7f1d1d; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/households.html">Households</a>
+  <a href="/club/admin/applications.html">Applications</a>
+  <a href="/club/admin/payments.html" class="on">Payments</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/programs.html">Programs</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/volunteer.html">Volunteer</a>
+  <a href="/club/admin/guest-passes.html">Passes</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html">Documents</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+
+<main>
+  <div class="toolbar">
+    <div>
+      <h1>Payments</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Everyone with an open balance, sorted by who's been waiting longest.</div>
+    </div>
+    <div class="filter-row" id="filter">
+      <button class="on" data-filter="">All sources</button>
+      <button data-filter="dues">Dues</button>
+      <button data-filter="application">Memberships</button>
+      <button data-filter="program">Programs</button>
+      <button data-filter="guest_pass">Passes</button>
+    </div>
+  </div>
+  <div id="summary" class="summary"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const URL_BASE     = `${SUPABASE_URL}/functions/v1/payments_admin`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let CACHE = [];
+let FILTER = '';
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(URL_BASE, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+document.querySelectorAll('#filter button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#filter button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    FILTER = b.dataset.filter;
+    render();
+  });
+});
+
+function fmtMoney(c) { if (c === null || c === undefined) return '—'; return '$' + (c / 100).toFixed(2); }
+function sourceLabel(s) {
+  return ({ dues: 'Dues', application: 'Membership', program: 'Program', guest_pass: 'Passes' })[s] || s;
+}
+
+function render() {
+  const list = document.getElementById('list');
+  const filtered = FILTER ? CACHE.filter(i => i.source === FILTER) : CACHE;
+
+  // Summary stats — counts + sum of known amounts (dues amount unknown so excluded)
+  const summary = document.getElementById('summary');
+  const byKind = { dues: 0, application: 0, program: 0, guest_pass: 0 };
+  let knownTotal = 0;
+  for (const i of CACHE) {
+    byKind[i.source] = (byKind[i.source] || 0) + 1;
+    if (typeof i.amount_cents === 'number') knownTotal += i.amount_cents;
+  }
+  summary.innerHTML = `
+    <div class="stat"><div class="lbl">Open items</div><div class="val">${CACHE.length}</div></div>
+    <div class="stat"><div class="lbl">Dues</div><div class="val">${byKind.dues || 0}</div></div>
+    <div class="stat"><div class="lbl">Memberships</div><div class="val">${byKind.application || 0}</div></div>
+    <div class="stat"><div class="lbl">Programs + passes</div><div class="val">${(byKind.program || 0) + (byKind.guest_pass || 0)}</div></div>
+    <div class="stat"><div class="lbl">Known $ owed</div><div class="val">${fmtMoney(knownTotal)}</div></div>
+  `;
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty">No open balances ${FILTER ? `for ${sourceLabel(FILTER)}` : ''}. Nice work.</div>`;
+    return;
+  }
+  list.innerHTML = `
+    <table>
+      <thead><tr><th>Household</th><th>What</th><th>Source</th><th>Amount</th><th>Waiting</th><th></th></tr></thead>
+      <tbody>
+        ${filtered.map(i => {
+          const aged = (i.age_days ?? 0) >= 14;
+          return `
+            <tr data-id="${escapeHtml(i.source_id)}">
+              <td><b>${escapeHtml(i.family_name || '—')}</b></td>
+              <td>${escapeHtml(i.label)}</td>
+              <td><span class="pill ${escapeHtml(i.source)}">${escapeHtml(sourceLabel(i.source))}</span></td>
+              <td>${escapeHtml(fmtMoney(i.amount_cents))}</td>
+              <td>${i.age_days != null ? (aged ? `<span class="pill aged">${i.age_days}d</span>` : escapeHtml(String(i.age_days)) + 'd') : '—'}</td>
+              <td class="actions"><button class="btn" onclick="markPaid('${escapeHtml(i.source)}','${escapeHtml(i.source_id)}')">Mark paid</button></td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function refresh() {
+  try {
+    const data = await call('list');
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    CACHE = data.items || [];
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function markPaid(source, source_id) {
+  if (!confirm('Mark this paid? This is a manual action — make sure the money has actually arrived.')) return;
+  const r = await call('mark_paid', { source, source_id });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await refresh();
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Payments — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {});
+  } catch { logout(); return; }
+  await refresh();
+})();
+</script>
+</body>
+</html>

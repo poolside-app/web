@@ -1053,6 +1053,64 @@ step('over-redemption blocked',            gp_overuse_blocked)
 step('admin usage log shows all redeems',  gp_admin_usage_log_complete)
 step('cross-tenant isolation on packs',    gp_isolation)
 
+# ── 18. Payments rollup ──────────────────────────────────────────────────
+section('Payments rollup')
+
+PAY_PACK_ID = None
+PAY_HID = None
+
+def pay_seed_unpaid_pack():
+    global PAY_PACK_ID, PAY_HID
+    # Need a real, active household — create a fresh one so the cleanup is clean.
+    r = post(f'{SUPABASE_URL}/functions/v1/households_admin', {
+        'action': 'create_household',
+        'family_name': f'Pay Test {STAMP}',
+        'primary': {'name': f'Pay Tester {STAMP}', 'phone_e164': f'+1555{STAMP}9000'},
+    }, TOKEN_A)
+    assert r.get('ok'), f'create household: {r}'
+    PAY_HID = r['household_id']
+    track('households', PAY_HID)
+
+    p = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
+        'action': 'issue', 'household_id': PAY_HID,
+        'total_count': 5, 'price_cents': 2500, 'label': f'Pay Test pack {STAMP}',
+    }, TOKEN_A)
+    assert p.get('ok'), f'seed pack: {p}'
+    PAY_PACK_ID = p['pack']['id']
+    track('guest_pass_packs', PAY_PACK_ID)
+
+def pay_list_includes_pack():
+    r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', { 'action': 'list' }, TOKEN_A)
+    assert r.get('ok'), f'list: {r}'
+    found = next((i for i in r.get('items', []) if i['source'] == 'guest_pass' and i['source_id'] == PAY_PACK_ID), None)
+    assert found, 'unpaid pack missing from rollup'
+    assert found['amount_cents'] == 2500
+
+def pay_mark_paid_flips_source():
+    r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', {
+        'action': 'mark_paid', 'source': 'guest_pass', 'source_id': PAY_PACK_ID,
+    }, TOKEN_A)
+    assert r.get('ok'), f'mark_paid: {r}'
+    rows = mgmt_query(f"select paid from public.guest_pass_packs where id = '{PAY_PACK_ID}';")
+    assert rows and rows[0]['paid'] is True, 'mark_paid did not flip the pack'
+
+def pay_list_excludes_paid():
+    r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', { 'action': 'list' }, TOKEN_A)
+    found = next((i for i in r.get('items', []) if i['source_id'] == PAY_PACK_ID), None)
+    assert not found, 'paid pack still in rollup'
+
+def pay_isolation():
+    r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', { 'action': 'list' }, TOKEN_B)
+    assert r.get('ok')
+    leak = any(i['source_id'] == PAY_PACK_ID for i in r.get('items', []))
+    assert not leak, 'tenant B sees tenant A unpaid items (ISOLATION FAIL)'
+
+step('seed unpaid guest-pass pack',     pay_seed_unpaid_pack)
+step('rollup list includes the pack',   pay_list_includes_pack)
+step('mark_paid flips source row',      pay_mark_paid_flips_source)
+step('paid items drop off the rollup',  pay_list_excludes_paid)
+step('cross-tenant isolation on rollup', pay_isolation)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
