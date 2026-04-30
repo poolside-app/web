@@ -78,7 +78,7 @@
 </style>
 </head>
 <body>
-<header><a href="/" class="logo"><span class="logo-dot"></span> Poolside</a></header>
+<header><a href="/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">Poolside</span></a></header>
 
 <main>
   <form class="card" id="form" onsubmit="event.preventDefault();">
@@ -456,16 +456,16 @@ function goBack() { if (CURRENT_STEP > 1) showStep(CURRENT_STEP - 1); }
 function goNext() {
   const errEl = document.getElementById('err'); errEl.classList.remove('show');
   if (CURRENT_STEP === 1) {
-    const fam   = document.getElementById('family_name').value.trim();
-    const addr  = document.getElementById('address').value.trim();
-    const phone = document.getElementById('primary_phone').value.trim();
-    const email = document.getElementById('primary_email').value.trim();
-    const emerg = document.getElementById('emergency_contact').value.trim();
-    if (!fam)   return show('Family last name is required');
-    if (!addr)  return show('Address is required');
-    if (!phone) return show('Primary phone is required');
-    if (!email) return show('Primary email is required');
-    if (!emerg) return show('Emergency contact is required');
+    const fam   = document.getElementById('family_name');
+    const addr  = document.getElementById('address');
+    const phone = document.getElementById('primary_phone');
+    const email = document.getElementById('primary_email');
+    const emerg = document.getElementById('emergency_contact');
+    if (!fam.value.trim())   return showField(fam,   'Family last name is required');
+    if (!addr.value.trim())  return showField(addr,  'Address is required');
+    if (!phone.value.trim()) return showField(phone, 'Primary phone is required');
+    if (!email.value.trim()) return showField(email, 'Primary email is required');
+    if (!emerg.value.trim()) return showField(emerg, 'Emergency contact is required');
   } else if (CURRENT_STEP === 2) {
     const adults = collectAdults();
     if (!adults.length || !adults[0].name) return show('At least one adult name is required');
@@ -484,7 +484,26 @@ function goNext() {
   showStep(CURRENT_STEP + 1);
   if (CURRENT_STEP === 2) rebuildPeople();
 }
-function show(msg) { const el = document.getElementById('err'); el.textContent = msg; el.classList.add('show'); }
+function show(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.classList.add('show');
+  // Scroll the error into view — the most common "Next button doesn't work"
+  // complaint is the user not seeing the validation error below the button.
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function showField(input, msg) {
+  show(msg);
+  if (input) {
+    input.focus();
+    input.style.borderColor = '#dc2626';
+    input.style.boxShadow = '0 0 0 3px rgba(220,38,38,.15)';
+    input.addEventListener('input', () => {
+      input.style.borderColor = '';
+      input.style.boxShadow = '';
+    }, { once: true });
+  }
+}
 
 // Stripe-not-yet hint
 document.addEventListener('change', (e) => {
@@ -621,6 +640,14 @@ async function submitApplication() {
         TENANT_PUBLIC = d;
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
+        // Brand the top-left header with the club name (and uploaded logo, if any)
+        const brandEl = document.getElementById('brand-name');
+        if (brandEl) brandEl.textContent = d.tenant.display_name;
+        const logoUrl = d.public_settings && d.public_settings.branding && d.public_settings.branding.logo_url;
+        if (logoUrl) {
+          const link = document.getElementById('brand-link');
+          if (link) link.innerHTML = `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(d.tenant.display_name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> <span id="brand-name">${escapeHtml(d.tenant.display_name)}</span>`;
+        }
       }
     }
   } catch { /* keep generic */ }

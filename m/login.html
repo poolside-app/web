@@ -75,7 +75,7 @@
 </head>
 <body>
 <header>
-  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <a href="/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">Poolside</span></a>
 </header>
 <main>
   <form class="card" onsubmit="event.preventDefault(); doStart()">
@@ -131,6 +131,14 @@ const SLUG = getSlugFromHostname();
       if (data.ok && data.tenant) {
         document.title = `Sign in — ${data.tenant.display_name}`;
         document.getElementById('title').textContent = `Sign in to ${data.tenant.display_name}`;
+        const brand = document.getElementById('brand-name');
+        if (brand) brand.textContent = data.tenant.display_name;
+        const logoUrl = data.public_settings && data.public_settings.branding && data.public_settings.branding.logo_url;
+        if (logoUrl) {
+          const link = document.getElementById('brand-link');
+          const safe = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          if (link) link.innerHTML = `<img src="${safe(logoUrl)}" alt="${safe(data.tenant.display_name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> <span id="brand-name">${safe(data.tenant.display_name)}</span>`;
+        }
       }
     }
   } catch { /* keep generic title */ }

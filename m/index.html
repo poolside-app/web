@@ -175,7 +175,7 @@
 </head>
 <body>
 <header>
-  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <a href="/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">Poolside</span></a>
   <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
 </header>
 
@@ -817,6 +817,8 @@ async function submitProfile() {
   ME_USER = me.user;
   document.title = `${me.tenant.display_name} — My Club`;
   document.getElementById('whoami').textContent = me.user.name || me.user.email;
+  const brandEl = document.getElementById('brand-name');
+  if (brandEl) brandEl.textContent = me.tenant.display_name;
 
   // Fire the public lookup in parallel for events + posts (no auth needed).
   const slug = getSlug();
@@ -830,6 +832,13 @@ async function submitProfile() {
       const d = await r.json();
       if (d.ok) publicData = d;
     } catch { /* keep empties */ }
+  }
+
+  // If branding has a logo, swap the dot for the actual image.
+  const logoUrl = publicData.public_settings && publicData.public_settings.branding && publicData.public_settings.branding.logo_url;
+  if (logoUrl && me.tenant && me.tenant.display_name) {
+    const link = document.getElementById('brand-link');
+    if (link) link.innerHTML = `<img src="${escapeAttr(logoUrl)}" alt="${escapeAttr(me.tenant.display_name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> <span id="brand-name">${escapeHtml(me.tenant.display_name)}</span>`;
   }
 
   // Apply tenant theming if set (primary color override across the page)
