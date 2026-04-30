@@ -219,10 +219,10 @@
     <h2>Features</h2>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Tick what applies — admin tabs reveal accordingly.</p>
     <label class="feature">
-      <input type="checkbox" id="feat_swim">
+      <input type="checkbox" id="feat_programs">
       <div>
-        <div class="ftitle">🏊‍♀️ Swim lessons or swim team</div>
-        <div class="fsub">Members book + pay through the app. Stripe handles checkout (1.5% Poolside fee).</div>
+        <div class="ftitle">🏊‍♀️ Programs (swim lessons, yoga, camp)</div>
+        <div class="fsub">Recurring class signups with capacity + waitlists.</div>
       </div>
     </label>
     <label class="feature">
@@ -230,6 +230,27 @@
       <div>
         <div class="ftitle">🎉 Party rentals</div>
         <div class="fsub">Members request parties online; you approve with one click.</div>
+      </div>
+    </label>
+    <label class="feature">
+      <input type="checkbox" id="feat_volunteer">
+      <div>
+        <div class="ftitle">🙋 Volunteer signups</div>
+        <div class="fsub">One-shot slots for snack-bar shifts, swim-meet timers, party helpers.</div>
+      </div>
+    </label>
+    <label class="feature">
+      <input type="checkbox" id="feat_campaigns">
+      <div>
+        <div class="ftitle">📣 Pop-up campaigns</div>
+        <div class="fsub">In-app modals for fundraisers, RSVPs, time-sensitive announcements.</div>
+      </div>
+    </label>
+    <label class="feature">
+      <input type="checkbox" id="feat_guest_passes">
+      <div>
+        <div class="ftitle">🎟️ Guest pass packs</div>
+        <div class="fsub">Pre-paid bundles members redeem at the gate.</div>
       </div>
     </label>
     <label class="feature">
@@ -435,10 +456,13 @@ function populate(s) {
   if (s.pool?.fob_activation_day) setVal('fob_activation_day', s.pool.fob_activation_day);
   setVal('venmo_handle', s.payments?.venmo_handle);
   setVal('paypal_link',  s.payments?.paypal_link);
-  setChk('feat_swim',    s.features?.swim_lessons);
-  setChk('feat_parties', s.features?.parties);
-  setChk('feat_keyfobs', s.features?.keyfobs);
-  setChk('feat_gate',    s.features?.gate);
+  setChk('feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
+  setChk('feat_parties',      s.features?.parties      ?? true);
+  setChk('feat_volunteer',    s.features?.volunteer    ?? true);
+  setChk('feat_campaigns',    s.features?.campaigns    ?? true);
+  setChk('feat_guest_passes', s.features?.guest_passes ?? true);
+  setChk('feat_keyfobs',      s.features?.keyfobs      ?? false);
+  setChk('feat_gate',         s.features?.gate         ?? false);
   toggleFobDay();
 }
 
@@ -476,8 +500,11 @@ function collect(prevSettings) {
       paypal_link:  val('paypal_link') || null,
     },
     features: {
-      swim_lessons: !!document.getElementById('feat_swim').checked,
+      programs:     !!document.getElementById('feat_programs').checked,
       parties:      !!document.getElementById('feat_parties').checked,
+      volunteer:    !!document.getElementById('feat_volunteer').checked,
+      campaigns:    !!document.getElementById('feat_campaigns').checked,
+      guest_passes: !!document.getElementById('feat_guest_passes').checked,
       keyfobs:      !!document.getElementById('feat_keyfobs').checked,
       gate:         !!document.getElementById('feat_gate').checked,
     },

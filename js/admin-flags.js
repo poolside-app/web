@@ -14,7 +14,10 @@
 
   const NAV_FLAGS = {
     parties:       'a[href="/club/admin/parties.html"]',
-    swim_lessons:  'a[href="/club/admin/swim_lessons.html"]',  // future
+    programs:      'a[href="/club/admin/programs.html"]',
+    volunteer:     'a[href="/club/admin/volunteer.html"]',
+    campaigns:     'a[href="/club/admin/campaigns.html"]',
+    guest_passes:  'a[href="/club/admin/guest-passes.html"]',
   };
 
   function apply(features) {

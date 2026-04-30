@@ -118,6 +118,11 @@ const APPS_URL    = `${SUPABASE_URL}/functions/v1/applications`;
 const PARTIES_URL = `${SUPABASE_URL}/functions/v1/parties_admin`;
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const HH_URL = `${SUPABASE_URL}/functions/v1/households_admin`;
+const PAY_URL = `${SUPABASE_URL}/functions/v1/payments_admin`;
+const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
+const PROGRAMS_URL = `${SUPABASE_URL}/functions/v1/programs`;
+const VOLUNTEER_URL = `${SUPABASE_URL}/functions/v1/volunteer`;
+const CAMPAIGNS_URL = `${SUPABASE_URL}/functions/v1/campaigns`;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -205,6 +210,10 @@ document.getElementById('signout').addEventListener('click', logout);
         <div class="stat"><div class="lbl">Plan</div><div class="val">${escapeHtml(planLabel)}</div></div>
         <div class="stat"><div class="lbl">Households</div><div class="val" id="hh-count">…</div></div>
         <div class="stat"><div class="lbl">Members</div><div class="val" id="m-count">…</div></div>
+        <div class="stat"><div class="lbl">Open payments</div><div class="val" id="pay-count">…</div></div>
+        <div class="stat"><div class="lbl">Upcoming events</div><div class="val" id="ev-count">…</div></div>
+        <div class="stat"><div class="lbl">Active programs</div><div class="val" id="prog-count">…</div></div>
+        <div class="stat"><div class="lbl">Live campaigns</div><div class="val" id="camp-count">…</div></div>
       </div>
     </div>
 
@@ -214,10 +223,16 @@ document.getElementById('signout').addEventListener('click', logout);
     </div>
 
     <div class="card">
-      <h2>What's next</h2>
-      <div class="placeholder">
-        <a href="/club/admin/households.html" style="font-weight:600">Manage households &amp; members →</a><br>
-        <span style="font-size:13px">Gate access, dues, campaigns, swim lessons land in the next phase.</span>
+      <h2>Quick actions</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+        <a class="qa" href="/club/admin/applications.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📨 <b>Review applications</b><br><span style="color:var(--muted);font-size:12px">Approve new memberships</span></a>
+        <a class="qa" href="/club/admin/announcements.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📣 <b>Post announcement</b><br><span style="color:var(--muted);font-size:12px">News for members</span></a>
+        <a class="qa" href="/club/admin/events.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📅 <b>Add event</b><br><span style="color:var(--muted);font-size:12px">Calendar entry</span></a>
+        <a class="qa" href="/club/admin/programs.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🏊 <b>Add program</b><br><span style="color:var(--muted);font-size:12px">Swim lessons / yoga / camp</span></a>
+        <a class="qa" href="/club/admin/guest-passes.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🎟️ <b>Issue guest passes</b><br><span style="color:var(--muted);font-size:12px">Pre-paid bundles</span></a>
+        <a class="qa" href="/club/admin/photos.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📷 <b>Upload photos</b><br><span style="color:var(--muted);font-size:12px">Gallery for members</span></a>
+        <a class="qa" href="/club/admin/volunteer.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🙋 <b>Post volunteer slot</b><br><span style="color:var(--muted);font-size:12px">Snack-bar shift, swim meet</span></a>
+        <a class="qa" href="/club/admin/settings.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">⚙️ <b>Club settings</b><br><span style="color:var(--muted);font-size:12px">Branding, hours, contact</span></a>
       </div>
     </div>
   `;
@@ -244,17 +259,37 @@ document.getElementById('signout').addEventListener('click', logout);
     document.getElementById('m-count').textContent = '–';
   }
 
-  // Activity feed: pending applications + party requests + overdue dues
+  // Activity feed + secondary stats. All in parallel — none depends on the others.
   try {
     const headers = { 'content-type': 'application/json', 'authorization': `Bearer ${token}` };
-    const [appsPending, parties, appsOverdue] = await Promise.all([
-      fetch(APPS_URL,    { method: 'POST', headers, body: JSON.stringify({ action: 'list', status: 'pending' }) }).then(r => r.json()),
-      fetch(PARTIES_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'list', status: 'pending' }) }).then(r => r.json()),
-      fetch(APPS_URL,    { method: 'POST', headers, body: JSON.stringify({ action: 'list', status: 'approved', filter: 'overdue' }) }).then(r => r.json()),
+    const j = (url, body) => fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({ ok: false }));
+    const [appsPending, parties, payments, events, programs, campaigns] = await Promise.all([
+      j(APPS_URL,      { action: 'list', status: 'pending' }),
+      j(PARTIES_URL,   { action: 'list', status: 'pending' }),
+      j(PAY_URL,       { action: 'list' }),
+      j(EVENTS_URL,    { action: 'list', range: 'upcoming' }),
+      j(PROGRAMS_URL,  { action: 'list', active_only: true }),
+      j(CAMPAIGNS_URL, { action: 'list' }),
     ]);
-    const appCount    = (appsPending.applications || []).length;
-    const partyCount  = (parties.bookings  || []).length;
-    const overdueCount = (appsOverdue.applications || []).length;
+
+    const appCount   = (appsPending.applications || []).length;
+    const partyCount = (parties.bookings || []).length;
+    const payItems   = payments.items || [];
+    const overdueCount = payItems.filter(i => (i.age_days ?? 0) >= 14).length;
+    const upcomingEv = (events.events || []).filter(e => new Date(e.starts_at).getTime() >= Date.now()).slice(0, 30).length;
+    const activeProg = (programs.programs || []).length;
+    const liveCamp = (campaigns.campaigns || []).filter(c => {
+      if (!c.active) return false;
+      const now = Date.now();
+      if (new Date(c.starts_at).getTime() > now) return false;
+      if (c.ends_at && new Date(c.ends_at).getTime() < now) return false;
+      return true;
+    }).length;
+
+    document.getElementById('pay-count').textContent  = payItems.length;
+    document.getElementById('ev-count').textContent   = upcomingEv;
+    document.getElementById('prog-count').textContent = activeProg;
+    document.getElementById('camp-count').textContent = liveCamp;
 
     const items = [];
     if (appCount > 0) items.push({
@@ -265,14 +300,15 @@ document.getElementById('signout').addEventListener('click', logout);
       icon: '🎉', label: `${partyCount} party request${partyCount === 1 ? '' : 's'}`,
       sub: 'Approve or reject', href: '/club/admin/parties.html', tone: 'amber',
     });
-    if (overdueCount > 0) items.push({
-      icon: '💸', label: `${overdueCount} overdue dues`,
-      sub: 'Approved 10+ days, still unpaid', href: '/club/admin/applications.html', tone: 'red',
+    if (payItems.length > 0) items.push({
+      icon: '💸', label: `${payItems.length} open payment${payItems.length === 1 ? '' : 's'}`,
+      sub: overdueCount > 0 ? `${overdueCount} 14+ days old` : 'Dues, programs, passes',
+      href: '/club/admin/payments.html', tone: overdueCount > 0 ? 'red' : 'amber',
     });
 
     const card = document.getElementById('activity-card');
     if (items.length === 0) {
-      card.innerHTML = `<h2>What needs your attention</h2><div class="placeholder">✓ All caught up — no pending applications, party requests, or overdue dues.</div>`;
+      card.innerHTML = `<h2>What needs your attention</h2><div class="placeholder">✓ All caught up — no pending applications, party requests, or unpaid items.</div>`;
     } else {
       card.innerHTML = `<h2>What needs your attention</h2>
         <div style="display:flex;flex-direction:column;gap:8px">${items.map(it => `
@@ -285,6 +321,7 @@ document.getElementById('signout').addEventListener('click', logout);
     }
   } catch {
     document.getElementById('activity-card').innerHTML = `<h2>What needs your attention</h2><div class="placeholder">Couldn't load activity feed.</div>`;
+    ['pay-count','ev-count','prog-count','camp-count'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '–'; });
   }
 })();
 </script>

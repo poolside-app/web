@@ -233,17 +233,38 @@
         <p class="help" style="margin: 0 0 12px">Tick what applies — we'll wire up the relevant admin tabs. You can change these any time in Settings → Features.</p>
 
         <label class="feature">
-          <input type="checkbox" id="f-feat_swim">
+          <input type="checkbox" id="f-feat_programs" checked>
           <div>
-            <div class="ftitle">🏊‍♀️ Swim lessons or swim team</div>
-            <div class="fsub">Members book + pay for lessons through the app. Stripe handles checkout (1.5% Poolside fee per booking).</div>
+            <div class="ftitle">🏊‍♀️ Programs (swim lessons, yoga, camp)</div>
+            <div class="fsub">Recurring class signups with capacity + waitlists. Members enroll from their app.</div>
           </div>
         </label>
         <label class="feature">
-          <input type="checkbox" id="f-feat_parties">
+          <input type="checkbox" id="f-feat_parties" checked>
           <div>
             <div class="ftitle">🎉 Party rentals</div>
-            <div class="fsub">Members request parties online; you approve with one click. Email confirmation auto-sends.</div>
+            <div class="fsub">Members request parties online; you approve with one click.</div>
+          </div>
+        </label>
+        <label class="feature">
+          <input type="checkbox" id="f-feat_volunteer" checked>
+          <div>
+            <div class="ftitle">🙋 Volunteer signups</div>
+            <div class="fsub">One-shot slots for snack-bar shifts, swim-meet timers, party helpers.</div>
+          </div>
+        </label>
+        <label class="feature">
+          <input type="checkbox" id="f-feat_campaigns" checked>
+          <div>
+            <div class="ftitle">📣 Pop-up campaigns</div>
+            <div class="fsub">In-app modals for fundraisers, RSVPs, time-sensitive announcements.</div>
+          </div>
+        </label>
+        <label class="feature">
+          <input type="checkbox" id="f-feat_guest_passes" checked>
+          <div>
+            <div class="ftitle">🎟️ Guest pass packs</div>
+            <div class="fsub">Pre-paid bundles members redeem at the gate. Single-use also works.</div>
           </div>
         </label>
         <label class="feature">
@@ -355,8 +376,11 @@ function collect() {
       paypal_link:  val('f-paypal_link') || null,
     },
     features: {
-      swim_lessons: !!document.getElementById('f-feat_swim').checked,
+      programs:     !!document.getElementById('f-feat_programs').checked,
       parties:      !!document.getElementById('f-feat_parties').checked,
+      volunteer:    !!document.getElementById('f-feat_volunteer').checked,
+      campaigns:    !!document.getElementById('f-feat_campaigns').checked,
+      guest_passes: !!document.getElementById('f-feat_guest_passes').checked,
       keyfobs:      !!document.getElementById('f-feat_keyfobs').checked,
       gate:         !!document.getElementById('f-feat_gate').checked,
     },
@@ -381,10 +405,14 @@ function populate(s) {
   if (s.pool?.fob_activation_day) setVal('f-fob_activation_day', s.pool.fob_activation_day);
   setVal('f-venmo_handle', s.payments?.venmo_handle);
   setVal('f-paypal_link',  s.payments?.paypal_link);
-  setChk('f-feat_swim',    s.features?.swim_lessons);
-  setChk('f-feat_parties', s.features?.parties);
-  setChk('f-feat_keyfobs', s.features?.keyfobs);
-  setChk('f-feat_gate',    s.features?.gate);
+  // Default-on for the new features (legacy `swim_lessons` flag maps to programs)
+  setChk('f-feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
+  setChk('f-feat_parties',      s.features?.parties      ?? true);
+  setChk('f-feat_volunteer',    s.features?.volunteer    ?? true);
+  setChk('f-feat_campaigns',    s.features?.campaigns    ?? true);
+  setChk('f-feat_guest_passes', s.features?.guest_passes ?? true);
+  setChk('f-feat_keyfobs',      s.features?.keyfobs      ?? false);
+  setChk('f-feat_gate',         s.features?.gate         ?? false);
   toggleFobDay();
 }
 
