@@ -134,8 +134,11 @@
       <label>Secondary email <span class="opt">(optional, for invoices)</span></label>
       <input id="alt_email" type="email">
 
-      <label>Emergency contact (name + phone) *</label>
-      <input id="emergency_contact" placeholder="Jane Smith — (555) 555-9999">
+      <label>Emergency contact name *</label>
+      <input id="emergency_name" placeholder="Jane Smith" autocomplete="name">
+
+      <label>Emergency contact phone *</label>
+      <input id="emergency_phone" type="tel" placeholder="(555) 555-9999" oninput="formatPhoneInput(this)" autocomplete="tel">
     </div>
 
     <!-- Step 2 — Adults + children -->
@@ -237,7 +240,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30b</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -480,19 +483,21 @@ function _goNext() {
   const errEl = document.getElementById('err'); errEl.classList.remove('show');
   const errTop = document.getElementById('err-top'); if (errTop) errTop.classList.remove('show');
   if (CURRENT_STEP === 1) {
-    const fam   = document.getElementById('family_name');
-    const addr  = document.getElementById('address');
-    const phone = document.getElementById('primary_phone');
-    const email = document.getElementById('primary_email');
-    const emerg = document.getElementById('emergency_contact');
-    if (!fam || !addr || !phone || !email || !emerg) {
+    const fam     = document.getElementById('family_name');
+    const addr    = document.getElementById('address');
+    const phone   = document.getElementById('primary_phone');
+    const email   = document.getElementById('primary_email');
+    const emergN  = document.getElementById('emergency_name');
+    const emergP  = document.getElementById('emergency_phone');
+    if (!fam || !addr || !phone || !email || !emergN || !emergP) {
       return show('Form missing fields — try refreshing the page (cache may be stale).');
     }
-    if (!fam.value.trim())   return showField(fam,   'Family last name is required');
-    if (!addr.value.trim())  return showField(addr,  'Address is required');
-    if (!phone.value.trim()) return showField(phone, 'Primary phone is required');
-    if (!email.value.trim()) return showField(email, 'Primary email is required');
-    if (!emerg.value.trim()) return showField(emerg, 'Emergency contact is required');
+    if (!fam.value.trim())    return showField(fam,    'Family last name is required');
+    if (!addr.value.trim())   return showField(addr,   'Address is required');
+    if (!phone.value.trim())  return showField(phone,  'Primary phone is required');
+    if (!email.value.trim())  return showField(email,  'Primary email is required');
+    if (!emergN.value.trim()) return showField(emergN, 'Emergency contact name is required');
+    if (!emergP.value.trim()) return showField(emergP, 'Emergency contact phone is required');
   } else if (CURRENT_STEP === 2) {
     const adults = collectAdults();
     if (!adults.length || !adults[0].name) return show('At least one adult name is required');
@@ -605,7 +610,7 @@ async function submitApplication() {
     need_new_fob:     document.getElementById('need_new_fob').checked,
     prior_fob_number: get('prior_fob_number') || null,
     alt_email:        get('alt_email') || null,
-    emergency_contact: get('emergency_contact'),
+    emergency_contact: [get('emergency_name'), get('emergency_phone')].filter(Boolean).join(' — '),
 
     adults, children,
     waivers_accepted: { ...ACCEPTED },
