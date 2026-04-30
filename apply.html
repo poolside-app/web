@@ -250,6 +250,7 @@
               ontouchstart="window.__tapCount = (window.__tapCount||0)+1; var c=document.getElementById('tap-count'); if(c)c.textContent=window.__tapCount; var l=document.getElementById('tap-last'); if(l)l.textContent='touchstart @ '+new Date().toLocaleTimeString();"
               style="position:relative;z-index:10">Next →</button>
     </div>
+    <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:18px">If the Next button below isn't responding, try the fixed bar at the bottom of the screen.</p>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;text-align:center">Already a member? <a href="/m/login.html">Sign in</a></p>
   </div>
 </main>
@@ -266,7 +267,21 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30e</span></footer>
+<div id="fixed-next-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-top:1px solid #e5e7eb;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 -4px 12px rgba(0,0,0,.05)">
+  <button type="button" id="fixed-back-btn" onclick="goBack()" style="visibility:hidden;padding:10px 14px;background:transparent;color:#0a3b5c;border:1.5px solid #e5e7eb;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">← Back</button>
+  <button type="button" id="fixed-next-btn" onclick="goNext()" style="padding:12px 24px;background:#0a3b5c;color:#fff;border:0;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;flex:1;max-width:240px">Next →</button>
+</div>
+<script>
+  // Mirror the back button's visibility state from the in-form one.
+  (function () {
+    var origObs = document.getElementById('back-btn');
+    var fb = document.getElementById('fixed-back-btn');
+    function syncBack() { if (origObs && fb) fb.style.visibility = origObs.style.visibility || 'visible'; }
+    syncBack();
+    new MutationObserver(syncBack).observe(origObs, { attributes: true, attributeFilter: ['style'] });
+  })();
+</script>
+<footer style="padding-bottom:80px">Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:11px">apply v.2026-04-30f</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
