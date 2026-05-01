@@ -34,24 +34,42 @@ export type DriveGrant = {
 };
 
 // Header row written when a year-tab is first created. Order locked so older
-// tabs stay readable even after we add a column to newer ones.
-export const SHEET_HEADERS = [
-  'Submitted At',
-  'Application ID',
-  'Family Name',
-  'Primary Name',
-  'Primary Email',
-  'Primary Phone',
-  'Tier',
-  'Adults',
-  'Kids',
-  'Address',
-  'City',
-  'Zip',
-  'Emergency Contact',
-  'Payment Method',
-  'Drive PDF Link',
+// tabs stay readable even after we add a column to newer ones. Each entry has
+// a label + pixel width + alignment + numberFormat so a single source of
+// truth governs both content and visual styling.
+type ColSpec = {
+  label: string;
+  width: number;
+  align?: 'LEFT' | 'CENTER' | 'RIGHT';
+  numberFormat?: { type: 'DATE_TIME' | 'NUMBER' | 'TEXT'; pattern?: string };
+};
+export const SHEET_COLUMNS: ColSpec[] = [
+  { label: 'Submitted',         width: 150, align: 'LEFT',
+    numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
+  { label: 'Family',            width: 170, align: 'LEFT' },
+  { label: 'Primary Contact',   width: 170, align: 'LEFT' },
+  { label: 'Email',             width: 200, align: 'LEFT' },
+  { label: 'Phone',             width: 130, align: 'LEFT' },
+  { label: 'Tier',              width: 120, align: 'LEFT' },
+  { label: 'Adults',            width:  70, align: 'CENTER',
+    numberFormat: { type: 'NUMBER', pattern: '0' } },
+  { label: 'Kids',              width:  70, align: 'CENTER',
+    numberFormat: { type: 'NUMBER', pattern: '0' } },
+  { label: 'Policies',          width:  90, align: 'CENTER' },
+  { label: 'Address',           width: 200, align: 'LEFT' },
+  { label: 'City',              width: 110, align: 'LEFT' },
+  { label: 'Zip',               width:  70, align: 'LEFT' },
+  { label: 'Emergency Contact', width: 200, align: 'LEFT' },
+  { label: 'Payment',           width: 110, align: 'CENTER' },
+  { label: 'Application PDF',   width: 110, align: 'CENTER' },
+  { label: 'App ID',            width: 100, align: 'LEFT' },
 ];
+export const SHEET_HEADERS = SHEET_COLUMNS.map(c => c.label);
+
+// Brand colors (Poolside) — referenced by formatYearTab when styling a new tab.
+const BRAND_BLUE  = { red: 0.039, green: 0.231, blue: 0.361 }; // #0a3b5c
+const BRAND_BLUE_L = { red: 0.949, green: 0.965, blue: 0.984 }; // #f2f4fc (banding light)
+const WHITE       = { red: 1, green: 1, blue: 1 };
 
 // Refresh access token using the stored refresh_token. Cached only in
 // memory of the calling request — never persisted, never shared cross-request.
@@ -216,8 +234,17 @@ export async function findTab(
   return sheet ? (sheet.properties.sheetId as number) : null;
 }
 
+// Convert a column index (0-based) to A1 letters: 0→A, 25→Z, 26→AA, ...
+function colA1(idx: number): string {
+  let n = idx, s = '';
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return s;
+}
+
 // Idempotent year-tab creation. First signup of each calendar year auto-
-// creates a new tab next to last year's, with the canonical header row.
+// creates a new tab next to last year's, with the canonical header row AND
+// professional styling: dark-blue header, frozen header row, banded data
+// rows, basic filter, sensible column widths, date column number format.
 export async function ensureYearTab(
   accessToken: string,
   spreadsheetId: string,
@@ -225,20 +252,25 @@ export async function ensureYearTab(
   cachedSheetId: number | null,
 ): Promise<number> {
   if (cachedSheetId !== null) {
-    // Trust cache — Sheets sheetIds are stable. Re-validate only on append fail.
     return cachedSheetId;
   }
   const existing = await findTab(accessToken, spreadsheetId, year);
   if (existing !== null) return existing;
-  // Create the tab + write header row in two calls (batchUpdate + values.update)
+
+  // 1. Create the tab — frozen first row + brand-blue tab color from creation
   const addRes = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      requests: [{ addSheet: { properties: { title: year } } }],
+      requests: [{
+        addSheet: {
+          properties: {
+            title: year,
+            gridProperties: { frozenRowCount: 1 },
+            tabColorStyle: { rgbColor: BRAND_BLUE },
+          },
+        },
+      }],
     }),
   });
   if (!addRes.ok) {
@@ -248,16 +280,13 @@ export async function ensureYearTab(
   const addData = await addRes.json();
   const newId = addData.replies?.[0]?.addSheet?.properties?.sheetId as number;
 
-  // Write headers
-  const range = `${year}!A1:${String.fromCharCode(64 + SHEET_HEADERS.length)}1`;
+  // 2. Write the header row text (so styling has labels to render)
+  const headerRange = `${year}!A1:${colA1(SHEET_HEADERS.length - 1)}1`;
   const headRes = await fetch(
-    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(headerRange)}?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [SHEET_HEADERS] }),
     },
   );
@@ -265,7 +294,125 @@ export async function ensureYearTab(
     const txt = await headRes.text();
     throw new Error(`Header write failed: ${headRes.status} ${txt.slice(0, 200)}`);
   }
+
+  // 3. One batchUpdate that applies ALL the styling at once.
+  await formatYearTab(accessToken, spreadsheetId, newId);
+
   return newId;
+}
+
+// Apply professional styling to a tab. Idempotent — safe to call multiple
+// times (Sheets API silently no-ops most of these on repeated calls).
+export async function formatYearTab(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+): Promise<void> {
+  const numCols = SHEET_COLUMNS.length;
+  const requests: Record<string, unknown>[] = [];
+
+  // — Column widths (one request per width-distinct column for clarity)
+  SHEET_COLUMNS.forEach((col, i) => {
+    requests.push({
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+        properties: { pixelSize: col.width },
+        fields: 'pixelSize',
+      },
+    });
+  });
+
+  // — Row heights: tall header (32), comfy data rows (24)
+  requests.push({
+    updateDimensionProperties: {
+      range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
+      properties: { pixelSize: 34 },
+      fields: 'pixelSize',
+    },
+  });
+  // (Default row height for body rows; Sheets sets ~21px which is fine)
+
+  // — Header row: brand-blue background, white bold text, centered
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: numCols },
+      cell: {
+        userEnteredFormat: {
+          backgroundColorStyle: { rgbColor: BRAND_BLUE },
+          horizontalAlignment: 'CENTER',
+          verticalAlignment: 'MIDDLE',
+          textFormat: {
+            bold: true,
+            fontSize: 11,
+            foregroundColorStyle: { rgbColor: WHITE },
+          },
+          padding: { top: 6, bottom: 6, left: 8, right: 8 },
+        },
+      },
+      fields: 'userEnteredFormat(backgroundColorStyle,horizontalAlignment,verticalAlignment,textFormat,padding)',
+    },
+  });
+
+  // — Per-column data alignment + number format (rows 2…∞)
+  SHEET_COLUMNS.forEach((col, i) => {
+    const fmt: Record<string, unknown> = {
+      horizontalAlignment: col.align ?? 'LEFT',
+      verticalAlignment: 'MIDDLE',
+      textFormat: { fontSize: 10 },
+      padding: { top: 4, bottom: 4, left: 8, right: 8 },
+    };
+    if (col.numberFormat) {
+      fmt.numberFormat = { type: col.numberFormat.type, pattern: col.numberFormat.pattern };
+    }
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 },
+        cell: { userEnteredFormat: fmt },
+        fields: col.numberFormat
+          ? 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat,padding,numberFormat)'
+          : 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat,padding)',
+      },
+    });
+  });
+
+  // — Banded rows (alternating white / very-light-blue) — biggest readability win
+  requests.push({
+    addBanding: {
+      bandedRange: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          startColumnIndex: 0,
+          endColumnIndex: numCols,
+        },
+        rowProperties: {
+          headerColorStyle:     { rgbColor: BRAND_BLUE },
+          firstBandColorStyle:  { rgbColor: WHITE },
+          secondBandColorStyle: { rgbColor: BRAND_BLUE_L },
+        },
+      },
+    },
+  });
+
+  // — Basic filter on the full range so admin gets sortable column headers
+  requests.push({
+    setBasicFilter: {
+      filter: {
+        range: { sheetId, startRowIndex: 0, startColumnIndex: 0, endColumnIndex: numCols },
+      },
+    },
+  });
+
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    // Don't throw — formatting failure is recoverable, sync still works
+    console.error(`Tab formatting failed (non-fatal): ${res.status} ${txt.slice(0, 300)}`);
+  }
 }
 
 // Append a row to a year-tab. Uses USER_ENTERED so dates / numbers parse

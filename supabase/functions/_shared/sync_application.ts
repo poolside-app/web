@@ -118,23 +118,32 @@ export async function syncApplicationToDrive(
   const pdfFilename = `${safeFamily}-${dateStr}-${(app.id as string).slice(0, 8)}.pdf`;
   const pdfId = await uploadPdf(accessToken, yearFolderId, pdfFilename, pdfBytes);
 
-  // 7) Append row to year tab.
+  // 7) Append row to year tab. Order MUST match SHEET_COLUMNS in google_drive.ts.
+  // Date as Sheets serial via DATE formula gives clean numberFormat rendering.
+  const dateSerial = `=DATE(${submittedAt.getUTCFullYear()},${submittedAt.getUTCMonth()+1},${submittedAt.getUTCDate()})+TIME(${submittedAt.getUTCHours()},${submittedAt.getUTCMinutes()},${submittedAt.getUTCSeconds()})`;
+  const waiversAccepted = (app.waivers_accepted as Record<string, boolean> | null) ?? {};
+  const accCount = Object.values(waiversAccepted).filter(Boolean).length;
+  const totCount = Object.keys(waiversAccepted).length;
+  const policiesCell = totCount > 0 ? `${accCount}/${totCount} ✓` : '—';
+  const pdfHyperlink = `=HYPERLINK("${driveFileLink(pdfId)}","📄 Open")`;
+
   const rowValues = [
-    submittedAt.toISOString().replace('T', ' ').slice(0, 19),
-    app.id as string,
-    (app.family_name       as string) ?? '',
-    (app.primary_name      as string | null) ?? '',
-    (app.primary_email     as string | null) ?? '',
-    (app.primary_phone     as string | null) ?? '',
-    tierLabel || (app.tier_slug as string | null) || '',
-    (app.num_adults        as number | null) ?? 0,
-    (app.num_kids          as number | null) ?? 0,
-    (app.address           as string | null) ?? '',
-    (app.city              as string | null) ?? '',
-    (app.zip               as string | null) ?? '',
-    (app.emergency_contact as string | null) ?? '',
-    (app.payment_method    as string | null) ?? '',
-    driveFileLink(pdfId),
+    dateSerial,                                              // Submitted (DATE+TIME formula)
+    (app.family_name       as string) ?? '',                 // Family
+    (app.primary_name      as string | null) ?? '',          // Primary Contact
+    (app.primary_email     as string | null) ?? '',          // Email
+    (app.primary_phone     as string | null) ?? '',          // Phone
+    tierLabel || (app.tier_slug as string | null) || '',     // Tier
+    (app.num_adults        as number | null) ?? 0,           // Adults
+    (app.num_kids          as number | null) ?? 0,           // Kids
+    policiesCell,                                            // Policies (e.g. "3/3 ✓")
+    (app.address           as string | null) ?? '',          // Address
+    (app.city              as string | null) ?? '',          // City
+    (app.zip               as string | null) ?? '',          // Zip
+    (app.emergency_contact as string | null) ?? '',          // Emergency Contact
+    (app.payment_method    as string | null) ?? '',          // Payment
+    pdfHyperlink,                                            // Application PDF (=HYPERLINK)
+    app.id as string,                                        // App ID (rightmost, narrow)
   ];
   const rowIndex = await appendRow(accessToken, spreadsheetId, year, rowValues);
 
