@@ -202,20 +202,9 @@
   </div>
 
   <div class="card">
-    <h2>Payments</h2>
-    <label>Venmo handle <span class="opt">(without @)</span></label>
-    <input id="venmo_handle" placeholder="yourclub">
-    <label>PayPal link</label>
-    <input id="paypal_link" placeholder="https://paypal.me/yourclub">
-  </div>
-
-  <div class="card">
-    <h2>Stripe (card payments)</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, programs, and guest passes. Charges land directly in your bank account. Poolside takes a 1.5% platform fee per charge.</p>
-    <div id="stripe-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
-    <button class="btn" id="stripe-connect-btn" type="button" onclick="connectStripe()" style="display:none">Connect Stripe</button>
-    <button class="btn-ghost btn" id="stripe-resume-btn" type="button" onclick="connectStripe()" style="display:none">Resume onboarding</button>
-    <button class="btn-ghost btn" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
+    <h2>Payment options</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 10px">Setup moved to <a href="/club/admin/payments.html" style="font-weight:600">Members → Payments</a> alongside payment activity. Venmo handle, PayPal link, and Stripe Connect onboarding all live there now.</p>
+    <a class="btn-ghost btn" href="/club/admin/payments.html" style="display:inline-block;font-size:13px;text-decoration:none">→ Configure payment options</a>
   </div>
 
   <div class="card">
@@ -499,8 +488,6 @@ function populate(s) {
   if (s.pool?.opens_at)  setVal('opens_at', s.pool.opens_at);
   if (s.pool?.closes_at) setVal('closes_at', s.pool.closes_at);
   if (s.pool?.fob_activation_day) setVal('fob_activation_day', s.pool.fob_activation_day);
-  setVal('venmo_handle', s.payments?.venmo_handle);
-  setVal('paypal_link',  s.payments?.paypal_link);
   setChk('feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
   setChk('feat_parties',      s.features?.parties      ?? true);
   setChk('feat_volunteer',    s.features?.volunteer    ?? true);
@@ -540,10 +527,9 @@ function collect(prevSettings) {
       closes_at:          val('closes_at') || null,
       fob_activation_day: val('fob_activation_day') || null,
     },
-    payments: {
-      venmo_handle: val('venmo_handle') || null,
-      paypal_link:  val('paypal_link') || null,
-    },
+    // Payments (venmo_handle, paypal_link) live under Members → Payments now
+    // and save through there; we omit the key entirely so server-side merge
+    // leaves the existing payments object untouched.
     features: {
       programs:     !!document.getElementById('feat_programs').checked,
       parties:      !!document.getElementById('feat_parties').checked,
@@ -738,58 +724,8 @@ async function deactivateAdmin(id, name) {
   } catch (e) { showErr(e.message); }
   loadAdmins();
   loadRoleTemplates();
-  loadStripeStatus();
   document.getElementById('i-role').addEventListener('change', paintScopePicker);
 })();
-
-// ── Stripe Connect ─────────────────────────────────────────────────────
-async function loadStripeStatus() {
-  const box = document.getElementById('stripe-status');
-  const connectBtn = document.getElementById('stripe-connect-btn');
-  const resumeBtn  = document.getElementById('stripe-resume-btn');
-  const syncBtn    = document.getElementById('stripe-sync-btn');
-  // If we were just redirected back from Stripe onboarding, force a sync
-  // so charges_enabled / payouts_enabled refresh from Stripe right away
-  // (otherwise the admin sees stale "not finished" until they tap Sync).
-  if (window.location.hash.includes('stripe=connected')) {
-    history.replaceState(null, '', window.location.pathname);
-    try { await call(`${SUPABASE_URL}/functions/v1/stripe_connect`, 'sync'); } catch (_) {}
-  }
-  try {
-    const r = await call(`${SUPABASE_URL}/functions/v1/stripe_connect`, 'status');
-    if (!r.ok) throw new Error(r.error || 'Stripe status failed');
-    if (!r.stripe_configured) {
-      box.innerHTML = '<b>Platform Stripe not configured yet.</b> Doug needs to set <code>STRIPE_SECRET_KEY</code> on the platform before clubs can connect.';
-      return;
-    }
-    if (!r.connected) {
-      box.innerHTML = '<b>Not connected.</b> Click below to set up Stripe — you\'ll be redirected to Stripe to enter your business info, then sent back here.';
-      connectBtn.style.display = 'inline-block';
-      return;
-    }
-    if (!r.charges_enabled) {
-      box.innerHTML = `<b>Stripe account created</b> (id: <code>${escapeHtml(r.account_id || '')}</code>) but onboarding isn't finished — finish in Stripe to start accepting payments.`;
-      resumeBtn.style.display = 'inline-block';
-      syncBtn.style.display = 'inline-block';
-      return;
-    }
-    box.innerHTML = `✓ <b>Stripe ready.</b> Account <code>${escapeHtml(r.account_id || '')}</code> · charges enabled${r.payouts_enabled ? ' · payouts enabled' : ' · payouts pending'}.`;
-    syncBtn.style.display = 'inline-block';
-  } catch (e) {
-    box.innerHTML = `<b>Couldn't load Stripe status:</b> ${escapeHtml(e.message)}`;
-  }
-}
-async function connectStripe() {
-  const r = await call(`${SUPABASE_URL}/functions/v1/stripe_connect`, 'onboard');
-  if (!r.ok) { toast(r.error || 'Failed', 'err'); return; }
-  window.location.href = r.url;
-}
-async function syncStripe() {
-  const r = await call(`${SUPABASE_URL}/functions/v1/stripe_connect`, 'sync');
-  if (!r.ok) { toast(r.error || 'Failed', 'err'); return; }
-  toast('Synced.');
-  await loadStripeStatus();
-}
 </script>
 </body>
 </html>

@@ -51,6 +51,22 @@
   .pill.guest_pass { background: #cffafe; color: #155e75; }
   .pill.aged       { background: #fee2e2; color: #7f1d1d; }
   .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; box-shadow: var(--shadow); margin-bottom:14px; }
+  .card h2 { font-size:17px; margin-bottom:6px; }
+  .card label { display:block; font-size:11px; font-weight:600; margin:14px 0 4px; }
+  .card input[type=text], .card input:not([type]) { width:100%; padding:9px 11px; border:1.5px solid var(--border); border-radius:8px; font:14px 'Inter'; }
+  .card .opt { font-weight:500; color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .err { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:8px; }
+  .err.show { display:block; }
+  .saved { color: var(--green); font-size: 13px; font-weight: 600; margin-left: 10px; }
+  details > summary { cursor: pointer; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] > summary .chev { transform: rotate(90deg); }
+  .chev { display: inline-block; transition: transform .15s; margin-right: 4px; }
+
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -75,6 +91,36 @@
 <script src="/js/members-subtabs.js"></script>
 
 <main>
+  <details id="setup-section" style="margin-bottom:18px">
+    <summary style="font-size:13px;color:var(--muted);font-weight:600;padding:6px 0">
+      <span class="chev">▶</span> Payment options setup <span style="font-weight:400">(Venmo, PayPal, Stripe)</span>
+    </summary>
+    <div style="margin-top:12px">
+      <div class="card" data-owner-only>
+        <h2>Card payments (Stripe)</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, applications, programs, and guest passes. Charges land directly in your bank. Poolside takes a 1.5% platform fee per charge.</p>
+        <div id="stripe-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
+        <button class="btn btn-primary" id="stripe-connect-btn" type="button" onclick="connectStripe()" style="display:none;background:var(--blue)">Connect Stripe</button>
+        <button class="btn btn-ghost" id="stripe-resume-btn" type="button" onclick="connectStripe()" style="display:none">Resume onboarding</button>
+        <button class="btn btn-ghost" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
+      </div>
+
+      <div class="card">
+        <h2>Venmo &amp; PayPal</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Member-facing payment links. Venmo handle paints a QR on the apply form and member home; PayPal link drops a 'Pay with PayPal' button.</p>
+        <label>Venmo handle <span class="opt">(without @)</span></label>
+        <input type="text" id="venmo_handle" placeholder="yourclub">
+        <label>PayPal link</label>
+        <input type="text" id="paypal_link" placeholder="https://paypal.me/yourclub">
+        <div style="margin-top:14px;display:flex;align-items:center">
+          <button class="btn btn-primary" id="pm-save" type="button" onclick="savePaymentMethods()" style="background:var(--blue)">Save</button>
+          <span class="saved" id="pm-saved" style="display:none">✓ Saved</span>
+        </div>
+        <div class="err" id="pm-err"></div>
+      </div>
+    </div>
+  </details>
+
   <div class="toolbar">
     <div>
       <h1>Payments</h1>
@@ -96,8 +142,10 @@
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
-const URL_BASE     = `${SUPABASE_URL}/functions/v1/payments_admin`;
-const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const URL_BASE       = `${SUPABASE_URL}/functions/v1/payments_admin`;
+const ME_URL         = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const SETTINGS_URL   = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const STRIPE_URL     = `${SUPABASE_URL}/functions/v1/stripe_connect`;
 
 let CACHE = [];
 let FILTER = '';
@@ -107,9 +155,9 @@ function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'
 function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
 document.getElementById('signout').addEventListener('click', logout);
 
-async function call(action, extra = {}) {
+async function api(url, action, extra = {}) {
   const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
-  const res = await fetch(URL_BASE, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
     body: JSON.stringify({ action, ...extra }),
@@ -117,6 +165,7 @@ async function call(action, extra = {}) {
   if (res.status === 401) { logout(); throw new Error('Session expired'); }
   return res.json();
 }
+async function call(action, extra = {}) { return api(URL_BASE, action, extra); }
 
 document.querySelectorAll('#filter button').forEach(b => {
   b.addEventListener('click', () => {
@@ -195,6 +244,90 @@ async function markPaid(source, source_id) {
   await refresh();
 }
 
+// ── Setup: Stripe Connect ───────────────────────────────────────────────
+async function loadStripeStatus() {
+  const box        = document.getElementById('stripe-status');
+  const connectBtn = document.getElementById('stripe-connect-btn');
+  const resumeBtn  = document.getElementById('stripe-resume-btn');
+  const syncBtn    = document.getElementById('stripe-sync-btn');
+  // Force a sync if redirected back from Stripe onboarding so charges_enabled
+  // refreshes immediately rather than showing stale 'not finished'.
+  if (window.location.hash.includes('stripe=connected')) {
+    history.replaceState(null, '', window.location.pathname);
+    try { await api(STRIPE_URL, 'sync'); } catch (_) {}
+    document.getElementById('setup-section').open = true;
+  }
+  try {
+    const r = await api(STRIPE_URL, 'status');
+    if (!r.ok) throw new Error(r.error || 'Stripe status failed');
+    if (!r.stripe_configured) {
+      box.innerHTML = '<b>Platform Stripe not configured yet.</b> Doug needs to set <code>STRIPE_SECRET_KEY</code> on the platform before clubs can connect.';
+      return;
+    }
+    if (!r.connected) {
+      box.innerHTML = '<b>Not connected.</b> Click below to set up Stripe — you\'ll be redirected to enter your business info, then sent back here.';
+      connectBtn.style.display = 'inline-block';
+      return;
+    }
+    if (!r.charges_enabled) {
+      box.innerHTML = `<b>Stripe account created</b> (id: <code>${escapeHtml(r.account_id || '')}</code>) but onboarding isn't finished — finish in Stripe to start accepting payments.`;
+      resumeBtn.style.display = 'inline-block';
+      syncBtn.style.display = 'inline-block';
+      return;
+    }
+    box.innerHTML = `✓ <b>Stripe ready.</b> Account <code>${escapeHtml(r.account_id || '')}</code> · charges enabled${r.payouts_enabled ? ' · payouts enabled' : ' · payouts pending'}.`;
+    syncBtn.style.display = 'inline-block';
+  } catch (e) {
+    box.innerHTML = `<b>Couldn't load Stripe status:</b> ${escapeHtml(e.message)}`;
+  }
+}
+async function connectStripe() {
+  const r = await api(STRIPE_URL, 'onboard');
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  window.location.href = r.url;
+}
+async function syncStripe() {
+  const r = await api(STRIPE_URL, 'sync');
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  await loadStripeStatus();
+}
+
+// ── Setup: Venmo + PayPal ───────────────────────────────────────────────
+async function loadPaymentMethods() {
+  try {
+    const r = await api(SETTINGS_URL, 'get');
+    if (!r.ok) throw new Error(r.error || 'Settings load failed');
+    document.getElementById('venmo_handle').value = (r.settings?.payments?.venmo_handle ?? '');
+    document.getElementById('paypal_link').value  = (r.settings?.payments?.paypal_link  ?? '');
+  } catch (e) {
+    const errEl = document.getElementById('pm-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+async function savePaymentMethods() {
+  const btn = document.getElementById('pm-save');
+  const errEl = document.getElementById('pm-err');
+  const savedEl = document.getElementById('pm-saved');
+  errEl.classList.remove('show');
+  savedEl.style.display = 'none';
+  btn.disabled = true;
+  const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const venmo  = document.getElementById('venmo_handle').value.trim().replace(/^@+/, '');
+    const paypal = document.getElementById('paypal_link').value.trim();
+    const r = await api(SETTINGS_URL, 'save', {
+      value: { payments: { venmo_handle: venmo || null, paypal_link: paypal || null } },
+    });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    savedEl.style.display = 'inline';
+    setTimeout(() => { savedEl.style.display = 'none'; }, 1800);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 (async () => {
   if (!token()) { logout(); return; }
   try {
@@ -209,6 +342,9 @@ async function markPaid(source, source_id) {
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant);
   } catch { logout(); return; }
   await refresh();
+  // Setup section runs in parallel; auto-opens if Stripe redirected us back.
+  loadStripeStatus();
+  loadPaymentMethods();
 })();
 </script>
 </body>
