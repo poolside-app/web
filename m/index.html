@@ -911,6 +911,29 @@ async function submitProfile() {
     ? `<span class="pill paid">Dues paid${household.paid_until_year ? ' · ' + household.paid_until_year : ''}</span>`
     : `<span class="pill unpaid">Dues unpaid</span>`;
 
+  // Early-bird banner — only render when dues are unpaid and the discount
+  // window is still open. Source of truth is settings.value.renewals.early_bird,
+  // exposed via tenant_public.public_settings.renewals.
+  const eb = publicData.public_settings?.renewals?.early_bird;
+  let earlyBirdBanner = '';
+  if (!household.dues_paid_for_year && eb && eb.enabled && eb.deadline) {
+    const deadlineDate = new Date(eb.deadline + 'T23:59:59');
+    if (Number.isFinite(deadlineDate.getTime()) && deadlineDate >= new Date()) {
+      const off = eb.discount_cents > 0
+        ? `$${(eb.discount_cents / 100).toFixed(0)} off`
+        : (eb.discount_percent > 0 ? `${eb.discount_percent}% off` : 'a discount');
+      const fmtDate = deadlineDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      earlyBirdBanner = `
+        <div style="margin:0 0 14px;padding:14px 16px;background:linear-gradient(90deg,#fef3c7,#fef08a);border:1px solid #fcd34d;border-radius:12px;display:flex;gap:10px;align-items:flex-start">
+          <div style="font-size:20px;line-height:1">⏰</div>
+          <div style="flex:1">
+            <div style="font-weight:700;color:#7c2d12">Early-bird: ${escapeHtml(off)} if paid by ${escapeHtml(fmtDate)}</div>
+            ${eb.message ? `<div style="font-size:13px;color:#92400e;margin-top:4px">${escapeHtml(eb.message)}</div>` : ''}
+          </div>
+        </div>`;
+    }
+  }
+
   // Hero card with greeting + quick actions
   const heroActions = [];
   if (user.can_book_parties) heroActions.push(`<button class="btn" onclick="openPartyModal()">🎉 Request a party</button>`);
@@ -988,6 +1011,7 @@ async function submitProfile() {
       <div class="actions">${heroActions.join('')}</div>
     </div>
 
+    ${earlyBirdBanner}
     <div class="card">
       <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
         ${escapeHtml(household.family_name || 'Your household')}

@@ -79,6 +79,18 @@ Deno.serve(async (req) => {
       keyfobs:      !!v.features?.keyfobs,
       gate:         !!v.features?.gate,
     },
+    // Early-bird renewal discount surfaced so member home + apply form can
+    // show the deadline + savings copy. Honor system for Venmo; Stripe
+    // checkout enforces the math server-side.
+    renewals: {
+      early_bird: {
+        enabled:          !!(v.renewals as Record<string, unknown> | undefined)?.early_bird && !!((v.renewals as Record<string, Record<string, unknown>>).early_bird?.enabled),
+        discount_cents:   Number((v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.discount_cents ?? 0),
+        discount_percent: Number((v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.discount_percent ?? 0),
+        deadline:         (v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.deadline ?? null,
+        message:          (v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.message ?? null,
+      },
+    },
   };
 
   // Public-visibility documents only — members see member-visibility ones via

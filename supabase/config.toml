@@ -133,3 +133,9 @@ verify_jwt = false
 # Filters tasks by caller's scopes; owner-role admins see everything.
 [functions.admin_tasks]
 verify_jwt = false
+
+# Renewals — season-open dues blast (email/SMS) to prior members,
+# plus early-bird discount config. Admin auth via custom HS256 JWT,
+# so the gateway must not pre-verify Supabase auth tokens.
+[functions.renewals]
+verify_jwt = false

@@ -180,6 +180,71 @@
     <div id="app-list"><div class="empty">Loading…</div></div>
   </section>
 
+  <!-- ── Renewals panel ───────────────────────────────────────────────── -->
+  <section class="panel" id="panel-renewals">
+    <div class="toolbar">
+      <h1>Renewals</h1>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;max-width:680px">When the season opens, blast your prior members an email and/or text with a one-tap sign-in link so they can pay dues. Configure an early-bird discount below if you want to reward early payers.</p>
+
+    <div class="card" style="padding:18px;margin-bottom:14px">
+      <h2 style="margin-bottom:6px">Early-bird discount</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Shown on every member home and mentioned in the renewal email/SMS. Honor system for Venmo; Stripe checkout applies the math automatically.</p>
+      <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="eb-enabled"><span>Enable early-bird discount</span></label>
+      <div class="row3" style="gap:10px">
+        <div>
+          <label>Discount type</label>
+          <select id="eb-type" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
+            <option value="amount">Flat $ off</option>
+            <option value="percent">Percent off</option>
+          </select>
+        </div>
+        <div>
+          <label><span id="eb-value-label">Discount ($)</span></label>
+          <input id="eb-value" type="number" min="0" step="0.01" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
+        </div>
+        <div>
+          <label>Pay-by deadline</label>
+          <input id="eb-deadline" type="date" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
+        </div>
+      </div>
+      <label style="margin-top:8px">Optional message <span style="color:var(--muted);font-weight:500">(shown to members)</span></label>
+      <input id="eb-message" placeholder="e.g. Save $50 if you renew before May 15!" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
+      <div style="margin-top:14px">
+        <button class="btn" type="button" id="eb-save" onclick="Renewals.saveEarlyBird()">Save discount config</button>
+      </div>
+      <div class="err" id="eb-err" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" style="padding:18px;margin-bottom:14px">
+      <h2 style="margin-bottom:6px">Audience</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Who should get the blast? The count updates as you toggle.</p>
+      <div class="filter-row" id="ren-audience" style="margin-bottom:14px">
+        <button class="on" data-audience="lapsed">Lapsed (unpaid this year)</button>
+        <button data-audience="last_season">Last season's members</button>
+        <button data-audience="all">All active households</button>
+      </div>
+      <div id="ren-summary" style="padding:14px;background:var(--bg-2);border-radius:10px;font-size:14px;line-height:1.6">Loading households…</div>
+    </div>
+
+    <div class="card" style="padding:18px">
+      <h2 style="margin-bottom:6px">Compose & send</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Each recipient gets a personalized 7-day single-use sign-in link. Default body uses your tenant name and current year.</p>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-email" checked><span>📧 Email</span></label>
+        <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-sms"><span>💬 SMS</span></label>
+      </div>
+      <label>Custom intro <span style="color:var(--muted);font-weight:500">(optional — overrides default body)</span></label>
+      <textarea id="ren-message" rows="3" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your tier and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
+      <div style="display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="ren-send" type="button" onclick="Renewals.send()">Send blast →</button>
+        <span id="ren-result" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+      <div class="err" id="ren-err" style="margin-top:10px"></div>
+      <div id="ren-dev-links" style="margin-top:12px"></div>
+    </div>
+  </section>
+
   <!-- ── Tiers panel ──────────────────────────────────────────────────── -->
   <section class="panel" id="panel-tiers">
     <div class="toolbar">
@@ -399,17 +464,19 @@ function showTab(name) {
   // The shared /js/members-subtabs.js handles the .on indicator on its
   // own (re-renders on hashchange). Here we just swap the visible panel.
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'panel-' + name));
-  if (name === 'applications') App.refresh();
-  else if (name === 'tiers') Tiers.refresh();
-  else Households.refresh();
+  if (name === 'applications')   App.refresh();
+  else if (name === 'tiers')     Tiers.refresh();
+  else if (name === 'renewals')  Renewals.refresh();
+  else                           Households.refresh();
 }
 // In-page sub-tabs use #-anchored links via the shared subtabs strip.
 // We listen for hash changes and switch the visible panel without a full reload.
 window.addEventListener('hashchange', () => {
   const hash = (window.location.hash || '').replace(/^#/, '');
-  if (hash === 'applications')  showTab('applications');
-  else if (hash === 'tiers')    showTab('tiers');
-  else                          showTab('households');
+  if      (hash === 'applications')  showTab('applications');
+  else if (hash === 'tiers')         showTab('tiers');
+  else if (hash === 'renewals')      showTab('renewals');
+  else                               showTab('households');
 });
 
 // ── Households namespace ───────────────────────────────────────────────
@@ -956,6 +1023,177 @@ const Tiers = (() => {
   return { refresh, paint, add, save };
 })();
 
+// ── Renewals namespace ────────────────────────────────────────────────
+// Season-open dues blast: configures early-bird discount, picks audience,
+// previews count, fires email/SMS via the renewals edge function.
+const Renewals = (() => {
+  const RENEWALS_URL = `${SUPABASE_URL}/functions/v1/renewals`;
+  let HOUSEHOLDS = [];
+  let CURRENT_AUDIENCE = 'lapsed';
+
+  function eb_typeChange() {
+    const t = document.getElementById('eb-type').value;
+    document.getElementById('eb-value-label').textContent = t === 'percent' ? 'Discount (%)' : 'Discount ($)';
+  }
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'eb-type') eb_typeChange();
+  });
+
+  async function loadEarlyBird() {
+    const data = await call(SETTINGS_URL, 'get');
+    if (!data.ok) throw new Error(data.error || 'Settings load failed');
+    const eb = data.settings?.renewals?.early_bird || {};
+    document.getElementById('eb-enabled').checked = !!eb.enabled;
+    if (typeof eb.discount_percent === 'number' && eb.discount_percent > 0) {
+      document.getElementById('eb-type').value = 'percent';
+      document.getElementById('eb-value').value = eb.discount_percent;
+    } else {
+      document.getElementById('eb-type').value = 'amount';
+      document.getElementById('eb-value').value = (typeof eb.discount_cents === 'number' && eb.discount_cents > 0)
+        ? (eb.discount_cents / 100).toFixed(2) : '';
+    }
+    document.getElementById('eb-deadline').value = eb.deadline || '';
+    document.getElementById('eb-message').value = eb.message || '';
+    eb_typeChange();
+  }
+  async function saveEarlyBird() {
+    const btn = document.getElementById('eb-save');
+    const errEl = document.getElementById('eb-err');
+    errEl.classList.remove('show');
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Saving…';
+    try {
+      const enabled = document.getElementById('eb-enabled').checked;
+      const type = document.getElementById('eb-type').value;
+      const raw = parseFloat(document.getElementById('eb-value').value);
+      const deadline = document.getElementById('eb-deadline').value || null;
+      const message = document.getElementById('eb-message').value.trim() || null;
+      const eb = {
+        enabled,
+        discount_cents:   type === 'amount'  && Number.isFinite(raw) ? Math.round(raw * 100) : 0,
+        discount_percent: type === 'percent' && Number.isFinite(raw) ? raw : 0,
+        deadline, message,
+      };
+      const data = await call(SETTINGS_URL, 'save', { value: { renewals: { early_bird: eb } } });
+      if (!data.ok) throw new Error(data.error || 'Save failed');
+      btn.textContent = '✓ Saved';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+      // Refresh summary so the discount line shows up immediately
+      paintSummary();
+    } catch (e) {
+      errEl.textContent = e.message; errEl.classList.add('show');
+      btn.disabled = false; btn.textContent = orig;
+    }
+  }
+
+  async function loadHouseholds() {
+    const data = await call(HH_URL, 'list');
+    if (!data.ok) throw new Error(data.error || 'Household list failed');
+    HOUSEHOLDS = data.households || [];
+  }
+
+  function filterHouseholds(audience) {
+    const cy = new Date().getFullYear();
+    if (audience === 'lapsed')      return HOUSEHOLDS.filter(h => !h.dues_paid_for_year);
+    if (audience === 'last_season') return HOUSEHOLDS.filter(h => h.paid_until_year === cy - 1);
+    return HOUSEHOLDS.slice();
+  }
+  function paintSummary() {
+    const rows = filterHouseholds(CURRENT_AUDIENCE);
+    let withEmail = 0, withSms = 0, noContact = 0;
+    rows.forEach(h => {
+      const adults = (h.members || []).filter(m => (m.role || 'adult') === 'adult' && m.active !== false);
+      const hasEmail = adults.some(a => a.email);
+      const hasSms   = adults.some(a => a.phone_e164);
+      if (hasEmail) withEmail++;
+      if (hasSms) withSms++;
+      if (!hasEmail && !hasSms) noContact++;
+    });
+    const sample = rows.slice(0, 5).map(h => escapeHtml(h.family_name)).join(', ');
+    const more = rows.length > 5 ? ` (+${rows.length - 5} more)` : '';
+    document.getElementById('ren-summary').innerHTML = `
+      <div><b>${rows.length}</b> household${rows.length === 1 ? '' : 's'} match this audience.</div>
+      <div style="margin-top:6px;font-size:13px;color:var(--muted)">📧 ${withEmail} reachable by email · 💬 ${withSms} by SMS${noContact ? ` · ⚠ ${noContact} with no contact info` : ''}</div>
+      ${rows.length ? `<div style="margin-top:6px;font-size:12px;color:var(--muted)">${sample}${more}</div>` : ''}
+    `;
+  }
+
+  function bindAudience() {
+    document.querySelectorAll('#ren-audience button').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('#ren-audience button').forEach(x => x.classList.toggle('on', x === b));
+        CURRENT_AUDIENCE = b.dataset.audience;
+        paintSummary();
+      };
+    });
+  }
+
+  async function refresh() {
+    document.getElementById('ren-result').textContent = '';
+    document.getElementById('ren-err').classList.remove('show');
+    document.getElementById('ren-dev-links').innerHTML = '';
+    try {
+      await loadEarlyBird();
+      await loadHouseholds();
+      bindAudience();
+      paintSummary();
+    } catch (e) {
+      const errEl = document.getElementById('ren-err');
+      errEl.textContent = e.message; errEl.classList.add('show');
+    }
+  }
+
+  async function send() {
+    const errEl = document.getElementById('ren-err');
+    errEl.classList.remove('show');
+    document.getElementById('ren-dev-links').innerHTML = '';
+    const channels = [];
+    if (document.getElementById('ren-ch-email').checked) channels.push('email');
+    if (document.getElementById('ren-ch-sms').checked)   channels.push('sms');
+    if (!channels.length) {
+      errEl.textContent = 'Pick at least one channel (email or SMS).'; errEl.classList.add('show'); return;
+    }
+    const rows = filterHouseholds(CURRENT_AUDIENCE);
+    if (!rows.length) {
+      errEl.textContent = 'No households match this audience — nothing to send.'; errEl.classList.add('show'); return;
+    }
+    if (!confirm(`Send a renewal blast to ${rows.length} household${rows.length === 1 ? '' : 's'} via ${channels.join(' + ')}? This counts against your monthly SMS cap (if SMS).`)) return;
+
+    const btn = document.getElementById('ren-send');
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    document.getElementById('ren-result').textContent = '';
+    try {
+      const message = document.getElementById('ren-message').value.trim();
+      const data = await call(RENEWALS_URL, 'send_blast', {
+        audience: CURRENT_AUDIENCE,
+        channels,
+        message: message || undefined,
+      });
+      if (!data.ok) throw new Error(data.error || 'Send failed');
+      const r = data.sent || { email: 0, sms: 0 };
+      const sk = data.skipped || { no_contact: 0, send_fail: 0 };
+      document.getElementById('ren-result').innerHTML = `✓ Sent <b>${r.email}</b> emails + <b>${r.sms}</b> SMS · skipped ${sk.no_contact} (no contact) · ${sk.send_fail} send failures`;
+      if (data.dev_links && data.dev_links.length) {
+        document.getElementById('ren-dev-links').innerHTML = `
+          <div style="padding:12px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:13px;color:#7c2d12">
+            <b>Provider not configured.</b> ${data.dev_links.length} sign-in link${data.dev_links.length === 1 ? '' : 's'} ready to copy:
+            <ul style="margin:8px 0 0;padding-left:18px;font-size:12px">
+              ${data.dev_links.map(d => `<li>${escapeHtml(d.household)} — <a href="${d.link}" target="_blank" rel="noopener">${escapeHtml(d.link)}</a></li>`).join('')}
+            </ul>
+          </div>`;
+      }
+    } catch (e) {
+      errEl.textContent = e.message; errEl.classList.add('show');
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
+  }
+
+  return { refresh, saveEarlyBird, send };
+})();
+
 // ── Boot ───────────────────────────────────────────────────────────────
 (async () => {
   if (!token()) { logout(); return; }
@@ -972,10 +1210,11 @@ const Tiers = (() => {
     if (s.ok) Households.setDefaults(s.settings?.club?.default_city || '', s.settings?.club?.default_zip || '');
   } catch { /* defaults stay blank */ }
 
-  // Honor hash deep-links (e.g. clicking a task notification or the Tiers subtab link)
+  // Honor hash deep-links (e.g. clicking a task notification or a sub-tab link)
   const startTab = window.location.hash.replace(/^#/, '');
-  if (startTab === 'applications')   showTab('applications');
-  else if (startTab === 'tiers')     showTab('tiers');
+  if      (startTab === 'applications')  showTab('applications');
+  else if (startTab === 'tiers')         showTab('tiers');
+  else if (startTab === 'renewals')      showTab('renewals');
   else { await Households.refresh(); App.refresh(); }
 })();
 </script>

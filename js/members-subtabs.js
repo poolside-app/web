@@ -17,6 +17,7 @@
     { key: 'households',   label: 'Households',   href: '/club/admin/members.html#households',   scope: 'households'   },
     { key: 'applications', label: 'Applications', href: '/club/admin/members.html#applications', scope: 'applications' },
     { key: 'tiers',        label: 'Tiers',        href: '/club/admin/members.html#tiers',        scope: 'tiers'        },
+    { key: 'renewals',     label: 'Renewals',     href: '/club/admin/members.html#renewals',     scope: 'renewals'     },
     { key: 'payments',     label: 'Payments',     href: '/club/admin/payments.html',             scope: 'payments'     },
     { key: 'programs',     label: 'Programs',     href: '/club/admin/programs.html',             scope: 'programs'     },
     { key: 'parties',      label: 'Parties',      href: '/club/admin/parties.html',              scope: 'parties'      },
@@ -31,6 +32,7 @@
       const hash = (window.location.hash || '').replace(/^#/, '');
       if (hash === 'applications') return 'applications';
       if (hash === 'tiers') return 'tiers';
+      if (hash === 'renewals') return 'renewals';
       return 'households';
     }
     if (path.endsWith('/payments.html'))     return 'payments';
