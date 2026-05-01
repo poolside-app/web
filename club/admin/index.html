@@ -89,8 +89,7 @@
 </header>
 <nav class="tabs">
   <a href="/club/admin/" class="on">Dashboard</a>
-  <a href="/club/admin/households.html">Households</a>
-  <a href="/club/admin/applications.html">Applications</a>
+  <a href="/club/admin/members.html">Members</a>
   <a href="/club/admin/payments.html">Payments</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/programs.html">Programs</a>
@@ -233,7 +232,7 @@ document.getElementById('signout').addEventListener('click', logout);
     <div class="card">
       <h2>Quick actions</h2>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
-        <a class="qa" href="/club/admin/applications.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📨 <b>Review applications</b><br><span style="color:var(--muted);font-size:12px">Approve new memberships</span></a>
+        <a class="qa" href="/club/admin/members.html#applications" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📨 <b>Review applications</b><br><span style="color:var(--muted);font-size:12px">Approve new memberships</span></a>
         <a class="qa" href="/club/admin/announcements.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📣 <b>Post announcement</b><br><span style="color:var(--muted);font-size:12px">News for members</span></a>
         <a class="qa" href="/club/admin/events.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📅 <b>Add event</b><br><span style="color:var(--muted);font-size:12px">Calendar entry</span></a>
         <a class="qa" href="/club/admin/programs.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🏊 <b>Add program</b><br><span style="color:var(--muted);font-size:12px">Swim lessons / yoga / camp</span></a>
@@ -302,7 +301,7 @@ document.getElementById('signout').addEventListener('click', logout);
     const items = [];
     if (appCount > 0) items.push({
       icon: '📨', label: `${appCount} new application${appCount === 1 ? '' : 's'}`,
-      sub: 'Review pending memberships', href: '/club/admin/applications.html', tone: 'amber',
+      sub: 'Review pending memberships', href: '/club/admin/members.html#applications', tone: 'amber',
     });
     if (partyCount > 0) items.push({
       icon: '🎉', label: `${partyCount} party request${partyCount === 1 ? '' : 's'}`,

@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Members — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin-bottom: 12px; } h3 { font-size: 15px; margin: 0 0 8px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+
+  /* Sub-tab strip inside the Members hub */
+  .subtabs { display: flex; gap: 4px; padding: 0 22px; border-bottom: 1px solid var(--border); background: #fff; }
+  .subtab { padding: 14px 18px; font-size: 14px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; cursor: pointer; background: none; border-top: 0; border-left: 0; border-right: 0; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 8px; font-family: inherit; }
+  .subtab.on { color: var(--blue); border-bottom-color: var(--blue); }
+  .subtab .badge { background: var(--sun); color: #fff; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; min-width: 20px; text-align: center; }
+  .subtab .badge.zero { background: var(--bg-2); color: var(--muted); }
+
+  main { flex: 1; padding: 28px 22px; max-width: 1080px; width: 100%; margin: 0 auto; }
+  .panel { display: none; }
+  .panel.on { display: block; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+  .toolbar input { padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--r-md); width: 280px; font: 14px/1.4 'Inter'; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-row button { padding: 8px 14px; border: 1.5px solid var(--border); background: #fff; border-radius: 999px; font: 600 12px 'Inter'; cursor: pointer; color: var(--muted); }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-success { background: var(--green); color: #fff; border-color: var(--green); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--bg-2); cursor: pointer; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.paid     { background: #dcfce7; color: #14532d; }
+  .pill.unpaid   { background: #fef3c7; color: #92400e; }
+  .pill.tier     { background: var(--blue-l); color: var(--blue); }
+  .pill.pending  { background: #fef3c7; color: #92400e; }
+  .pill.approved { background: #dcfce7; color: #14532d; }
+  .pill.rejected { background: #fee2e2; color: #7f1d1d; }
+  .pill.stripe   { background: #ddd6fe; color: #5b21b6; }
+  .pill.venmo    { background: #cffafe; color: #155e75; }
+  .pill.overdue  { background: #fee2e2; color: #7f1d1d; }
+  .pill.ok       { background: #dcfce7; color: #14532d; }
+  .pill.miss     { background: #fee2e2; color: #7f1d1d; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); }
+
+  .app { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px 22px; margin-bottom: 12px; box-shadow: var(--shadow); cursor: pointer; }
+  .app:hover { border-color: var(--blue); }
+  .app h3 { font-size: 16px; }
+  .app .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .app .body { font-size: 13px; margin-top: 8px; line-height: 1.5; white-space: pre-wrap; }
+  .app .note { color: var(--blue); font-style: italic; font-size: 12px; margin-top: 6px; }
+  .roster { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.55; }
+  .roster .row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .roster .row:last-child { border-bottom: 0; }
+  .roster .row .who { font-weight: 600; color: var(--text); }
+  .roster .row .extra { color: var(--muted); font-size: 11px; }
+  .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .sig-grid .box { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: #fff; text-align: center; }
+  .sig-grid .box img { max-width: 100%; max-height: 90px; display: block; margin: 0 auto; }
+  .sig-grid .box .lbl { font-size: 11px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+  .waivers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+  .scrim { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 32px 16px; z-index: 50; }
+  .scrim.open { display: flex; }
+  .modal { background: #fff; border-radius: var(--r-lg); padding: 26px 26px 22px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(10,59,92,.18); }
+  .modal h2 { margin-bottom: 4px; }
+  .modal .lede { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+  .modal label { display: block; font-weight: 600; font-size: 12px; margin: 12px 0 4px; }
+  .modal input, .modal select, .modal textarea { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; }
+  .modal input:focus, .modal select:focus, .modal textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  .info { background: var(--bg-2); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.55; }
+  .info b { color: var(--blue); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; }
+  .checkbox-row input { width: auto; }
+  .year-stepper { display: flex; align-items: stretch; height: 40px; }
+  .year-stepper .step-btn { width: 40px; border: 1.5px solid var(--border); background: #fff; color: var(--blue); font: 700 18px 'Inter'; cursor: pointer; user-select: none; }
+  .year-stepper .step-btn:first-child { border-radius: 10px 0 0 10px; border-right: 0; }
+  .year-stepper .step-btn:last-child  { border-radius: 0 10px 10px 0; border-left: 0; }
+  .year-stepper input { border-radius: 0; text-align: center; font-weight: 700; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .modal-foot .left { margin-right: auto; }
+  .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display: block; }
+  .members { border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px; margin-top: 6px; }
+  .member-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 8px; }
+  .member-row + .member-row { border-top: 1px solid var(--border); }
+  .member-row .name { font-weight: 600; font-size: 13px; }
+  .member-row .meta { font-size: 12px; color: var(--muted); }
+  .member-add { display: flex; gap: 6px; padding: 8px 6px 4px; flex-wrap: wrap; }
+  .member-add input, .member-add select { padding: 8px 10px; font-size: 13px; flex: 1 1 100px; }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/payments.html">Payments</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/programs.html">Programs</a>
+  <a href="/club/admin/parties.html">Parties</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/volunteer.html">Volunteer</a>
+  <a href="/club/admin/guest-passes.html">Passes</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/documents.html">Documents</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+
+<div class="subtabs">
+  <button class="subtab on" data-tab="households" onclick="showTab('households')">Households</button>
+  <button class="subtab" data-tab="applications" onclick="showTab('applications')">Applications <span class="badge zero" id="apps-badge">0</span></button>
+</div>
+
+<main>
+  <!-- ── Households panel ──────────────────────────────────────────────── -->
+  <section class="panel on" id="panel-households">
+    <div class="toolbar">
+      <h1 id="hh-title">Households</h1>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="hh-search" type="search" placeholder="Search by name, phone, fob…">
+        <button class="btn-ghost btn" onclick="exportCsv()" title="Download all households as CSV for board reports">📥 Export CSV</button>
+        <button class="btn" onclick="openCreate()">+ Add household</button>
+      </div>
+    </div>
+    <div class="card" id="hh-card"><div class="empty">Loading…</div></div>
+  </section>
+
+  <!-- ── Applications panel ───────────────────────────────────────────── -->
+  <section class="panel" id="panel-applications">
+    <div class="toolbar">
+      <h1>Applications</h1>
+      <input id="app-search" type="search" placeholder="🔍 Search applications…" oninput="App.applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+        <div class="filter-row" id="app-status-filter">
+          <button class="on" data-status="pending">Pending</button>
+          <button data-status="approved">Approved</button>
+          <button data-status="rejected">Rejected</button>
+          <button data-status="all">All</button>
+        </div>
+        <div class="filter-row" id="app-payment-filter" style="border-left:1px solid var(--border);padding-left:14px">
+          <button class="on" data-filter="">Any payment</button>
+          <button data-filter="unpaid">Unpaid</button>
+          <button data-filter="overdue">Overdue 10d+</button>
+        </div>
+      </div>
+    </div>
+    <div id="app-list"><div class="empty">Loading…</div></div>
+  </section>
+</main>
+
+<!-- Create-household modal -->
+<div class="scrim" id="create-scrim">
+  <div class="modal">
+    <h2>New household</h2>
+    <p class="lede">Family info plus the primary contact. You can add more members after.</p>
+    <h3 style="margin-top:8px">Family</h3>
+    <label>Family name</label>
+    <input id="c-family_name" placeholder="Smith Family">
+    <div class="row3" style="margin-top:6px">
+      <div><label>Tier</label><select id="c-tier">
+        <option value="family">Family</option><option value="single">Single</option>
+        <option value="senior">Senior</option><option value="staff">Staff</option>
+      </select></div>
+      <div><label>Fob # <span style="color:var(--muted)">(opt)</span></label><input id="c-fob_number"></div>
+      <div><label>Paid until year</label>
+        <div class="year-stepper">
+          <button type="button" class="step-btn" onclick="bumpYear('c-paid_until_year', -1)">−</button>
+          <input type="number" id="c-paid_until_year">
+          <button type="button" class="step-btn" onclick="bumpYear('c-paid_until_year', +1)">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="c-dues_paid_for_year">
+      <label for="c-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
+    </div>
+    <label>Address <span style="color:var(--muted)">(opt)</span></label>
+    <input id="c-address" placeholder="123 Main St">
+    <div class="row2" style="margin-top:6px">
+      <div><label>City</label><input id="c-city"></div>
+      <div><label>Zip</label><input id="c-zip"></div>
+    </div>
+    <h3 style="margin-top:14px">Primary contact</h3>
+    <div class="row2">
+      <div><label>Name</label><input id="c-pName" placeholder="Jane Smith"></div>
+      <div><label>Phone</label><input id="c-pPhone" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)"></div>
+    </div>
+    <label>Email <span style="color:var(--muted)">(opt)</span></label>
+    <input id="c-pEmail" type="email">
+    <div class="err" id="c-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('create-scrim')">Cancel</button>
+      <button class="btn" id="c-save" onclick="saveCreate()">Create household</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit-household modal -->
+<div class="scrim" id="edit-scrim">
+  <div class="modal" style="max-width: 720px">
+    <h2 id="e-title">Edit household</h2>
+    <h3 style="margin-top:8px">Family</h3>
+    <label>Family name</label>
+    <input id="e-family_name">
+    <div class="row3" style="margin-top:6px">
+      <div><label>Tier</label><select id="e-tier">
+        <option value="family">Family</option><option value="single">Single</option>
+        <option value="senior">Senior</option><option value="staff">Staff</option>
+      </select></div>
+      <div><label>Fob #</label><input id="e-fob_number"></div>
+      <div><label>Paid until year</label>
+        <div class="year-stepper">
+          <button type="button" class="step-btn" onclick="bumpYear('e-paid_until_year', -1)">−</button>
+          <input type="number" id="e-paid_until_year">
+          <button type="button" class="step-btn" onclick="bumpYear('e-paid_until_year', +1)">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="e-dues_paid_for_year">
+      <label for="e-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
+    </div>
+    <label>Address</label>
+    <input id="e-address" placeholder="123 Main St">
+    <div class="row2" style="margin-top:6px">
+      <div><label>City</label><input id="e-city"></div>
+      <div><label>Zip</label><input id="e-zip"></div>
+    </div>
+    <label>Emergency contact</label>
+    <input id="e-emergency_contact" placeholder="Name + phone (e.g. John Smith — 555-1234)">
+    <label>Notes</label>
+    <textarea id="e-notes" rows="2"></textarea>
+    <h3 style="margin-top:18px">Members</h3>
+    <div class="members" id="members-list"><div class="empty" style="padding:18px">No members yet.</div></div>
+    <div class="member-add">
+      <input id="m-name" placeholder="Name">
+      <input id="m-phone" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)">
+      <select id="m-role">
+        <option value="adult">Adult</option><option value="teen">Teen</option><option value="child">Child</option>
+      </select>
+      <button class="btn btn-sm" onclick="addMember()">+ Add</button>
+    </div>
+    <div class="err" id="e-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger left" onclick="deleteHousehold()">Remove household</button>
+      <button class="btn btn-ghost" onclick="closeModal('edit-scrim')">Close</button>
+      <button class="btn" id="e-save" onclick="saveEdit()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Application-review modal -->
+<div class="scrim" id="app-scrim">
+  <div class="modal">
+    <h2 id="am-title">Application</h2>
+    <div class="info" id="am-info">…</div>
+    <div id="am-body" style="font-size:13px;line-height:1.5;color:var(--muted);min-height:20px;white-space:pre-wrap;margin-top:14px"></div>
+    <hr style="margin:18px 0;border:0;border-top:1px solid var(--border)">
+    <h3>Approve as</h3>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Optional household-level overrides.</p>
+    <div class="row3">
+      <div><label>Tier</label>
+        <select id="am-tier" style="width:100%;padding:10px 12px;font:14px 'Inter';border:1.5px solid var(--border);border-radius:10px">
+          <option value="family">Family</option><option value="single">Single</option>
+          <option value="senior">Senior</option><option value="staff">Staff</option>
+        </select>
+      </div>
+      <div><label>Fob #</label><input id="am-fob_number"></div>
+      <div><label>Paid until year</label><input id="am-paid_until_year" type="number"></div>
+    </div>
+    <label>Admin note <span style="color:var(--muted);font-weight:500;font-size:11px">(visible on the application record)</span></label>
+    <input id="am-admin_notes">
+    <div class="err" id="am-err"></div>
+    <div class="modal-foot" style="flex-wrap:wrap">
+      <button class="btn btn-ghost" id="am-remind" style="display:none" onclick="App.reminder()">📧 Send reminder</button>
+      <button class="btn btn-ghost" onclick="App.closeM()">Close</button>
+      <button class="btn btn-danger" id="am-reject" onclick="App.reject()">Reject</button>
+      <button class="btn btn-success" id="am-approve" onclick="App.approve()">Approve & create household →</button>
+      <button class="btn btn-success" id="am-verify" style="display:none" onclick="App.verify()">✓ Verify Venmo payment</button>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const HH_URL       = `${SUPABASE_URL}/functions/v1/households_admin`;
+const APPS_URL     = `${SUPABASE_URL}/functions/v1/applications`;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const CURRENT_YEAR = new Date().getFullYear();
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function formatPhone(e164) {
+  if (!e164) return '';
+  const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]})-${m[2]}-${m[3]}` : String(e164);
+}
+function formatPhoneInput(el) {
+  const digits = el.value.replace(/\D/g, '').slice(0, 10);
+  if (!digits.length) { el.value = ''; return; }
+  if (digits.length < 4) { el.value = `(${digits}`; return; }
+  if (digits.length < 7) { el.value = `(${digits.slice(0,3)})-${digits.slice(3)}`; return; }
+  el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
+function showErr(id, msg) {
+  const e = document.getElementById(id);
+  e.textContent = msg; e.classList.add('show');
+}
+function clearErr(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) {
+  const errId = id === 'edit-scrim' ? 'e-err' : (id === 'create-scrim' ? 'c-err' : 'am-err');
+  clearErr(errId);
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function bumpYear(id, delta) {
+  const el = document.getElementById(id);
+  let v = parseInt(el.value, 10);
+  if (!Number.isFinite(v)) v = CURRENT_YEAR;
+  el.value = v + delta;
+}
+
+// ── Sub-tab routing ────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.subtab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'panel-' + name));
+  // Persist choice in URL hash so a refresh stays on the same tab.
+  history.replaceState(null, '', '#' + name);
+  if (name === 'applications') App.refresh();
+  else Households.refresh();
+}
+
+// ── Households namespace ───────────────────────────────────────────────
+const Households = (() => {
+  let CACHE = [];
+  let SELECTED = null;
+  let DEFAULT_CITY = '';
+  let DEFAULT_ZIP  = '';
+
+  function primaryOf(h) { return (h.members || []).find(m => m.role === 'primary'); }
+
+  function renderRows(rows) {
+    const card = document.getElementById('hh-card');
+    if (!rows.length) { card.innerHTML = `<div class="empty"><h2>No households yet</h2>Add your first household with the button above.</div>`; return; }
+    const fmtPaid = (h) => h.dues_paid_for_year
+      ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>`
+      : `<span class="pill unpaid">Unpaid</span>`;
+    card.innerHTML = `<table>
+      <thead><tr><th>Family</th><th>Primary</th><th>Members</th><th>Tier</th><th>Fob</th><th>Dues</th></tr></thead>
+      <tbody>${rows.map(h => {
+        const p = primaryOf(h);
+        const cnt = (h.members || []).filter(m => m.active).length;
+        return `<tr data-id="${h.id}">
+          <td><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}</td>
+          <td>${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(formatPhone(p.phone_e164)) : ''}</span></td>
+          <td>${cnt}</td>
+          <td><span class="pill tier">${escapeHtml(h.tier || 'family')}</span></td>
+          <td>${h.fob_number ? escapeHtml(h.fob_number) : '<i style="color:var(--muted)">—</i>'}</td>
+          <td>${fmtPaid(h)}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+    card.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => openEdit(tr.dataset.id)));
+  }
+
+  function applySearch() {
+    const q = document.getElementById('hh-search').value.trim().toLowerCase();
+    if (!q) { renderRows(CACHE); return; }
+    const matches = CACHE.filter(h => {
+      if (h.family_name?.toLowerCase().includes(q)) return true;
+      if (h.fob_number?.toLowerCase().includes(q)) return true;
+      return (h.members || []).some(m =>
+        m.name?.toLowerCase().includes(q) ||
+        m.phone_e164?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q));
+    });
+    renderRows(matches);
+  }
+
+  async function refresh() {
+    const data = await call(HH_URL, 'list');
+    if (!data.ok) { document.getElementById('hh-card').innerHTML = `<div class="empty">${escapeHtml(data.error || 'Failed to load')}</div>`; return; }
+    CACHE = data.households || [];
+    applySearch();
+  }
+
+  function openEdit(id) {
+    const h = CACHE.find(x => x.id === id);
+    if (!h) return;
+    SELECTED = h;
+    document.getElementById('e-title').textContent = `Edit ${h.family_name}`;
+    document.getElementById('e-family_name').value = h.family_name || '';
+    document.getElementById('e-tier').value = h.tier || 'family';
+    document.getElementById('e-fob_number').value = h.fob_number || '';
+    document.getElementById('e-paid_until_year').value = h.paid_until_year || CURRENT_YEAR;
+    document.getElementById('e-dues_paid_for_year').checked = !!h.dues_paid_for_year;
+    document.getElementById('e-address').value = h.address || '';
+    document.getElementById('e-city').value = h.city || '';
+    document.getElementById('e-zip').value  = h.zip || '';
+    document.getElementById('e-emergency_contact').value = h.emergency_contact || '';
+    document.getElementById('e-notes').value = h.notes || '';
+    renderMembers(h);
+    ['m-name','m-phone'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-role').value = 'adult';
+    openModal('edit-scrim');
+  }
+
+  function renderMembers(h) {
+    const list = document.getElementById('members-list');
+    const active = (h.members || []).filter(m => m.active);
+    if (!active.length) { list.innerHTML = `<div class="empty" style="padding:14px">No members yet.</div>`; return; }
+    list.innerHTML = active.map(m => `
+      <div class="member-row">
+        <div>
+          <div class="name">${escapeHtml(m.name)} ${m.role === 'primary' ? '<span class="pill tier">Primary</span>' : ''}</div>
+          <div class="meta">${escapeHtml(formatPhone(m.phone_e164) || '—')} · ${escapeHtml(m.role)}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+        </div>
+        ${m.role !== 'primary' ? `<button class="btn btn-ghost btn-sm" onclick="removeMember('${m.id}')">Remove</button>` : ''}
+      </div>`).join('');
+  }
+
+  function selected() { return SELECTED; }
+  function setDefaults(c, z) { DEFAULT_CITY = c; DEFAULT_ZIP = z; }
+  function getDefaults() { return { city: DEFAULT_CITY, zip: DEFAULT_ZIP }; }
+
+  return { refresh, applySearch, renderMembers, openEdit, selected, setDefaults, getDefaults, get cache() { return CACHE; } };
+})();
+
+document.getElementById('hh-search').addEventListener('input', Households.applySearch);
+
+function openCreate() {
+  ['c-family_name','c-fob_number','c-address','c-pName','c-pPhone','c-pEmail'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('c-tier').value = 'family';
+  document.getElementById('c-dues_paid_for_year').checked = false;
+  document.getElementById('c-paid_until_year').value = CURRENT_YEAR;
+  const d = Households.getDefaults();
+  document.getElementById('c-city').value = d.city;
+  document.getElementById('c-zip').value  = d.zip;
+  openModal('create-scrim');
+}
+async function saveCreate() {
+  clearErr('c-err');
+  const btn = document.getElementById('c-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Creating…';
+  try {
+    const body = {
+      family_name: document.getElementById('c-family_name').value.trim(),
+      tier: document.getElementById('c-tier').value,
+      fob_number: document.getElementById('c-fob_number').value.trim() || null,
+      paid_until_year: document.getElementById('c-paid_until_year').value || null,
+      dues_paid_for_year: document.getElementById('c-dues_paid_for_year').checked,
+      address: document.getElementById('c-address').value.trim() || null,
+      city:    document.getElementById('c-city').value.trim() || null,
+      zip:     document.getElementById('c-zip').value.trim() || null,
+      primary: {
+        name: document.getElementById('c-pName').value.trim(),
+        phone_e164: document.getElementById('c-pPhone').value.trim(),
+        email: document.getElementById('c-pEmail').value.trim() || null,
+      },
+    };
+    const data = await call(HH_URL, 'create_household', body);
+    if (!data.ok) throw new Error(data.error || 'Create failed');
+    closeModal('create-scrim');
+    await Households.refresh();
+  } catch (e) { showErr('c-err', e.message); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+async function saveEdit() {
+  clearErr('e-err');
+  const sel = Households.selected();
+  if (!sel) return;
+  const btn = document.getElementById('e-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const data = await call(HH_URL, 'update_household', {
+      id: sel.id,
+      family_name: document.getElementById('e-family_name').value.trim(),
+      tier: document.getElementById('e-tier').value,
+      fob_number: document.getElementById('e-fob_number').value.trim() || null,
+      paid_until_year: document.getElementById('e-paid_until_year').value || null,
+      dues_paid_for_year: document.getElementById('e-dues_paid_for_year').checked,
+      address: document.getElementById('e-address').value.trim() || null,
+      city:    document.getElementById('e-city').value.trim() || null,
+      zip:     document.getElementById('e-zip').value.trim() || null,
+      emergency_contact: document.getElementById('e-emergency_contact').value.trim() || null,
+      notes:   document.getElementById('e-notes').value.trim() || null,
+    });
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    closeModal('edit-scrim');
+    await Households.refresh();
+  } catch (e) { showErr('e-err', e.message); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+async function deleteHousehold() {
+  const sel = Households.selected();
+  if (!sel) return;
+  if (!confirm(`Remove the ${sel.family_name} household? This soft-deletes them and revokes any in-flight sessions.`)) return;
+  try {
+    const data = await call(HH_URL, 'delete_household', { id: sel.id });
+    if (!data.ok) throw new Error(data.error || 'Remove failed');
+    closeModal('edit-scrim');
+    await Households.refresh();
+  } catch (e) { showErr('e-err', e.message); }
+}
+async function addMember() {
+  clearErr('e-err');
+  const sel = Households.selected();
+  if (!sel) return;
+  const name = document.getElementById('m-name').value.trim();
+  const phone = document.getElementById('m-phone').value.trim();
+  const role = document.getElementById('m-role').value;
+  if (!name) { showErr('e-err', 'Name is required'); return; }
+  try {
+    const data = await call(HH_URL, 'add_member', { household_id: sel.id, name, phone_e164: phone || null, role });
+    if (!data.ok) throw new Error(data.error || 'Could not add member');
+    await Households.refresh();
+    const fresh = Households.cache.find(h => h.id === sel.id);
+    if (fresh) Households.renderMembers(fresh);
+    ['m-name','m-phone'].forEach(id => document.getElementById(id).value = '');
+  } catch (e) { showErr('e-err', e.message); }
+}
+async function removeMember(id) {
+  if (!confirm('Remove this member?')) return;
+  const sel = Households.selected();
+  try {
+    const data = await call(HH_URL, 'remove_member', { id });
+    if (!data.ok) throw new Error(data.error || 'Could not remove member');
+    await Households.refresh();
+    const fresh = sel ? Households.cache.find(h => h.id === sel.id) : null;
+    if (fresh) Households.renderMembers(fresh);
+  } catch (e) { showErr('e-err', e.message); }
+}
+
+// CSV export — board-meeting-ready snapshot of every active household
+function csvCell(s) {
+  const v = String(s ?? '');
+  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+function exportCsv() {
+  const headers = ['Family name','Tier','Fob #','Dues paid','Paid until year','Address','City','Zip','Emergency contact','Notes','# Members (active)','Primary name','Primary phone','Primary email','Other members'];
+  const rows = [headers.map(csvCell).join(',')];
+  for (const h of Households.cache) {
+    if (h.active === false) continue;
+    const members = (h.members || []).filter(m => m.active);
+    const primary = members.find(m => m.role === 'primary');
+    const others  = members.filter(m => m.role !== 'primary')
+      .map(m => `${m.name} (${m.role}${m.phone_e164 ? ' ' + formatPhone(m.phone_e164) : ''})`).join('; ');
+    rows.push([
+      h.family_name, h.tier, h.fob_number || '',
+      h.dues_paid_for_year ? 'Yes' : 'No',
+      h.paid_until_year || '',
+      h.address || '', h.city || '', h.zip || '',
+      h.emergency_contact || '', h.notes || '',
+      members.length,
+      primary?.name || '', formatPhone(primary?.phone_e164) || '', primary?.email || '',
+      others,
+    ].map(csvCell).join(','));
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const a = document.createElement('a');
+  a.href = url; a.download = `households-${stamp}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
+// ── Applications namespace ─────────────────────────────────────────────
+const App = (() => {
+  let STATUS = 'pending';
+  let FILTER = '';
+  let SELECTED = null;
+  let CACHE = [];
+
+  function applySearch() {
+    const q = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
+    if (!q) { render(CACHE); return; }
+    render(CACHE.filter(a =>
+      (a.family_name    || '').toLowerCase().includes(q) ||
+      (a.primary_name   || '').toLowerCase().includes(q) ||
+      (a.primary_email  || '').toLowerCase().includes(q) ||
+      (a.primary_phone  || '').toLowerCase().includes(q) ||
+      (a.address || a.city || '').toLowerCase().includes(q)));
+  }
+
+  function paymentBadges(a) {
+    const out = [];
+    if (a.payment_method) out.push(`<span class="pill ${escapeHtml(a.payment_method)}">${a.payment_method === 'stripe' ? '💳 Stripe' : '💸 Venmo'}</span>`);
+    if (a.status === 'approved' && a.payment_status !== 'paid') {
+      const ageDays = a.decided_at ? Math.floor((Date.now() - new Date(a.decided_at).getTime()) / 86400_000) : 0;
+      out.push(`<span class="pill unpaid">Unpaid${ageDays >= 10 ? ' · ' + ageDays + 'd' : ''}</span>`);
+      if (ageDays >= 10) out.push(`<span class="pill overdue">Overdue</span>`);
+    } else if (a.payment_status === 'paid') {
+      out.push(`<span class="pill paid">Paid</span>`);
+    }
+    if (a.reminder_count > 0) out.push(`<span class="pill" style="background:var(--bg-2);color:var(--muted)">${a.reminder_count}× reminded</span>`);
+    return out.join(' ');
+  }
+
+  function render(rows) {
+    const list = document.getElementById('app-list');
+    if (!rows.length) { list.innerHTML = `<div class="empty">No ${STATUS === 'all' ? '' : STATUS + ' '}applications.</div>`; return; }
+    list.innerHTML = rows.map(a => {
+      const total = (a.num_adults || 0) + (a.num_kids || 0);
+      return `
+        <div class="app" data-id="${a.id}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+            <div style="flex:1;min-width:0">
+              <h3 style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${escapeHtml(a.family_name)} <span class="pill ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span> ${paymentBadges(a)}</h3>
+              <div class="meta">${escapeHtml(a.primary_name)}${a.primary_email ? ' · ' + escapeHtml(a.primary_email) : ''}${a.primary_phone ? ' · ' + escapeHtml(formatPhone(a.primary_phone)) : ''} · ${a.num_adults} adults / ${a.num_kids} kids (${total} total)</div>
+              ${a.body ? `<div class="body">${escapeHtml(a.body)}</div>` : ''}
+              ${a.admin_notes ? `<div class="note">📝 ${escapeHtml(a.admin_notes)}</div>` : ''}
+            </div>
+            <div style="text-align:right;font-size:11px;color:var(--muted);min-width:100px">submitted<br>${escapeHtml(new Date(a.created_at).toLocaleDateString())}</div>
+          </div>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.app').forEach(el => el.addEventListener('click', () => openModal(el.dataset.id, rows)));
+  }
+
+  async function refresh() {
+    try {
+      const data = await call(APPS_URL, 'list', { status: STATUS, filter: FILTER });
+      if (!data.ok) throw new Error(data.error || 'Failed to load');
+      CACHE = data.applications || [];
+      applySearch();
+      // Update sub-tab badge with pending count (regardless of current filter)
+      const pendingData = STATUS === 'pending'
+        ? { applications: CACHE.filter(a => a.status === 'pending') }
+        : await call(APPS_URL, 'list', { status: 'pending' });
+      const pending = (pendingData.applications || []).length;
+      const badge = document.getElementById('apps-badge');
+      badge.textContent = pending;
+      badge.classList.toggle('zero', pending === 0);
+    } catch (e) {
+      document.getElementById('app-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function openModal(id, rows) {
+    const a = (rows || CACHE).find(x => x.id === id);
+    if (!a) return;
+    SELECTED = a;
+    document.getElementById('am-title').textContent = a.family_name;
+
+    const adults   = Array.isArray(a.adults_json)   ? a.adults_json   : [];
+    const children = Array.isArray(a.children_json) ? a.children_json : [];
+    const waivers  = a.waivers_accepted && typeof a.waivers_accepted === 'object' ? a.waivers_accepted : {};
+
+    const fobLine = a.is_new_member === false
+      ? `Returning member${a.need_new_fob ? ' · needs new fob' : ''}${a.prior_fob_number ? ' · prior fob #' + escapeHtml(a.prior_fob_number) : ''}`
+      : `New member${a.need_new_fob ? ' · needs fob' : ''}`;
+
+    const adultsHTML = adults.length ? `
+      <h3 style="margin-top:14px">Adults (${adults.length})</h3>
+      <div class="roster">${adults.map((p, i) => `
+        <div class="row">
+          <div>
+            <div class="who">${escapeHtml(p.name || '—')}${i === 0 ? ' <span class="pill" style="background:var(--blue-l);color:var(--blue);font-size:9px">primary</span>' : ''}</div>
+            <div class="extra">${[p.email, p.phone ? formatPhone(p.phone) : null].filter(Boolean).map(escapeHtml).join(' · ') || '<i style="color:var(--muted)">no contact</i>'}</div>
+          </div>
+          <div class="extra" style="white-space:nowrap">${p.signature_url ? '✓ signature' : ''}</div>
+        </div>`).join('')}</div>` : '';
+
+    const childrenHTML = children.length ? `
+      <h3 style="margin-top:14px">Children (${children.length})</h3>
+      <div class="roster">${children.map(c => {
+        const dob = c.dob ? new Date(c.dob) : null;
+        const yrs = dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 86400_000)) : null;
+        return `
+        <div class="row">
+          <div class="who">${escapeHtml(c.name || '—')}</div>
+          <div class="extra">${dob ? escapeHtml(dob.toLocaleDateString()) + (yrs != null ? ' · ' + yrs + 'y' : '') : ''}${c.allergies ? ' · ⚠ ' + escapeHtml(c.allergies) : ''}</div>
+        </div>`;
+      }).join('')}</div>` : '';
+
+    const waiverKeys = ['rules', 'guest', 'party', 'sitter', 'waiver'];
+    const waiverHTML = `<div class="waivers">${waiverKeys.map(k => `<span class="pill ${waivers[k] ? 'ok' : 'miss'}">${k}: ${waivers[k] ? '✓' : '✗'}</span>`).join('')}</div>`;
+
+    const sigHTML = (a.signature_primary || a.signature_guardian) ? `
+      <h3 style="margin-top:14px">Signatures</h3>
+      <div class="sig-grid">
+        ${a.signature_primary ? `<div class="box"><img src="${a.signature_primary}" alt="primary signature"><div class="lbl">Primary applicant</div></div>` : ''}
+        ${a.signature_guardian ? `<div class="box"><img src="${a.signature_guardian}" alt="guardian signature"><div class="lbl">Parent / guardian (for minors)</div></div>` : ''}
+      </div>` : '';
+
+    document.getElementById('am-info').innerHTML = `
+      <div><b>${escapeHtml(a.primary_name)}</b>${a.primary_email ? ' · ' + escapeHtml(a.primary_email) : ''}${a.primary_phone ? ' · ' + escapeHtml(formatPhone(a.primary_phone)) : ''}${a.alt_email ? '<div class="extra">alt: ' + escapeHtml(a.alt_email) + '</div>' : ''}</div>
+      <div style="margin-top:6px"><b>Address:</b> ${escapeHtml([a.address, a.city, a.zip].filter(Boolean).join(', ') || '—')}</div>
+      <div style="margin-top:6px"><b>Membership:</b> ${escapeHtml(fobLine)}</div>
+      <div style="margin-top:6px"><b>Household:</b> ${a.num_adults} adults / ${a.num_kids} kids</div>
+      <div style="margin-top:6px"><b>Status:</b> <span class="pill ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span>${a.household_id ? ' · ✓ household created' : ''}</div>
+      ${adultsHTML}${childrenHTML}
+      <h3 style="margin-top:14px">Policies</h3>${waiverHTML}
+      ${a.accepted_at ? `<div class="extra" style="font-size:11px;color:var(--muted);margin-top:6px">Accepted ${escapeHtml(new Date(a.accepted_at).toLocaleString())}</div>` : ''}
+      ${sigHTML}
+    `;
+    document.getElementById('am-body').textContent = a.body || '(no notes from applicant)';
+    document.getElementById('am-tier').value = a.tier_slug || 'family';
+    document.getElementById('am-fob_number').value = '';
+    document.getElementById('am-paid_until_year').value = '';
+    document.getElementById('am-admin_notes').value = a.admin_notes || '';
+    document.getElementById('am-err').classList.remove('show');
+    document.getElementById('am-approve').style.display = a.status === 'pending' ? 'inline-block' : 'none';
+    document.getElementById('am-reject').style.display  = a.status === 'pending' ? 'inline-block' : 'none';
+    document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
+    document.getElementById('am-remind').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
+    document.getElementById('app-scrim').classList.add('open');
+  }
+  function closeM() { document.getElementById('app-scrim').classList.remove('open'); }
+
+  async function approve() {
+    if (!SELECTED) return;
+    const errEl = document.getElementById('am-err'); errEl.classList.remove('show');
+    try {
+      const data = await call(APPS_URL, 'approve', {
+        id: SELECTED.id,
+        override: {
+          tier: document.getElementById('am-tier').value,
+          fob_number: document.getElementById('am-fob_number').value.trim() || null,
+          paid_until_year: document.getElementById('am-paid_until_year').value || null,
+        },
+        admin_notes: document.getElementById('am-admin_notes').value.trim() || null,
+      });
+      if (!data.ok) throw new Error(data.error || 'Approve failed');
+      closeM();
+      await refresh();
+      // Approving creates a household — refresh that side too
+      await Households.refresh();
+    } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  }
+  async function reject() {
+    if (!SELECTED) return;
+    if (!confirm('Reject this application?')) return;
+    try {
+      const data = await call(APPS_URL, 'reject', { id: SELECTED.id, admin_notes: document.getElementById('am-admin_notes').value.trim() || null });
+      if (!data.ok) throw new Error(data.error || 'Reject failed');
+      closeM();
+      await refresh();
+    } catch (e) { showErr('am-err', e.message); }
+  }
+  async function verify() {
+    if (!SELECTED) return;
+    if (!confirm(`Mark Venmo payment from ${SELECTED.family_name} as verified?\n\nThis flips dues_paid_for_year=true on their household.`)) return;
+    try {
+      const data = await call(APPS_URL, 'verify_payment', {
+        id: SELECTED.id,
+        method: SELECTED.payment_method || 'venmo',
+        note: document.getElementById('am-admin_notes').value.trim() || null,
+      });
+      if (!data.ok) throw new Error(data.error || 'Verify failed');
+      closeM();
+      await refresh();
+      await Households.refresh();
+    } catch (e) { showErr('am-err', e.message); }
+  }
+  async function reminder() {
+    if (!SELECTED) return;
+    try {
+      const data = await call(APPS_URL, 'send_reminder', { id: SELECTED.id });
+      if (!data.ok) throw new Error(data.error || 'Reminder failed');
+      if (data.dev_link) {
+        if (confirm("Email isn't configured yet (no Resend key). Open a pre-filled mailto draft instead?")) {
+          window.open(data.dev_link, '_blank');
+        }
+      } else { alert('✓ Reminder email sent.'); }
+      closeM();
+      await refresh();
+    } catch (e) { showErr('am-err', e.message); }
+  }
+
+  // Filter button bindings
+  document.querySelectorAll('#app-status-filter button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#app-status-filter button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      STATUS = b.dataset.status;
+      refresh();
+    });
+  });
+  document.querySelectorAll('#app-payment-filter button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#app-payment-filter button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      FILTER = b.dataset.filter;
+      refresh();
+    });
+  });
+
+  return { refresh, applySearch, openModal, closeM, approve, reject, verify, reminder };
+})();
+
+// ── Boot ───────────────────────────────────────────────────────────────
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await call(ME_URL, 'me');
+    if (!me.ok) { logout(); return; }
+    document.title = `Members — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant);
+  } catch (e) { logout(); return; }
+  // Pre-fill new-household City/Zip from the wizard's defaults
+  try {
+    const s = await call(SETTINGS_URL, 'get');
+    if (s.ok) Households.setDefaults(s.settings?.club?.default_city || '', s.settings?.club?.default_zip || '');
+  } catch { /* defaults stay blank */ }
+
+  // Honor #applications hash (e.g. clicking a task notification deep-links here)
+  const startTab = window.location.hash.replace(/^#/, '');
+  if (startTab === 'applications') showTab('applications');
+  else { await Households.refresh(); App.refresh(); }
+})();
+</script>
+</body>
+</html>

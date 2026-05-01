@@ -262,6 +262,8 @@ check_status "public /apply.html"                "${HOST}/apply.html"           
 check_status "admin /club/admin/applications"    "${HOST}/club/admin/applications.html" "200"
 check       "apply.html wires the API"            "${HOST}/apply.html"                "applications"
 check       "admin apps page wires the API"       "${HOST}/club/admin/applications.html" "applications"
+check_status "admin /club/admin/members"         "${HOST}/club/admin/members.html"   "200"
+check       "admin members page wires both APIs"  "${HOST}/club/admin/members.html"   "households_admin"
 
 check_status "admin /club/admin/impact.html"     "${HOST}/club/admin/impact.html"     "200"
 check       "impact page wires the API"           "${HOST}/club/admin/impact.html"     "tenant_metrics"

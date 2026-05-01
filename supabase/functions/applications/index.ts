@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
         target_scopes: ['applications'],
         kind: 'application.submitted',
         summary: `New application: ${family_name} (${primary_name})`,
-        link_url: '/club/admin/applications.html',
+        link_url: '/club/admin/members.html#applications',
         source_kind: 'application', source_id: data.id,
       });
     } catch { /* best-effort — never fails submission */ }

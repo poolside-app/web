@@ -45,6 +45,10 @@
     households:    'a[href="/club/admin/households.html"]',
     applications: ['a[href="/club/admin/applications.html"]'],
     payments:      'a[href="/club/admin/payments.html"]',
+    // 'members' is the merged hub — visible if the user has EITHER
+    // households OR applications scope. Handled separately below since
+    // it needs OR-logic, not the per-scope hide loop.
+    // (no entry here intentionally)
     events:        'a[href="/club/admin/events.html"]',
     programs:      'a[href="/club/admin/programs.html"]',
     parties:       'a[href="/club/admin/parties.html"]',
@@ -106,6 +110,10 @@
             const sels = Array.isArray(selector) ? selector : [selector];
             sels.forEach(s => document.querySelectorAll(s).forEach(el => { el.style.display = 'none'; }));
           }
+        }
+        // Members hub — visible if user has either households OR applications scope.
+        if (!scopes.has('households') && !scopes.has('applications')) {
+          document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });
         }
         // Settings → Co-admins section is owner-only
         document.querySelectorAll('[data-owner-only]').forEach(el => { el.style.display = 'none'; });
