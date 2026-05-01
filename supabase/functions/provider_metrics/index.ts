@@ -58,6 +58,16 @@ Deno.serve(async (req) => {
   const sevenDaysAgo  = new Date(Date.now() -  7 * 86400_000).toISOString();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
 
+  // Stripe platform health — env presence + per-tenant onboarding state.
+  // Setting STRIPE_SECRET_KEY on the platform unlocks the Connect button
+  // for ALL tenants instantly; this surface tells Doug whether keys are
+  // set and how many clubs are actually onboarded.
+  const stripeSecretSet  = !!Deno.env.get('STRIPE_SECRET_KEY');
+  const stripeWebhookSet = !!Deno.env.get('STRIPE_WEBHOOK_SECRET');
+  const resendSet = !!Deno.env.get('RESEND_API_KEY');
+  const twilioSet = !!(Deno.env.get('TWILIO_ACCOUNT_SID') && Deno.env.get('TWILIO_AUTH_TOKEN') && Deno.env.get('TWILIO_FROM_NUMBER'));
+  const googleSet = !!(Deno.env.get('GOOGLE_CLIENT_ID') && Deno.env.get('GOOGLE_CLIENT_SECRET'));
+
   // Run every count in parallel — supabase head:true returns count without rows
   const headCount = (q: PromiseLike<{ count: number | null }>) =>
     Promise.resolve(q).then(r => r.count ?? 0);
@@ -92,6 +102,18 @@ Deno.serve(async (req) => {
     headCount(sb.from('member_magic_links').select('id', { count: 'exact', head: true }).gte('used_at', sevenDaysAgo)),
     sb.from('tenants').select('id, slug, display_name, status, plan, created_at')
       .order('created_at', { ascending: false }).limit(15),
+  ]);
+
+  // Stripe per-tenant onboarding counts (parallelized separately so the
+  // primary metrics call doesn't fail if these tables aren't populated yet).
+  const [
+    stripeConnected,
+    stripeChargesReady,
+    stripePayoutsReady,
+  ] = await Promise.all([
+    headCount(sb.from('tenants').select('id', { count: 'exact', head: true }).not('stripe_account_id', 'is', null)),
+    headCount(sb.from('tenants').select('id', { count: 'exact', head: true }).eq('stripe_charges_enabled', true)),
+    headCount(sb.from('tenants').select('id', { count: 'exact', head: true }).eq('stripe_payouts_enabled', true)),
   ]);
 
   // Per-tenant household counts so the recent-tenants table can show size
@@ -132,5 +154,15 @@ Deno.serve(async (req) => {
       ...t,
       household_count: householdsByTenant[t.id as string] || 0,
     })),
+    stripe_platform: {
+      secret_set:        stripeSecretSet,
+      webhook_set:       stripeWebhookSet,
+      connected_tenants: stripeConnected,
+      ready_tenants:     stripeChargesReady,
+      payouts_ready:     stripePayoutsReady,
+    },
+    env_resend_set: resendSet,
+    env_twilio_set: twilioSet,
+    env_google_set: googleSet,
   });
 });

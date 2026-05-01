@@ -205,6 +205,12 @@ Deno.serve(async (req) => {
       const send = await sendMagicLinkSms({
         to: phone_e164, tenantName: tenant.display_name, verifyLink,
       });
+      // Auth-category SMS — uncapped per project_sms_caps memory, but
+      // logged for audit + visibility in admin dashboards.
+      await sb.from('sms_log').insert({
+        tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
+        success: send.sent, error: send.error ?? null, source: 'member_auth.start',
+      });
       if (send.sent) return jsonResponse(generic);
       return jsonResponse({
         ok: true, sent: false,

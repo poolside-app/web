@@ -27,6 +27,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { checkSmsCap, recordSms } from '../_shared/sms_cap.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -172,6 +173,24 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+  if (action === 'sms_usage') {
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, plan').eq('id', payload.tid).maybeSingle();
+    const status = await checkSmsCap(sb, payload.tid, 'campaign', tenant?.plan);
+    return jsonResponse({ ok: true, plan: tenant?.plan ?? 'free', ...status });
+  }
+
+  if (action === 'list_history') {
+    const { data, error } = await sb.from('audit_log')
+      .select('id, created_at, summary, metadata, actor_label')
+      .eq('tenant_id', payload.tid)
+      .eq('kind', 'renewals.send_blast')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, blasts: data ?? [] });
+  }
+
   if (action === 'send_blast') {
     const audience = String(body.audience ?? 'lapsed');
     const channels = Array.isArray(body.channels) ? body.channels.map(String) : [];
@@ -184,8 +203,22 @@ Deno.serve(async (req) => {
     }
 
     const { data: tenant } = await sb.from('tenants')
-      .select('id, slug, display_name').eq('id', payload.tid).maybeSingle();
+      .select('id, slug, display_name, plan').eq('id', payload.tid).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+
+    // SMS cap pre-check: if SMS is in channels and the tenant is already at
+    // or near the monthly cap, refuse early so we don't half-send and burn
+    // half the cap before the admin notices.
+    if (channels.includes('sms')) {
+      const cap = await checkSmsCap(sb, payload.tid, 'campaign', tenant.plan);
+      if (cap.blocked) {
+        return jsonResponse({
+          ok: false,
+          error: `Monthly SMS cap reached (${cap.used}/${cap.cap}). Resets in ${cap.days_until_reset} day${cap.days_until_reset === 1 ? '' : 's'}.`,
+          sms_cap: cap,
+        }, 429);
+      }
+    }
 
     const { data: settingsRow } = await sb.from('settings')
       .select('value').eq('tenant_id', payload.tid).maybeSingle();
@@ -236,6 +269,13 @@ Deno.serve(async (req) => {
 
     let emailSent = 0, smsSent = 0, noContact = 0, sendFail = 0;
     const devLinks: Array<{ household: string; link: string; reason: string }> = [];
+    // Pre-fetched cap so we can stop SMS mid-loop if we'd exceed it. Email
+    // is uncapped (handled by Resend's own quotas + future deliverability).
+    const smsCapStatus = wantSms
+      ? await checkSmsCap(sb, payload.tid, 'campaign', tenant.plan)
+      : null;
+    let smsRemaining = smsCapStatus?.remaining ?? Infinity;
+    let smsCappedHit = false;
 
     for (const hh of hhList) {
       const adults = (byHh.get(hh.id) ?? []).filter(m => (m.role ?? 'adult') === 'adult');
@@ -271,15 +311,29 @@ Deno.serve(async (req) => {
         }
       }
       if (wantSms && recipient.phone_e164) {
-        const r = await sendRenewalSms({
-          to: recipient.phone_e164, tenantName: tenant.display_name, verifyLink, earlyBirdLine,
-        });
-        if (r.sent) { smsSent++; smsDone = true; }
-        else if (!Deno.env.get('TWILIO_ACCOUNT_SID')) {
-          devLinks.push({ household: hh.family_name, link: verifyLink, reason: 'TWILIO_* not set' });
-          smsDone = true;
+        if (smsRemaining <= 0) {
+          smsCappedHit = true;        // skip remaining SMS but keep emailing
         } else {
-          sendFail++;
+          const r = await sendRenewalSms({
+            to: recipient.phone_e164, tenantName: tenant.display_name, verifyLink, earlyBirdLine,
+          });
+          if (r.sent) { smsSent++; smsDone = true; smsRemaining--; }
+          else if (!Deno.env.get('TWILIO_ACCOUNT_SID')) {
+            devLinks.push({ household: hh.family_name, link: verifyLink, reason: 'TWILIO_* not set' });
+            smsDone = true;
+          } else {
+            sendFail++;
+          }
+          // Log every attempt so the cap counter stays accurate even on
+          // Twilio failures (a failed campaign send still counts as 'used').
+          await recordSms(sb, {
+            tenantId: payload.tid,
+            category: 'campaign',
+            toPhone: recipient.phone_e164,
+            success: r.sent,
+            error: r.error ?? null,
+            source: 'renewals.send_blast',
+          });
         }
       }
       if (!emailDone && !smsDone) noContact++;
@@ -294,11 +348,12 @@ Deno.serve(async (req) => {
       actor_id: payload.sub,
       actor_kind: 'tenant_admin',
       actor_label: payload.sub,
-      metadata: { audience, channels, total: hhList.length, email_sent: emailSent, sms_sent: smsSent, send_fail: sendFail },
+      metadata: { audience, channels, total: hhList.length, email_sent: emailSent, sms_sent: smsSent, send_fail: sendFail, sms_cap_hit: smsCappedHit },
     });
 
     return jsonResponse({
       ok: true,
+      sms_cap_hit: smsCappedHit,
       total: hhList.length,
       sent: { email: emailSent, sms: smsSent },
       skipped: { no_contact: noContact, send_fail: sendFail },

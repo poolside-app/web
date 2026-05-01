@@ -234,6 +234,7 @@
         <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-email" checked><span>📧 Email</span></label>
         <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-sms"><span>💬 SMS</span></label>
       </div>
+      <div id="ren-sms-meter" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--muted)"></div>
       <label>Custom intro <span style="color:var(--muted);font-weight:500">(optional — overrides default body)</span></label>
       <textarea id="ren-message" rows="3" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your tier and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
       <div style="display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap">
@@ -243,6 +244,11 @@
       <div class="err" id="ren-err" style="margin-top:10px"></div>
       <div id="ren-dev-links" style="margin-top:12px"></div>
     </div>
+
+    <details class="card" style="padding:14px 18px;margin-top:14px">
+      <summary style="cursor:pointer;font-weight:600;font-size:14px;color:var(--blue);list-style:none">📜 Send history <span style="font-weight:400;color:var(--muted);font-size:12px">— last 20 blasts</span></summary>
+      <div id="ren-history" style="margin-top:12px"><div class="empty" style="padding:20px">Loading…</div></div>
+    </details>
   </section>
 
   <!-- ── Tiers panel ──────────────────────────────────────────────────── -->
@@ -1138,9 +1144,81 @@ const Renewals = (() => {
       await loadHouseholds();
       bindAudience();
       paintSummary();
+      loadHistory();
+      loadSmsUsage();
     } catch (e) {
       const errEl = document.getElementById('ren-err');
       errEl.textContent = e.message; errEl.classList.add('show');
+    }
+  }
+
+  async function loadSmsUsage() {
+    const box = document.getElementById('ren-sms-meter');
+    const smsCb = document.getElementById('ren-ch-sms');
+    // Only show the meter when SMS is checked OR cap is already breached
+    const update = (data) => {
+      const pct = data.cap > 0 ? Math.min(100, Math.round((data.used / data.cap) * 100)) : 0;
+      const color = data.blocked ? '#dc2626' : (pct >= 80 ? '#92400e' : 'var(--muted)');
+      const bg    = data.blocked ? '#fee2e2' : (pct >= 80 ? '#fef3c7' : 'var(--bg-2)');
+      box.style.background = bg;
+      box.style.color = color;
+      box.innerHTML = `
+        <b>SMS this month:</b> ${data.used} / ${data.cap} (${pct}%) on ${data.plan} plan · resets in ${data.days_until_reset} day${data.days_until_reset === 1 ? '' : 's'}
+        <div style="margin-top:6px;height:6px;background:#e5e7eb;border-radius:999px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${data.blocked ? '#dc2626' : (pct >= 80 ? '#f59e0b' : 'var(--blue)')}"></div>
+        </div>
+        ${data.blocked ? '<div style="margin-top:6px;font-weight:600">⚠ Cap reached — SMS sends will be skipped until reset.</div>' : ''}
+      `;
+    };
+    try {
+      const data = await call(RENEWALS_URL, 'sms_usage');
+      if (!data.ok) return;
+      const show = () => { box.style.display = (smsCb.checked || data.blocked) ? 'block' : 'none'; };
+      update(data);
+      show();
+      smsCb.addEventListener('change', show);
+    } catch { /* meter is optional info; don't block the panel */ }
+  }
+
+  async function loadHistory() {
+    const box = document.getElementById('ren-history');
+    try {
+      const data = await call(RENEWALS_URL, 'list_history');
+      if (!data.ok) throw new Error(data.error || 'history load failed');
+      const blasts = data.blasts || [];
+      if (!blasts.length) {
+        box.innerHTML = `<div class="empty" style="padding:20px;color:var(--muted)">No blasts sent yet.</div>`;
+        return;
+      }
+      const audLabel = (a) => ({ all: 'All', lapsed: 'Lapsed', last_season: 'Last season' })[a] || a;
+      box.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--bg-2)">
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">When</th>
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Audience</th>
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Channels</th>
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Email</th>
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">SMS</th>
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Failures</th>
+          </tr></thead>
+          <tbody>
+            ${blasts.map(b => {
+              const m = b.metadata || {};
+              const date = new Date(b.created_at);
+              const when = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' + date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+              return `<tr style="border-top:1px solid var(--border)">
+                <td style="padding:8px 10px">${escapeHtml(when)}</td>
+                <td style="padding:8px 10px">${escapeHtml(audLabel(m.audience || ''))}</td>
+                <td style="padding:8px 10px">${escapeHtml((m.channels || []).join(' + '))}</td>
+                <td style="padding:8px 10px">${m.email_sent ?? 0}</td>
+                <td style="padding:8px 10px">${m.sms_sent ?? 0}</td>
+                <td style="padding:8px 10px;color:${m.send_fail ? 'var(--red)' : 'var(--muted)'}">${m.send_fail ?? 0}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    } catch (e) {
+      box.innerHTML = `<div class="empty" style="padding:18px;color:var(--red)">${escapeHtml(e.message)}</div>`;
     }
   }
 

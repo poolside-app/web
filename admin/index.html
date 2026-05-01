@@ -135,18 +135,28 @@
 
     <div class="card" id="integrations">
       <div class="card-head"><h2>🔌 Integrations</h2></div>
-      <p style="color:var(--muted);font-size:13px;margin-top:0">Provider-shared services. Configured once, used by every tenant.</p>
+      <p style="color:var(--muted);font-size:13px;margin-top:0">Provider-shared services. Configured once on the platform, every tenant inherits.</p>
       <table class="table">
         <thead>
-          <tr><th>Service</th><th>Status</th><th>What it powers</th><th></th></tr>
+          <tr><th>Service</th><th>Status</th><th>What it powers</th></tr>
         </thead>
-        <tbody>
-          <tr><td><b>Resend</b></td><td><span class="pill pill-active">CONFIGURED</span></td><td>All email sends — confirmations, party approvals, admin notifications</td><td><button class="btn-sm">Edit</button></td></tr>
-          <tr><td><b>Twilio</b></td><td><span class="pill pill-active">CONFIGURED</span></td><td>SMS sign-in for every tenant's members</td><td><button class="btn-sm">Edit</button></td></tr>
-          <tr><td><b>Google Cloud OAuth</b></td><td><span class="pill pill-active">CONFIGURED</span></td><td>Drive backup connection — each tenant authorizes their own</td><td><button class="btn-sm">Edit</button></td></tr>
-          <tr><td><b>Stripe Connect</b></td><td><span class="pill pill-trial">PENDING</span></td><td>Future: subscription billing + dues collection</td><td><button class="btn-sm">Set up</button></td></tr>
+        <tbody id="integrations-tbody">
+          <tr><td colspan="3" style="text-align:center;color:#9ca3af;padding:18px">Loading…</td></tr>
         </tbody>
       </table>
+      <p style="color:var(--muted);font-size:12px;margin-top:10px">To set or rotate keys: <code>tools/supabase.exe secrets set KEY=VALUE --project-ref sdewylbddkcvidwosgxo</code> · or use <code>scripts/setup-stripe-platform.sh</code>.</p>
+    </div>
+
+    <div class="card" id="stripe-platform">
+      <div class="card-head"><h2>💳 Stripe Connect — platform-wide rollout</h2></div>
+      <p style="color:var(--muted);font-size:13px;margin-top:0">Setting <code>STRIPE_SECRET_KEY</code> here unlocks the "Connect Stripe" button for <b>every</b> tenant simultaneously. Each club then onboards their own Stripe account once for their bank.</p>
+      <div id="stripe-platform-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px">
+        <div style="padding:12px 14px;background:var(--bg-2);border-radius:10px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Platform key</div><div id="sp-secret" style="font:600 18px 'Fraunces',serif;color:var(--blue);margin-top:4px">…</div></div>
+        <div style="padding:12px 14px;background:var(--bg-2);border-radius:10px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Webhook</div><div id="sp-webhook" style="font:600 18px 'Fraunces',serif;color:var(--blue);margin-top:4px">…</div></div>
+        <div style="padding:12px 14px;background:var(--bg-2);border-radius:10px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Connected clubs</div><div id="sp-connected" style="font:600 18px 'Fraunces',serif;color:var(--blue);margin-top:4px">…</div></div>
+        <div style="padding:12px 14px;background:var(--bg-2);border-radius:10px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Charges-ready</div><div id="sp-ready" style="font:600 18px 'Fraunces',serif;color:var(--blue);margin-top:4px">…</div></div>
+      </div>
+      <div id="sp-next" style="margin-top:14px;font-size:13px;line-height:1.5"></div>
     </div>
 
     <div class="card">
@@ -605,10 +615,56 @@
     }
   };
 
-  // Kick off the load
-  // Wait for the auth check to finish first — both run on same page
-  // load. Slight delay is fine.
-  setTimeout(loadTenants, 400);
+  // Provider-wide health (Stripe platform + integrations table)
+  const METRICS_FN = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/provider_metrics';
+  async function loadPlatformHealth() {
+    try {
+      const token = localStorage.getItem('poolside_provider_token');
+      if (!token) return;
+      const res = await fetch(METRICS_FN, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+        body: '{}',
+      });
+      const data = await res.json();
+      if (!data.ok) return;
+      const sp = data.stripe_platform || {};
+      const dot = (set) => set
+        ? '<span class="pill pill-active">CONFIGURED</span>'
+        : '<span class="pill pill-trial">NOT SET</span>';
+      // Integrations table — replace static rows with real env-presence
+      const integrationsTbody = document.getElementById('integrations-tbody');
+      if (integrationsTbody) {
+        integrationsTbody.innerHTML = `
+          <tr><td><b>Resend</b> <code style="font-size:11px;color:var(--muted)">RESEND_API_KEY</code></td><td>${dot(data.env_resend_set || false)}</td><td>Email magic links + renewal blasts + receipts</td></tr>
+          <tr><td><b>Twilio</b> <code style="font-size:11px;color:var(--muted)">TWILIO_*</code></td><td>${dot(data.env_twilio_set || false)}</td><td>SMS magic links + renewal blasts (per-plan caps)</td></tr>
+          <tr><td><b>Google OAuth</b> <code style="font-size:11px;color:var(--muted)">GOOGLE_CLIENT_*</code></td><td>${dot(data.env_google_set || false)}</td><td>"Sign in with Google" on member + admin login</td></tr>
+          <tr><td><b>Stripe Connect</b> <code style="font-size:11px;color:var(--muted)">STRIPE_SECRET_KEY</code></td><td>${dot(sp.secret_set)}</td><td>Card payments — once set, all clubs get a working Connect button</td></tr>
+        `;
+      }
+      // Stripe Connect platform card
+      const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+      set('sp-secret',    sp.secret_set  ? '<span style="color:var(--green)">✓ Set</span>'   : '<span style="color:var(--amber)">⚠ Not set</span>');
+      set('sp-webhook',   sp.webhook_set ? '<span style="color:var(--green)">✓ Set</span>'   : '<span style="color:var(--amber)">⚠ Not set</span>');
+      set('sp-connected', String(sp.connected_tenants ?? 0));
+      set('sp-ready',     String(sp.ready_tenants ?? 0));
+      const next = document.getElementById('sp-next');
+      if (next) {
+        if (!sp.secret_set) {
+          next.innerHTML = `<b>Next:</b> set <code>STRIPE_SECRET_KEY</code> on the platform. The fastest path: run <code>scripts/setup-stripe-platform.sh</code> from the repo root.`;
+        } else if (!sp.webhook_set) {
+          next.innerHTML = `<b>Next:</b> create a webhook in Stripe Dashboard → Developers → Webhooks pointing at <code>${'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/stripe_webhook'}</code>, then set <code>STRIPE_WEBHOOK_SECRET</code>.`;
+        } else if ((sp.connected_tenants ?? 0) === 0) {
+          next.innerHTML = `<b>Ready.</b> Platform keys are set. Tenants can now click "Connect Stripe" on Members → Payments to onboard their own account.`;
+        } else {
+          next.innerHTML = `<b>Live.</b> ${sp.ready_tenants}/${sp.connected_tenants} connected club${sp.connected_tenants === 1 ? '' : 's'} can charge cards today.`;
+        }
+      }
+    } catch { /* silent — health is optional info */ }
+  }
+
+  // Kick off the loads
+  setTimeout(() => { loadTenants(); loadPlatformHealth(); }, 400);
 </script>
 
 <script type="module">

@@ -305,6 +305,11 @@ Deno.serve(async (req) => {
 
     if (phone_e164) {
       const send = await sendAdminSms({ to: phone_e164, tenantName: tenant.display_name, verifyLink });
+      // Auth-category SMS — uncapped, logged for audit visibility.
+      await sb.from('sms_log').insert({
+        tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
+        success: send.sent, error: send.error ?? null, source: 'tenant_admin_auth.start_link',
+      });
       if (send.sent) return jsonResponse(generic);
       return jsonResponse({ ok: true, sent: false, message: 'SMS not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
     }
