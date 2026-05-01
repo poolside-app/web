@@ -248,7 +248,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30i</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30j</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -351,6 +351,7 @@ function rebuildPeople() {
           <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date"></div>
           <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
         </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:-4px">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
         <label>Email${i === 0 ? '' : ' (opt)'}</label>
         <input data-adult="${i}" data-field="email" type="email">
       </div>

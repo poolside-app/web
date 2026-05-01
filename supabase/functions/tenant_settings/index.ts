@@ -90,12 +90,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: '`value` must be a JSON object' }, 400);
     }
 
-    // Upsert settings row (one per tenant). Either update existing or create.
+    // Upsert settings row. Shallow-merge with existing so a save from one
+    // surface (wizard, settings page, members→tiers) doesn't clobber keys
+    // managed by another. Top-level keys present in `value` win; any keys
+    // only in the existing row (e.g. membership_tiers seeded at signup, or
+    // saved from a different page) are preserved.
     const { data: existing } = await sb.from('settings')
-      .select('tenant_id').eq('tenant_id', payload.tid).maybeSingle();
+      .select('value').eq('tenant_id', payload.tid).maybeSingle();
     if (existing) {
+      const merged = { ...(existing.value ?? {}), ...value } as Record<string, unknown>;
       const { error } = await sb.from('settings')
-        .update({ value }).eq('tenant_id', payload.tid);
+        .update({ value: merged }).eq('tenant_id', payload.tid);
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     } else {
       const { error } = await sb.from('settings')
