@@ -702,11 +702,21 @@ async function submitApplication() {
     if (!data.ok) throw new Error(data.error || 'Submission failed');
     const appId = data.application_id;
     const venmoHandle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
-    const isVenmo = (document.querySelector('input[name="payment_method"]:checked')?.value || '') === 'venmo';
+    const method = (document.querySelector('input[name="payment_method"]:checked')?.value || '');
+    const isVenmo = method === 'venmo';
+    const isStripe = method === 'stripe';
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. The board will review and reach out within a few days.</p>
+      ${isStripe ? `
+        <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
+          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Pay your dues now with card</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Stripe checkout opens in this tab. You'll be returned here when done.</div>
+          <button id="stripe-pay-btn" type="button" style="padding:12px 22px;background:#635bff;color:#fff;border:0;border-radius:10px;font:600 14px 'Inter';cursor:pointer">💳 Pay with card →</button>
+          <div id="stripe-pay-err" style="display:none;margin-top:10px;padding:10px;background:#fee2e2;color:#7f1d1d;border-radius:8px;font-size:13px"></div>
+        </div>
+      ` : ''}
       ${isVenmo && venmoHandle ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2)">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Already paid via Venmo?</div>
@@ -717,6 +727,22 @@ async function submitApplication() {
       ` : ''}
       <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
     `;
+    const stripeBtn = document.getElementById('stripe-pay-btn');
+    if (stripeBtn) stripeBtn.addEventListener('click', async () => {
+      stripeBtn.disabled = true; stripeBtn.textContent = 'Opening Stripe…';
+      try {
+        const cr = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'application', application_id: appId }),
+        }).then(r => r.json());
+        if (!cr.ok) throw new Error(cr.error || 'Checkout failed');
+        window.location.href = cr.url;
+      } catch (e) {
+        stripeBtn.disabled = false; stripeBtn.textContent = '💳 Pay with card →';
+        const err = document.getElementById('stripe-pay-err');
+        err.style.display = 'block'; err.textContent = e.message;
+      }
+    });
     const claimBtn = document.getElementById('claim-paid-btn');
     if (claimBtn) claimBtn.addEventListener('click', async () => {
       claimBtn.disabled = true; claimBtn.textContent = 'Sending…';

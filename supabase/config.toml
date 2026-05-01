@@ -113,6 +113,22 @@ verify_jwt = false
 [functions.policies]
 verify_jwt = false
 
+# Google OAuth — sign-in-with-Google for members + tenant admins
+[functions.google_oauth]
+verify_jwt = false
+
+# Stripe Connect onboarding for tenants (per-tenant Stripe account)
+[functions.stripe_connect]
+verify_jwt = false
+
+# Stripe Checkout session creation for application/program/pass payments
+[functions.stripe_checkout]
+verify_jwt = false
+
+# Stripe webhook handler (signs verified inside the function)
+[functions.stripe_webhook]
+verify_jwt = false
+
 # Admin task queue — board-member to-do list, scoped by role.
 # Filters tasks by caller's scopes; owner-role admins see everything.
 [functions.admin_tasks]

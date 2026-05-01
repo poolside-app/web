@@ -66,6 +66,33 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 }
 
+// Twilio SMS sender — returns { sent, error? } so callers can fall back
+// to a dev_link when keys aren't set.
+async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string }): Promise<{ sent: boolean; error?: string }> {
+  const sid    = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const token  = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const fromN  = Deno.env.get('TWILIO_FROM_NUMBER');
+  if (!sid || !token || !fromN) return { sent: false, error: 'TWILIO_* env vars not set' };
+  const body = `Sign in to ${args.tenantName}: ${args.verifyLink}\n(Link expires in 15 minutes.)`;
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${sid}:${token}`),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: args.to, From: fromN, Body: body }).toString(),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { sent: false, error: `Twilio ${res.status}: ${txt.slice(0, 200)}` };
+    }
+    return { sent: true };
+  } catch (e) {
+    return { sent: false, error: String(e) };
+  }
+}
+
 async function sendMagicLinkEmail(args: {
   to: string; tenantName: string; clubUrl: string; verifyLink: string; memberName: string;
 }): Promise<{ sent: boolean; error?: string }> {
@@ -114,11 +141,15 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   // ── start ──────────────────────────────────────────────────────────────
+  // Accepts EITHER an email or an E.164 phone number. If email → sends a
+  // magic link via Resend. If phone → sends a one-tap sign-in link via SMS
+  // (Twilio). When the relevant provider has no key configured, returns
+  // dev_link so testing without infra still works.
   if (action === 'start') {
     const slug  = String(body.slug ?? '').trim().toLowerCase();
-    const email = String(body.email ?? '').trim().toLowerCase();
-    if (!slug || !email || !email.includes('@')) {
-      return jsonResponse({ ok: false, error: 'A valid club slug and email are required' }, 400);
+    const raw   = String(body.email ?? body.phone ?? body.identifier ?? '').trim();
+    if (!slug || !raw) {
+      return jsonResponse({ ok: false, error: 'A valid club slug and email or phone are required' }, 400);
     }
     const { data: tenant } = await sb.from('tenants')
       .select('id, slug, display_name, status')
@@ -128,17 +159,33 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'This club is no longer active' }, 403);
     }
 
-    // Generic response on miss — don't leak which emails belong to the club.
-    const generic = { ok: true, sent: true, message: 'If your email is on file, a sign-in link is on the way.' };
+    // Detect input shape: phone vs email. Strip non-digits to check phone-ness.
+    const looksLikePhone = !raw.includes('@') && raw.replace(/[^\d]/g, '').length >= 7;
+    let phone_e164: string | null = null;
+    let email: string | null = null;
+    if (looksLikePhone) {
+      const digits = raw.replace(/[^\d+]/g, '');
+      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone_e164 = digits;
+      else if (/^\d{10}$/.test(digits)) phone_e164 = '+1' + digits;
+      else if (/^1\d{10}$/.test(digits)) phone_e164 = '+' + digits;
+      if (!phone_e164) return jsonResponse({ ok: false, error: 'That phone number doesn\'t look right' }, 400);
+    } else {
+      email = raw.toLowerCase();
+      if (!email.includes('@')) return jsonResponse({ ok: false, error: 'Invalid email address' }, 400);
+    }
 
-    const { data: member } = await sb.from('household_members')
-      .select('id, name, email, household_id, active')
-      .eq('tenant_id', tenant.id)
-      .ilike('email', email)
-      .eq('active', true)
-      .maybeSingle();
+    const generic = { ok: true, sent: true, message: phone_e164
+      ? 'If your number is on file, a sign-in text is on the way.'
+      : 'If your email is on file, a sign-in link is on the way.' };
+
+    let memberQuery = sb.from('household_members')
+      .select('id, name, email, phone_e164, household_id, active')
+      .eq('tenant_id', tenant.id).eq('active', true);
+    if (phone_e164) memberQuery = memberQuery.eq('phone_e164', phone_e164);
+    else memberQuery = memberQuery.ilike('email', email!);
+    const { data: member } = await memberQuery.maybeSingle();
+
     if (!member) {
-      // Wait a beat to reduce timing-attack utility.
       await new Promise(r => setTimeout(r, 250));
       return jsonResponse(generic);
     }
@@ -153,19 +200,28 @@ Deno.serve(async (req) => {
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const verifyLink = `${clubUrl}/m/verify.html#token=${encodeURIComponent(tok)}`;
+
+    if (phone_e164) {
+      const send = await sendMagicLinkSms({
+        to: phone_e164, tenantName: tenant.display_name, verifyLink,
+      });
+      if (send.sent) return jsonResponse(generic);
+      return jsonResponse({
+        ok: true, sent: false,
+        message: 'SMS sending is not configured. Use the link below to sign in.',
+        dev_link: verifyLink, dev_error: send.error,
+      });
+    }
+
     const send = await sendMagicLinkEmail({
       to: member.email!, tenantName: tenant.display_name,
       clubUrl, verifyLink, memberName: member.name,
     });
-
     if (send.sent) return jsonResponse(generic);
-    // Dev mode (no Resend key, or send failed): hand the link back so
-    // testing without an email provider still works end-to-end.
     return jsonResponse({
       ok: true, sent: false,
       message: 'Email sending is not configured. Use the link below to sign in.',
-      dev_link: verifyLink,
-      dev_error: send.error,
+      dev_link: verifyLink, dev_error: send.error,
     });
   }
 

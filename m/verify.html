@@ -73,6 +73,18 @@ function showError(msg) {
 }
 
 (async () => {
+  // Google-OAuth path: the callback redirects here with #bootstrap=<jwt>.
+  // We can stash the JWT directly without calling member_auth.verify.
+  if (window.location.hash.startsWith('#bootstrap=')) {
+    const jwt = decodeURIComponent(window.location.hash.slice('#bootstrap='.length));
+    localStorage.setItem('poolside_member_token', jwt);
+    localStorage.removeItem('poolside_member_user');
+    localStorage.removeItem('poolside_member_tenant');
+    history.replaceState(null, '', window.location.pathname);
+    window.location.href = '/m/';
+    return;
+  }
+
   const slug = getSlugFromHostname();
   const token = getTokenFromHash();
   if (!token) { showError('No sign-in token in URL.'); return; }
