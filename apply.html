@@ -80,14 +80,22 @@
 <body>
 <header><a href="/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">…</span></a></header>
 <script>
-  // Paint a slug-based fallback brand name BEFORE the main script loads so
-  // visitors never see "Poolside" if the API call is slow or cached.
+  // Synchronous brand paint. Uses cached display_name (same key as admin
+  // pages) so the next visit shows the real name immediately. Falls back
+  // to a capitalized slug, then empty. The async API call below can
+  // upgrade to the real name if the cache is stale.
   (function () {
-    var m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+    var slugMatch = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+    var slug = slugMatch && slugMatch[1] && slugMatch[1] !== 'www' ? slugMatch[1] : null;
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem('poolside_tenant_brand') || 'null'); } catch (_) {}
     var el = document.getElementById('brand-name');
-    if (el && m && m[1] && m[1] !== 'www') {
-      el.textContent = m[1].charAt(0).toUpperCase() + m[1].slice(1);
-    } else if (el) {
+    if (!el) return;
+    if (cached && cached.slug === slug && cached.display_name) {
+      el.textContent = cached.display_name;
+    } else if (slug) {
+      el.textContent = slug.charAt(0).toUpperCase() + slug.slice(1);
+    } else {
       el.textContent = '';
     }
   })();
@@ -717,10 +725,12 @@ async function submitApplication() {
         TENANT_PUBLIC = d;
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
-        // Brand the top-left header with the club name (and uploaded logo, if any)
-        const brandEl = document.getElementById('brand-name');
-        if (brandEl) brandEl.textContent = d.tenant.display_name;
         const logoUrl = d.public_settings && d.public_settings.branding && d.public_settings.branding.logo_url;
+        // Cache so the next page-load paints the right name synchronously (no flicker).
+        try { localStorage.setItem('poolside_tenant_brand', JSON.stringify({ slug, display_name: d.tenant.display_name, logo_url: logoUrl || null })); } catch (_) {}
+        // Only repaint if the cached/synchronous paint differs from the fresh value.
+        const brandEl = document.getElementById('brand-name');
+        if (brandEl && brandEl.textContent !== d.tenant.display_name) brandEl.textContent = d.tenant.display_name;
         if (logoUrl) {
           const link = document.getElementById('brand-link');
           if (link) link.innerHTML = `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(d.tenant.display_name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> <span id="brand-name">${escapeHtml(d.tenant.display_name)}</span>`;

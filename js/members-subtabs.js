@@ -64,11 +64,11 @@
     `).join('')}</div>`;
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', render);
-  } else {
-    render();
-  }
+  // Render synchronously — the <script> tag is placed right after
+  // <div id="members-subtabs">, so the container element already exists
+  // by the time this code runs. Waiting for DOMContentLoaded would cause
+  // a visible layout shift as the strip appears late in the parse.
+  render();
   // Re-render on hash change so members.html#households↔#applications updates the .on indicator
   window.addEventListener('hashchange', render);
 

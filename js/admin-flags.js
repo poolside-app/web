@@ -16,17 +16,30 @@
 (function () {
   'use strict';
 
-  // Synchronous slug-based brand fallback. Runs the moment this script
-  // loads so the user never sees "Poolside" in the header while waiting
-  // for tenant_admin_auth.me to return. The async brand swap below
-  // refines this with the real display_name + uploaded logo.
+  // Synchronous brand paint. Runs the moment this script loads so the
+  // header never shows "Poolside" while waiting for tenant_admin_auth.me.
+  //
+  // We cache the tenant's display_name + logo_url in localStorage after
+  // each successful me() call (see brandHeader below). On subsequent
+  // loads we paint from cache → identical to what the API will return →
+  // no two-stage flicker. First-ever visit falls back to a capitalized
+  // slug. Empty fallback if even that fails.
   try {
-    var m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
     var a = document.querySelector('header .logo');
-    if (a && m && m[1] && m[1] !== 'www') {
-      a.innerHTML = '<span class="logo-dot"></span> ' + (m[1].charAt(0).toUpperCase() + m[1].slice(1));
-    } else if (a) {
-      a.innerHTML = '<span class="logo-dot"></span>';
+    if (a) {
+      var cached = null;
+      try { cached = JSON.parse(localStorage.getItem('poolside_tenant_brand') || 'null'); } catch (_) { cached = null; }
+      var slugMatch = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+      var slug = slugMatch && slugMatch[1] && slugMatch[1] !== 'www' ? slugMatch[1] : null;
+      var name = (cached && cached.slug === slug && cached.display_name) ? cached.display_name
+        : (slug ? (slug.charAt(0).toUpperCase() + slug.slice(1)) : '');
+      var logoUrl = (cached && cached.slug === slug) ? cached.logo_url : null;
+      function esc(s){return String(s||'').replace(/[&<>"']/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
+      if (logoUrl) {
+        a.innerHTML = '<img src="' + esc(logoUrl) + '" alt="" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> ' + esc(name);
+      } else {
+        a.innerHTML = '<span class="logo-dot"></span> ' + esc(name);
+      }
     }
   } catch (e) { /* defensive only */ }
 
@@ -79,6 +92,21 @@
     const logoUrl = tenant.branding && tenant.branding.logo_url;
     a.setAttribute('href', '/club/admin/');
     a.setAttribute('title', name);
+    // Cache for the next page load so the synchronous paint above matches
+    // the API response → no flicker between cached and fresh values.
+    try {
+      const slugMatch = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+      const slug = slugMatch && slugMatch[1] && slugMatch[1] !== 'www' ? slugMatch[1] : null;
+      localStorage.setItem('poolside_tenant_brand', JSON.stringify({
+        slug, display_name: name, logo_url: logoUrl || null,
+      }));
+    } catch (_) { /* localStorage may be disabled; non-critical */ }
+    // Only repaint if the rendered text actually differs from what's
+    // already there. Otherwise the user sees an unnecessary flash.
+    const currentText = a.textContent.trim();
+    if (currentText === name && (!logoUrl || a.querySelector('img')?.getAttribute('src') === logoUrl)) {
+      return;
+    }
     if (logoUrl) {
       a.innerHTML = `<img src="${escapeAttr(logoUrl)}" alt="${escapeAttr(name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> ${escapeHtml(name)}`;
     } else {
