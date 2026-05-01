@@ -575,6 +575,19 @@ Deno.serve(async (req) => {
       .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id)
       .is('completed_at', null);
 
+    // Reflect the verification in the Drive sheet (best-effort, write-once).
+    const GOOGLE_ID  = Deno.env.get('GOOGLE_CLIENT_ID');
+    const GOOGLE_SEC = Deno.env.get('GOOGLE_CLIENT_SECRET');
+    if (GOOGLE_ID && GOOGLE_SEC) {
+      try {
+        const { markVerifiedInDrive } = await import('../_shared/sync_application.ts');
+        await markVerifiedInDrive(sb, {
+          tenantId: TID, applicationId: id, method,
+          googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SEC,
+        });
+      } catch { /* never fails the verify action */ }
+    }
+
     return jsonResponse({ ok: true });
   }
 

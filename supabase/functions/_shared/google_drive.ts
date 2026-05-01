@@ -60,7 +60,8 @@ export const SHEET_COLUMNS: ColSpec[] = [
   { label: 'City',              width: 110, align: 'LEFT' },
   { label: 'Zip',               width:  70, align: 'LEFT' },
   { label: 'Emergency Contact', width: 200, align: 'LEFT' },
-  { label: 'Payment',           width: 110, align: 'CENTER' },
+  { label: 'Paid By',           width: 110, align: 'CENTER' },
+  { label: 'Verified',          width: 150, align: 'CENTER' },
   { label: 'Application PDF',   width: 110, align: 'CENTER' },
   { label: 'App ID',            width: 100, align: 'LEFT' },
 ];
@@ -443,6 +444,79 @@ export async function appendRow(
   // updates.updatedRange returns e.g. "2026!A12:O12" — pull the row index.
   const m = String(data.updates?.updatedRange ?? '').match(/(\d+):/);
   return m ? Number(m[1]) : 0;
+}
+
+// Update a single cell in a year-tab, looking up the target row by App ID
+// rather than cached row_index (resilient to admin manually sorting/inserting
+// rows). Write-once: if the cell already has any non-blank value, this is a
+// no-op so we never overwrite a manual note or repeat a verification.
+//
+// Returns:
+//   { updated: true, row, value }     — wrote the value
+//   { updated: false, reason }        — skipped (not found / already filled / blank input)
+//
+// columnLabel must match a label in SHEET_COLUMNS exactly.
+export async function updateRowCellByAppId(
+  accessToken: string,
+  spreadsheetId: string,
+  tabName: string,
+  appId: string,
+  columnLabel: string,
+  value: string,
+): Promise<{ updated: boolean; row?: number; value?: string; reason?: string }> {
+  if (!value || !value.trim()) return { updated: false, reason: 'blank input' };
+
+  const targetColIdx = SHEET_COLUMNS.findIndex(c => c.label === columnLabel);
+  if (targetColIdx < 0) return { updated: false, reason: `unknown column: ${columnLabel}` };
+  const appIdColIdx = SHEET_COLUMNS.findIndex(c => c.label === 'App ID');
+  if (appIdColIdx < 0) return { updated: false, reason: 'App ID column missing' };
+
+  // Read App ID column to find the row index
+  const appIdCol = colA1(appIdColIdx);
+  const appIdRange = `${tabName}!${appIdCol}2:${appIdCol}`;  // skip header
+  const lookRes = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(appIdRange)}?majorDimension=COLUMNS`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!lookRes.ok) {
+    const txt = await lookRes.text();
+    throw new Error(`Lookup failed: ${lookRes.status} ${txt.slice(0, 200)}`);
+  }
+  const lookData = await lookRes.json();
+  const ids = (lookData.values?.[0] ?? []) as string[];
+  const idx = ids.findIndex(v => String(v).trim() === appId);
+  if (idx < 0) return { updated: false, reason: 'app id not found in sheet' };
+  const sheetRow = idx + 2;  // +2 because of header row + 1-based indexing
+
+  // Write-once check: read the target cell first; skip if non-blank
+  const targetCol = colA1(targetColIdx);
+  const cellRange = `${tabName}!${targetCol}${sheetRow}`;
+  const peekRes = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(cellRange)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (peekRes.ok) {
+    const peekData = await peekRes.json();
+    const existing = peekData.values?.[0]?.[0];
+    if (existing != null && String(existing).trim() !== '') {
+      return { updated: false, row: sheetRow, reason: 'cell already filled (write-once)' };
+    }
+  }
+
+  // Write the cell
+  const upRes = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(cellRange)}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[value]] }),
+    },
+  );
+  if (!upRes.ok) {
+    const txt = await upRes.text();
+    throw new Error(`Cell update failed: ${upRes.status} ${txt.slice(0, 200)}`);
+  }
+  return { updated: true, row: sheetRow, value };
 }
 
 // Multipart PDF upload to a specific folder. Returns the new file's Drive ID.

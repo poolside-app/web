@@ -12,6 +12,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   ensureFolder, ensureSpreadsheet, ensureYearTab, appendRow, uploadPdf,
   getAccessToken, loadGrant, updateGrantCache, driveFileLink,
+  updateRowCellByAppId,
 } from './google_drive.ts';
 import { renderApplicationPdf, type ApplicationForPdf } from './application_pdf.ts';
 
@@ -127,6 +128,22 @@ export async function syncApplicationToDrive(
   const policiesCell = totCount > 0 ? `${accCount}/${totCount} ✓` : '—';
   const pdfHyperlink = `=HYPERLINK("${driveFileLink(pdfId)}","📄 Open")`;
 
+  // Paid By: human label (Stripe / Venmo / PayPal). Verified: blank at submit
+  // time — Stripe webhook fills it on checkout.session.completed, Venmo verify
+  // action fills it on admin click. Pre-filling from app.payment_status='paid'
+  // covers the unusual case where verification happened before this sync ran.
+  const paidByRaw = (app.payment_method as string | null) ?? '';
+  const paidByLabel = paidByRaw === 'stripe' ? 'Stripe'
+                    : paidByRaw === 'venmo'  ? 'Venmo'
+                    : paidByRaw === 'paypal' ? 'PayPal'
+                    : paidByRaw;
+  let verifiedCell = '';
+  if (app.payment_status === 'paid' && app.verified_at) {
+    const v = new Date(app.verified_at as string);
+    const dShort = v.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    verifiedCell = paidByRaw === 'stripe' ? `Stripe ✓ ${dShort}` : `Manual ✓ ${dShort}`;
+  }
+
   const rowValues = [
     dateSerial,                                              // Submitted (DATE+TIME formula)
     (app.family_name       as string) ?? '',                 // Family
@@ -141,7 +158,8 @@ export async function syncApplicationToDrive(
     (app.city              as string | null) ?? '',          // City
     (app.zip               as string | null) ?? '',          // Zip
     (app.emergency_contact as string | null) ?? '',          // Emergency Contact
-    (app.payment_method    as string | null) ?? '',          // Payment
+    paidByLabel,                                             // Paid By (Stripe/Venmo/PayPal)
+    verifiedCell,                                            // Verified (blank or "✓ method date")
     pdfHyperlink,                                            // Application PDF (=HYPERLINK)
     app.id as string,                                        // App ID (rightmost, narrow)
   ];
@@ -176,6 +194,53 @@ export async function syncApplicationToDrive(
     .eq('application_id', args.applicationId);
 
   return { ok: true, pdf_id: pdfId, spreadsheet_id: spreadsheetId, tab_name: year, row_index: rowIndex };
+}
+
+// Mark an application's row in Drive as verified. Best-effort — never throws
+// or blocks the caller. Skips silently if Drive isn't connected, the row
+// hasn't been synced yet (rare race), or the cell already has a value
+// (write-once: a manual note or prior verification stays put).
+//
+// `method` is one of 'stripe' | 'venmo' | 'paypal' | 'manual' — drives the
+// label (Stripe → "Stripe ✓ May 1", everything else → "Manual ✓ May 1").
+export async function markVerifiedInDrive(
+  sb: SupabaseClient,
+  args: {
+    tenantId: string;
+    applicationId: string;
+    method: string;
+    googleClientId: string;
+    googleClientSecret: string;
+  },
+): Promise<void> {
+  try {
+    const { data: log } = await sb.from('drive_sync_log')
+      .select('spreadsheet_id, tab_name')
+      .eq('tenant_id', args.tenantId).eq('application_id', args.applicationId)
+      .maybeSingle();
+    if (!log?.spreadsheet_id || !log?.tab_name) return;  // not synced yet — skip silently
+
+    const grant = await loadGrant(sb, args.tenantId);
+    if (!grant) return;
+
+    const accessToken = await getAccessToken(grant.refresh_token, args.googleClientId, args.googleClientSecret);
+    const dShort = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const verifiedString = args.method === 'stripe'
+      ? `Stripe ✓ ${dShort}`
+      : `Manual ✓ ${dShort}`;
+
+    await updateRowCellByAppId(
+      accessToken,
+      log.spreadsheet_id as string,
+      log.tab_name as string,
+      args.applicationId,
+      'Verified',
+      verifiedString,
+    );
+  } catch (e) {
+    // Best-effort: log but never bubble. App's verification still succeeded.
+    console.error('markVerifiedInDrive failed (non-fatal):', (e as Error).message);
+  }
 }
 
 // Used at submit-time when sync fails: enqueue for later retry without

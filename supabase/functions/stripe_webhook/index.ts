@@ -127,6 +127,19 @@ Deno.serve(async (req) => {
       await sb.from('admin_tasks')
         .update({ completed_at: now })
         .eq('source_kind', 'application').eq('source_id', md.application_id).is('completed_at', null);
+
+      // Reflect Stripe verification in the Drive sheet (best-effort, write-once).
+      const GOOGLE_ID  = Deno.env.get('GOOGLE_CLIENT_ID');
+      const GOOGLE_SEC = Deno.env.get('GOOGLE_CLIENT_SECRET');
+      if (GOOGLE_ID && GOOGLE_SEC) {
+        try {
+          const { markVerifiedInDrive } = await import('../_shared/sync_application.ts');
+          await markVerifiedInDrive(sb, {
+            tenantId: tenantId, applicationId: md.application_id, method: 'stripe',
+            googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SEC,
+          });
+        } catch { /* never fails the webhook */ }
+      }
     }
 
     if (kind === 'program_booking' && md.booking_id) {
