@@ -105,6 +105,30 @@
         <button class="btn btn-ghost" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
       </div>
 
+      <div class="card" id="plans-card">
+        <h2>🗓️ Payment plans</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Offer applicants a 2-installment Stripe option (e.g. half by season open, half by July 1). Auto-charges the saved card on the due date. Auto-deactivates keyfobs on chronic failure; reactivation flow charges remaining balance + a fee.</p>
+        <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="plan-enabled"><span>Enable payment plans</span></label>
+        <div class="row3" style="gap:10px">
+          <div><label>Season open date</label><input type="date" id="plan-open"></div>
+          <div><label>Final due date</label><input type="date" id="plan-final"></div>
+          <div><label>Plan-signup cutoff</label><input type="date" id="plan-cutoff"></div>
+        </div>
+        <div class="row3" style="gap:10px;margin-top:8px">
+          <div><label>1st installment %</label><input type="number" id="plan-pct" min="1" max="99"></div>
+          <div><label>Lapse grace (days)</label><input type="number" id="plan-grace" min="1" max="60"></div>
+          <div><label>Reactivation fee ($)</label><input type="number" id="plan-fee" min="0" step="0.01"></div>
+        </div>
+        <label class="checkbox-row" style="margin:8px 0 0"><input type="checkbox" id="plan-deactivate"><span>Auto-deactivate keyfobs on lapse (re-enabled on reactivation)</span></label>
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" id="plan-save" type="button" onclick="savePlanConfig()" style="background:var(--blue)">Save plan config</button>
+          <span class="saved" id="plan-saved" style="display:none">✓ Saved</span>
+        </div>
+        <div class="err" id="plan-err"></div>
+        <h3 style="margin:18px 0 8px;font-size:14px">Active plans</h3>
+        <div id="plans-list" style="font-size:13px"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
+      </div>
+
       <div class="card" id="drive-card">
         <h2>📁 Backups & archive (Google Drive)</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver into <code>{Year} Sign-ups/</code>, plus one row appended to the master roster spreadsheet. <b>One-way only</b> — anything deleted in this app is <i>never</i> deleted from your Drive.</p>
@@ -161,6 +185,7 @@ const ME_URL         = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const SETTINGS_URL   = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const STRIPE_URL     = `${SUPABASE_URL}/functions/v1/stripe_connect`;
 const DRIVE_URL      = `${SUPABASE_URL}/functions/v1/google_drive_sync`;
+const PLANS_URL      = `${SUPABASE_URL}/functions/v1/payment_plans`;
 
 let CACHE = [];
 let FILTER = '';
@@ -319,6 +344,123 @@ async function loadPaymentMethods() {
     errEl.textContent = e.message; errEl.classList.add('show');
   }
 }
+// ── Setup: Payment plans ────────────────────────────────────────────────
+async function loadPlanConfig() {
+  try {
+    const r = await api(PLANS_URL, 'config_get');
+    if (!r.ok) throw new Error(r.error || 'config load failed');
+    const c = r.config || {};
+    document.getElementById('plan-enabled').checked = !!c.enabled;
+    document.getElementById('plan-open').value     = c.season_open_date || '';
+    document.getElementById('plan-final').value    = c.final_due_date   || '';
+    document.getElementById('plan-cutoff').value   = c.plan_signup_cutoff_date || '';
+    document.getElementById('plan-pct').value      = (c.first_installment_pct ?? 50);
+    document.getElementById('plan-grace').value    = (c.lapse_grace_days      ?? 14);
+    document.getElementById('plan-fee').value      = ((c.reactivation_fee_cents ?? 5000) / 100).toFixed(2);
+    document.getElementById('plan-deactivate').checked = c.auto_deactivate_keyfob !== false;
+  } catch (e) {
+    document.getElementById('plan-err').textContent = e.message;
+    document.getElementById('plan-err').classList.add('show');
+  }
+}
+async function savePlanConfig() {
+  const btn = document.getElementById('plan-save');
+  const errEl = document.getElementById('plan-err');
+  const savedEl = document.getElementById('plan-saved');
+  errEl.classList.remove('show');
+  savedEl.style.display = 'none';
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const config = {
+      enabled: document.getElementById('plan-enabled').checked,
+      season_open_date:        document.getElementById('plan-open').value || null,
+      final_due_date:          document.getElementById('plan-final').value || null,
+      plan_signup_cutoff_date: document.getElementById('plan-cutoff').value || null,
+      first_installment_pct: Number(document.getElementById('plan-pct').value) || 50,
+      lapse_grace_days:      Number(document.getElementById('plan-grace').value) || 14,
+      reactivation_fee_cents: Math.round((parseFloat(document.getElementById('plan-fee').value) || 0) * 100),
+      auto_deactivate_keyfob: document.getElementById('plan-deactivate').checked,
+    };
+    const r = await api(PLANS_URL, 'config_save', { config });
+    if (!r.ok) throw new Error(r.error || 'save failed');
+    savedEl.style.display = 'inline';
+    setTimeout(() => { savedEl.style.display = 'none'; }, 1800);
+    loadPlansList();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+async function loadPlansList() {
+  const box = document.getElementById('plans-list');
+  try {
+    const r = await api(PLANS_URL, 'list_plans');
+    if (!r.ok) throw new Error(r.error || 'list failed');
+    const plans = r.plans || [];
+    const installments = r.installments || [];
+    if (!plans.length) {
+      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No plans yet. They'll appear as members sign up with the 2-installment option.</div>`;
+      return;
+    }
+    const byPlan = {};
+    installments.forEach(i => { (byPlan[i.plan_id] = byPlan[i.plan_id] || []).push(i); });
+    const fmtMoney = c => '$' + (c / 100).toFixed(2);
+    const statusPill = s => {
+      const map = { active: ['#dcfce7','#14532d'], completed: ['#dbeafe','#1e3a8a'], lapsed: ['#fee2e2','#7f1d1d'], cancelled: ['#f3f4f6','#374151'] };
+      const [bg, fg] = map[s] || map.cancelled;
+      return `<span style="background:${bg};color:${fg};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(s)}</span>`;
+    };
+    box.innerHTML = plans.map(p => {
+      const ins = (byPlan[p.id] || []).sort((a,b) => a.sequence - b.sequence);
+      const insRows = ins.map(i => {
+        const stPill = statusPill(i.status);
+        const dueOrPaid = i.status === 'paid' || i.status === 'manual'
+          ? `paid ${new Date(i.paid_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+          : `due ${i.due_date}`;
+        const errLine = i.last_error ? `<div style="color:#7f1d1d;font-size:11px;margin-top:2px">⚠ ${escapeHtml(i.last_error)}</div>` : '';
+        const markPaidBtn = (i.status !== 'paid' && i.status !== 'manual')
+          ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-left:6px" onclick="markPlanInstallmentPaid('${i.id}')">Mark paid</button>`
+          : '';
+        return `<div style="padding:6px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div><b>#${i.sequence}</b> ${fmtMoney(i.amount_cents)} · ${dueOrPaid} ${stPill}${errLine}</div>
+          <div>${markPaidBtn}</div>
+        </div>`;
+      }).join('');
+      const reactivateBtn = p.status === 'lapsed'
+        ? `<button class="btn btn-primary" style="background:var(--blue);font-size:12px;margin-top:6px" onclick="reactivatePlan('${p.id}')">Send reactivation link →</button>`
+        : '';
+      return `<div style="margin-bottom:14px;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div><b>${escapeHtml(p.family_name || '—')}</b> · ${fmtMoney(p.total_cents)} ${statusPill(p.status)}</div>
+          <div style="font-size:11px;color:var(--muted)">${escapeHtml(p.primary_email || '')}</div>
+        </div>
+        <div style="margin-top:6px">${insRows}</div>
+        ${reactivateBtn}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div style="color:var(--red);font-size:12px">${escapeHtml(e.message)}</div>`;
+  }
+}
+async function markPlanInstallmentPaid(installmentId) {
+  if (!confirm('Mark this installment paid? Use this only if the money has actually arrived (e.g. cash/check).')) return;
+  try {
+    const r = await api(PLANS_URL, 'mark_paid', { installment_id: installmentId });
+    if (!r.ok) throw new Error(r.error || 'failed');
+    await loadPlansList();
+  } catch (e) { alert(e.message); }
+}
+async function reactivatePlan(planId) {
+  try {
+    const r = await api(PLANS_URL, 'reactivate', { plan_id: planId });
+    if (!r.ok) throw new Error(r.error || 'failed');
+    // Open Stripe Checkout in a new tab; admin can copy URL to send to member
+    window.open(r.url, '_blank');
+    alert(`Reactivation Checkout opened in a new tab. Send this URL to ${escapeHtml('the household')}:\n\n${r.url}`);
+  } catch (e) { alert(e.message); }
+}
+
 // ── Setup: Google Drive backups ─────────────────────────────────────────
 async function loadDriveStatus() {
   const box       = document.getElementById('drive-status');
@@ -448,6 +590,8 @@ async function savePaymentMethods() {
   loadStripeStatus();
   loadPaymentMethods();
   loadDriveStatus();
+  loadPlanConfig();
+  loadPlansList();
 })();
 </script>
 </body>

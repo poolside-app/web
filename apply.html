@@ -198,6 +198,7 @@
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
       <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()"> 💸 Venmo — admin verifies, then you're set</label>
       <label class="pay-opt" id="pay-opt-stripe" style="display:none"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
+      <label class="pay-opt" id="pay-opt-stripe-plan" style="display:none"><input type="radio" name="payment_method" value="stripe_plan" onchange="paintVenmoQR()"> 🗓️ <span id="plan-label">Pay in 2 installments via Stripe</span></label>
       <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't fully wired — we'll email you a payment link after the board approves.</p>
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
@@ -239,6 +240,33 @@
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
 let TENANT_PUBLIC = null;  // populated on boot from tenant_public
+
+// Paint the dynamic split-amount label on the Pay-in-2 radio. Triggered:
+//   - On boot once tenant_public returns
+//   - When user changes tier selection on Step 4 (re-paint with new $ split)
+function paintPlanLabel() {
+  const plan = window.__POOLSIDE_PLAN__;
+  if (!plan) return;
+  const labelEl = document.getElementById('plan-label');
+  if (!labelEl) return;
+  const checkedTier = document.querySelector('input[name="tier_slug"]:checked')?.value;
+  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  const tier = tiers.find(t => t.slug === checkedTier) || tiers[0];
+  const totalCents = (tier && typeof tier.price_cents === 'number' && tier.price_cents > 0) ? tier.price_cents : 0;
+  if (totalCents > 0) {
+    const pct = Math.max(1, Math.min(99, Number(plan.first_installment_pct) || 50));
+    const first = Math.round(totalCents * pct / 100);
+    const second = totalCents - first;
+    const finalDue = String(plan.final_due_date || '').slice(0, 10);
+    labelEl.innerHTML = `Pay in 2 installments via Stripe — $${(first/100).toFixed(0)} now, $${(second/100).toFixed(0)} auto-charged on ${escapeHtml(finalDue)}`;
+  } else {
+    labelEl.textContent = 'Pay in 2 installments via Stripe';
+  }
+}
+// Re-paint when tier choice changes
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.name === 'tier_slug') paintPlanLabel();
+});
 
 function paintTiers() {
   const box = document.getElementById('tiers-box');
@@ -676,6 +704,7 @@ async function submitApplication() {
     const method = (document.querySelector('input[name="payment_method"]:checked')?.value || '');
     const isVenmo = method === 'venmo';
     const isStripe = method === 'stripe';
+    const isStripePlan = method === 'stripe_plan';
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
@@ -686,6 +715,14 @@ async function submitApplication() {
           <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Stripe checkout opens in this tab. You'll be returned here when done.</div>
           <button id="stripe-pay-btn" type="button" style="padding:12px 22px;background:#635bff;color:#fff;border:0;border-radius:10px;font:600 14px 'Inter';cursor:pointer">💳 Pay with card →</button>
           <div id="stripe-pay-err" style="display:none;margin-top:10px;padding:10px;background:#fee2e2;color:#7f1d1d;border-radius:8px;font-size:13px"></div>
+        </div>
+      ` : ''}
+      ${isStripePlan ? `
+        <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
+          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Start your payment plan</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Stripe will charge installment 1 now and save your card to auto-charge installment 2 on the final due date.</div>
+          <button id="stripe-plan-btn" type="button" style="padding:12px 22px;background:#635bff;color:#fff;border:0;border-radius:10px;font:600 14px 'Inter';cursor:pointer">🗓️ Start payment plan →</button>
+          <div id="stripe-plan-err" style="display:none;margin-top:10px;padding:10px;background:#fee2e2;color:#7f1d1d;border-radius:8px;font-size:13px"></div>
         </div>
       ` : ''}
       ${isVenmo && venmoHandle ? `
@@ -714,6 +751,22 @@ async function submitApplication() {
         err.style.display = 'block'; err.textContent = e.message;
       }
     });
+    const planBtn = document.getElementById('stripe-plan-btn');
+    if (planBtn) planBtn.addEventListener('click', async () => {
+      planBtn.disabled = true; planBtn.textContent = 'Opening Stripe…';
+      try {
+        const cr = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'application_plan', application_id: appId }),
+        }).then(r => r.json());
+        if (!cr.ok) throw new Error(cr.error || 'Plan setup failed');
+        window.location.href = cr.url;
+      } catch (e) {
+        planBtn.disabled = false; planBtn.textContent = '🗓️ Start payment plan →';
+        const err = document.getElementById('stripe-plan-err');
+        err.style.display = 'block'; err.textContent = e.message;
+      }
+    });
     const claimBtn = document.getElementById('claim-paid-btn');
     if (claimBtn) claimBtn.addEventListener('click', async () => {
       claimBtn.disabled = true; claimBtn.textContent = 'Sending…';
@@ -739,13 +792,22 @@ async function submitApplication() {
 
 (async () => {
   // If the user just came back from Stripe Checkout, show a success/cancel
-  // banner instead of the empty form. Stripe redirected to ?paid=1 / ?paid=0.
+  // banner instead of the empty form. Stripe redirected to ?paid=1 / ?paid=0
+  // (single payment) or ?plan_started=1 / ?plan_started=0 (split-installment).
   const params = new URLSearchParams(window.location.search);
   if (params.has('paid')) {
     const paid = params.get('paid') === '1';
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = paid
       ? `<h1>✓ Payment received!</h1><p class="lede">Your dues are paid. The board will finalize your membership shortly — watch for a welcome email with your sign-in link.</p><p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`
+      : `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
+    return;
+  }
+  if (params.has('plan_started')) {
+    const ok = params.get('plan_started') === '1';
+    document.getElementById('form').className = 'card ok';
+    document.getElementById('form').innerHTML = ok
+      ? `<h1>✓ You're in!</h1><p class="lede">First installment paid, card saved. Your second installment will auto-charge on the final due date — we'll email you reminders before each charge. Watch for a welcome email with your sign-in link.</p><p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`
       : `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
     return;
   }
@@ -773,6 +835,22 @@ async function submitApplication() {
         if (d.tenant.stripe_charges_enabled) {
           const opt = document.getElementById('pay-opt-stripe');
           if (opt) opt.style.display = '';
+          // Pay-in-2 option requires (a) plan enabled in club settings,
+          // (b) we're before the signup cutoff date.
+          const plan = d.public_settings && d.public_settings.payment_plan;
+          if (plan && plan.enabled && plan.final_due_date) {
+            const today = new Date().toISOString().slice(0, 10);
+            const cutoffOk = !plan.plan_signup_cutoff_date || today <= plan.plan_signup_cutoff_date;
+            if (cutoffOk) {
+              const planOpt = document.getElementById('pay-opt-stripe-plan');
+              if (planOpt) {
+                planOpt.style.display = '';
+                // Update the label dynamically once tier price is known.
+                window.__POOLSIDE_PLAN__ = plan;  // used by paintPlanLabel()
+                paintPlanLabel();
+              }
+            }
+          }
         }
         const logoUrl = d.public_settings && d.public_settings.branding && d.public_settings.branding.logo_url;
         // Cache so the next page-load paints the right name synchronously (no flicker).

@@ -146,6 +146,123 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, url: session.url });
   }
 
+  // ── application_plan: public action — pay first installment + save card.
+  // Creates a payment_plans row + 2 installments, then a Checkout session
+  // with mode=payment + setup_future_usage=off_session so the card sticks
+  // for the second auto-charge on the final due date.
+  if (action === 'application_plan') {
+    const id = String(body.application_id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'application_id required' }, 400);
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, family_name, primary_name, primary_email, primary_phone, payment_status, tier_slug, status')
+      .eq('id', id).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('slug, display_name, stripe_account_id, stripe_charges_enabled').eq('id', app.tenant_id).maybeSingle();
+    if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
+      return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
+    }
+
+    const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
+    const sv = settings?.value as Record<string, unknown> | undefined;
+    const tiers = (sv?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+    const tier = tiers.find(t => t.slug === app.tier_slug) || tiers[0];
+    const totalCents = (tier?.price_cents as number) || 0;
+    if (totalCents <= 0) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+
+    const planConfig = ((sv?.payments as Record<string, unknown> | undefined)?.plan as Record<string, unknown> | undefined);
+    if (!planConfig?.enabled || !planConfig.final_due_date) {
+      return jsonResponse({ ok: false, error: 'Payment plans not enabled for this club' }, 400);
+    }
+    const cutoff = planConfig.plan_signup_cutoff_date as string | null;
+    const today = new Date().toISOString().slice(0, 10);
+    if (cutoff && today > cutoff) {
+      return jsonResponse({ ok: false, error: 'Payment plan signup window has closed; please pay in full' }, 400);
+    }
+    const pct = Math.max(1, Math.min(99, Number(planConfig.first_installment_pct) || 50));
+    const firstCents = Math.round(totalCents * pct / 100);
+    const secondCents = totalCents - firstCents;
+    const finalDueDate = String(planConfig.final_due_date);
+
+    // Create plan + installments now (idempotently — no double-create on retry)
+    const { data: existingPlan } = await sb.from('payment_plans').select('id, status')
+      .eq('application_id', id).maybeSingle();
+    let planId: string;
+    if (existingPlan && existingPlan.status === 'active') {
+      planId = existingPlan.id as string;
+    } else {
+      const { data: newPlan, error: planErr } = await sb.from('payment_plans').insert({
+        tenant_id: app.tenant_id,
+        application_id: id,
+        plan_type: 'two_installment',
+        total_cents: totalCents,
+        status: 'active',
+        primary_email: app.primary_email,
+        primary_phone: app.primary_phone,
+        family_name: app.family_name,
+      }).select('id').single();
+      if (planErr || !newPlan) return jsonResponse({ ok: false, error: planErr?.message || 'plan create failed' }, 500);
+      planId = newPlan.id as string;
+      await sb.from('payment_plan_installments').insert([
+        {
+          plan_id: planId, tenant_id: app.tenant_id,
+          sequence: 1, due_date: today, amount_cents: firstCents, status: 'pending',
+        },
+        {
+          plan_id: planId, tenant_id: app.tenant_id,
+          sequence: 2, due_date: finalDueDate, amount_cents: secondCents, status: 'pending',
+        },
+      ]);
+    }
+
+    // Stripe Checkout — mode=payment + setup_future_usage=off_session so we
+    // can charge the second installment without the member returning.
+    const platformFee = Math.max(0, Math.floor(firstCents * PLATFORM_FEE_BPS / 10000));
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const params = new URLSearchParams();
+    params.append('mode', 'payment');
+    params.append('success_url', `${clubUrl}/apply.html?plan_started=1`);
+    params.append('cancel_url',  `${clubUrl}/apply.html?plan_started=0`);
+    params.append('line_items[0][price_data][currency]', 'usd');
+    params.append('line_items[0][price_data][product_data][name]',
+      `${tenant.display_name} dues — installment 1 of 2 (${(tier?.label as string) || 'family'})`);
+    params.append('line_items[0][price_data][product_data][description]',
+      `Installment 2 of $${(secondCents / 100).toFixed(2)} will auto-charge on ${finalDueDate}.`);
+    params.append('line_items[0][price_data][unit_amount]', String(firstCents));
+    params.append('line_items[0][quantity]', '1');
+    params.append('payment_intent_data[application_fee_amount]', String(platformFee));
+    params.append('payment_intent_data[setup_future_usage]', 'off_session');
+    params.append('customer_creation', 'always');
+    if (app.primary_email) params.append('customer_email', app.primary_email as string);
+    params.append('metadata[kind]', 'payment_plan_first');
+    params.append('metadata[plan_id]', planId);
+    params.append('metadata[application_id]', id);
+    params.append('metadata[tenant_id]', String(app.tenant_id));
+
+    try {
+      const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${STRIPE_KEY}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Stripe-Account': tenant.stripe_account_id,
+        },
+        body: params.toString(),
+      });
+      const data = await res.json();
+      if (!res.ok) return jsonResponse({ ok: false, error: data?.error?.message || `Stripe ${res.status}` }, 500);
+      // Stamp installment 1 with the session id so the webhook can match it
+      await sb.from('payment_plan_installments').update({
+        stripe_session_id: data.id,
+      }).eq('plan_id', planId).eq('sequence', 1);
+      return jsonResponse({ ok: true, url: data.url, plan_id: planId, first_cents: firstCents, second_cents: secondCents, second_due: finalDueDate });
+    } catch (e) {
+      return jsonResponse({ ok: false, error: String(e) }, 500);
+    }
+  }
+
   // ── member-authenticated checkout for programs / passes / parties
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';

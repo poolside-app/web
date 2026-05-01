@@ -73,6 +73,15 @@ Deno.serve(async (req) => {
       venmo_handle: v.payments?.venmo_handle ?? null,
       paypal_link:  v.payments?.paypal_link  ?? null,
     },
+    // Payment plan public surface: minimal config fields needed by the apply
+    // form to decide whether to show the 'Pay in 2 installments' option and
+    // how to label it (split percentage + final due date).
+    payment_plan: {
+      enabled: !!(v.payments as Record<string, unknown> | undefined)?.plan && !!((v.payments as Record<string, Record<string, unknown>>)?.plan?.enabled),
+      first_installment_pct:    Number((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.first_installment_pct ?? 50),
+      final_due_date:           ((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.final_due_date as string | null) ?? null,
+      plan_signup_cutoff_date:  ((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.plan_signup_cutoff_date as string | null) ?? null,
+    },
     features: {
       swim_lessons: !!v.features?.swim_lessons,
       parties:      !!v.features?.parties,

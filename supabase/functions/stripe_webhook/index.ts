@@ -142,6 +142,100 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Payment plan: first installment paid via Checkout. Save the customer
+    // + payment_method on the plan so the cron can charge installment 2 later.
+    if (kind === 'payment_plan_first' && md.plan_id && md.application_id) {
+      const sessionId = String(session.id || '');
+      const piId = (session.payment_intent as string) || null;
+      const customerId = (session.customer as string) || null;
+      const now = new Date().toISOString();
+
+      // Pull payment_method off the PaymentIntent (Checkout doesn't return it directly)
+      let paymentMethodId: string | null = null;
+      if (piId && STRIPE_KEY) {
+        try {
+          const r = await fetch(`https://api.stripe.com/v1/payment_intents/${piId}`, {
+            headers: {
+              Authorization: `Bearer ${STRIPE_KEY}`,
+              'Stripe-Account': await sb.from('tenants').select('stripe_account_id').eq('id', tenantId).maybeSingle()
+                .then(({ data }) => (data?.stripe_account_id as string) || ''),
+            },
+          });
+          if (r.ok) {
+            const piData = await r.json();
+            paymentMethodId = piData.payment_method || null;
+          }
+        } catch { /* fallback: leave null, second charge will fail visibly */ }
+      }
+
+      // Mark installment 1 paid
+      await sb.from('payment_plan_installments').update({
+        status: 'paid', paid_at: now,
+        stripe_payment_intent_id: piId, stripe_session_id: sessionId,
+        last_error: null,
+      }).eq('plan_id', md.plan_id).eq('sequence', 1);
+
+      // Save customer + saved payment method on the plan for off-session re-charges
+      await sb.from('payment_plans').update({
+        stripe_customer_id: customerId,
+        stripe_payment_method_id: paymentMethodId,
+      }).eq('id', md.plan_id);
+
+      // Mark the application paid (status 'pending' for payment_status until BOTH
+      // installments collected — but treat first-installment as 'pending' rather
+      // than 'paid' since dues aren't fully settled yet)
+      await sb.from('applications').update({
+        payment_status: 'pending', payment_method: 'stripe',
+        stripe_session_id: sessionId,
+      }).eq('id', md.application_id).eq('tenant_id', tenantId);
+
+      // Auto-approve: applicant put a card on file + paid first half = they're a member.
+      const { data: app } = await sb.from('applications').select('id, status').eq('id', md.application_id).maybeSingle();
+      if (app?.status === 'pending') {
+        try {
+          await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+            body: JSON.stringify({ action: 'approve', id: md.application_id, tenant_id: tenantId }),
+          });
+        } catch (e) { console.error('plan auto-approve failed:', (e as Error).message); }
+      }
+
+      // Link plan to household now that approval may have created one
+      const { data: appAfter } = await sb.from('applications')
+        .select('household_id').eq('id', md.application_id).maybeSingle();
+      if (appAfter?.household_id) {
+        await sb.from('payment_plans').update({ household_id: appAfter.household_id }).eq('id', md.plan_id);
+      }
+    }
+
+    // ── Payment plan reactivation: lapsed plan paid in full (balance + fee).
+    // Restore household dues + keyfob, mark plan + installments cleared.
+    if (kind === 'payment_plan_reactivation' && md.plan_id) {
+      const now = new Date().toISOString();
+      const { data: plan } = await sb.from('payment_plans').select('id, household_id').eq('id', md.plan_id).maybeSingle();
+      if (plan) {
+        await sb.from('payment_plans').update({
+          status: 'completed', completed_at: now, reactivated_at: now,
+        }).eq('id', plan.id);
+        await sb.from('payment_plan_installments').update({
+          status: 'manual', paid_at: now, last_error: null,
+        }).eq('plan_id', plan.id).neq('status', 'paid').neq('status', 'manual');
+        if (plan.household_id) {
+          await sb.from('households').update({
+            dues_paid_for_year: true, paid_until_year: new Date().getFullYear(),
+          }).eq('id', plan.household_id);
+          // Restore keyfob access for adult + teen members
+          await sb.from('household_members').update({ can_unlock_gate: true })
+            .eq('household_id', plan.household_id).eq('tenant_id', tenantId)
+            .in('role', ['primary', 'adult', 'teen']);
+        }
+        // Close any open lapse-related admin tasks
+        await sb.from('admin_tasks').update({ completed_at: now })
+          .eq('source_kind', 'payment_plan').eq('source_id', plan.id).is('completed_at', null);
+      }
+    }
+
     if (kind === 'program_booking' && md.booking_id) {
       await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString() })
         .eq('id', md.booking_id).eq('tenant_id', tenantId);
