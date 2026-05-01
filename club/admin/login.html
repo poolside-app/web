@@ -115,12 +115,17 @@ function escapeHtml(s) {
 
 const SLUG = getSlugFromHostname();
 
-// Wire Google sign-in to OAuth init
+// Wire Google sign-in to OAuth init. Hide if no slug — Google can't know
+// which tenant to check the email against without one.
 (function () {
   const g = document.getElementById('google-signin');
   if (g) {
-    const params = new URLSearchParams({ action: 'init', slug: SLUG || '', kind: 'admin' });
-    g.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
+    if (SLUG) {
+      const params = new URLSearchParams({ action: 'init', slug: SLUG, kind: 'admin' });
+      g.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
+    } else {
+      g.style.display = 'none';
+    }
   }
 })();
 

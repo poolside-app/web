@@ -208,9 +208,9 @@
       <h2 style="margin-top:24px">Payment</h2>
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
       <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()"> 💸 Venmo — admin verifies, then you're set</label>
-      <label class="pay-opt"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
+      <label class="pay-opt" id="pay-opt-stripe" style="display:none"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
       <label class="pay-opt"><input type="radio" name="payment_method" value="" onchange="paintVenmoQR()"> Decide later</label>
-      <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't wired yet — we'll email you a payment link after the board approves.</p>
+      <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't fully wired — we'll email you a payment link after the board approves.</p>
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
         <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Pay with Venmo</div>
@@ -767,6 +767,18 @@ async function submitApplication() {
 }
 
 (async () => {
+  // If the user just came back from Stripe Checkout, show a success/cancel
+  // banner instead of the empty form. Stripe redirected to ?paid=1 / ?paid=0.
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('paid')) {
+    const paid = params.get('paid') === '1';
+    document.getElementById('form').className = 'card ok';
+    document.getElementById('form').innerHTML = paid
+      ? `<h1>✓ Payment received!</h1><p class="lede">Your dues are paid. The board will finalize your membership shortly — watch for a welcome email with your sign-in link.</p><p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`
+      : `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
+    return;
+  }
+
   const slug = getSlug();
   if (!slug) {
     document.getElementById('title').textContent = 'Wrong URL';
@@ -785,6 +797,12 @@ async function submitApplication() {
         TENANT_PUBLIC = d;
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
+        // Show the Stripe option only when this tenant has Connect onboarded
+        // and charges are enabled. Otherwise the option appears but checkout fails.
+        if (d.tenant.stripe_charges_enabled) {
+          const opt = document.getElementById('pay-opt-stripe');
+          if (opt) opt.style.display = '';
+        }
         const logoUrl = d.public_settings && d.public_settings.branding && d.public_settings.branding.logo_url;
         // Cache so the next page-load paints the right name synchronously (no flicker).
         try { localStorage.setItem('poolside_tenant_brand', JSON.stringify({ slug, display_name: d.tenant.display_name, logo_url: logoUrl || null })); } catch (_) {}

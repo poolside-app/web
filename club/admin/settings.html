@@ -795,6 +795,13 @@ async function loadStripeStatus() {
   const connectBtn = document.getElementById('stripe-connect-btn');
   const resumeBtn  = document.getElementById('stripe-resume-btn');
   const syncBtn    = document.getElementById('stripe-sync-btn');
+  // If we were just redirected back from Stripe onboarding, force a sync
+  // so charges_enabled / payouts_enabled refresh from Stripe right away
+  // (otherwise the admin sees stale "not finished" until they tap Sync).
+  if (window.location.hash.includes('stripe=connected')) {
+    history.replaceState(null, '', window.location.pathname);
+    try { await call(`${SUPABASE_URL}/functions/v1/stripe_connect`, 'sync'); } catch (_) {}
+  }
   try {
     const r = await call(`${SUPABASE_URL}/functions/v1/stripe_connect`, 'status');
     if (!r.ok) throw new Error(r.error || 'Stripe status failed');

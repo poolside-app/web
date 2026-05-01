@@ -342,6 +342,17 @@ Deno.serve(async (req) => {
     const adults = Array.isArray(app.adults_json) ? app.adults_json as Array<Record<string, unknown>> : [];
     const children = Array.isArray(app.children_json) ? app.children_json as Array<Record<string, unknown>> : [];
 
+    // Normalize whatever the apply form's formatPhoneInput rendered (e.g.
+    // "(555) 123-4567") into E.164 so future SMS magic-link lookups can match.
+    function toE164(raw: string | null | undefined): string | null {
+      if (!raw) return null;
+      const digits = String(raw).replace(/[^\d+]/g, '');
+      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) return digits;
+      if (/^\d{10}$/.test(digits)) return '+1' + digits;
+      if (/^1\d{10}$/.test(digits)) return '+' + digits;
+      return null;
+    }
+
     let createdExtraMembers = 0;
     for (let i = 0; i < adults.length; i++) {
       const a = adults[i];
@@ -349,7 +360,7 @@ Deno.serve(async (req) => {
       if (!aName) continue;
       // First adult is the primary already inserted — skip if it matches
       if (i === 0 && aName.toLowerCase() === String(app.primary_name).trim().toLowerCase()) continue;
-      const aPhone = a?.phone ? String(a.phone) : null;
+      const aPhone = toE164(a?.phone);
       // Skip if phone clashes with primary's phone (safety)
       if (aPhone && aPhone === app.primary_phone) continue;
       const { error: spErr } = await sb.from('household_members').insert({

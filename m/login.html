@@ -167,11 +167,17 @@ const SLUG = getSlugFromHostname();
       }
     }
   } catch { /* keep generic title */ }
-  // Wire Google sign-in to bounce through our OAuth init endpoint
+  // Wire Google sign-in to bounce through our OAuth init endpoint.
+  // Hide the button if no slug is detected — without a slug Google can't
+  // know which tenant to look up, and the init endpoint returns an error.
   const gBtn = document.getElementById('google-signin');
   if (gBtn) {
-    const params = new URLSearchParams({ action: 'init', slug: SLUG || '', kind: 'member' });
-    gBtn.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
+    if (SLUG) {
+      const params = new URLSearchParams({ action: 'init', slug: SLUG, kind: 'member' });
+      gBtn.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
+    } else {
+      gBtn.style.display = 'none';
+    }
   }
 })();
 

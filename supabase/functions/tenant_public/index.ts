@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const { data: tenant } = await sb.from('tenants')
-    .select('id, slug, display_name, status, plan, custom_domain')
+    .select('id, slug, display_name, status, plan, custom_domain, stripe_charges_enabled')
     .eq('slug', slug)
     .maybeSingle();
 
