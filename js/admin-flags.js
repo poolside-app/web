@@ -111,10 +111,17 @@
             sels.forEach(s => document.querySelectorAll(s).forEach(el => { el.style.display = 'none'; }));
           }
         }
-        // Members hub — visible if user has either households OR applications scope.
-        if (!scopes.has('households') && !scopes.has('applications')) {
+        // Members hub — visible if user has ANY members-section scope.
+        const MEMBERS_SCOPES = ['households','applications','payments','programs','parties','volunteer','passes','documents'];
+        const hasAnyMembers = MEMBERS_SCOPES.some(s => scopes.has(s));
+        if (!hasAnyMembers) {
           document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });
         }
+        // Per-subtab scope hiding (renders by /js/members-subtabs.js)
+        document.querySelectorAll('.members-subtabs a[data-scope]').forEach(el => {
+          const need = el.dataset.scope;
+          if (need && !scopes.has(need)) el.style.display = 'none';
+        });
         // Settings → Co-admins section is owner-only
         document.querySelectorAll('[data-owner-only]').forEach(el => { el.style.display = 'none'; });
       }

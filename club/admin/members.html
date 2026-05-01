@@ -131,26 +131,18 @@
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
   <a href="/club/admin/members.html" class="on">Members</a>
-  <a href="/club/admin/payments.html">Payments</a>
   <a href="/club/admin/events.html">Calendar</a>
-  <a href="/club/admin/programs.html">Programs</a>
-  <a href="/club/admin/parties.html">Parties</a>
   <a href="/club/admin/announcements.html">Announcements</a>
   <a href="/club/admin/campaigns.html">Campaigns</a>
-  <a href="/club/admin/volunteer.html">Volunteer</a>
-  <a href="/club/admin/guest-passes.html">Passes</a>
   <a href="/club/admin/policies.html">Policies</a>
   <a href="/club/admin/photos.html">Photos</a>
-  <a href="/club/admin/documents.html">Documents</a>
   <a href="/club/admin/impact.html">Impact</a>
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
 
-<div class="subtabs">
-  <button class="subtab on" data-tab="households" onclick="showTab('households')">Households</button>
-  <button class="subtab" data-tab="applications" onclick="showTab('applications')">Applications <span class="badge zero" id="apps-badge">0</span></button>
-</div>
+<div id="members-subtabs"></div>
+<script src="/js/members-subtabs.js"></script>
 
 <main>
   <!-- ── Households panel ──────────────────────────────────────────────── -->
@@ -388,13 +380,19 @@ function bumpYear(id, delta) {
 
 // ── Sub-tab routing ────────────────────────────────────────────────────
 function showTab(name) {
-  document.querySelectorAll('.subtab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  // The shared /js/members-subtabs.js handles the .on indicator on its
+  // own (re-renders on hashchange). Here we just swap the visible panel.
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'panel-' + name));
-  // Persist choice in URL hash so a refresh stays on the same tab.
-  history.replaceState(null, '', '#' + name);
   if (name === 'applications') App.refresh();
   else Households.refresh();
 }
+// Households↔Applications is a JS toggle inside this page. The shared
+// subtabs strip uses #-anchored links, so we listen for hash changes
+// and switch the visible panel without a full reload.
+window.addEventListener('hashchange', () => {
+  const hash = (window.location.hash || '').replace(/^#/, '');
+  showTab(hash === 'applications' ? 'applications' : 'households');
+});
 
 // ── Households namespace ───────────────────────────────────────────────
 const Households = (() => {
@@ -694,9 +692,7 @@ const App = (() => {
         ? { applications: CACHE.filter(a => a.status === 'pending') }
         : await call(APPS_URL, 'list', { status: 'pending' });
       const pending = (pendingData.applications || []).length;
-      const badge = document.getElementById('apps-badge');
-      badge.textContent = pending;
-      badge.classList.toggle('zero', pending === 0);
+      if (window.MembersSubtabs) MembersSubtabs.setPendingApps(pending);
     } catch (e) {
       document.getElementById('app-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
     }
