@@ -526,14 +526,16 @@ async function refreshPrograms() {
       <h3 style="margin:14px 0 4px;font-family:'Fraunces',serif;font-weight:600;font-size:14px;color:var(--blue)">Your sign-ups</h3>
       ${myActive.map(b => {
         const p = b.program || {};
+        const canPay = !b.paid && window.STRIPE_ENABLED && (p.price_cents || 0) > 0;
         return `
           <div class="party-row">
             <div style="flex:1;min-width:0">
               <div class="ptitle">${escapeHtml(p.name || 'Program')}</div>
-              <div class="pmeta">${escapeHtml(b.participant_name)} · ${b.paid ? '<span style="color:var(--green);font-weight:600">paid</span>' : 'unpaid'}</div>
+              <div class="pmeta">${escapeHtml(b.participant_name)} · ${b.paid ? '<span style="color:var(--green);font-weight:600">paid</span>' : 'unpaid'}${(p.price_cents || 0) > 0 ? ' · $' + (p.price_cents / 100).toFixed(2) : ''}</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
               <span class="pill party-${b.status === 'confirmed' ? 'approved' : (b.status === 'waitlisted' ? 'pending' : 'cancelled')}">${escapeHtml(b.status)}</span>
+              ${canPay ? `<button class="btn" style="font-size:11px;padding:6px 12px;background:#635bff;color:#fff;border:0;border-radius:8px;cursor:pointer" onclick="payProgramBooking('${b.id}')">💳 Pay</button>` : ''}
               <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="cancelProgramBooking('${b.id}')">Cancel</button>
             </div>
           </div>`;
@@ -551,6 +553,18 @@ async function bookProgram(programId, programName, isWaitlist) {
   const r = await callPrograms('book', { program_id: programId, participant_name });
   if (!r.ok) { alert(r.error || 'Sign-up failed'); return; }
   await refreshPrograms();
+}
+async function payProgramBooking(bid) {
+  try {
+    const t = token();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'program_booking', booking_id: bid }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Could not start checkout');
+    window.location.href = data.url;
+  } catch (e) { alert(e.message); }
 }
 async function cancelProgramBooking(bid) {
   if (!confirm('Cancel this sign-up?')) return;
@@ -671,14 +685,16 @@ async function refreshGuestPasses() {
         : (p.remaining === 0 ? '<span class="pill party-cancelled">used up</span>'
         : `<span class="pill party-approved">${p.remaining} left</span>`));
       const canRedeem = p.paid && !p.expired && p.remaining > 0;
+      const canPay = !p.paid && !p.expired && window.STRIPE_ENABLED && (p.price_cents || 0) > 0;
       return `
         <div class="party-row">
           <div style="flex:1;min-width:0">
-            <div class="ptitle">${escapeHtml(p.label)} <span style="font-size:11px;color:var(--muted);font-weight:400">(${p.used_count}/${p.total_count} used)</span></div>
+            <div class="ptitle">${escapeHtml(p.label)} <span style="font-size:11px;color:var(--muted);font-weight:400">(${p.used_count}/${p.total_count} used${(p.price_cents || 0) > 0 ? ' · $' + (p.price_cents / 100).toFixed(2) : ''})</span></div>
             <div class="pmeta">${p.expires_on ? 'expires ' + new Date(p.expires_on).toLocaleDateString() + ' · ' : ''}${p.notes ? escapeHtml(p.notes) : ''}</div>
           </div>
-          <div style="flex-shrink:0;display:flex;align-items:center;gap:8px">
+          <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             ${status}
+            ${canPay ? `<button class="btn" style="font-size:11px;padding:6px 12px;background:#635bff;color:#fff;border:0;border-radius:8px" onclick="payGuestPassPack('${p.id}')">💳 Pay</button>` : ''}
             ${canRedeem ? `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="redeemPass('${p.id}')">Redeem</button>` : ''}
           </div>
         </div>`;
@@ -697,6 +713,18 @@ async function refreshGuestPasses() {
     body.className = '';
     body.innerHTML = packsHtml + usesHtml;
   } catch { /* ignore */ }
+}
+async function payGuestPassPack(pid) {
+  try {
+    const t = token();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'guest_pass_pack', pack_id: pid }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Could not start checkout');
+    window.location.href = data.url;
+  } catch (e) { alert(e.message); }
 }
 async function redeemPass(packId) {
   const guest_name = prompt('Guest name?');
@@ -853,6 +881,9 @@ async function submitProfile() {
       if (d.ok) publicData = d;
     } catch { /* keep empties */ }
   }
+  // Expose Stripe-availability to refresh functions so they can render
+  // "Pay with card" buttons on unpaid programs / guest-pass packs.
+  window.STRIPE_ENABLED = !!(publicData.tenant && publicData.tenant.stripe_charges_enabled);
 
   // If branding has a logo, swap the dot for the actual image.
   const logoUrl = publicData.public_settings && publicData.public_settings.branding && publicData.public_settings.branding.logo_url;

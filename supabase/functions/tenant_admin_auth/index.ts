@@ -29,12 +29,68 @@ import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET   = Deno.env.get('ADMIN_JWT_SECRET');
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+const TWILIO_SID     = Deno.env.get('TWILIO_ACCOUNT_SID');
+const TWILIO_TOKEN   = Deno.env.get('TWILIO_AUTH_TOKEN');
+const TWILIO_FROM_N  = Deno.env.get('TWILIO_FROM_NUMBER');
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+function escAdmin(s: unknown): string {
+  const map: Record<string, string> = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
+  return String(s ?? '').replace(/[&<>"']/g, (c) => map[c] || c);
+}
+
+async function sendAdminInviteEmail(args: {
+  to: string; tenantName: string; clubUrl: string; tempPassword: string;
+  inviteeName: string; roleLabel: string;
+}) {
+  if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
+  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a"><h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added as a <b>${escAdmin(args.roleLabel)}</b>.</p><p style="margin:24px 0"><a href="${args.clubUrl}/club/admin/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in</a></p><div style="background:#f7f3eb;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-family:monospace;font-size:13px"><div>Email: <b>${escAdmin(args.to)}</b></div><div>Temp password: <b>${escAdmin(args.tempPassword)}</b></div></div><p style="margin:0;color:#94a3b8;font-size:12px">You'll be prompted to set a new password on first login.</p></div>`;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESEND_FROM, to: [args.to], subject: `You're an admin on ${args.tenantName}`, html }),
+    });
+    if (!res.ok) { const t = await res.text(); return { sent: false, error: `Resend ${res.status}: ${t.slice(0, 200)}` }; }
+    return { sent: true };
+  } catch (e) { return { sent: false, error: String(e) }; }
+}
+
+async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUrl: string; verifyLink: string; adminName: string }) {
+  if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
+  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a"><h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Sign in to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.adminName || 'there')} — click below to sign in. The link is good for one use and expires in 15 minutes.</p><p style="margin:24px 0"><a href="${args.verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in</a></p></div>`;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESEND_FROM, to: [args.to], subject: `Sign in to ${args.tenantName}`, html }),
+    });
+    if (!res.ok) { const t = await res.text(); return { sent: false, error: `Resend ${res.status}: ${t.slice(0, 200)}` }; }
+    return { sent: true };
+  } catch (e) { return { sent: false, error: String(e) }; }
+}
+
+async function sendAdminSms(args: { to: string; tenantName: string; verifyLink: string }) {
+  const sid = TWILIO_SID, tok = TWILIO_TOKEN, from = TWILIO_FROM_N;
+  if (!sid || !tok || !from) return { sent: false, error: 'TWILIO_* env vars not set' };
+  const smsBody = `Sign in to ${args.tenantName} admin: ${args.verifyLink}`;
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa(`${sid}:${tok}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ To: args.to, From: from, Body: smsBody }).toString(),
+    });
+    if (!res.ok) { const t = await res.text(); return { sent: false, error: `Twilio ${res.status}: ${t.slice(0, 200)}` }; }
+    return { sent: true };
+  } catch (e) { return { sent: false, error: String(e) }; }
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -191,6 +247,100 @@ Deno.serve(async (req) => {
         display_name: tenant.display_name,
         status: tenant.status,
       },
+    });
+  }
+
+  // ── start_link: public — request an email/SMS sign-in link by email or phone
+  if (action === 'start_link') {
+    const slugIn = String(body.slug ?? '').trim().toLowerCase();
+    const raw    = String(body.identifier ?? body.email ?? body.phone ?? '').trim();
+    if (!slugIn || !raw) return jsonResponse({ ok: false, error: 'slug + email/phone required' }, 400);
+    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, status').eq('slug', slugIn).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    if (tenant.status === 'churned') return jsonResponse({ ok: false, error: 'This club is no longer active' }, 403);
+
+    const looksLikePhone = !raw.includes('@') && raw.replace(/[^\d]/g, '').length >= 7;
+    let phone_e164: string | null = null;
+    let email: string | null = null;
+    if (looksLikePhone) {
+      const digits = raw.replace(/[^\d+]/g, '');
+      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone_e164 = digits;
+      else if (/^\d{10}$/.test(digits)) phone_e164 = '+1' + digits;
+      else if (/^1\d{10}$/.test(digits)) phone_e164 = '+' + digits;
+      if (!phone_e164) return jsonResponse({ ok: false, error: 'That phone number doesn\'t look right' }, 400);
+    } else {
+      email = raw.toLowerCase();
+      if (!email.includes('@')) return jsonResponse({ ok: false, error: 'Invalid email' }, 400);
+    }
+
+    const generic = { ok: true, sent: true, message: phone_e164
+      ? 'If your number is on file, a sign-in text is on the way.'
+      : 'If your email is on file, a sign-in link is on the way.' };
+
+    let q = sb.from('admin_users').select('id, display_name, email, phone_e164, active')
+      .eq('tenant_id', tenant.id).eq('active', true);
+    if (phone_e164) q = q.eq('phone_e164', phone_e164);
+    else q = q.ilike('email', email as string);
+    const { data: admin } = await q.maybeSingle();
+
+    if (!admin) {
+      await new Promise(r => setTimeout(r, 250));
+      return jsonResponse(generic);
+    }
+
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+    const tokRaw = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tokRaw));
+    const tokenHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    await sb.from('admin_magic_links').insert({
+      tenant_id: tenant.id, admin_user_id: admin.id, token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const verifyLink = `${clubUrl}/club/admin/login.html#magic=${encodeURIComponent(tokRaw)}`;
+
+    if (phone_e164) {
+      const send = await sendAdminSms({ to: phone_e164, tenantName: tenant.display_name, verifyLink });
+      if (send.sent) return jsonResponse(generic);
+      return jsonResponse({ ok: true, sent: false, message: 'SMS not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
+    }
+    const send = await sendAdminEmailLink({ to: admin.email as string, tenantName: tenant.display_name, clubUrl, verifyLink, adminName: admin.display_name || '' });
+    if (send.sent) return jsonResponse(generic);
+    return jsonResponse({ ok: true, sent: false, message: 'Email not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
+  }
+
+  // ── verify_link: public — exchange a magic-link token for a JWT
+  if (action === 'verify_link') {
+    const slugIn = String(body.slug ?? '').trim().toLowerCase();
+    const tokIn  = String(body.token ?? '').trim();
+    if (!slugIn || !tokIn) return jsonResponse({ ok: false, error: 'slug + token required' }, 400);
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tokIn));
+    const tokenHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const { data: link } = await sb.from('admin_magic_links').select('id, tenant_id, admin_user_id, expires_at, used_at')
+      .eq('token_hash', tokenHash).maybeSingle();
+    if (!link) return jsonResponse({ ok: false, error: 'Invalid or expired sign-in link' }, 401);
+    if (link.used_at) return jsonResponse({ ok: false, error: 'This sign-in link has already been used' }, 401);
+    if (new Date(link.expires_at) < new Date()) return jsonResponse({ ok: false, error: 'This sign-in link has expired' }, 401);
+    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, status').eq('id', link.tenant_id).maybeSingle();
+    if (!tenant || tenant.slug !== slugIn) return jsonResponse({ ok: false, error: 'Wrong club' }, 401);
+    const { data: admin } = await sb.from('admin_users')
+      .select('id, email, display_name, is_super, is_default_pw, active, scopes, role_template, phone_e164')
+      .eq('id', link.admin_user_id).maybeSingle();
+    if (!admin || !admin.active) return jsonResponse({ ok: false, error: 'Admin not found' }, 401);
+    await sb.from('admin_magic_links').update({ used_at: new Date().toISOString() }).eq('id', link.id);
+    const jwt = await signToken(admin.id, tenant.id, tenant.slug);
+    return jsonResponse({
+      ok: true, token: jwt,
+      user: {
+        id: admin.id, email: admin.email, display_name: admin.display_name,
+        is_super: admin.is_super, is_default_pw: admin.is_default_pw,
+        role_template: admin.role_template ?? 'owner', scopes: admin.scopes ?? [],
+      },
+      tenant: { slug: tenant.slug, display_name: tenant.display_name, status: tenant.status },
     });
   }
 
@@ -378,10 +528,21 @@ Deno.serve(async (req) => {
       });
     } catch { /* ignore */ }
 
-    // Hand the temp password back to the caller so the inviting admin can
-    // share it directly. When Resend wires up, this becomes an email + magic
-    // link; when Twilio wires up, an SMS arrives if phone_e164 is set.
-    return jsonResponse({ ok: true, admin_id: data.id, temp_password: tempPw, role_template, scopes });
+    // Send invite email if Resend is configured. Always also return
+    // temp_password so the inviter can share verbally if email fails.
+    const { data: tnt } = await sb.from('tenants').select('slug, display_name').eq('id', payload.tid).maybeSingle();
+    const clubUrl = tnt ? `https://${tnt.slug}.poolsideapp.com` : '';
+    const inviteEmail = await sendAdminInviteEmail({
+      to: data.email || username,
+      tenantName: tnt?.display_name || 'your club',
+      clubUrl, tempPassword: tempPw, inviteeName: display_name,
+      roleLabel: ROLE_TEMPLATES[role_template]?.label ?? role_template,
+    });
+    return jsonResponse({
+      ok: true, admin_id: data.id, temp_password: tempPw, role_template, scopes,
+      invite_email_sent: inviteEmail.sent,
+      invite_email_error: inviteEmail.sent ? null : inviteEmail.error,
+    });
   }
 
   if (action === 'update_admin_role') {
