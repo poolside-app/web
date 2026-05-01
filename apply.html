@@ -135,6 +135,7 @@
 
       <label>Primary phone *</label>
       <input id="primary_phone" type="tel" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">💡 Once approved, you can sign in with this number — we text a 1-tap link, no password.</div>
 
       <label>Primary email *</label>
       <input id="primary_email" type="email" placeholder="you@example.com">
@@ -247,7 +248,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30h</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30i</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -582,19 +583,7 @@ function _goNext() {
     return submitApplication();
   }
   showStep(CURRENT_STEP + 1);
-  if (CURRENT_STEP === 2) rebuildPeople();
 }
-
-// Belt-and-suspenders click handler so even if the inline onclick attribute
-// is interfered with (some browsers + content blockers do this), the button
-// still works.
-document.addEventListener('DOMContentLoaded', () => {
-  const btn = document.getElementById('next-btn');
-  if (btn && !btn.dataset.bound) {
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', () => goNext());
-  }
-});
 function show(msg) {
   // Show the error in BOTH locations so it's visible no matter where the
   // user is scrolled. Top banner catches eyes; bottom pill is next to the
