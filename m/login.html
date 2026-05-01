@@ -144,9 +144,11 @@ const SLUG = getSlugFromHostname();
       if (data.ok && data.tenant) {
         document.title = `Sign in — ${data.tenant.display_name}`;
         document.getElementById('title').textContent = `Sign in to ${data.tenant.display_name}`;
-        const brand = document.getElementById('brand-name');
-        if (brand) brand.textContent = data.tenant.display_name;
         const logoUrl = data.public_settings && data.public_settings.branding && data.public_settings.branding.logo_url;
+        // Cache for next visit so the synchronous paint matches → no flicker.
+        try { localStorage.setItem('poolside_tenant_brand', JSON.stringify({ slug: SLUG, display_name: data.tenant.display_name, logo_url: logoUrl || null })); } catch (_) {}
+        const brand = document.getElementById('brand-name');
+        if (brand && brand.textContent !== data.tenant.display_name) brand.textContent = data.tenant.display_name;
         if (logoUrl) {
           const link = document.getElementById('brand-link');
           const safe = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
