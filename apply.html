@@ -114,20 +114,8 @@
     <div class="step" data-step="1">
       <h2>Family info</h2>
 
-      <label class="check-row" style="margin-top:0">
-        <input type="checkbox" id="is_new_member" checked>
-        <span>I'm a new applicant (uncheck if you're a returning family)</span>
-      </label>
-      <label class="check-row">
-        <input type="checkbox" id="need_new_fob">
-        <span>I need a new key fob</span>
-      </label>
-
-      <label>Family last name *</label>
+      <label style="margin-top:0">Family last name *</label>
       <input id="family_name" placeholder="Smith">
-
-      <label>Prior fob # <span class="opt">(returning members only)</span></label>
-      <input id="prior_fob_number" placeholder="e.g. 4821">
 
       <label>Street address *</label>
       <input id="address" placeholder="123 Maple St">
@@ -210,7 +198,6 @@
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
       <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()"> 💸 Venmo — admin verifies, then you're set</label>
       <label class="pay-opt" id="pay-opt-stripe" style="display:none"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
-      <label class="pay-opt"><input type="radio" name="payment_method" value="" onchange="paintVenmoQR()"> Decide later</label>
       <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't fully wired — we'll email you a payment link after the board approves.</p>
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
@@ -221,8 +208,6 @@
         <div id="venmo-handle-line" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
       </div>
 
-      <label style="margin-top:18px">Anything else? <span class="opt">(referred by, special requests, etc.)</span></label>
-      <textarea id="body" maxlength="2000"></textarea>
     </div>
 
     <div class="err" id="err-top" style="margin-bottom:14px"></div>
@@ -248,7 +233,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30j</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30k</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -662,13 +647,9 @@ async function submitApplication() {
     zip:     get('zip') || null,
     num_adults: adults.length,
     num_kids:   children.length,
-    body:    get('body') || null,
     payment_method: (document.querySelector('input[name="payment_method"]:checked')?.value || '') || null,
     tier_slug: (document.querySelector('input[name="tier_slug"]:checked')?.value || '') || null,
 
-    is_new_member:    document.getElementById('is_new_member').checked,
-    need_new_fob:     document.getElementById('need_new_fob').checked,
-    prior_fob_number: get('prior_fob_number') || null,
     alt_email:        get('alt_email') || null,
     emergency_contact: [get('emergency_name'), get('emergency_phone')].filter(Boolean).join(' — '),
 

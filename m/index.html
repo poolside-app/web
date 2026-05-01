@@ -903,12 +903,7 @@ async function submitProfile() {
     const dim = (n) => Math.max(0, Math.round(n * 0.86)).toString(16).padStart(2, '0');
     document.documentElement.style.setProperty('--blue-2', `#${dim(r)}${dim(g)}${dim(b)}`);
   }
-  // Logo replaces "Poolside" in topbar if set
-  const logoUrl = publicData.public_settings?.branding?.logo_url;
-  if (logoUrl) {
-    const logoEl = document.querySelector('header .logo');
-    if (logoEl) logoEl.innerHTML = `<img src="${escapeAttr(logoUrl)}" alt="${escapeAttr(me.tenant.display_name)}" style="max-height:32px;max-width:200px">`;
-  }
+  // (Logo paint already handled above via #brand-link.)
 
   const { user, household, tenant } = me;
   const venmo = publicData.public_settings?.payments?.venmo_handle;
