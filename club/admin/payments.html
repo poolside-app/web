@@ -105,6 +105,20 @@
         <button class="btn btn-ghost" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
       </div>
 
+      <div class="card" id="drive-card">
+        <h2>📁 Backups & archive (Google Drive)</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver into <code>{Year} Sign-ups/</code>, plus one row appended to the master roster spreadsheet. <b>One-way only</b> — anything deleted in this app is <i>never</i> deleted from your Drive.</p>
+        <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
+          <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
+          <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
+          <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
+          <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
+        </div>
+        <div class="err" id="drive-err"></div>
+      </div>
+
       <div class="card">
         <h2>Venmo &amp; PayPal</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Member-facing payment links. Venmo handle paints a QR on the apply form and member home; PayPal link drops a 'Pay with PayPal' button.</p>
@@ -146,6 +160,7 @@ const URL_BASE       = `${SUPABASE_URL}/functions/v1/payments_admin`;
 const ME_URL         = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const SETTINGS_URL   = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const STRIPE_URL     = `${SUPABASE_URL}/functions/v1/stripe_connect`;
+const DRIVE_URL      = `${SUPABASE_URL}/functions/v1/google_drive_sync`;
 
 let CACHE = [];
 let FILTER = '';
@@ -304,6 +319,93 @@ async function loadPaymentMethods() {
     errEl.textContent = e.message; errEl.classList.add('show');
   }
 }
+// ── Setup: Google Drive backups ─────────────────────────────────────────
+async function loadDriveStatus() {
+  const box       = document.getElementById('drive-status');
+  const connectBtn = document.getElementById('drive-connect-btn');
+  const folderLink = document.getElementById('drive-folder-link');
+  const sheetLink  = document.getElementById('drive-sheet-link');
+  const retryBtn   = document.getElementById('drive-retry-btn');
+  const disconnect = document.getElementById('drive-disconnect-btn');
+  // Hide all action buttons by default
+  [connectBtn, folderLink, sheetLink, retryBtn, disconnect].forEach(el => { if (el) el.style.display = 'none'; });
+  // Auto-open the setup section if we just came back from a successful connect
+  if (window.location.hash.includes('drive=connected')) {
+    history.replaceState(null, '', window.location.pathname);
+    document.getElementById('setup-section').open = true;
+  }
+  try {
+    const r = await api(DRIVE_URL, 'status');
+    if (!r.ok) throw new Error(r.error || 'Drive status failed');
+    if (!r.platform_configured) {
+      box.innerHTML = '<b>Platform Google OAuth not configured yet.</b> The platform owner needs to set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> on Supabase before clubs can connect Drive.';
+      return;
+    }
+    if (!r.connected) {
+      box.innerHTML = '<b>Not connected.</b> Click <i>Connect Google Drive</i> to start auto-archiving every new application as a PDF + roster spreadsheet row in your Drive.';
+      connectBtn.style.display = 'inline-block';
+      return;
+    }
+    const lastSync = r.last_sync_at
+      ? new Date(r.last_sync_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : 'never';
+    const errorBlurb = r.last_error
+      ? `<div style="margin-top:8px;color:#7f1d1d"><b>Last error:</b> ${escapeHtml(r.last_error)}</div>`
+      : '';
+    const queueBlurb = r.pending_in_queue
+      ? `<div style="margin-top:8px;color:#92400e"><b>${r.pending_in_queue}</b> application${r.pending_in_queue === 1 ? '' : 's'} pending retry.</div>`
+      : '';
+    box.innerHTML = `
+      ✓ <b>Connected as ${escapeHtml(r.email || '(unknown)')}</b>
+      <div style="margin-top:6px;color:var(--muted)">Last sync: ${escapeHtml(lastSync)}</div>
+      ${errorBlurb}${queueBlurb}
+    `;
+    if (r.drive_root_link) { folderLink.href = r.drive_root_link; folderLink.style.display = 'inline-flex'; }
+    if (r.spreadsheet_link) { sheetLink.href  = r.spreadsheet_link;  sheetLink.style.display  = 'inline-flex'; }
+    if (r.pending_in_queue) retryBtn.style.display = 'inline-block';
+    disconnect.style.display = 'inline-block';
+  } catch (e) {
+    box.innerHTML = `<b>Couldn't load Drive status:</b> ${escapeHtml(e.message)}`;
+  }
+}
+async function connectDrive() {
+  const errEl = document.getElementById('drive-err');
+  errEl.classList.remove('show');
+  try {
+    const r = await api(DRIVE_URL, 'connect_url');
+    if (!r.ok) throw new Error(r.error || 'connect_url failed');
+    window.location.href = r.url;     // off to Google's consent screen
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+async function disconnectDrive() {
+  if (!confirm('Disconnect Google Drive? Your existing PDFs and spreadsheet rows in Drive will NOT be deleted — only Poolside\'s ability to write new ones is removed. You can reconnect anytime.')) return;
+  try {
+    const r = await api(DRIVE_URL, 'disconnect');
+    if (!r.ok) throw new Error(r.error || 'disconnect failed');
+    await loadDriveStatus();
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+async function retryDriveQueue() {
+  const btn = document.getElementById('drive-retry-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Retrying…';
+  try {
+    const r = await api(DRIVE_URL, 'retry_queue');
+    if (!r.ok) throw new Error(r.error || 'retry failed');
+    alert(`Attempted ${r.attempted}: ${r.succeeded} succeeded, ${r.failed} still failing.`);
+    await loadDriveStatus();
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 async function savePaymentMethods() {
   const btn = document.getElementById('pm-save');
   const errEl = document.getElementById('pm-err');
@@ -342,9 +444,10 @@ async function savePaymentMethods() {
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant);
   } catch { logout(); return; }
   await refresh();
-  // Setup section runs in parallel; auto-opens if Stripe redirected us back.
+  // Setup section runs in parallel; auto-opens if Stripe or Drive redirected us back.
   loadStripeStatus();
   loadPaymentMethods();
+  loadDriveStatus();
 })();
 </script>
 </body>

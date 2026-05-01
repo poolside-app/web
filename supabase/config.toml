@@ -139,3 +139,9 @@ verify_jwt = false
 # so the gateway must not pre-verify Supabase auth tokens.
 [functions.renewals]
 verify_jwt = false
+
+# Google Drive sync — admin-side OAuth + per-application archival to
+# the club's own Drive (drive.file scope). Append-only, one-way.
+# OAuth callback arrives as GET so the gateway must not require JWT.
+[functions.google_drive_sync]
+verify_jwt = false

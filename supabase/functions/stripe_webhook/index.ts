@@ -81,12 +81,49 @@ Deno.serve(async (req) => {
         payment_status: 'paid', payment_method: 'stripe',
         paid_at: now, verified_at: now, stripe_session_id: String(session.id || ''),
       }).eq('id', md.application_id).eq('tenant_id', tenantId);
-      // Flip household dues if the application's already approved
-      const { data: app } = await sb.from('applications').select('household_id').eq('id', md.application_id).maybeSingle();
-      if (app?.household_id) {
-        await sb.from('households').update({ dues_paid_for_year: true }).eq('id', app.household_id);
+
+      // Auto-approve: applicant paid via Stripe = they're a member, no manual
+      // review needed. Idempotent — applications.approve checks status first
+      // and returns 409 if already approved (we ignore that error here).
+      const { data: app } = await sb.from('applications')
+        .select('id, status, household_id')
+        .eq('id', md.application_id).maybeSingle();
+      if (app?.status === 'pending') {
+        try {
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-poolside-internal': SERVICE_ROLE,
+            },
+            body: JSON.stringify({
+              action: 'approve',
+              id: md.application_id,
+              tenant_id: tenantId,
+            }),
+          });
+          // Best-effort: if approval fails (e.g. phone clash), the payment
+          // is still recorded and an admin can resolve manually. The admin
+          // task left open by the original submit will surface this.
+          if (!r.ok) {
+            const t = await r.text().catch(() => '');
+            console.error('auto-approve failed:', r.status, t.slice(0, 200));
+          }
+        } catch (e) {
+          console.error('auto-approve fetch failed:', (e as Error).message);
+        }
       }
-      // Close any related admin tasks
+
+      // Re-load household_id (approval just set it) and flip dues paid.
+      const { data: appAfter } = await sb.from('applications')
+        .select('household_id, paid_until_year').eq('id', md.application_id).maybeSingle();
+      if (appAfter?.household_id) {
+        await sb.from('households').update({
+          dues_paid_for_year: true,
+          paid_until_year: appAfter.paid_until_year ?? new Date().getFullYear(),
+        }).eq('id', appAfter.household_id);
+      }
+      // Close any related admin tasks (submitted, venmo claim, etc.)
       await sb.from('admin_tasks')
         .update({ completed_at: now })
         .eq('source_kind', 'application').eq('source_id', md.application_id).is('completed_at', null);

@@ -224,6 +224,28 @@ Deno.serve(async (req) => {
         source_kind: 'application', source_id: data.id,
       });
     } catch { /* best-effort — never fails submission */ }
+
+    // Drive sync — fire inline so the PDF + Sheet row are in the club's
+    // Drive within seconds of submit. Failures enqueue silently for retry;
+    // user-facing submit response is unaffected.
+    const GOOGLE_ID  = Deno.env.get('GOOGLE_CLIENT_ID');
+    const GOOGLE_SEC = Deno.env.get('GOOGLE_CLIENT_SECRET');
+    if (GOOGLE_ID && GOOGLE_SEC) {
+      try {
+        const { syncApplicationToDrive, enqueueDriveSync } = await import('../_shared/sync_application.ts');
+        const r = await syncApplicationToDrive(sb, {
+          tenantId: tenant.id, applicationId: data.id,
+          googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SEC,
+        });
+        if (!r.ok) await enqueueDriveSync(sb, tenant.id, data.id, r.error);
+      } catch (e) {
+        try {
+          const { enqueueDriveSync } = await import('../_shared/sync_application.ts');
+          await enqueueDriveSync(sb, tenant.id, data.id, (e as Error).message);
+        } catch { /* not even the queue worked — acceptable; submit still succeeds */ }
+      }
+    }
+
     return jsonResponse({ ok: true, application_id: data.id, payment_method });
   }
 
@@ -259,10 +281,18 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
-  // Admin actions below — verify tenant admin
-  const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
-  const token = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
-  const payload = token ? await verifyTenantAdmin(token) : null;
+  // Admin actions below — verify tenant admin OR service-role internal call
+  // (used by stripe_webhook to auto-approve on Stripe Checkout success).
+  // Internal header carries the service-role key + body.tenant_id is the scope.
+  const internalKey = req.headers.get('x-poolside-internal');
+  let payload: Payload | null = null;
+  if (internalKey && internalKey === SERVICE_ROLE && body.tenant_id) {
+    payload = { sub: 'webhook', kind: 'tenant_admin', tid: String(body.tenant_id), synthetic: true };
+  } else {
+    const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+    const token = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
+    payload = token ? await verifyTenantAdmin(token) : null;
+  }
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
   const TID = payload.tid;
 
