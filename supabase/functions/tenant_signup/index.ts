@@ -94,6 +94,12 @@ Deno.serve(async (req) => {
   const email        = String(body.email ?? '').trim().toLowerCase();
   const password     = String(body.password ?? '');
   const plan         = String(body.plan ?? 'free').toLowerCase();
+  // Optional E.164 phone for future SMS-based admin login (Twilio TBD).
+  // We only validate shape — if it's bogus we silently drop it rather than
+  // blocking the signup (the user can fix it later in Settings).
+  let phone_e164: string | null = null;
+  const phoneRaw = typeof body.phone_e164 === 'string' ? body.phone_e164.trim() : '';
+  if (phoneRaw && /^\+\d{8,15}$/.test(phoneRaw)) phone_e164 = phoneRaw;
 
   // ── Validation ─────────────────────────────────────────────────────────
   if (!display_name || display_name.length < 2) {
@@ -156,11 +162,13 @@ Deno.serve(async (req) => {
     tenant_id: tenant.id,
     username: email,
     email,
+    phone_e164,
     password_hash,
     display_name: email.split('@')[0],
     is_super: true,        // first admin of a fresh tenant is the org owner
     is_default_pw: false,  // they just typed the password themselves
     active: true,
+    role_template: 'owner',
   }).select('id').single();
 
   if (uErr || !admin) {
@@ -179,10 +187,19 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ── Seed empty settings row so the wizard has a place to write to ──────
+  // ── Seed initial settings (wizard stub + default membership tiers) ─────
+  // Default tiers mean the apply form's tier picker works on day-one signup
+  // even before the admin opens Settings → Membership tiers to customize.
   await sb.from('settings').insert({
     tenant_id: tenant.id,
-    value: { setup_wizard_complete: false },
+    value: {
+      setup_wizard_complete: false,
+      membership_tiers: [
+        { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members' },
+        { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },
+        { slug: 'senior', label: 'Senior',  price_cents: 25000, description: '65+' },
+      ],
+    },
   });
 
   // ── Seed default policies (BE parity: 5 placeholder texts the club edits) ─

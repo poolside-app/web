@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/js/calendar.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -427,6 +428,14 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
       </div>
     </section>
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
+    ${ps?.payments?.venmo_handle ? `
+      <section class="news" style="text-align:center">
+        <h2 style="text-align:center">Pay with Venmo</h2>
+        <p style="margin:0 0 14px;color:var(--muted);font-size:13px">Scan with your phone, or click below to open the Venmo app.</p>
+        <div id="venmo-qr-public" style="display:inline-block;background:#fff;padding:14px;border-radius:14px;border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:12px"></div>
+        <div><a class="btn" href="https://venmo.com/${escapeAttr(ps.payments.venmo_handle)}?txn=pay&note=${encodeURIComponent((t.display_name || 'Pool club') + ' membership dues')}" target="_blank" rel="noopener" style="background:#3D95CE;color:#fff">Open Venmo (@${escapeHtml(ps.payments.venmo_handle)}) →</a></div>
+      </section>
+    ` : ''}
     ${(upcoming && upcoming.length) ? `
       <section class="events">
         <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -529,6 +538,19 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
       events: events || [],
       openHoursLabel,
     });
+  }
+
+  // Venmo QR card on the public landing — phone scanner → opens app prefilled.
+  const venmoBox = document.getElementById('venmo-qr-public');
+  const handle = ps?.payments?.venmo_handle;
+  if (venmoBox && handle && typeof qrcode === 'function') {
+    const url = `https://venmo.com/${encodeURIComponent(handle.replace(/^@+/, ''))}?txn=pay&note=${encodeURIComponent((t.display_name || 'Pool club') + ' membership dues')}`;
+    const q = qrcode(0, 'M');
+    q.addData(url);
+    q.make();
+    venmoBox.innerHTML = q.createImgTag(5, 0);
+    const img = venmoBox.querySelector('img');
+    if (img) { img.style.display = 'block'; img.style.width = '180px'; img.style.height = '180px'; }
   }
 }
 

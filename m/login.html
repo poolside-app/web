@@ -172,16 +172,26 @@ async function doStart() {
 
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
   try {
+    // 15s timeout so the button doesn't sit on "Sending..." indefinitely
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(AUTH_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'start', slug: SLUG, email }),
-    });
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(tid));
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not send a sign-in link');
 
     if (data.dev_link) {
-      devEl.innerHTML = `<b>Email is not configured yet.</b><br>${escapeHtml(data.message || '')}<br><a href="${escapeAttr(data.dev_link)}">Click here to sign in →</a>`;
+      // Prominent CTA — email isn't wired yet, so the dev_link is the only
+      // way for the member to actually sign in. Make it impossible to miss.
+      devEl.innerHTML = `
+        <div style="font-weight:700;color:#92400e;margin-bottom:8px">⚠️ Email isn't fully configured yet</div>
+        <div style="margin-bottom:10px;font-size:13px">For now, tap the button below to sign in directly:</div>
+        <a href="${escapeAttr(data.dev_link)}" style="display:inline-block;padding:12px 22px;background:var(--blue);color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px">Continue to my account →</a>
+      `;
       devEl.classList.add('show');
     } else {
       okEl.innerHTML = `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in.`;
@@ -189,7 +199,7 @@ async function doStart() {
     }
     document.getElementById('email').value = '';
   } catch (e) {
-    errEl.textContent = e.message;
+    errEl.textContent = e.name === 'AbortError' ? 'Request timed out — try again.' : e.message;
     errEl.classList.add('show');
   } finally {
     btn.disabled = false;

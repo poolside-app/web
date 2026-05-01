@@ -98,6 +98,9 @@
     <input id="email" type="email" placeholder="you@yourclub.org" autocomplete="email" required>
     <p class="field-help">Where we'll send your trial confirmation + admin login link.</p>
 
+    <label for="phone">Your phone <span style="color:#64748b;font-weight:500;font-size:11px">(optional — for SMS sign-in once Twilio is wired)</span></label>
+    <input id="phone" type="tel" placeholder="(555) 123-4567" autocomplete="tel">
+
     <label for="pw">Password</label>
     <input id="pw" type="password" minlength="10" autocomplete="new-password" required>
     <p class="field-help">10 characters minimum. You can change it any time.</p>
@@ -136,13 +139,22 @@ async function fakeSubmit() {
   const slug         = slugInput.value.trim().toLowerCase();
   const email        = document.getElementById('email').value.trim().toLowerCase();
   const password     = document.getElementById('pw').value;
+  const phoneRaw     = document.getElementById('phone').value.trim();
+  // Normalize US phone to E.164 if provided; non-US already-formatted ones pass through.
+  let phone_e164 = null;
+  if (phoneRaw) {
+    const digits = phoneRaw.replace(/[^\d+]/g, '');
+    if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone_e164 = digits;
+    else if (/^\d{10}$/.test(digits)) phone_e164 = '+1' + digits;
+    else if (/^1\d{10}$/.test(digits)) phone_e164 = '+' + digits;
+  }
 
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Creating your club…';
   try {
     const res = await fetch(SIGNUP_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ display_name, slug, email, password, plan: 'free' }),
+      body: JSON.stringify({ display_name, slug, email, password, phone_e164, plan: 'free' }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Sign-up failed');

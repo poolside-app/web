@@ -175,8 +175,8 @@
 
     <!-- Step 3 — Policies + signatures -->
     <div class="step" data-step="3" style="display:none">
-      <h2>Policies & signatures</h2>
-      <p class="lede" style="margin-top:0">Open each one, then check the box. Signatures unlock once all policies are accepted.</p>
+      <h2>Policies &amp; signatures</h2>
+      <p class="lede" style="margin-top:0">Open each policy, read it, tap "I Accept" to mark it done. Signatures unlock once all required policies are accepted.</p>
 
       <div id="policies-box"><div style="color:var(--muted);font-size:13px">Loading policies…</div></div>
 
@@ -187,13 +187,8 @@
       </div>
 
       <div id="sig-area" style="display:none">
-        <label>Primary applicant signature *</label>
-        <div class="sig-wrap" id="sig-primary-wrap">
-          <canvas id="sig-primary"></canvas>
-          <button type="button" class="sig-clear" onclick="clearSig('primary')">Clear</button>
-        </div>
-        <p class="sig-hint">Sign with your finger / mouse — applies to all adults on this application.</p>
-
+        <p style="font-size:13px;color:var(--muted);margin:0 0 8px">Each adult signs for themselves. One parent / guardian signs on behalf of all minors.</p>
+        <div id="adult-sigs"></div>
         <div id="guardian-area" style="display:none">
           <label style="margin-top:14px">Parent / guardian signature <span class="opt">(on behalf of all minors)</span> *</label>
           <div class="sig-wrap" id="sig-guardian-wrap">
@@ -352,9 +347,11 @@ function rebuildPeople() {
         <label>Full name *</label>
         <input data-adult="${i}" data-field="name" placeholder="${i === 0 ? 'Jane Smith' : 'Other adult'}">
         <div class="row2">
+          <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date"></div>
           <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
-          <div><label>Email${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="email" type="email"></div>
         </div>
+        <label>Email${i === 0 ? '' : ' (opt)'}</label>
+        <input data-adult="${i}" data-field="email" type="email">
       </div>
     `);
   }
@@ -365,10 +362,8 @@ function rebuildPeople() {
         <h3>Child #${i+1}</h3>
         <label>Full name *</label>
         <input data-child="${i}" data-field="name">
-        <div class="row2">
-          <div><label>Date of birth</label><input data-child="${i}" data-field="dob" type="date"></div>
-          <div><label>Allergies / notes</label><input data-child="${i}" data-field="allergies" placeholder="Optional"></div>
-        </div>
+        <label>Date of birth *</label>
+        <input data-child="${i}" data-field="dob" type="date">
       </div>
     `);
   }
@@ -409,13 +404,7 @@ async function loadPolicies() {
     }
     box.innerHTML = (data.policies || []).map((p, i) => {
       const requiredHint = p.required_for_apply ? '' : ' <span style="font-size:10px;color:var(--muted);font-weight:500">(info only)</span>';
-      const checkboxLine = p.required_for_apply
-        ? `<label class="check-row" style="margin:0 0 6px"><input type="checkbox" id="agree-${escapeAttr(p.slug)}" disabled onchange="checkAccepted()"><span>I accept the ${escapeHtml(p.title)}</span></label>`
-        : '';
-      return `
-        <button type="button" class="btn-outline" id="btn-${escapeAttr(p.slug)}" onclick="openPolicy('${escapeAttr(p.slug)}')">${i + 1}. ${escapeHtml(p.title)}${requiredHint}</button>
-        ${checkboxLine}
-      `;
+      return `<button type="button" class="btn-outline" id="btn-${escapeAttr(p.slug)}" onclick="openPolicy('${escapeAttr(p.slug)}')">${i + 1}. ${escapeHtml(p.title)}${requiredHint}</button>`;
     }).join('');
     checkAccepted();
   } catch (e) {
@@ -436,18 +425,21 @@ function closePolicy() { document.getElementById('policy-scrim').classList.remov
 function acceptPolicy() {
   if (!CURRENT_POLICY || !ACCEPT_REQUIRED.has(CURRENT_POLICY)) { closePolicy(); return; }
   ACCEPTED[CURRENT_POLICY] = true;
-  const cb = document.getElementById('agree-' + CURRENT_POLICY);
-  if (cb) { cb.disabled = false; cb.checked = true; }
   const btn = document.getElementById('btn-' + CURRENT_POLICY);
-  if (btn) btn.classList.add('done');
+  if (btn) {
+    btn.classList.add('done');
+    // Only prepend ✓ once
+    if (!btn.dataset.accepted) {
+      btn.dataset.accepted = '1';
+      btn.innerHTML = '✓ ' + btn.innerHTML;
+    }
+  }
   closePolicy();
   checkAccepted();
 }
 function checkAccepted() {
-  for (const k of Object.keys(ACCEPTED)) {
-    const cb = document.getElementById('agree-' + k);
-    if (cb) ACCEPTED[k] = cb.checked;
-  }
+  // Source of truth = in-memory ACCEPTED map. Each entry was set by
+  // acceptPolicy() when the user tapped "I Accept" inside the modal.
   const all = Object.keys(ACCEPTED).length === 0 || Object.values(ACCEPTED).every(Boolean);
   document.getElementById('sig-locked-hint').style.display = all ? 'none' : 'block';
   document.getElementById('sig-area').style.display = all ? 'block' : 'none';
@@ -455,20 +447,49 @@ function checkAccepted() {
 }
 
 // Step 3 — signature pads (mounted lazily so canvas size resolves correctly)
-let SIG_PRIMARY = null, SIG_GUARDIAN = null;
+// One signature pad per adult, plus one guardian pad if the household
+// has minors. SIG_ADULTS[i] maps to adults[i]; signatures bake into
+// adults_json[i].signature_url on submit.
+let SIG_ADULTS = [];
+let SIG_GUARDIAN = null;
 function initSigPads() {
-  const primaryC = document.getElementById('sig-primary');
-  if (!SIG_PRIMARY && primaryC) {
-    fitCanvas(primaryC);
-    SIG_PRIMARY = new SignaturePad(primaryC, { backgroundColor: 'rgba(0,0,0,0)' });
-    SIG_PRIMARY.addEventListener('endStroke', () => {
-      document.getElementById('sig-primary-wrap').classList.toggle('signed', !SIG_PRIMARY.isEmpty());
+  const adultCount = parseInt(document.getElementById('acount').value, 10) || 1;
+  const childCount = parseInt(document.getElementById('ccount').value, 10) || 0;
+
+  // Render adult signature pads. Re-build if the count changed since last init.
+  const box = document.getElementById('adult-sigs');
+  if (!box) return;
+  if (box.children.length !== adultCount) {
+    box.innerHTML = '';
+    SIG_ADULTS = [];
+    // Read current adult names so the label is meaningful
+    const adultNames = [];
+    document.querySelectorAll('[data-adult][data-field="name"]').forEach(el => {
+      adultNames[parseInt(el.dataset.adult, 10)] = el.value.trim();
     });
+    for (let i = 0; i < adultCount; i++) {
+      const label = adultNames[i] ? `${adultNames[i]} (Adult #${i+1})` : `Adult #${i+1}`;
+      box.insertAdjacentHTML('beforeend', `
+        <label style="margin-top:14px">${escapeHtml(label)} signature *</label>
+        <div class="sig-wrap" id="sig-adult-${i}-wrap">
+          <canvas id="sig-adult-${i}"></canvas>
+          <button type="button" class="sig-clear" onclick="clearSig('adult', ${i})">Clear</button>
+        </div>
+      `);
+      const c = document.getElementById('sig-adult-' + i);
+      fitCanvas(c);
+      const pad = new SignaturePad(c, { backgroundColor: 'rgba(0,0,0,0)' });
+      pad.addEventListener('endStroke', () => {
+        document.getElementById('sig-adult-' + i + '-wrap').classList.toggle('signed', !pad.isEmpty());
+      });
+      SIG_ADULTS.push(pad);
+    }
   }
-  const c = parseInt(document.getElementById('ccount').value, 10) || 0;
+
+  // Guardian pad — one per household, only if there are minors.
   const guardianBox = document.getElementById('guardian-area');
-  guardianBox.style.display = c > 0 ? 'block' : 'none';
-  if (c > 0) {
+  guardianBox.style.display = childCount > 0 ? 'block' : 'none';
+  if (childCount > 0) {
     const guardianC = document.getElementById('sig-guardian');
     if (!SIG_GUARDIAN && guardianC) {
       fitCanvas(guardianC);
@@ -485,10 +506,10 @@ function fitCanvas(canvas) {
   canvas.height = canvas.offsetHeight * ratio;
   canvas.getContext('2d').scale(ratio, ratio);
 }
-function clearSig(which) {
-  if (which === 'primary' && SIG_PRIMARY) {
-    SIG_PRIMARY.clear();
-    document.getElementById('sig-primary-wrap').classList.remove('signed');
+function clearSig(which, idx) {
+  if (which === 'adult' && SIG_ADULTS[idx]) {
+    SIG_ADULTS[idx].clear();
+    document.getElementById('sig-adult-' + idx + '-wrap').classList.remove('signed');
   }
   if (which === 'guardian' && SIG_GUARDIAN) {
     SIG_GUARDIAN.clear();
@@ -544,8 +565,17 @@ function _goNext() {
     const kidCount = parseInt(document.getElementById('ccount').value, 10) || 0;
     if (kids.length !== kidCount) return show('Fill in every child\'s name (or set Children to a smaller number)');
   } else if (CURRENT_STEP === 3) {
-    if (!Object.values(ACCEPTED).every(Boolean)) return show('Open and accept all five policies');
-    if (!SIG_PRIMARY || SIG_PRIMARY.isEmpty()) return show('Please add the primary applicant signature');
+    const reqKeys = Object.keys(ACCEPTED);
+    if (reqKeys.length && !reqKeys.every(k => ACCEPTED[k])) {
+      const missing = reqKeys.filter(k => !ACCEPTED[k]).length;
+      return show(`Tap each of the ${reqKeys.length} required policies (${missing} still need acceptance)`);
+    }
+    // Each adult needs their own signature
+    for (let i = 0; i < SIG_ADULTS.length; i++) {
+      if (!SIG_ADULTS[i] || SIG_ADULTS[i].isEmpty()) {
+        return show(`Adult #${i + 1} signature is required`);
+      }
+    }
     const c = parseInt(document.getElementById('ccount').value, 10) || 0;
     if (c > 0 && (!SIG_GUARDIAN || SIG_GUARDIAN.isEmpty())) return show('Please add the parent/guardian signature for the children');
   } else if (CURRENT_STEP === 4) {
@@ -602,9 +632,11 @@ function collectAdults() {
   const a = parseInt(document.getElementById('acount').value, 10) || 0;
   for (let i = 0; i < a; i++) {
     const name  = document.querySelector(`[data-adult="${i}"][data-field="name"]`)?.value.trim() || '';
+    const dob   = document.querySelector(`[data-adult="${i}"][data-field="dob"]`)?.value || null;
     const phone = document.querySelector(`[data-adult="${i}"][data-field="phone"]`)?.value.trim() || '';
     const email = document.querySelector(`[data-adult="${i}"][data-field="email"]`)?.value.trim().toLowerCase() || '';
-    if (name) out.push({ name, phone: phone || null, email: email || null });
+    const sig = SIG_ADULTS[i] && !SIG_ADULTS[i].isEmpty() ? SIG_ADULTS[i].toDataURL('image/png') : null;
+    if (name) out.push({ name, dob: dob || null, phone: phone || null, email: email || null, signature_url: sig });
   }
   return out;
 }
@@ -614,8 +646,7 @@ function collectChildren() {
   for (let i = 0; i < c; i++) {
     const name = document.querySelector(`[data-child="${i}"][data-field="name"]`)?.value.trim() || '';
     const dob  = document.querySelector(`[data-child="${i}"][data-field="dob"]`)?.value || null;
-    const all  = document.querySelector(`[data-child="${i}"][data-field="allergies"]`)?.value.trim() || '';
-    if (name) out.push({ name, dob: dob || null, allergies: all || null });
+    if (name) out.push({ name, dob: dob || null });
   }
   return out;
 }
@@ -653,7 +684,10 @@ async function submitApplication() {
 
     adults, children,
     waivers_accepted: { ...ACCEPTED },
-    signature_primary:  SIG_PRIMARY  && !SIG_PRIMARY.isEmpty()  ? SIG_PRIMARY.toDataURL('image/png')  : null,
+    // Per-adult signatures live on adults[i].signature_url. We still send
+    // the primary one as `signature_primary` for backwards compatibility
+    // with the application_full_detail schema column.
+    signature_primary:  (adults[0] && adults[0].signature_url) || null,
     signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
   };
 

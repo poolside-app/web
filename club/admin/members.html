@@ -759,7 +759,9 @@ const App = (() => {
     document.getElementById('am-body').textContent = a.body || '(no notes from applicant)';
     document.getElementById('am-tier').value = a.tier_slug || 'family';
     document.getElementById('am-fob_number').value = '';
-    document.getElementById('am-paid_until_year').value = '';
+    // Pre-fill paid-until-year with the current year — admin can change if a
+    // member is paid through a different year. Editable but rarely needs touching.
+    document.getElementById('am-paid_until_year').value = new Date().getFullYear();
     document.getElementById('am-admin_notes').value = a.admin_notes || '';
     document.getElementById('am-err').classList.remove('show');
     document.getElementById('am-approve').style.display = a.status === 'pending' ? 'inline-block' : 'none';
