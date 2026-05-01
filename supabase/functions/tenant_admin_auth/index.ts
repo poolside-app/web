@@ -124,11 +124,11 @@ const ROLE_TEMPLATES: Record<string, { label: string; scopes: string[] }> = {
   },
   treasurer: {
     label: 'Treasurer',
-    scopes: ['payments', 'applications', 'audit', 'impact'],
+    scopes: ['payments', 'applications', 'tiers', 'audit', 'impact'],
   },
   membership: {
     label: 'Membership Chair',
-    scopes: ['applications', 'households', 'directory', 'documents', 'impact'],
+    scopes: ['applications', 'households', 'tiers', 'directory', 'documents', 'impact'],
   },
   events: {
     label: 'Events / Programs',
@@ -145,7 +145,7 @@ const ROLE_TEMPLATES: Record<string, { label: string; scopes: string[] }> = {
 };
 
 const ALL_SCOPES = [
-  'applications', 'households', 'payments', 'events', 'programs', 'parties',
+  'applications', 'households', 'payments', 'tiers', 'events', 'programs', 'parties',
   'announcements', 'campaigns', 'volunteer', 'passes', 'photos', 'documents',
   'policies', 'directory', 'impact', 'audit',
 ];

@@ -179,6 +179,22 @@
     </div>
     <div id="app-list"><div class="empty">Loading…</div></div>
   </section>
+
+  <!-- ── Tiers panel ──────────────────────────────────────────────────── -->
+  <section class="panel" id="panel-tiers">
+    <div class="toolbar">
+      <h1>Membership tiers</h1>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn-ghost btn" type="button" onclick="Tiers.add()">+ Add tier</button>
+        <button class="btn" id="tiers-save" type="button" onclick="Tiers.save()">Save tiers</button>
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Levels applicants pick from on the apply form. The first tier is the default. Leave price blank if you bill per-household manually.</p>
+    <div class="card" style="padding:18px">
+      <div id="tiers-list"><div class="empty" style="padding:30px">Loading…</div></div>
+    </div>
+    <div class="err" id="tiers-err" style="margin-top:14px"></div>
+  </section>
 </main>
 
 <!-- Create-household modal -->
@@ -384,14 +400,16 @@ function showTab(name) {
   // own (re-renders on hashchange). Here we just swap the visible panel.
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'panel-' + name));
   if (name === 'applications') App.refresh();
+  else if (name === 'tiers') Tiers.refresh();
   else Households.refresh();
 }
-// Households↔Applications is a JS toggle inside this page. The shared
-// subtabs strip uses #-anchored links, so we listen for hash changes
-// and switch the visible panel without a full reload.
+// In-page sub-tabs use #-anchored links via the shared subtabs strip.
+// We listen for hash changes and switch the visible panel without a full reload.
 window.addEventListener('hashchange', () => {
   const hash = (window.location.hash || '').replace(/^#/, '');
-  showTab(hash === 'applications' ? 'applications' : 'households');
+  if (hash === 'applications')  showTab('applications');
+  else if (hash === 'tiers')    showTab('tiers');
+  else                          showTab('households');
 });
 
 // ── Households namespace ───────────────────────────────────────────────
@@ -853,6 +871,91 @@ const App = (() => {
   return { refresh, applySearch, openModal, closeM, approve, reject, verify, reminder };
 })();
 
+// ── Tiers namespace ────────────────────────────────────────────────────
+// Membership tiers used to live under Settings; moved here because tiers
+// are a Members concept. Save sends only `{ membership_tiers: [...] }` —
+// tenant_settings.save shallow-merges so other settings keys survive.
+const Tiers = (() => {
+  const TIER_DEFAULTS = [
+    { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members' },
+    { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },
+    { slug: 'senior', label: 'Senior',  price_cents: 25000, description: '65+' },
+  ];
+  let LOADED = false;
+
+  function paint(tiers) {
+    const list = document.getElementById('tiers-list');
+    if (!list) return;
+    const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
+    list.innerHTML = rows.map((t, i) => `
+      <div class="tier-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)" data-i="${i}">
+        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Label</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Slug <span style="color:var(--muted);font-weight:400">(lowercase)</span></label><input data-field="slug" value="${escapeHtml(t.slug || '')}" placeholder="family" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <button type="button" onclick="this.parentElement.remove()" title="Remove tier" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">×</button>
+        <div style="grid-column:1/-1"><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Description (optional)</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+      </div>
+    `).join('');
+  }
+  function collect() {
+    const out = [];
+    document.querySelectorAll('#tiers-list .tier-row').forEach(row => {
+      const get = (f) => (row.querySelector(`[data-field="${f}"]`) || {}).value || '';
+      const label = get('label').trim();
+      if (!label) return;
+      const slug = (get('slug').trim() || label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const price = parseFloat(get('price'));
+      const desc = get('description').trim();
+      out.push({
+        slug, label,
+        price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0,
+        description: desc || null,
+      });
+    });
+    return out;
+  }
+  function add() {
+    const tiers = collect();
+    tiers.push({ slug: '', label: '', price_cents: 0, description: '' });
+    paint(tiers);
+  }
+  async function refresh() {
+    const errEl = document.getElementById('tiers-err');
+    errEl.classList.remove('show');
+    try {
+      const data = await call(SETTINGS_URL, 'get');
+      if (!data.ok) throw new Error(data.error || 'Failed to load');
+      const tiers = Array.isArray(data.settings?.membership_tiers) ? data.settings.membership_tiers : null;
+      paint(tiers);
+      LOADED = true;
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+    }
+  }
+  async function save() {
+    const btn = document.getElementById('tiers-save');
+    const errEl = document.getElementById('tiers-err');
+    errEl.classList.remove('show');
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Saving…';
+    try {
+      const tiers = collect();
+      const data = await call(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
+      if (!data.ok) throw new Error(data.error || 'Save failed');
+      btn.textContent = '✓ Saved';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
+  }
+  return { refresh, paint, add, save };
+})();
+
 // ── Boot ───────────────────────────────────────────────────────────────
 (async () => {
   if (!token()) { logout(); return; }
@@ -869,9 +972,10 @@ const App = (() => {
     if (s.ok) Households.setDefaults(s.settings?.club?.default_city || '', s.settings?.club?.default_zip || '');
   } catch { /* defaults stay blank */ }
 
-  // Honor #applications hash (e.g. clicking a task notification deep-links here)
+  // Honor hash deep-links (e.g. clicking a task notification or the Tiers subtab link)
   const startTab = window.location.hash.replace(/^#/, '');
-  if (startTab === 'applications') showTab('applications');
+  if (startTab === 'applications')   showTab('applications');
+  else if (startTab === 'tiers')     showTab('tiers');
   else { await Households.refresh(); App.refresh(); }
 })();
 </script>

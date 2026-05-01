@@ -16,6 +16,7 @@
   const SUBTABS = [
     { key: 'households',   label: 'Households',   href: '/club/admin/members.html#households',   scope: 'households'   },
     { key: 'applications', label: 'Applications', href: '/club/admin/members.html#applications', scope: 'applications' },
+    { key: 'tiers',        label: 'Tiers',        href: '/club/admin/members.html#tiers',        scope: 'tiers'        },
     { key: 'payments',     label: 'Payments',     href: '/club/admin/payments.html',             scope: 'payments'     },
     { key: 'programs',     label: 'Programs',     href: '/club/admin/programs.html',             scope: 'programs'     },
     { key: 'parties',      label: 'Parties',      href: '/club/admin/parties.html',              scope: 'parties'      },
@@ -28,7 +29,9 @@
     const path = window.location.pathname;
     if (path.endsWith('/members.html')) {
       const hash = (window.location.hash || '').replace(/^#/, '');
-      return hash === 'applications' ? 'applications' : 'households';
+      if (hash === 'applications') return 'applications';
+      if (hash === 'tiers') return 'tiers';
+      return 'households';
     }
     if (path.endsWith('/payments.html'))     return 'payments';
     if (path.endsWith('/programs.html'))     return 'programs';

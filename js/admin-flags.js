@@ -140,7 +140,7 @@
           }
         }
         // Members hub — visible if user has ANY members-section scope.
-        const MEMBERS_SCOPES = ['households','applications','payments','programs','parties','volunteer','passes','documents'];
+        const MEMBERS_SCOPES = ['households','applications','tiers','payments','programs','parties','volunteer','passes','documents'];
         const hasAnyMembers = MEMBERS_SCOPES.some(s => scopes.has(s));
         if (!hasAnyMembers) {
           document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });
