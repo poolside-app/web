@@ -246,6 +246,87 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Submit-confirmation email — fires immediately so the applicant
+    // doesn't sit in suspense between submit and approval. Branched copy
+    // by payment_method so each path tells them what happens NEXT.
+    const primary_email = email;
+    if (primary_email) {
+      try {
+        const { sendEmail, emailShell, escHtml } = await import('../_shared/send_email.ts');
+        const { data: settingsRow2 } = await sb.from('settings').select('value').eq('tenant_id', tenant.id).maybeSingle();
+        const sv2 = settingsRow2?.value as Record<string, unknown> | undefined;
+        const venmoHandle = ((sv2?.payments as Record<string, unknown> | undefined)?.venmo_handle as string | null) ?? null;
+        const tiers = (sv2?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+        const tier  = tiers.find(t => t.slug === body.tier_slug) || tiers[0];
+        const tierLabel = (tier?.label as string) || (body.tier_slug as string) || 'Family';
+        const tierPrice = (typeof tier?.price_cents === 'number' && (tier.price_cents as number) > 0)
+          ? '$' + ((tier.price_cents as number) / 100).toFixed(0)
+          : null;
+
+        // Payment-plan split numbers
+        const planCfg = (sv2?.payments as Record<string, unknown> | undefined)?.plan as Record<string, unknown> | undefined;
+        const splitPct = Math.max(1, Math.min(99, Number(planCfg?.first_installment_pct) || 50));
+        const finalDue = String(planCfg?.final_due_date || '');
+        let firstAmt = '', secondAmt = '';
+        if (tierPrice && tier?.price_cents) {
+          const total = tier.price_cents as number;
+          const first = Math.round(total * splitPct / 100);
+          const second = total - first;
+          firstAmt  = '$' + (first / 100).toFixed(0);
+          secondAmt = '$' + (second / 100).toFixed(0);
+        }
+
+        const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+        let nextSteps = '';
+        let preheader = `${tenant.display_name} received your application.`;
+        if (payment_method === 'venmo' && venmoHandle) {
+          nextSteps = `
+            <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: send your Venmo payment</h3>
+            <p style="margin:0 0 12px">Send your annual dues to <b>@${escHtml(venmoHandle)}</b>${tierPrice ? ` (<b>${escHtml(tierPrice)}</b> for the ${escHtml(tierLabel)} tier)` : ''}. Once the board verifies your payment, you'll receive a separate email with your member sign-in link.</p>
+            <p style="margin:0;color:#64748b;font-size:13px">Tip: include the family name in your Venmo memo so we can match it quickly.</p>`;
+          preheader = `Send Venmo to @${venmoHandle} — we'll verify and email you back.`;
+        } else if (payment_method === 'stripe') {
+          nextSteps = `
+            <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: complete your card payment</h3>
+            <p style="margin:0 0 12px">If you didn't already complete Stripe checkout, return to your application tab and click <b>Pay with card</b>. The moment your payment goes through${tierPrice ? ` ($${escHtml(tierPrice)} ${escHtml(tierLabel)} tier)` : ''}, your membership is approved automatically and we'll email you a sign-in link.</p>`;
+          preheader = `Complete your Stripe checkout to finalize membership.`;
+        } else if (payment_method === 'stripe_plan') {
+          nextSteps = `
+            <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: complete your first installment</h3>
+            <p style="margin:0 0 12px">If you didn't already complete Stripe checkout, return to your application tab and click <b>Start payment plan</b>. ${firstAmt ? `We'll charge <b>${escHtml(firstAmt)}</b> now and auto-charge <b>${escHtml(secondAmt)}</b> on <b>${escHtml(finalDue)}</b>.` : 'Your first installment will be charged immediately and the second auto-charges on the final due date.'} Your membership activates as soon as the first payment goes through.</p>`;
+          preheader = `Complete your first installment in Stripe to activate.`;
+        } else {
+          nextSteps = `
+            <p style="margin:0 0 12px">A board member will reach out within a few days with payment options. Once payment is sorted, you'll receive a separate email with your member sign-in link.</p>`;
+        }
+
+        const summary = `
+          <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
+            <div style="font-weight:700;color:#0a3b5c;margin-bottom:6px">What we received</div>
+            <div><b>Family:</b> ${escHtml(family_name)}</div>
+            <div><b>Primary:</b> ${escHtml(primary_name)}</div>
+            <div><b>Tier:</b> ${escHtml(tierLabel)}${tierPrice ? ` (${escHtml(tierPrice)})` : ''}</div>
+            <div><b>Adults:</b> ${adults_json.length} · <b>Children:</b> ${children_json.length}</div>
+          </div>`;
+
+        const html = emailShell({
+          tenantName: tenant.display_name, clubUrl, preheader,
+          contentHtml: `
+            <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">📋 We got your application</h2>
+            <p style="margin:0 0 8px;color:#475569;line-height:1.55">Hi ${escHtml(primary_name)} — thanks for applying to <b>${escHtml(tenant.display_name)}</b>. Your application is logged with the board.</p>
+            ${summary}
+            ${nextSteps}
+            <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
+          `,
+        });
+        await sendEmail({
+          to: primary_email,
+          subject: `We got your application — ${tenant.display_name}`,
+          html,
+        });
+      } catch { /* never fail submission because of an email hiccup */ }
+    }
+
     return jsonResponse({ ok: true, application_id: data.id, payment_method });
   }
 
@@ -473,40 +554,57 @@ Deno.serve(async (req) => {
         .select('value').eq('tenant_id', TID).maybeSingle();
       const venmo = ((settingsRow?.value as Record<string, unknown> | null)?.payments as Record<string, unknown> | undefined)?.venmo_handle;
 
-      const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-      const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+      // Subject + headline + body branch on payment status so the moment
+      // of approval reads the way the applicant actually experienced it.
+      let subject = `Welcome to ${clubName}!`;
+      let headline = `🎉 Welcome to ${escapeHtml(clubName)}!`;
+      let lead = `Hi ${escapeHtml(app.primary_name)} — your application was approved. Click below to sign in to your member dashboard.`;
+      let nextStepBlock = '';
+      if (app.payment_status === 'paid') {
+        if (app.payment_method === 'stripe') {
+          subject  = `Payment confirmed — welcome to ${clubName}!`;
+          headline = `✓ Payment confirmed — welcome to ${escapeHtml(clubName)}!`;
+          lead     = `Hi ${escapeHtml(app.primary_name)} — your card payment cleared and your membership is active. Sign in below to see your member home.`;
+        } else if (app.payment_method === 'venmo') {
+          subject  = `Payment verified — welcome to ${clubName}!`;
+          headline = `✓ Payment verified — welcome to ${escapeHtml(clubName)}!`;
+          lead     = `Hi ${escapeHtml(app.primary_name)} — your Venmo payment was verified by the board. Your dues are paid in full and you're all set.`;
+        }
+      } else if (app.payment_method === 'venmo' && venmo) {
+        subject  = `You're approved — final step is dues — ${clubName}`;
+        headline = `🎉 You're approved!`;
+        lead     = `Hi ${escapeHtml(app.primary_name)} — your application was approved. One last thing: please send your annual dues via Venmo so we can finalize your membership.`;
+        nextStepBlock = `
+          <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 6px;font-size:16px">Final step: send Venmo</h3>
+          <p style="margin:0 0 8px;color:#64748b">Send your annual dues to <b>@${escapeHtml(String(venmo))}</b>. We'll send another email confirming once the payment is verified.</p>`;
+      } else if (app.payment_method === 'stripe_plan') {
+        subject  = `First installment paid — welcome to ${clubName}!`;
+        headline = `✓ First installment paid — you're in!`;
+        lead     = `Hi ${escapeHtml(app.primary_name)} — your first installment cleared and your membership is active. Your second installment will auto-charge on the final due date and we'll email a reminder before each charge.`;
+      } else {
+        nextStepBlock = `
+          <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 6px;font-size:16px">Final step: dues</h3>
+          <p style="margin:0 0 8px;color:#64748b">A board member will reach out shortly with payment details.</p>`;
+      }
 
       const html = `
         <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
-          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to ${escapeHtml(clubName)}!</h2>
-          <p style="margin:0 0 16px;color:#64748b">Hi ${escapeHtml(app.primary_name)} — your application was approved. Click below to sign in to your member dashboard.</p>
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">${headline}</h2>
+          <p style="margin:0 0 16px;color:#64748b">${lead}</p>
           <p style="margin:24px 0">
             <a href="${verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to ${escapeHtml(clubName)}</a>
           </p>
-          ${app.payment_status !== 'paid' ? `
-            <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 6px;font-size:16px">Final step: dues</h3>
-            <p style="margin:0 0 8px;color:#64748b">${app.payment_method === 'venmo' && venmo
-              ? `Send your annual dues via Venmo to <b>@${escapeHtml(String(venmo))}</b>. We'll mark your account as paid once we confirm the payment.`
-              : 'A board member will reach out shortly with payment details.'}</p>
-          ` : ''}
+          ${nextStepBlock}
           <hr style="border:0;border-top:1px solid #e5e7eb;margin:28px 0">
           <p style="margin:0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, ask for a fresh one at <a href="${clubUrl}/m/login.html" style="color:#0a3b5c">${escapeHtml(clubUrl.replace(/^https?:\/\//, ''))}/m/login.html</a>.</p>
         </div>
       `;
 
-      if (RESEND_API_KEY) {
-        try {
-          const r = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              from: RESEND_FROM, to: [app.primary_email],
-              subject: `Welcome to ${clubName}!`, html,
-            }),
-          });
-          welcome_sent = r.ok;
-        } catch { /* fall through to dev mode */ }
-      }
+      try {
+        const { sendEmail } = await import('../_shared/send_email.ts');
+        const r = await sendEmail({ to: app.primary_email, subject, html });
+        welcome_sent = r.sent;
+      } catch { /* fall through to dev mode */ }
       if (!welcome_sent) welcome_dev_link = verifyLink;
 
       await sb.from('application_actions').insert({
@@ -599,6 +697,34 @@ Deno.serve(async (req) => {
           googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SEC,
         });
       } catch { /* never fails the verify action */ }
+    }
+
+    // Notify the member that their payment was verified — they're paid in
+    // full now. Triggered specifically on the Venmo path; for Stripe paths
+    // verification is automatic and the welcome email already covered it.
+    if (app.primary_email && method === 'venmo') {
+      try {
+        const { sendEmail, emailShell, escHtml } = await import('../_shared/send_email.ts');
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', TID).maybeSingle();
+        const clubName = tenant?.display_name || 'Your club';
+        const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
+        await sendEmail({
+          to: app.primary_email,
+          subject: `Payment verified — you're paid in full at ${clubName}`,
+          html: emailShell({
+            tenantName: clubName, clubUrl,
+            preheader: `Your Venmo payment was verified — dues are paid in full.`,
+            contentHtml: `
+              <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Payment verified!</h2>
+              <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi ${escHtml(app.primary_name as string)} — the board verified your Venmo payment to <b>${escHtml(clubName)}</b>. Your dues are paid in full and your membership is active for the season.</p>
+              <p style="margin:24px 0">
+                <a href="${clubUrl}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
+              </p>
+              <p style="margin:0;color:#64748b;font-size:13px">If you saved your sign-in link from the welcome email, that still works too.</p>
+            `,
+          }),
+        });
+      } catch { /* never block verify */ }
     }
 
     return jsonResponse({ ok: true });
@@ -704,6 +830,34 @@ Deno.serve(async (req) => {
     }).eq('id', id).eq('tenant_id', TID).eq('status', 'pending').select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     if (!data)  return jsonResponse({ ok: false, error: 'Application not pending' }, 409);
+
+    // Send rejection email if the applicant has an email on file. Admin
+    // notes (if set) are surfaced as the optional reason.
+    if (data.primary_email) {
+      try {
+        const { sendEmail, emailShell, escHtml } = await import('../_shared/send_email.ts');
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', TID).maybeSingle();
+        const clubName = tenant?.display_name || 'the club';
+        const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
+        const reasonBlock = data.admin_notes
+          ? `<div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6"><b style="color:#0a3b5c">Note from the board:</b><br>${escHtml(data.admin_notes)}</div>`
+          : '';
+        await sendEmail({
+          to: data.primary_email,
+          subject: `Update on your ${clubName} application`,
+          html: emailShell({
+            tenantName: clubName, clubUrl,
+            preheader: `An update on your application to ${clubName}.`,
+            contentHtml: `
+              <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Update on your application</h2>
+              <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi ${escHtml(data.primary_name as string)} — after review, the board wasn't able to approve your application to <b>${escHtml(clubName)}</b> at this time.</p>
+              ${reasonBlock}
+              <p style="margin:0 0 8px;color:#64748b;font-size:13px">If you have questions or would like to discuss, please reply to this email.</p>
+            `,
+          }),
+        });
+      } catch { /* never fail the reject because the email hiccupped */ }
+    }
     return jsonResponse({ ok: true, application: data });
   }
 
