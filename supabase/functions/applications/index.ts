@@ -329,6 +329,19 @@ Deno.serve(async (req) => {
       .select('id').eq('tenant_id', TID).eq('phone_e164', app.primary_phone).eq('active', true).maybeSingle();
     if (clash) return jsonResponse({ ok: false, error: 'Another active member already uses that phone number' }, 409);
 
+    // Hard cap enforcement: don't approve into a household if doing so would
+    // exceed the plan limit. Surfaces the same 402 to the admin UI as create.
+    const { getHouseholdCapStatus, capStatusToJson } = await import('../_shared/plan_caps.ts');
+    const { data: tenantRowCap } = await sb.from('tenants').select('plan').eq('id', TID).maybeSingle();
+    const cap = await getHouseholdCapStatus(sb, TID, tenantRowCap?.plan);
+    if (cap.at_cap) {
+      return jsonResponse({
+        ok: false,
+        error: `Cannot approve — at household limit (${cap.count}/${cap.cap === Infinity ? '∞' : cap.cap}, ${cap.plan_label}). Upgrade your plan or remove an inactive household.`,
+        plan_cap: capStatusToJson(cap),
+      }, 402);
+    }
+
     const ovr = (body.override ?? {}) as Record<string, unknown>;
     // Tier resolution order: admin override > applicant's selected tier > 'family' default
     const tier = strOrNull(ovr.tier) ?? strOrNull(app.tier_slug) ?? 'family';

@@ -371,12 +371,18 @@ Deno.serve(async (req) => {
     const features = settingsValue.features ?? {};
     const branding = settingsValue.branding ?? {};
 
+    // Plan + capacity status — drives the persistent admin ticker.
+    const { getHouseholdCapStatus, capStatusToJson } = await import('../_shared/plan_caps.ts');
+    const cap = await getHouseholdCapStatus(sb, payload.tid, tenant.plan);
+    const usage = capStatusToJson(cap);
+
     // Synthetic impersonation tokens have no real admin_users row — fall
     // back to a synthetic user identity sourced from the JWT itself.
     if ((!user || !user.active) && payload.synthetic) {
       return jsonResponse({
         ok: true,
         tenant: { ...tenant, features, branding },
+        usage,
         user: {
           id: payload.sub,
           email: 'provider@poolsideapp.com',
@@ -394,6 +400,7 @@ Deno.serve(async (req) => {
     return jsonResponse({
       ok: true,
       tenant: { ...tenant, features, branding },
+      usage,
       user: {
         ...user,
         scopes: user.scopes ?? [],

@@ -820,7 +820,7 @@ async function removeSub(encUrl, name) {
     if (!me.ok) { logout(); return; }
     document.title = `Calendar — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant);
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
     document.getElementById('ics-link').href =
       `${SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug=${encodeURIComponent(me.tenant.slug)}`;
   } catch { logout(); return; }

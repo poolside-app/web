@@ -114,9 +114,53 @@
     }
   }
 
-  function apply(features, user, tenant) {
+  // ── Plan-usage ticker — shown in <header> of every admin page.
+  // Caller passes the `usage` object from tenant_admin_auth.me() —
+  // { count, cap, unlimited, at_cap, percent, plan, plan_label }.
+  // Color states match the household-cap progression:
+  //   < 80%  blue (informational)
+  //   ≥ 80%  amber (upgrade soon)
+  //   = 100% red (hard cap, '+ Add household' is blocked server-side)
+  function paintUsageTicker(usage) {
+    if (!usage) return;
+    const header = document.querySelector('header');
+    if (!header) return;
+    if (header.querySelector('#usage-ticker')) return;  // already painted
+    const pct = Math.max(0, Math.min(100, Number(usage.percent) || 0));
+    const at = !!usage.at_cap;
+    const near = pct >= 80 && !at;
+    const color = at ? '#dc2626' : (near ? '#92400e' : '#0a3b5c');
+    const bg    = at ? '#fee2e2' : (near ? '#fef3c7' : '#e6eef5');
+    const fill  = at ? '#dc2626' : (near ? '#f59e0b' : '#0a3b5c');
+    const capCopy = usage.unlimited ? '∞' : usage.cap;
+    const remCopy = usage.unlimited
+      ? 'unlimited'
+      : (usage.remaining === 0 ? 'at cap' : `${usage.remaining} left`);
+    const showUpgrade = !usage.unlimited && (pct >= 50 || at);
+    const ticker = document.createElement('div');
+    ticker.id = 'usage-ticker';
+    ticker.style.cssText = `
+      display:flex; align-items:center; gap:14px; padding:6px 14px;
+      background:${bg}; color:${color}; font-size:12px; font-weight:600;
+      border-bottom:1px solid #e5e7eb;
+    `;
+    ticker.innerHTML = `
+      <span>${usage.count} / ${capCopy} households · ${escapeHtml(usage.plan_label)}</span>
+      ${usage.unlimited ? '' : `
+        <span style="flex:1; max-width:240px; height:6px; background:#e5e7eb; border-radius:999px; overflow:hidden">
+          <span style="display:block; width:${pct}%; height:100%; background:${fill}"></span>
+        </span>`}
+      <span style="font-weight:500">${remCopy}</span>
+      ${showUpgrade ? `<a href="/club/admin/billing.html" style="margin-left:auto; padding:3px 12px; border-radius:6px; background:${fill}; color:#fff; text-decoration:none; font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase">${at ? 'Upgrade now' : 'Upgrade'}</a>` : ''}
+    `;
+    // Insert AFTER the header so it appears as a strip below it
+    header.parentNode.insertBefore(ticker, header.nextSibling);
+  }
+
+  function apply(features, user, tenant, usage) {
     features = features || {};
     if (tenant) brandHeader(tenant);
+    if (usage) paintUsageTicker(usage);
 
     // Layer 1: feature flags (hide entire features tenants didn't enable)
     for (const [flag, selector] of Object.entries(FEATURE_NAV)) {
@@ -160,5 +204,5 @@
     }
   }
 
-  window.PoolsideFlags = { apply, brandHeader };
+  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker };
 })();

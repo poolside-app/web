@@ -167,6 +167,19 @@ Deno.serve(async (req) => {
     const family_name = String(body.family_name ?? '').trim();
     if (!family_name) return jsonResponse({ ok: false, error: 'Family name is required' }, 400);
 
+    // Hard cap enforcement: refuse new households when at the plan limit.
+    // Free=30, Starter=100, Pro=300, Enterprise=∞.
+    const { getHouseholdCapStatus, capStatusToJson } = await import('../_shared/plan_caps.ts');
+    const { data: tenantRow } = await sb.from('tenants').select('plan').eq('id', TID).maybeSingle();
+    const cap = await getHouseholdCapStatus(sb, TID, tenantRow?.plan);
+    if (cap.at_cap) {
+      return jsonResponse({
+        ok: false,
+        error: `You're at your plan's household limit (${cap.count}/${cap.cap === Infinity ? '∞' : cap.cap}, ${cap.plan_label}). Upgrade to add more.`,
+        plan_cap: capStatusToJson(cap),
+      }, 402);  // 402 Payment Required reads cleanly to the front-end
+    }
+
     const primary = (body.primary ?? {}) as Record<string, unknown>;
     const pName  = String(primary.name ?? '').trim();
     const pPhoneRaw = String(primary.phone_e164 ?? '').trim();

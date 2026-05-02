@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plan & billing — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 920px; width: 100%; margin: 0 auto; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .stat-row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px; margin: 14px 0 0; }
+  .stat { padding: 14px 16px; border:1px solid var(--border); border-radius: var(--r-md); }
+  .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  .stat .val { font-family: 'Fraunces', serif; font-size: 24px; color: var(--blue); margin-top: 4px; }
+  .pricing { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 18px; }
+  .tier { padding: 18px; border:1.5px solid var(--border); border-radius: var(--r-md); position:relative; }
+  .tier.current { border-color: var(--blue); background: var(--blue-l); }
+  .tier.featured { border-color: var(--sun); }
+  .tier .tag { font-size: 11px; text-transform:uppercase; letter-spacing:.06em; color: var(--muted); font-weight: 700; }
+  .tier .name { font-family:'Fraunces',serif; font-size: 22px; color: var(--blue); margin: 4px 0; }
+  .tier .price { font-size: 28px; font-weight: 700; }
+  .tier .price small { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .tier .cap { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }
+  .tier .badge { position: absolute; top: -10px; right: 12px; background: var(--sun); color: #422006; font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 999px; letter-spacing: .04em; }
+  .tier .current-pill { position: absolute; top: -10px; left: 12px; background: var(--blue); color: #fff; font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 999px; letter-spacing: .04em; }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; text-decoration: none; display: inline-block; }
+  .btn:hover { background: var(--blue-2); }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+
+<main>
+  <h1>Plan &amp; billing</h1>
+  <p style="color:var(--muted);font-size:14px;margin: 6px 0 18px">Your current plan, usage, and how to upgrade.</p>
+
+  <div class="card">
+    <h2>Current plan</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="lbl">Plan</div><div class="val" id="cur-plan">…</div></div>
+      <div class="stat"><div class="lbl">Households</div><div class="val" id="cur-usage">…</div></div>
+      <div class="stat"><div class="lbl">Status</div><div class="val" id="cur-status">…</div></div>
+    </div>
+    <div id="cur-banner" style="display:none;margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Plans</h2>
+    <p style="color:var(--muted);font-size:13px;margin: 0 0 6px">Capacity-gated only. Every tier gets every feature. <a href="/pricing.html" target="_blank">Why we charge what we charge →</a></p>
+    <div class="pricing" id="pricing-grid"></div>
+  </div>
+
+  <div class="card">
+    <h2>Upgrade</h2>
+    <p style="font-size:14px;line-height:1.6">We're hand-onboarding our first batch of clubs to make sure every customer is happy. To upgrade your plan, email us at <a href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">hello@poolsideapp.com</a> and we'll send back a one-click upgrade link the same day. Self-serve upgrades are coming soon.</p>
+    <p style="margin-top:14px">
+      <a class="btn" href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">📧 Email to upgrade</a>
+    </p>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const ME_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+const TIERS = [
+  { key: 'free',       name: 'Free Forever', price: 0,    cap: 30,         caption: 'For tiny HOA pools' },
+  { key: 'starter',    name: 'Starter',      price: 199,  cap: 100,        caption: 'Small neighborhood clubs' },
+  { key: 'pro',        name: 'Pro',          price: 599,  cap: 300,        caption: 'Most popular', featured: true },
+  { key: 'enterprise', name: 'Enterprise',   price: 1199, cap: Infinity,   caption: 'Multi-pool / large clubs' },
+];
+
+(async () => {
+  if (!token()) { logout(); return; }
+  let me;
+  try {
+    const r = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` }, body: JSON.stringify({ action: 'me' }) });
+    me = await r.json();
+    if (!me.ok) { logout(); return; }
+  } catch { logout(); return; }
+  document.title = `Plan & billing — ${me.tenant.display_name}`;
+  document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
+
+  const u = me.usage || {};
+  const planKey = (u.plan || 'free').toLowerCase();
+  document.getElementById('cur-plan').textContent  = u.plan_label || 'Free Forever';
+  document.getElementById('cur-usage').textContent = u.unlimited ? `${u.count} of ∞` : `${u.count} of ${u.cap}`;
+  document.getElementById('cur-status').textContent = me.tenant.status || '—';
+  if (u.at_cap) {
+    const b = document.getElementById('cur-banner');
+    b.style.display = 'block';
+    b.style.background = '#fee2e2'; b.style.color = '#7f1d1d'; b.style.border = '1px solid #fecaca';
+    b.innerHTML = `<b>You've hit your plan's household limit.</b> Adding new households is blocked until you upgrade.`;
+  } else if (u.percent >= 80 && !u.unlimited) {
+    const b = document.getElementById('cur-banner');
+    b.style.display = 'block';
+    b.style.background = '#fef3c7'; b.style.color = '#92400e'; b.style.border = '1px solid #fcd34d';
+    b.innerHTML = `You're at ${u.percent}% of your household limit. Plan ahead — upgrade before the next signup wave.`;
+  }
+
+  document.getElementById('pricing-grid').innerHTML = TIERS.map(t => {
+    const isCurrent = t.key === planKey;
+    const cls = `tier${isCurrent ? ' current' : ''}${t.featured ? ' featured' : ''}`;
+    return `
+      <div class="${cls}">
+        ${isCurrent ? '<span class="current-pill">Current</span>' : ''}
+        ${t.featured ? '<span class="badge">Most popular</span>' : ''}
+        <div class="tag">${escapeHtml(t.caption)}</div>
+        <div class="name">${escapeHtml(t.name)}</div>
+        <div class="price">$${t.price}<small> / year</small></div>
+        <div class="cap">Up to ${t.cap === Infinity ? '∞' : t.cap} households</div>
+      </div>`;
+  }).join('');
+})();
+</script>
+</body>
+</html>

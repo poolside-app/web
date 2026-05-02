@@ -168,7 +168,7 @@ document.getElementById('signout').addEventListener('click', logout);
   const { user, tenant } = data;
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
-    if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant);
+    if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant, data.usage);
 
   if (user.impersonated) {
     const banner = document.createElement('div');
