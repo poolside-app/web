@@ -150,3 +150,8 @@ verify_jwt = false
 # cron_run action gated by CRON_SECRET header, admin actions by tenant JWT.
 [functions.payment_plans]
 verify_jwt = false
+
+# Email templates — admin CRUD over per-tenant overrides for system emails.
+# Reads from the in-code EMAIL_REGISTRY; writes to email_templates table.
+[functions.email_templates]
+verify_jwt = false

@@ -217,39 +217,25 @@ async function chargeInstallment(
     // Notify the member that an installment cleared. Best-effort.
     if (plan.primary_email) {
       try {
-        const { sendEmail, emailShell, escHtml: esc } = await import('../_shared/send_email.ts');
-        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', plan.tenant_id as string).maybeSingle();
-        const clubName = tenant?.display_name || 'Your club';
-        const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
+        const { renderAndSend } = await import('../_shared/email_template.ts');
         const dollars = '$' + ((installment.amount_cents as number) / 100).toFixed(2);
         const seq = installment.sequence as number;
-        // Are there more installments left after this one?
         const { data: remaining } = await sb.from('payment_plan_installments')
           .select('sequence, due_date, amount_cents').eq('plan_id', plan.id as string)
           .neq('status', 'paid').neq('status', 'manual').order('sequence');
         const nextOne = (remaining ?? []).find((r) => (r.sequence as number) > seq);
         const isFinal = !nextOne;
-        await sendEmail({
+        await renderAndSend(sb, {
+          tenantId: plan.tenant_id as string,
+          templateKey: isFinal ? 'plan_installment_paid_final' : 'plan_installment_paid_partial',
           to: plan.primary_email as string,
-          subject: isFinal
-            ? `Final installment paid — you're paid in full at ${clubName}`
-            : `Installment ${seq} paid — ${clubName}`,
-          html: emailShell({
-            tenantName: clubName, clubUrl,
-            preheader: isFinal
-              ? `Your final installment cleared — dues paid in full.`
-              : `Installment ${seq} of ${dollars} cleared. Next on ${nextOne?.due_date || 'a future date'}.`,
-            contentHtml: `
-              <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">${isFinal ? '✓ You\'re paid in full!' : `✓ Installment ${seq} cleared`}</h2>
-              <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi ${esc(plan.family_name as string)} — we charged <b>${esc(dollars)}</b> on the card you saved at sign-up.</p>
-              ${isFinal
-                ? `<p style="margin:0 0 12px;color:#475569;line-height:1.55">Your dues are paid in full for the season. Thanks for being part of <b>${esc(clubName)}</b>!</p>`
-                : `<p style="margin:0 0 12px;color:#475569;line-height:1.55">Your next installment of <b>$${((nextOne!.amount_cents as number) / 100).toFixed(2)}</b> auto-charges on <b>${esc(nextOne!.due_date as string)}</b>. We'll send a reminder a few weeks before.</p>`
-              }
-              <p style="margin:24px 0">
-                <a href="${clubUrl}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
-              </p>`,
-          }),
+          variables: {
+            family_name: plan.family_name as string,
+            amount: dollars,
+            sequence: String(seq),
+            next_amount:   nextOne ? '$' + ((nextOne.amount_cents as number) / 100).toFixed(2) : '',
+            next_due_date: nextOne ? (nextOne.due_date as string) : '',
+          },
         });
       } catch { /* never fail the charge cron because of an email */ }
     }
@@ -267,32 +253,18 @@ async function chargeInstallment(
     last_error: errorMsg,
   }).eq('id', installmentId);
   // Email member ONLY on the FIRST failure — subsequent retries are silent.
-  // (Lapse-final notification handled separately by lapsePlan via admin alert.)
   if (attempts === 1 && plan.primary_email) {
     try {
-      const { sendEmail, emailShell, escHtml: esc } = await import('../_shared/send_email.ts');
-      const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', plan.tenant_id as string).maybeSingle();
-      const clubName = tenant?.display_name || 'Your club';
-      const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
-      const dollars = '$' + ((installment.amount_cents as number) / 100).toFixed(2);
-      const seq = installment.sequence as number;
-      await sendEmail({
+      const { renderAndSend } = await import('../_shared/email_template.ts');
+      await renderAndSend(sb, {
+        tenantId: plan.tenant_id as string,
+        templateKey: 'plan_installment_failed',
         to: plan.primary_email as string,
-        subject: `[Action needed] Card declined — ${clubName} installment ${seq}`,
-        html: emailShell({
-          tenantName: clubName, clubUrl,
-          preheader: `Your installment ${seq} of ${dollars} couldn't be charged. We'll retry, but please update your card.`,
-          contentHtml: `
-            <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">⚠ Card declined</h2>
-            <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi ${esc(plan.family_name as string)} — we tried to charge <b>${esc(dollars)}</b> for installment ${seq} of your <b>${esc(clubName)}</b> dues, but your card was declined.</p>
-            <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12">
-              <b>What happens next:</b> we'll retry automatically over the next ~14 days. To avoid lapsing, please contact the board to update your payment method.
-            </div>
-            <p style="margin:24px 0">
-              <a href="${clubUrl}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to contact the board</a>
-            </p>
-            <p style="margin:0;color:#64748b;font-size:13px">Common reasons: card expired, address changed, or daily limit reached. Replying to this email is the fastest way to reach us.</p>`,
-        }),
+        variables: {
+          family_name: plan.family_name as string,
+          amount: '$' + ((installment.amount_cents as number) / 100).toFixed(2),
+          sequence: String(installment.sequence as number),
+        },
       });
     } catch { /* best-effort */ }
   }

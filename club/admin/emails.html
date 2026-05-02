@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Emails — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin-bottom: 12px; } h3 { font-size: 14px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display: flex; justify-content: space-between; align-items: center; }
+  .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background: #fff; border-bottom: 1px solid var(--border); padding: 0 22px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.tabs a { padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px; white-space: nowrap; }
+  nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs a:hover { color: var(--blue); }
+  main { flex: 1; padding: 28px 22px; max-width: 1280px; width: 100%; margin: 0 auto; }
+  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 18px; }
+  @media (max-width: 1024px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+
+  .list { padding: 0; overflow:hidden; }
+  .group { padding: 6px 0; border-top: 1px solid var(--border); }
+  .group:first-child { border-top: 0; }
+  .group h3 { padding: 12px 18px 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-family: 'Inter'; font-size: 11px; font-weight: 700; }
+  .item { display: block; padding: 12px 18px; cursor: pointer; border-left: 3px solid transparent; transition: background 0.15s; }
+  .item:hover { background: var(--bg-2); }
+  .item.on { background: var(--blue-l); border-left-color: var(--blue); }
+  .item .name { font-weight: 600; font-size: 14px; color: var(--text); }
+  .item .desc { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .item .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--green); color: #fff; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; vertical-align: middle; }
+  .item .badge.disabled { background: var(--red); }
+
+  .editor { padding: 22px 24px; }
+  .editor h2 { font-family: 'Fraunces', serif; font-size: 22px; }
+  .editor .desc { color: var(--muted); font-size: 13px; margin: 4px 0 18px; line-height: 1.55; }
+  .editor label { display:block; font-weight:600; font-size:11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  .editor input[type=text], .editor textarea {
+    width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter';
+    border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+    font-family: inherit;
+  }
+  .editor textarea { font-family: 'Menlo', 'Consolas', monospace; font-size: 13px; min-height: 280px; }
+  .editor input:focus, .editor textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+
+  .vars { padding: 12px 14px; background: var(--bg-2); border-radius: 10px; font-size: 12px; line-height: 1.7; margin-top: 10px; }
+  .vars b { color: var(--blue); }
+  .var-chip { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 8px; background: #fff; border: 1px solid var(--border); border-radius: 6px; font-family: 'Menlo', monospace; font-size: 11px; color: var(--blue); cursor: pointer; }
+  .var-chip:hover { background: var(--blue); color: #fff; }
+
+  .preview-pane { padding: 18px 22px; border-top: 1px solid var(--border); margin-top: 18px; }
+  .preview-pane h3 { font-family: 'Inter'; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 8px; font-weight: 700; }
+  .preview-subject { padding: 10px 14px; background: var(--bg-2); border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+  .preview-iframe { width: 100%; min-height: 480px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .checkbox-row input { width:auto; margin: 0; }
+  .btn { padding: 9px 16px; border-radius: 10px; font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; }
+  .btn:hover { background: var(--blue-2); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .btn-danger { background: transparent; color: var(--red); border-color: #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+
+  .err { display:none; margin: 10px 0; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display:block; }
+  .saved { color: var(--green); font-weight: 600; font-size: 13px; }
+  .empty-state { padding: 80px 32px; text-align: center; color: var(--muted); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/emails.html" class="on">Emails</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+
+<main>
+  <div class="toolbar">
+    <h1>📧 Emails</h1>
+    <p style="margin:0;color:var(--muted);font-size:13px">Customize the auto-emails Poolside sends. Each one falls back to a sensible default until you edit it.</p>
+  </div>
+
+  <div class="layout">
+    <div class="card list" id="template-list">
+      <div class="empty-state">Loading…</div>
+    </div>
+    <div class="card editor" id="editor">
+      <div class="empty-state">
+        Pick an email from the list to customize it.
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const TPL_URL   = `${SUPABASE_URL}/functions/v1/email_templates`;
+
+let TEMPLATES = [];
+let CURRENT_KEY = null;
+let CURRENT_TPL = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function api(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(TPL_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function groupOf(audience) {
+  return ({ applicant: '📥 To applicants', member: '👋 To members', admin: '🛠️ To admins' })[audience] || 'Other';
+}
+
+function renderList() {
+  const list = document.getElementById('template-list');
+  if (!TEMPLATES.length) { list.innerHTML = '<div class="empty-state">No templates registered.</div>'; return; }
+  // Group by audience for scannability
+  const groups = {};
+  for (const t of TEMPLATES) {
+    const g = groupOf(t.audience);
+    (groups[g] = groups[g] || []).push(t);
+  }
+  list.innerHTML = Object.entries(groups).map(([g, items]) => `
+    <div class="group">
+      <h3>${escapeHtml(g)}</h3>
+      ${items.map(t => {
+        const customized = !!t.override;
+        const disabled = t.override && t.override.enabled === false;
+        const badge = disabled
+          ? '<span class="badge disabled">disabled</span>'
+          : customized
+            ? '<span class="badge">customized</span>'
+            : '';
+        return `
+          <div class="item${t.key === CURRENT_KEY ? ' on' : ''}" data-key="${escapeHtml(t.key)}">
+            <div class="name">${escapeHtml(t.label)}${badge}</div>
+            <div class="desc">${escapeHtml(t.description)}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `).join('');
+  list.querySelectorAll('.item').forEach(el => {
+    el.addEventListener('click', () => selectTemplate(el.dataset.key));
+  });
+}
+
+function renderEditor() {
+  const editor = document.getElementById('editor');
+  if (!CURRENT_TPL) {
+    editor.innerHTML = '<div class="empty-state">Pick an email from the list to customize it.</div>';
+    return;
+  }
+  const t = CURRENT_TPL;
+  const o = t.override;
+  const subjectVal = o ? o.subject : t.default_subject;
+  const bodyVal    = o ? o.body_html : t.default_body_html;
+  const enabled    = o ? o.enabled : true;
+  editor.innerHTML = `
+    <h2>${escapeHtml(t.label)}</h2>
+    <div class="desc">${escapeHtml(t.description)}</div>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="ed-enabled" ${enabled ? 'checked' : ''}>
+      <span>Send this email when the trigger fires${enabled ? '' : ' (currently disabled)'}</span>
+    </label>
+
+    <label>Subject line</label>
+    <input type="text" id="ed-subject" value="${escapeHtml(subjectVal)}">
+
+    <label>Body (HTML)</label>
+    <textarea id="ed-body">${escapeHtml(bodyVal)}</textarea>
+
+    <label>Available variables — click to insert</label>
+    <div class="vars">
+      ${t.variables.map(v => `<span class="var-chip" onclick="insertVar('${escapeHtml(v)}')">{{${escapeHtml(v)}}}</span>`).join('')}
+      <div style="margin-top:6px;font-size:11px;color:var(--muted)">Variables are HTML-escaped on render. Use them anywhere in subject or body.</div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;align-items:center">
+      <button class="btn" id="ed-save" onclick="saveTemplate()">Save</button>
+      <button class="btn btn-ghost" onclick="refreshPreview()">🔄 Refresh preview</button>
+      ${o ? `<button class="btn btn-danger" onclick="resetTemplate()">Reset to default</button>` : ''}
+      <span class="saved" id="ed-saved" style="display:none">✓ Saved</span>
+    </div>
+
+    <div class="err" id="ed-err"></div>
+
+    <div class="preview-pane">
+      <h3>Live preview</h3>
+      <div class="preview-subject"><b style="color:var(--muted)">Subject:</b> <span id="prev-subject">…</span></div>
+      <iframe class="preview-iframe" id="prev-iframe" sandbox=""></iframe>
+    </div>
+  `;
+  // Auto-refresh preview when fields change
+  document.getElementById('ed-subject').addEventListener('input', refreshPreview);
+  document.getElementById('ed-body').addEventListener('input', refreshPreview);
+  refreshPreview();
+}
+
+function insertVar(name) {
+  const ta = document.getElementById('ed-body');
+  if (!ta) return;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const txt = `{{${name}}}`;
+  ta.value = ta.value.slice(0, start) + txt + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + txt.length;
+  refreshPreview();
+}
+
+let PREVIEW_DEBOUNCE = null;
+async function refreshPreview() {
+  if (PREVIEW_DEBOUNCE) clearTimeout(PREVIEW_DEBOUNCE);
+  PREVIEW_DEBOUNCE = setTimeout(async () => {
+    if (!CURRENT_KEY) return;
+    const subject = document.getElementById('ed-subject').value;
+    const body_html = document.getElementById('ed-body').value;
+    try {
+      const r = await api('preview', { key: CURRENT_KEY, subject, body_html });
+      if (!r.ok) throw new Error(r.error);
+      document.getElementById('prev-subject').textContent = r.subject;
+      const iframe = document.getElementById('prev-iframe');
+      iframe.srcdoc = r.html;
+    } catch (e) {
+      document.getElementById('prev-subject').textContent = '(preview failed: ' + e.message + ')';
+    }
+  }, 250);
+}
+
+async function saveTemplate() {
+  const errEl = document.getElementById('ed-err');
+  const savedEl = document.getElementById('ed-saved');
+  errEl.classList.remove('show');
+  savedEl.style.display = 'none';
+  const btn = document.getElementById('ed-save');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const subject = document.getElementById('ed-subject').value.trim();
+    const body_html = document.getElementById('ed-body').value.trim();
+    const enabled = document.getElementById('ed-enabled').checked;
+    const r = await api('save', { key: CURRENT_KEY, subject, body_html, enabled });
+    if (!r.ok) throw new Error(r.error || 'save failed');
+    savedEl.style.display = 'inline';
+    setTimeout(() => { savedEl.style.display = 'none'; }, 2000);
+    await loadTemplates();
+    selectTemplate(CURRENT_KEY);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function resetTemplate() {
+  if (!confirm('Reset this email to the default? Your customizations will be deleted.')) return;
+  try {
+    const r = await api('reset', { key: CURRENT_KEY });
+    if (!r.ok) throw new Error(r.error || 'reset failed');
+    await loadTemplates();
+    selectTemplate(CURRENT_KEY);
+  } catch (e) { alert(e.message); }
+}
+
+function selectTemplate(key) {
+  CURRENT_KEY = key;
+  CURRENT_TPL = TEMPLATES.find(t => t.key === key) || null;
+  renderList();
+  renderEditor();
+}
+
+async function loadTemplates() {
+  try {
+    const r = await api('list');
+    if (!r.ok) throw new Error(r.error || 'load failed');
+    TEMPLATES = r.templates || [];
+    if (CURRENT_KEY) CURRENT_TPL = TEMPLATES.find(t => t.key === CURRENT_KEY) || null;
+    renderList();
+  } catch (e) {
+    document.getElementById('template-list').innerHTML = `<div class="empty-state" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  let me;
+  try {
+    const r = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` }, body: JSON.stringify({ action: 'me' }) });
+    me = await r.json();
+    if (!me.ok) { logout(); return; }
+  } catch { logout(); return; }
+  document.title = `Emails — ${me.tenant.display_name}`;
+  document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+  if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
+  await loadTemplates();
+})();
+</script>
+</body>
+</html>
