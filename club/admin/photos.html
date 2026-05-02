@@ -131,8 +131,15 @@
 <main>
   <div class="toolbar">
     <h1>Photos</h1>
-    <p style="color:var(--muted);font-size:13px;margin:0">First 24 in your chosen order surface on the public landing page.</p>
+    <p style="color:var(--muted);font-size:13px;margin:0">First 24 in your chosen order auto-scroll on the public landing page.</p>
   </div>
+
+  <details id="pending-card" style="margin-bottom:18px;background:#fef3c7;border:1.5px solid #fcd34d;border-radius:14px;padding:14px 18px;display:none">
+    <summary style="cursor:pointer;font-weight:700;color:#7c2d12;list-style:none">
+      <span id="pending-summary">⏰ Photos pending member-upload approval</span>
+    </summary>
+    <div id="pending-list" style="margin-top:12px"><div style="color:#7c2d12">Loading…</div></div>
+  </details>
 
   <label class="upload-zone" id="drop">
     <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
@@ -223,9 +230,57 @@ async function refresh() {
     if (!data.ok) throw new Error(data.error || 'Failed to load');
     CACHE = (data.photos || []).filter(p => p.active);
     render(CACHE);
+    loadPending();
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// ── Pending approval queue ────────────────────────────────────────────
+async function loadPending() {
+  try {
+    const data = await call(PHOTOS_URL, 'list_pending');
+    if (!data.ok) return;
+    const rows = data.photos || [];
+    const card = document.getElementById('pending-card');
+    if (!rows.length) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    // Auto-open if URL hash says so
+    if (window.location.hash === '#pending') card.open = true;
+    document.getElementById('pending-summary').textContent =
+      `⏰ ${rows.length} photo${rows.length === 1 ? '' : 's'} pending member-upload approval`;
+    document.getElementById('pending-list').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+        ${rows.map(p => `
+          <div style="background:#fff;border:1px solid #fcd34d;border-radius:10px;overflow:hidden">
+            <img src="${escapeAttr(p.url)}" alt="" loading="lazy" style="width:100%;height:140px;object-fit:cover;display:block">
+            <div style="padding:8px 10px">
+              <div style="font-size:12px;color:#7c2d12;font-weight:600">From ${escapeHtml(p.uploader_name || 'Unknown member')}</div>
+              ${p.caption ? `<div style="font-size:11px;color:#92400e;margin-top:2px">${escapeHtml(p.caption)}</div>` : ''}
+              <div style="display:flex;gap:6px;margin-top:8px">
+                <button class="btn" style="flex:1;font-size:11px;padding:6px 10px;background:var(--green);border-color:var(--green)" onclick="approvePending('${escapeAttr(p.id)}')">✓ Approve</button>
+                <button class="btn btn-danger" style="flex:1;font-size:11px;padding:6px 10px" onclick="rejectPending('${escapeAttr(p.id)}')">✕ Reject</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+  } catch { /* silent */ }
+}
+async function approvePending(id) {
+  const r = await call(PHOTOS_URL, 'approve', { id });
+  if (!r.ok) { alert(r.error); return; }
+  await refresh();
+}
+async function rejectPending(id) {
+  const reason = prompt('Optional: why are you rejecting this photo? (visible in audit only)');
+  if (reason === null) return;
+  const r = await call(PHOTOS_URL, 'reject', { id, reason: reason || null });
+  if (!r.ok) { alert(r.error); return; }
+  await refresh();
 }
 
 // ── Upload ────────────────────────────────────────────────────────────

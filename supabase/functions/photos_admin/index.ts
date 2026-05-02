@@ -52,7 +52,7 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, url, caption, sort_order, active, created_at, updated_at';
+const FIELDS = 'id, tenant_id, url, caption, sort_order, active, created_at, updated_at, status, uploaded_by_kind, uploaded_by_member_id, uploader_name, approved_at, approved_by, rejected_at, rejected_by, rejected_reason';
 
 function strOrNull(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -77,12 +77,67 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   if (action === 'list') {
-    const { data, error } = await sb.from('photos').select(FIELDS)
-      .eq('tenant_id', TID)
+    // Default to approved-only (the gallery view). Pass status='all' to see
+    // every row, or status='pending'/'rejected' to filter.
+    const status = String(body.status ?? 'approved');
+    let q = sb.from('photos').select(FIELDS).eq('tenant_id', TID);
+    if (status !== 'all') q = q.eq('status', status);
+    const { data, error } = await q
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true, photos: data ?? [] });
+  }
+
+  if (action === 'list_pending') {
+    const { data, error } = await sb.from('photos').select(FIELDS)
+      .eq('tenant_id', TID).eq('active', true).eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, photos: data ?? [] });
+  }
+
+  if (action === 'pending_count') {
+    const { count } = await sb.from('photos').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).eq('active', true).eq('status', 'pending');
+    return jsonResponse({ ok: true, count: count ?? 0 });
+  }
+
+  if (action === 'approve') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const approved_by = payload.synthetic ? null : payload.sub;
+    const { data, error } = await sb.from('photos').update({
+      status: 'approved',
+      approved_at: new Date().toISOString(),
+      approved_by,
+      rejected_at: null, rejected_by: null, rejected_reason: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // Close any pending-approval admin task
+    await sb.from('admin_tasks').update({ completed_at: new Date().toISOString(), completed_by: approved_by })
+      .eq('tenant_id', TID).eq('source_kind', 'photo').eq('source_id', id).is('completed_at', null);
+    return jsonResponse({ ok: true, photo: data });
+  }
+
+  if (action === 'reject') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const reason = strOrNull(body.reason);
+    const rejected_by = payload.synthetic ? null : payload.sub;
+    const { error } = await sb.from('photos').update({
+      status: 'rejected',
+      rejected_at: new Date().toISOString(),
+      rejected_by,
+      rejected_reason: reason,
+      active: false,             // hide from any list that filters on active
+      updated_at: new Date().toISOString(),
+    }).eq('id', id).eq('tenant_id', TID);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await sb.from('admin_tasks').update({ completed_at: new Date().toISOString(), completed_by: rejected_by })
+      .eq('tenant_id', TID).eq('source_kind', 'photo').eq('source_id', id).is('completed_at', null);
+    return jsonResponse({ ok: true });
   }
 
   if (action === 'create') {
@@ -96,6 +151,10 @@ Deno.serve(async (req) => {
       caption: strOrNull(body.caption),
       sort_order: 0,
       created_by,
+      status: 'approved',                // admin uploads are auto-approved
+      uploaded_by_kind: 'admin',
+      approved_at: new Date().toISOString(),
+      approved_by: created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true, photo: data });

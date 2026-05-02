@@ -665,5 +665,74 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── submit_photo ───────────────────────────────────────────────────────
+  // Member uploads a photo. Lands in club-assets storage immediately but the
+  // photos row is created with status='pending' — admin must approve before
+  // it appears in the public/member gallery carousel.
+  // Body: { content_type, base64, caption? }
+  if (action === 'submit_photo') {
+    const content_type = String(body.content_type ?? '').trim();
+    const base64       = String(body.base64 ?? '');
+    const caption      = String(body.caption ?? '').trim().slice(0, 200) || null;
+    if (!content_type || !base64) {
+      return jsonResponse({ ok: false, error: 'content_type and base64 are required' }, 400);
+    }
+    const ALLOWED = new Set(['image/jpeg','image/png','image/webp','image/gif']);
+    if (!ALLOWED.has(content_type)) {
+      return jsonResponse({ ok: false, error: 'Only JPG / PNG / WebP / GIF images allowed' }, 400);
+    }
+    let bytes: Uint8Array;
+    try {
+      const bin = atob(base64);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid base64 data' }, 400);
+    }
+    if (bytes.byteLength > 8 * 1024 * 1024) {
+      return jsonResponse({ ok: false, error: 'Image too large (max 8 MB)' }, 400);
+    }
+
+    const tid = payload.tid as string;
+    const id  = crypto.randomUUID();
+    const extMap: Record<string, string> = {
+      'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif',
+    };
+    const path = `${tid}/member-uploads/${id}.${extMap[content_type]}`;
+    const { error: upErr } = await sb.storage.from('club-assets')
+      .upload(path, bytes, { contentType: content_type, upsert: false });
+    if (upErr) return jsonResponse({ ok: false, error: upErr.message }, 500);
+    const { data: pub } = sb.storage.from('club-assets').getPublicUrl(path);
+
+    // Look up the member's name to stamp on the photos row (so admin reviewer
+    // sees who submitted it without joining household_members later).
+    const { data: member } = await sb.from('household_members')
+      .select('name').eq('id', payload.sub as string).maybeSingle();
+
+    const { data: photo, error: phErr } = await sb.from('photos').insert({
+      tenant_id: tid,
+      url: pub.publicUrl,
+      caption,
+      status: 'pending',
+      uploaded_by_kind: 'member',
+      uploaded_by_member_id: payload.sub as string,
+      uploader_name: member?.name ?? null,
+      active: true,
+    }).select('id').single();
+    if (phErr) return jsonResponse({ ok: false, error: phErr.message }, 500);
+
+    // Open an admin task so the moderator queue surfaces this without polling
+    await sb.from('admin_tasks').insert({
+      tenant_id: tid,
+      target_scopes: ['photos'],
+      kind: 'photo.pending_approval',
+      summary: `Photo from ${member?.name || 'a member'} pending approval`,
+      link_url: '/club/admin/photos.html#pending',
+      source_kind: 'photo', source_id: photo.id,
+    });
+
+    return jsonResponse({ ok: true, photo_id: photo.id, url: pub.publicUrl, status: 'pending' });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

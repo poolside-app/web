@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
     .select('id, url, caption')
     .eq('tenant_id', tenant.id)
     .eq('active', true)
+    .eq('status', 'approved')           // hide pending + rejected from public + member views
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false })
     .limit(24);

@@ -196,6 +196,25 @@
   <div class="card"><p>Loading…</p></div>
 </main>
 
+<!-- Photo upload modal -->
+<div class="scrim" id="photo-scrim" onclick="if (event.target === this) closePhotoUpload()">
+  <div class="pmodal">
+    <h2 style="margin:0">📸 Upload a photo</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px">Your photo goes to the admin for approval first. Once approved, it shows up in the Snapshots carousel on the public landing and member home.</p>
+    <input type="file" id="photo-file" accept="image/jpeg,image/png,image/webp,image/gif" style="margin-bottom:10px">
+    <label>Caption <span style="color:var(--muted);font-weight:500;font-size:11px">(optional, shown over the photo)</span></label>
+    <input id="photo-caption" maxlength="200" placeholder="What's in the photo?">
+    <div id="photo-preview" style="margin-top:10px;display:none">
+      <img id="photo-preview-img" alt="" style="max-width:100%;max-height:240px;border-radius:10px;border:1px solid var(--border)">
+    </div>
+    <div class="perr" id="photo-err"></div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closePhotoUpload()">Cancel</button>
+      <button class="btn" id="photo-submit" onclick="submitPhoto()" style="background:var(--blue);color:#fff">Submit for approval</button>
+    </div>
+  </div>
+</div>
+
 <!-- Party request modal -->
 <div class="scrim" id="party-scrim" onclick="if (event.target === this) closePartyModal()">
   <div class="pmodal">
@@ -379,6 +398,69 @@ function formatPhoneInput(el) {
   if (digits.length < 4) { el.value = `(${digits}`; return; }
   if (digits.length < 7) { el.value = `(${digits.slice(0,3)})-${digits.slice(3)}`; return; }
   el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
+// ── Photo upload flow ──────────────────────────────────────────────────
+function openPhotoUpload() {
+  document.getElementById('photo-file').value = '';
+  document.getElementById('photo-caption').value = '';
+  document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('photo-err').classList.remove('show');
+  document.getElementById('photo-scrim').classList.add('open');
+}
+function closePhotoUpload() { document.getElementById('photo-scrim').classList.remove('open'); }
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'photo-file') {
+    const f = e.target.files && e.target.files[0];
+    const preview = document.getElementById('photo-preview');
+    const img = document.getElementById('photo-preview-img');
+    if (!f) { preview.style.display = 'none'; return; }
+    img.src = URL.createObjectURL(f);
+    preview.style.display = 'block';
+  }
+});
+async function submitPhoto() {
+  const errEl = document.getElementById('photo-err');
+  errEl.classList.remove('show');
+  const fileInput = document.getElementById('photo-file');
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) { errEl.textContent = 'Pick a photo first.'; errEl.classList.add('show'); return; }
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
+    errEl.textContent = 'JPG, PNG, WebP, or GIF only.'; errEl.classList.add('show'); return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    errEl.textContent = 'Image must be 8 MB or less.'; errEl.classList.add('show'); return;
+  }
+  const caption = document.getElementById('photo-caption').value.trim();
+  const btn = document.getElementById('photo-submit');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('Read failed'));
+      r.readAsDataURL(file);
+    });
+    const res = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({
+        action: 'submit_photo',
+        content_type: file.type,
+        base64,
+        caption: caption || null,
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Upload failed');
+    closePhotoUpload();
+    alert('✓ Submitted for admin approval. You\'ll see it in the Snapshots once approved.');
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 // ── Party request flow ─────────────────────────────────────────────────
@@ -938,7 +1020,7 @@ async function submitProfile() {
   const heroActions = [];
   if (user.can_book_parties) heroActions.push(`<button class="btn" onclick="openPartyModal()">🎉 Request a party</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openProfileModal()">Edit my info</button>`);
-  if (venmo) heroActions.push(`<a class="btn btn-ghost" href="https://venmo.com/${escapeAttr(venmo)}" target="_blank" rel="noopener">Pay dues via Venmo</a>`);
+  heroActions.push(`<button class="btn btn-ghost" onclick="openPhotoUpload()">📸 Upload a photo</button>`);
   heroActions.push(`<a class="btn btn-ghost" href="${SUPABASE_URL}/functions/v1/tenant_calendar_ics?slug=${encodeURIComponent(tenant.slug)}" target="_blank">📆 Subscribe to calendar</a>`);
   heroActions.push(`<a class="btn btn-ghost" href="/" target="_blank">Public home →</a>`);
 
@@ -986,12 +1068,21 @@ async function submitProfile() {
   const photos = publicData.photos || [];
   GALLERY = photos;
   const photosHtml = photos.length
-    ? `<div class="ggrid">${photos.map((p, i) => `
-        <div class="gtile" onclick="openLightbox(${i})">
-          <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.caption || '')}" loading="lazy">
-        </div>
-      `).join('')}</div>`
-    : '<div class="empty">No photos yet.</div>';
+    ? `
+      <div id="photo-carousel" style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:16/9;box-shadow:0 8px 24px rgba(10,59,92,.08)">
+        ${photos.map((p, i) => `
+          <div class="cslide" data-i="${i}" style="position:absolute;inset:0;opacity:${i === 0 ? 1 : 0};transition:opacity .8s ease;display:flex;align-items:center;justify-content:center">
+            <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.caption || '')}" loading="${i === 0 ? 'eager' : 'lazy'}" style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+            ${p.caption ? `<div style="position:absolute;left:0;right:0;bottom:0;padding:12px 16px;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;font-size:13px;font-weight:600">${escapeHtml(p.caption)}</div>` : ''}
+          </div>
+        `).join('')}
+        ${photos.length > 1 ? `
+          <div class="cdots" style="position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;gap:5px;z-index:2">
+            ${photos.map((_, i) => `<button class="cdot" data-i="${i}" style="width:8px;height:8px;border-radius:50%;border:0;cursor:pointer;background:${i === 0 ? '#fff' : 'rgba(255,255,255,.5)'};padding:0"></button>`).join('')}
+          </div>` : ''}
+      </div>
+    `
+    : '<div class="empty">No photos yet — be the first to upload one!</div>';
 
   const posts = publicData.posts || [];
   const postsHtml = posts.length
@@ -1069,12 +1160,13 @@ async function submitProfile() {
       </div>
     ` : ''}
 
-    ${photos.length ? `
-      <div class="card">
-        <h2>Photos</h2>
-        ${photosHtml}
-      </div>
-    ` : ''}
+    <div class="card">
+      <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        📸 Snapshots
+        <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Upload</button>
+      </h2>
+      ${photosHtml}
+    </div>
 
     <div class="card">
       <h2>Latest news</h2>
@@ -1103,6 +1195,27 @@ async function submitProfile() {
       openHoursLabel: calLabel,
     });
   }
+
+  // Snapshots carousel auto-scroll. Cross-fade every 5s, pause on hover.
+  (function initCarousel() {
+    const carousel = document.getElementById('photo-carousel');
+    if (!carousel) return;
+    const slides = carousel.querySelectorAll('.cslide');
+    const dots   = carousel.querySelectorAll('.cdot');
+    if (slides.length <= 1) return;
+    let idx = 0, timer = null;
+    function go(n) {
+      idx = (n + slides.length) % slides.length;
+      slides.forEach((s, i) => { s.style.opacity = i === idx ? '1' : '0'; });
+      dots.forEach((d, i)   => { d.style.background = i === idx ? '#fff' : 'rgba(255,255,255,.5)'; });
+    }
+    const start = () => { if (timer) clearInterval(timer); timer = setInterval(() => go(idx + 1), 5000); };
+    const stop  = () => { if (timer) clearInterval(timer); timer = null; };
+    dots.forEach(d => d.addEventListener('click', () => { go(Number(d.dataset.i)); start(); }));
+    carousel.addEventListener('mouseenter', stop);
+    carousel.addEventListener('mouseleave', start);
+    start();
+  })();
 
   refreshPrograms();
   refreshVolunteer();
