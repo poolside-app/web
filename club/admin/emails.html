@@ -54,6 +54,25 @@
     font-family: inherit;
   }
   .editor textarea { font-family: 'Menlo', 'Consolas', monospace; font-size: 13px; min-height: 280px; }
+  /* Visual editor — contenteditable styled like the real email so admins
+     edit something that looks like what members will receive. */
+  .visual-toolbar { display: flex; gap: 4px; padding: 8px; border: 1.5px solid var(--border); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--bg-2); flex-wrap: wrap; }
+  .visual-toolbar button { padding: 5px 10px; font: 600 13px 'Inter'; cursor: pointer; border: 1px solid transparent; border-radius: 6px; background: #fff; color: var(--text); min-width: 32px; }
+  .visual-toolbar button:hover { background: var(--blue-l); border-color: var(--blue); color: var(--blue); }
+  .visual-toolbar button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .visual-toolbar .sep { width: 1px; background: var(--border); margin: 0 4px; }
+  .visual-editor { min-height: 280px; padding: 16px 18px; border: 1.5px solid var(--border); border-radius: 0 0 10px 10px; background: #fff; outline: 0; font: 14px/1.55 'Inter', system-ui, sans-serif; color: var(--text); }
+  .visual-editor:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  .visual-editor h2 { font-family: 'Fraunces', Georgia, serif; font-size: 18px; color: var(--blue); margin: 0 0 8px; }
+  .visual-editor h3 { font-family: 'Fraunces', Georgia, serif; font-size: 15px; color: var(--blue); margin: 14px 0 6px; }
+  .visual-editor p { margin: 0 0 10px; }
+  .visual-editor a { color: var(--blue); text-decoration: underline; }
+  .visual-editor ul, .visual-editor ol { padding-left: 22px; margin: 8px 0; }
+  /* Variable placeholders rendered as chips inside the editor */
+  .visual-editor .var-token, .visual-editor [data-var] { display: inline-block; padding: 1px 8px; background: var(--bg-2); color: var(--blue); border: 1px solid var(--border); border-radius: 999px; font-family: 'Menlo', monospace; font-size: 11px; user-select: all; }
+  .mode-toggle { display: flex; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+  .mode-toggle button { background: transparent; border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; cursor: pointer; font: 600 11px 'Inter'; color: var(--muted); }
+  .mode-toggle button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
   .editor input:focus, .editor textarea:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
 
   .vars { padding: 12px 14px; background: var(--bg-2); border-radius: 10px; font-size: 12px; line-height: 1.7; margin-top: 10px; }
@@ -209,13 +228,37 @@ function renderEditor() {
     <label>Subject line</label>
     <input type="text" id="ed-subject" value="${escapeHtml(subjectVal)}">
 
-    <label>Body (HTML)</label>
-    <textarea id="ed-body">${escapeHtml(bodyVal)}</textarea>
+    <label>Body</label>
+    <div class="mode-toggle">
+      <button id="mode-visual" class="on" onclick="setMode('visual')">📝 Visual</button>
+      <button id="mode-html" onclick="setMode('html')">&lt;/&gt; HTML</button>
+      <span style="margin-left:auto;font-size:11px">Pick visual unless you know HTML.</span>
+    </div>
 
-    <label>Available variables — click to insert</label>
+    <div id="visual-wrap">
+      <div class="visual-toolbar">
+        <button title="Heading" onclick="exec('formatBlock','H2')">H2</button>
+        <button title="Subheading" onclick="exec('formatBlock','H3')">H3</button>
+        <button title="Paragraph" onclick="exec('formatBlock','P')">P</button>
+        <span class="sep"></span>
+        <button title="Bold (Ctrl+B)" onclick="exec('bold')"><b>B</b></button>
+        <button title="Italic (Ctrl+I)" onclick="exec('italic')"><i>I</i></button>
+        <span class="sep"></span>
+        <button title="Bulleted list" onclick="exec('insertUnorderedList')">• List</button>
+        <button title="Numbered list" onclick="exec('insertOrderedList')">1. List</button>
+        <span class="sep"></span>
+        <button title="Add link" onclick="addLink()">🔗 Link</button>
+        <button title="Remove all formatting" onclick="exec('removeFormat')">⊘ Clear</button>
+      </div>
+      <div id="ed-body-visual" class="visual-editor" contenteditable="true">${bodyVal}</div>
+    </div>
+
+    <textarea id="ed-body" style="display:none">${escapeHtml(bodyVal)}</textarea>
+
+    <label>Available variables — click to insert at cursor</label>
     <div class="vars">
       ${t.variables.map(v => `<span class="var-chip" onclick="insertVar('${escapeHtml(v)}')">{{${escapeHtml(v)}}}</span>`).join('')}
-      <div style="margin-top:6px;font-size:11px;color:var(--muted)">Variables are HTML-escaped on render. Use them anywhere in subject or body.</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted)">Variables are auto-replaced with the right value when the email is sent. Use them anywhere in subject or body.</div>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;align-items:center">
@@ -233,20 +276,108 @@ function renderEditor() {
       <iframe class="preview-iframe" id="prev-iframe" sandbox=""></iframe>
     </div>
   `;
-  // Auto-refresh preview when fields change
+  // Auto-refresh preview when fields change. Visual editor fires 'input'
+  // on every keystroke; textarea same. Sync visual → textarea on each
+  // change so getBodyHtml() returns the latest content.
   document.getElementById('ed-subject').addEventListener('input', refreshPreview);
   document.getElementById('ed-body').addEventListener('input', refreshPreview);
+  const visualEd = document.getElementById('ed-body-visual');
+  if (visualEd) {
+    visualEd.addEventListener('input', () => { syncVisualToTextarea(); refreshPreview(); });
+  }
+  // Reset mode to visual whenever a new template is opened
+  currentMode = 'visual';
   refreshPreview();
 }
 
-function insertVar(name) {
+// Pull HTML from whichever mode is active. Visual mode wins by default;
+// HTML mode is only the source of truth while toggled to it.
+function getBodyHtml() {
+  const visualEditor = document.getElementById('ed-body-visual');
   const ta = document.getElementById('ed-body');
-  if (!ta) return;
-  const start = ta.selectionStart, end = ta.selectionEnd;
+  if (currentMode === 'visual' && visualEditor) {
+    syncVisualToTextarea();
+    return ta.value;
+  }
+  return ta ? ta.value : '';
+}
+// Copy contenteditable HTML into the hidden textarea (used by save + preview).
+function syncVisualToTextarea() {
+  const visualEditor = document.getElementById('ed-body-visual');
+  const ta = document.getElementById('ed-body');
+  if (visualEditor && ta) ta.value = visualEditor.innerHTML;
+}
+
+let currentMode = 'visual';
+function setMode(mode) {
+  currentMode = mode;
+  const visualBtn = document.getElementById('mode-visual');
+  const htmlBtn = document.getElementById('mode-html');
+  const wrap = document.getElementById('visual-wrap');
+  const ta = document.getElementById('ed-body');
+  if (mode === 'html') {
+    syncVisualToTextarea();   // keep textarea up to date before showing it
+    wrap.style.display = 'none';
+    ta.style.display = 'block';
+    visualBtn.classList.remove('on');
+    htmlBtn.classList.add('on');
+  } else {
+    // copy textarea back into visual editor
+    document.getElementById('ed-body-visual').innerHTML = ta.value;
+    wrap.style.display = 'block';
+    ta.style.display = 'none';
+    visualBtn.classList.add('on');
+    htmlBtn.classList.remove('on');
+  }
+  refreshPreview();
+}
+
+// document.execCommand bridge for the visual toolbar. It's "deprecated"
+// per spec but every browser still ships it and there's no smaller modern
+// API for the basic commands we need.
+function exec(cmd, arg) {
+  const ed = document.getElementById('ed-body-visual');
+  if (ed) ed.focus();
+  document.execCommand(cmd, false, arg || null);
+  syncVisualToTextarea();
+  refreshPreview();
+}
+
+function addLink() {
+  const url = prompt('Link URL (paste full URL including https://):', 'https://');
+  if (!url) return;
+  exec('createLink', url);
+}
+
+// Cursor-aware variable insertion. Works in both modes.
+function insertVar(name) {
   const txt = `{{${name}}}`;
-  ta.value = ta.value.slice(0, start) + txt + ta.value.slice(end);
-  ta.focus();
-  ta.selectionStart = ta.selectionEnd = start + txt.length;
+  if (currentMode === 'visual') {
+    const ed = document.getElementById('ed-body-visual');
+    if (!ed) return;
+    ed.focus();
+    // Use Selection / Range so the chip lands at the cursor, not appended
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && ed.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(txt));
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      // Fallback: append at end
+      ed.appendChild(document.createTextNode(txt));
+    }
+    syncVisualToTextarea();
+  } else {
+    const ta = document.getElementById('ed-body');
+    if (!ta) return;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    ta.value = ta.value.slice(0, start) + txt + ta.value.slice(end);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = start + txt.length;
+  }
   refreshPreview();
 }
 
@@ -256,7 +387,7 @@ async function refreshPreview() {
   PREVIEW_DEBOUNCE = setTimeout(async () => {
     if (!CURRENT_KEY) return;
     const subject = document.getElementById('ed-subject').value;
-    const body_html = document.getElementById('ed-body').value;
+    const body_html = getBodyHtml();
     try {
       const r = await api('preview', { key: CURRENT_KEY, subject, body_html });
       if (!r.ok) throw new Error(r.error);
@@ -278,7 +409,7 @@ async function saveTemplate() {
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
   try {
     const subject = document.getElementById('ed-subject').value.trim();
-    const body_html = document.getElementById('ed-body').value.trim();
+    const body_html = getBodyHtml().trim();
     const enabled = document.getElementById('ed-enabled').checked;
     const r = await api('save', { key: CURRENT_KEY, subject, body_html, enabled });
     if (!r.ok) throw new Error(r.error || 'save failed');

@@ -50,10 +50,25 @@ async function verifyAdmin(token: string): Promise<AdminPayload | null> {
     return p as unknown as AdminPayload;
   } catch { return null; }
 }
-function hasCommScope(p: AdminPayload): boolean {
+function hasCommScopeFromJwt(p: AdminPayload): boolean {
   if (p.is_super) return true;
   if (p.role_template === 'owner') return true;
   return Array.isArray(p.scopes) && (p.scopes.includes('communications') || p.scopes.includes('announcements'));
+}
+
+// JWT-first, DB-fallback. Old tokens (issued before role_template/scopes
+// were embedded in the payload) lack those fields; we fall back to a
+// per-request DB lookup so they still work without forcing re-login.
+async function hasCommScope(sb: ReturnType<typeof createClient>, p: AdminPayload): Promise<boolean> {
+  if (hasCommScopeFromJwt(p)) return true;
+  if (p.role_template !== undefined && p.scopes !== undefined) return false;  // claims present but failed
+  const { data: admin } = await sb.from('admin_users')
+    .select('role_template, scopes, is_super, active').eq('id', p.sub).maybeSingle();
+  if (!admin || !admin.active) return false;
+  if (admin.is_super) return true;
+  if (admin.role_template === 'owner') return true;
+  const scopes = (admin.scopes as string[] | null) ?? [];
+  return scopes.includes('communications') || scopes.includes('announcements');
 }
 
 // Sample variables used by the Preview action when the admin hasn't set them.
@@ -88,13 +103,15 @@ Deno.serve(async (req) => {
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = tokRaw ? await verifyAdmin(tokRaw) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
-  if (!hasCommScope(payload)) return jsonResponse({ ok: false, error: 'Missing communications scope' }, 403);
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+  if (!(await hasCommScope(sb, payload))) {
+    return jsonResponse({ ok: false, error: 'Missing communications scope' }, 403);
+  }
 
   if (action === 'list') {
     const { data: overrides } = await sb.from('email_templates')

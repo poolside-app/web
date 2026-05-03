@@ -161,7 +161,12 @@ function sanitizeScopes(input: unknown): string[] {
   return [...new Set(input.map(String).filter(s => valid.has(s)))];
 }
 
-async function signToken(adminUserId: string, tenantId: string, slug: string): Promise<string> {
+async function signToken(
+  adminUserId: string,
+  tenantId: string,
+  slug: string,
+  extras: { role_template?: string | null; scopes?: string[] | null; is_super?: boolean | null } = {},
+): Promise<string> {
   const key = await getJwtKey();
   return await create(
     { alg: 'HS256', typ: 'JWT' },
@@ -170,6 +175,13 @@ async function signToken(adminUserId: string, tenantId: string, slug: string): P
       kind: 'tenant_admin',
       tid: tenantId,
       slug,
+      // Include role + scopes + super flag so downstream functions can
+      // gate-check without a DB round-trip on every call. Owners (default)
+      // get scopes=[] which the helpers treat as "full access" via the
+      // role_template === 'owner' shortcut.
+      role_template: extras.role_template ?? 'owner',
+      scopes: extras.scopes ?? [],
+      is_super: extras.is_super ?? false,
       exp: getNumericDate(60 * 60 * 24 * 30),  // 30 days
     },
     key,
@@ -230,7 +242,11 @@ Deno.serve(async (req) => {
     const ok = await bcrypt.compare(password, user.password_hash || '');
     if (!ok) return jsonResponse({ ok: false, error: 'Invalid credentials' }, 401);
 
-    const token = await signToken(user.id, tenant.id, tenant.slug);
+    const token = await signToken(user.id, tenant.id, tenant.slug, {
+      role_template: user.role_template ?? 'owner',
+      scopes: user.scopes ?? [],
+      is_super: !!user.is_super,
+    });
     return jsonResponse({
       ok: true,
       token,
@@ -338,7 +354,11 @@ Deno.serve(async (req) => {
       .eq('id', link.admin_user_id).maybeSingle();
     if (!admin || !admin.active) return jsonResponse({ ok: false, error: 'Admin not found' }, 401);
     await sb.from('admin_magic_links').update({ used_at: new Date().toISOString() }).eq('id', link.id);
-    const jwt = await signToken(admin.id, tenant.id, tenant.slug);
+    const jwt = await signToken(admin.id, tenant.id, tenant.slug, {
+      role_template: admin.role_template ?? 'owner',
+      scopes: admin.scopes ?? [],
+      is_super: !!admin.is_super,
+    });
     return jsonResponse({
       ok: true, token: jwt,
       user: {
