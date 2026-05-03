@@ -78,6 +78,7 @@ async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUr
 }
 
 async function sendAdminSms(args: { to: string; tenantName: string; verifyLink: string }) {
+  if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const sid = TWILIO_SID, tok = TWILIO_TOKEN, from = TWILIO_FROM_N;
   if (!sid || !tok || !from) return { sent: false, error: 'TWILIO_* env vars not set' };
   const smsBody = `Sign in to ${args.tenantName} admin: ${args.verifyLink}`;

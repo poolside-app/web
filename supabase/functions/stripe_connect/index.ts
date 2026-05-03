@@ -107,14 +107,24 @@ Deno.serve(async (req) => {
 
     let accountId = tenant.stripe_account_id;
     if (!accountId) {
-      // Create a fresh Connect account for this tenant
-      const acctRes = await stripe('/accounts', {
+      // Look up the calling admin's email so Stripe can pre-fill the
+      // owner email during onboarding. If we can't resolve it for any
+      // reason, omit the email field entirely — Stripe will collect it
+      // during the hosted onboarding flow. (Passing empty string fails
+      // Stripe's stricter 2026 validation.)
+      const { data: admin } = await sb.from('admin_users')
+        .select('email').eq('id', payload.sub).maybeSingle();
+      const adminEmail = admin?.email && /@/.test(String(admin.email)) ? String(admin.email) : null;
+
+      const params: Record<string, string> = {
         type: 'standard',
-        email: '',  // tenant fills this in during onboarding
         'metadata[tenant_id]': tenant.id,
         'metadata[tenant_slug]': tenant.slug,
         'business_profile[name]': tenant.display_name,
-      });
+      };
+      if (adminEmail) params.email = adminEmail;
+
+      const acctRes = await stripe('/accounts', params);
       if (!acctRes.ok) return jsonResponse({ ok: false, error: acctRes.error }, 500);
       accountId = (acctRes.data as { id: string }).id;
       await sb.from('tenants').update({ stripe_account_id: accountId }).eq('id', tenant.id);

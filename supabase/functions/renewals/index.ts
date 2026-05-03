@@ -130,6 +130,7 @@ async function sendRenewalEmail(args: {
 async function sendRenewalSms(args: {
   to: string; tenantName: string; verifyLink: string; earlyBirdLine: string;
 }): Promise<{ sent: boolean; error?: string }> {
+  if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
   const tok = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromN = Deno.env.get('TWILIO_FROM_NUMBER');

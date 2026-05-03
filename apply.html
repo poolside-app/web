@@ -234,7 +234,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-04-30k</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-05-03a</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -705,26 +705,47 @@ async function submitApplication() {
     const isVenmo = method === 'venmo';
     const isStripe = method === 'stripe';
     const isStripePlan = method === 'stripe_plan';
+
+    // Stripe paths: auto-redirect to Checkout immediately. The applicant
+    // shouldn't be able to "submit and walk away unpaid" — submit is a
+    // commitment to pay, so we route them straight to the card form.
+    if (isStripe || isStripePlan) {
+      btn.textContent = 'Opening Stripe…';
+      try {
+        const cr = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            action: isStripePlan ? 'application_plan' : 'application',
+            application_id: appId,
+          }),
+        }).then(r => r.json());
+        if (!cr.ok) throw new Error(cr.error || 'Checkout failed');
+        window.location.href = cr.url;
+        return;     // page is about to navigate; bail before rendering anything
+      } catch (e) {
+        // Checkout creation failed — fall back to a confirmation card so the
+        // applicant can retry. App is still saved server-side as 'pending'.
+        document.getElementById('form').className = 'card ok';
+        document.getElementById('form').innerHTML = `
+          <h1>🎉 Got it!</h1>
+          <p class="lede">Your application is in the queue. We hit a snag opening Stripe checkout — try again or the board will follow up.</p>
+          <div style="margin-top:18px;padding:16px;border:1.5px solid #fecaca;border-radius:14px;background:#fee2e2;color:#7f1d1d;font-size:13px;text-align:center">
+            <b>Stripe error:</b> ${escapeHtml(e.message)}
+          </div>
+          <div style="text-align:center;margin-top:14px">
+            <button onclick="window.location.reload()" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px 'Inter';cursor:pointer">Try again</button>
+          </div>
+        `;
+        return;
+      }
+    }
+
+    // Non-Stripe paths render the existing confirmation card with venmo
+    // claim button or generic "we'll be in touch" message.
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. The board will review and reach out within a few days.</p>
-      ${isStripe ? `
-        <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
-          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Pay your dues now with card</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Stripe checkout opens in this tab. You'll be returned here when done.</div>
-          <button id="stripe-pay-btn" type="button" style="padding:12px 22px;background:#635bff;color:#fff;border:0;border-radius:10px;font:600 14px 'Inter';cursor:pointer">💳 Pay with card →</button>
-          <div id="stripe-pay-err" style="display:none;margin-top:10px;padding:10px;background:#fee2e2;color:#7f1d1d;border-radius:8px;font-size:13px"></div>
-        </div>
-      ` : ''}
-      ${isStripePlan ? `
-        <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
-          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Start your payment plan</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Stripe will charge installment 1 now and save your card to auto-charge installment 2 on the final due date.</div>
-          <button id="stripe-plan-btn" type="button" style="padding:12px 22px;background:#635bff;color:#fff;border:0;border-radius:10px;font:600 14px 'Inter';cursor:pointer">🗓️ Start payment plan →</button>
-          <div id="stripe-plan-err" style="display:none;margin-top:10px;padding:10px;background:#fee2e2;color:#7f1d1d;border-radius:8px;font-size:13px"></div>
-        </div>
-      ` : ''}
       ${isVenmo && venmoHandle ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2)">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Already paid via Venmo?</div>
@@ -735,38 +756,6 @@ async function submitApplication() {
       ` : ''}
       <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
     `;
-    const stripeBtn = document.getElementById('stripe-pay-btn');
-    if (stripeBtn) stripeBtn.addEventListener('click', async () => {
-      stripeBtn.disabled = true; stripeBtn.textContent = 'Opening Stripe…';
-      try {
-        const cr = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'application', application_id: appId }),
-        }).then(r => r.json());
-        if (!cr.ok) throw new Error(cr.error || 'Checkout failed');
-        window.location.href = cr.url;
-      } catch (e) {
-        stripeBtn.disabled = false; stripeBtn.textContent = '💳 Pay with card →';
-        const err = document.getElementById('stripe-pay-err');
-        err.style.display = 'block'; err.textContent = e.message;
-      }
-    });
-    const planBtn = document.getElementById('stripe-plan-btn');
-    if (planBtn) planBtn.addEventListener('click', async () => {
-      planBtn.disabled = true; planBtn.textContent = 'Opening Stripe…';
-      try {
-        const cr = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'application_plan', application_id: appId }),
-        }).then(r => r.json());
-        if (!cr.ok) throw new Error(cr.error || 'Plan setup failed');
-        window.location.href = cr.url;
-      } catch (e) {
-        planBtn.disabled = false; planBtn.textContent = '🗓️ Start payment plan →';
-        const err = document.getElementById('stripe-plan-err');
-        err.style.display = 'block'; err.textContent = e.message;
-      }
-    });
     const claimBtn = document.getElementById('claim-paid-btn');
     if (claimBtn) claimBtn.addEventListener('click', async () => {
       claimBtn.disabled = true; claimBtn.textContent = 'Sending…';

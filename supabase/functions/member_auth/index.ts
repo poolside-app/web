@@ -69,6 +69,9 @@ function escapeHtml(s: string): string {
 // Twilio SMS sender — returns { sent, error? } so callers can fall back
 // to a dev_link when keys aren't set.
 async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string }): Promise<{ sent: boolean; error?: string }> {
+  // SMS_DEV_MODE forces dev_link fallback for testing while waiting for
+  // A2P 10DLC approval. The function does NOT call Twilio when set.
+  if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const sid    = Deno.env.get('TWILIO_ACCOUNT_SID');
   const token  = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromN  = Deno.env.get('TWILIO_FROM_NUMBER');
