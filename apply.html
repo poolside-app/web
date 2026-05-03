@@ -234,7 +234,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-05-03a</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-05-03b</span></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -347,6 +347,30 @@ function formatPhoneInput(el) {
   el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
 }
 
+// Real-time DOB sanity check. Browsers DON'T enforce min/max on typed
+// input — only on the native picker. So we re-validate here and visually
+// flag the field if the year is outside 1900..today.
+function validateDob(el) {
+  const v = el.value;
+  const min = el.min || '1900-01-01';
+  const max = el.max || new Date().toISOString().slice(0, 10);
+  let invalid = false;
+  if (v) {
+    const d = new Date(v + 'T00:00:00');
+    if (!Number.isFinite(d.getTime())) invalid = true;
+    if (v < min || v > max) invalid = true;
+  }
+  if (invalid) {
+    el.style.borderColor = '#dc2626';
+    el.style.boxShadow = '0 0 0 3px rgba(220,38,38,.15)';
+    el.dataset.invalidDob = '1';
+  } else {
+    el.style.borderColor = '';
+    el.style.boxShadow = '';
+    delete el.dataset.invalidDob;
+  }
+}
+
 // Step 2 — dynamic adult/child rows
 function rebuildPeople() {
   const a = parseInt(document.getElementById('acount').value, 10) || 1;
@@ -354,6 +378,11 @@ function rebuildPeople() {
   const aBox = document.getElementById('adultsBox');
   const cBox = document.getElementById('childrenBox');
   aBox.innerHTML = '';
+  // DOB constraints — nobody alive before 1900, no future birthdays.
+  // The min/max attributes constrain native pickers AND drive form
+  // validity flags so _goNext can block submit on out-of-range typed input.
+  const todayDob = new Date().toISOString().slice(0, 10);
+  const minDob   = '1900-01-01';
   for (let i = 0; i < a; i++) {
     aBox.insertAdjacentHTML('beforeend', `
       <div class="person-row">
@@ -361,7 +390,7 @@ function rebuildPeople() {
         <label>Full name *</label>
         <input data-adult="${i}" data-field="name" placeholder="${i === 0 ? 'Jane Smith' : 'Other adult'}">
         <div class="row2">
-          <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date"></div>
+          <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)"></div>
           <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:-4px">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
@@ -378,7 +407,7 @@ function rebuildPeople() {
         <label>Full name *</label>
         <input data-child="${i}" data-field="name">
         <label>Date of birth *</label>
-        <input data-child="${i}" data-field="dob" type="date">
+        <input data-child="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)">
       </div>
     `);
   }
@@ -579,6 +608,20 @@ function _goNext() {
     const kids = collectChildren();
     const kidCount = parseInt(document.getElementById('ccount').value, 10) || 0;
     if (kids.length !== kidCount) return show('Fill in every child\'s name (or set Children to a smaller number)');
+
+    // Final DOB sweep — re-run validateDob on every dob input so typed-in
+    // out-of-range years are caught before allowing advance.
+    const todayDob = new Date().toISOString().slice(0, 10);
+    const dobInputs = document.querySelectorAll('[data-field="dob"]');
+    let badDob = null;
+    dobInputs.forEach(el => {
+      validateDob(el);
+      if (el.dataset.invalidDob === '1' && !badDob) badDob = el;
+    });
+    if (badDob) {
+      try { badDob.focus(); } catch { /* ignore */ }
+      return show('One date of birth looks wrong — year must be between 1900 and today.');
+    }
   } else if (CURRENT_STEP === 3) {
     const reqKeys = Object.keys(ACCEPTED);
     if (reqKeys.length && !reqKeys.every(k => ACCEPTED[k])) {
