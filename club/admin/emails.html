@@ -68,8 +68,19 @@
   .visual-editor p { margin: 0 0 10px; }
   .visual-editor a { color: var(--blue); text-decoration: underline; }
   .visual-editor ul, .visual-editor ol { padding-left: 22px; margin: 8px 0; }
-  /* Variable placeholders rendered as chips inside the editor */
-  .visual-editor .var-token, .visual-editor [data-var] { display: inline-block; padding: 1px 8px; background: var(--bg-2); color: var(--blue); border: 1px solid var(--border); border-radius: 999px; font-family: 'Menlo', monospace; font-size: 11px; user-select: all; }
+  /* Variable placeholders rendered as inline chips. user-select:all so a
+     single click selects the entire chip; contenteditable=false on the
+     span itself prevents typing inside the chip — user types around it. */
+  .visual-editor .var-token, .visual-editor [data-var] {
+    display: inline-block; padding: 1px 9px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #7c2d12; border: 1px solid #fcd34d; border-radius: 999px;
+    font: 600 12px 'Inter', sans-serif; user-select: all; cursor: default;
+    margin: 0 1px; vertical-align: baseline;
+  }
+  .visual-editor .var-token::before, .visual-editor [data-var]::before {
+    content: '✦ '; opacity: .55; margin-right: 1px;
+  }
   .mode-toggle { display: flex; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
   .mode-toggle button { background: transparent; border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; cursor: pointer; font: 600 11px 'Inter'; color: var(--muted); }
   .mode-toggle button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
@@ -150,6 +161,52 @@ const TPL_URL   = `${SUPABASE_URL}/functions/v1/email_templates`;
 let TEMPLATES = [];
 let CURRENT_KEY = null;
 let CURRENT_TPL = null;
+
+// Plain-English labels for every variable that exists in any template.
+// Showing 'Member's name' in the chip is far friendlier than '{{primary_name}}'.
+const VARIABLE_LABELS = {
+  tenant_name:    'Club name',
+  primary_name:   "Member's name",
+  family_name:    'Family name',
+  tier_label:     'Tier name',
+  tier_price:     'Tier price',
+  venmo_handle:   'Venmo handle',
+  num_adults:     'Adults count',
+  num_kids:       'Kids count',
+  payment_method: 'Payment method',
+  first_amount:   '1st installment $',
+  second_amount:  '2nd installment $',
+  final_due_date: 'Final due date',
+  sign_in_link:   'Sign-in link',
+  amount:         'Amount',
+  sequence:       'Installment #',
+  next_amount:    'Next installment $',
+  next_due_date:  'Next due date',
+  admin_notes:    "Admin's note",
+  club_url:       'Club website URL',
+};
+function labelFor(varName) {
+  return VARIABLE_LABELS[varName] || varName.replace(/_/g, ' ');
+}
+
+// Replace {{var_name}} with styled atomic chips for display. The data-var
+// attribute holds the canonical name so we can untokenize back to {{var}}
+// before storing.
+function tokenize(html) {
+  return String(html ?? '').replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_m, name) => {
+    return `<span class="var-token" data-var="${name}" contenteditable="false">${labelFor(name)}</span>`;
+  });
+}
+// Inverse: walk DOM, replace each chip back to its {{var}} syntax.
+function untokenize(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html ?? '');
+  tmp.querySelectorAll('span[data-var]').forEach(span => {
+    const name = span.getAttribute('data-var');
+    if (name) span.replaceWith(document.createTextNode(`{{${name}}}`));
+  });
+  return tmp.innerHTML;
+}
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -237,28 +294,28 @@ function renderEditor() {
 
     <div id="visual-wrap">
       <div class="visual-toolbar">
-        <button title="Heading" onclick="exec('formatBlock','H2')">H2</button>
-        <button title="Subheading" onclick="exec('formatBlock','H3')">H3</button>
-        <button title="Paragraph" onclick="exec('formatBlock','P')">P</button>
+        <button title="Big heading" onclick="exec('formatBlock','H2')">Heading</button>
+        <button title="Smaller heading" onclick="exec('formatBlock','H3')">Subhead</button>
+        <button title="Normal paragraph" onclick="exec('formatBlock','P')">Normal</button>
         <span class="sep"></span>
         <button title="Bold (Ctrl+B)" onclick="exec('bold')"><b>B</b></button>
         <button title="Italic (Ctrl+I)" onclick="exec('italic')"><i>I</i></button>
         <span class="sep"></span>
-        <button title="Bulleted list" onclick="exec('insertUnorderedList')">• List</button>
-        <button title="Numbered list" onclick="exec('insertOrderedList')">1. List</button>
+        <button title="Bulleted list" onclick="exec('insertUnorderedList')">• Bullets</button>
+        <button title="Numbered list" onclick="exec('insertOrderedList')">1. Numbered</button>
         <span class="sep"></span>
-        <button title="Add link" onclick="addLink()">🔗 Link</button>
-        <button title="Remove all formatting" onclick="exec('removeFormat')">⊘ Clear</button>
+        <button title="Add a link" onclick="addLink()">🔗 Link</button>
+        <button title="Remove formatting from selected text" onclick="exec('removeFormat')">↺ Plain</button>
       </div>
-      <div id="ed-body-visual" class="visual-editor" contenteditable="true">${bodyVal}</div>
+      <div id="ed-body-visual" class="visual-editor" contenteditable="true">${tokenize(bodyVal)}</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted)">💡 The yellow chips like <span class="var-token" data-var="primary_name">${labelFor('primary_name')}</span> are placeholders — they auto-fill with the real name when the email sends. Type around them; click to delete.</div>
     </div>
 
     <textarea id="ed-body" style="display:none">${escapeHtml(bodyVal)}</textarea>
 
-    <label>Available variables — click to insert at cursor</label>
+    <label>Click to insert a placeholder at your cursor</label>
     <div class="vars">
-      ${t.variables.map(v => `<span class="var-chip" onclick="insertVar('${escapeHtml(v)}')">{{${escapeHtml(v)}}}</span>`).join('')}
-      <div style="margin-top:6px;font-size:11px;color:var(--muted)">Variables are auto-replaced with the right value when the email is sent. Use them anywhere in subject or body.</div>
+      ${t.variables.map(v => `<span class="var-chip" title="{{${escapeHtml(v)}}}" onclick="insertVar('${escapeHtml(v)}')">${escapeHtml(labelFor(v))}</span>`).join('')}
     </div>
 
     <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;align-items:center">
@@ -301,11 +358,12 @@ function getBodyHtml() {
   }
   return ta ? ta.value : '';
 }
-// Copy contenteditable HTML into the hidden textarea (used by save + preview).
+// Copy contenteditable HTML into the hidden textarea — converts the styled
+// chips back to {{var}} text so what's saved is the canonical template.
 function syncVisualToTextarea() {
   const visualEditor = document.getElementById('ed-body-visual');
   const ta = document.getElementById('ed-body');
-  if (visualEditor && ta) ta.value = visualEditor.innerHTML;
+  if (visualEditor && ta) ta.value = untokenize(visualEditor.innerHTML);
 }
 
 let currentMode = 'visual';
@@ -316,14 +374,14 @@ function setMode(mode) {
   const wrap = document.getElementById('visual-wrap');
   const ta = document.getElementById('ed-body');
   if (mode === 'html') {
-    syncVisualToTextarea();   // keep textarea up to date before showing it
+    syncVisualToTextarea();   // textarea gets canonical {{var}} syntax
     wrap.style.display = 'none';
     ta.style.display = 'block';
     visualBtn.classList.remove('on');
     htmlBtn.classList.add('on');
   } else {
-    // copy textarea back into visual editor
-    document.getElementById('ed-body-visual').innerHTML = ta.value;
+    // copy textarea back into visual editor — re-tokenize chips
+    document.getElementById('ed-body-visual').innerHTML = tokenize(ta.value);
     wrap.style.display = 'block';
     ta.style.display = 'none';
     visualBtn.classList.add('on');
@@ -349,28 +407,38 @@ function addLink() {
   exec('createLink', url);
 }
 
-// Cursor-aware variable insertion. Works in both modes.
+// Cursor-aware variable insertion. Visual mode drops a styled chip;
+// HTML mode inserts the literal {{var}} text (for power users).
 function insertVar(name) {
-  const txt = `{{${name}}}`;
   if (currentMode === 'visual') {
     const ed = document.getElementById('ed-body-visual');
     if (!ed) return;
     ed.focus();
-    // Use Selection / Range so the chip lands at the cursor, not appended
+    const span = document.createElement('span');
+    span.className = 'var-token';
+    span.contentEditable = 'false';
+    span.setAttribute('data-var', name);
+    span.textContent = labelFor(name);
     const sel = window.getSelection();
     if (sel && sel.rangeCount && ed.contains(sel.anchorNode)) {
       const range = sel.getRangeAt(0);
       range.deleteContents();
-      range.insertNode(document.createTextNode(txt));
-      range.collapse(false);
+      range.insertNode(span);
+      // Move the cursor to AFTER the inserted chip + add a space so the user
+      // can immediately type without typing inside the chip.
+      const after = document.createTextNode(' ');
+      span.parentNode.insertBefore(after, span.nextSibling);
+      const newRange = document.createRange();
+      newRange.setStartAfter(after);
+      newRange.collapse(true);
       sel.removeAllRanges();
-      sel.addRange(range);
+      sel.addRange(newRange);
     } else {
-      // Fallback: append at end
-      ed.appendChild(document.createTextNode(txt));
+      ed.appendChild(span);
     }
     syncVisualToTextarea();
   } else {
+    const txt = `{{${name}}}`;
     const ta = document.getElementById('ed-body');
     if (!ta) return;
     const start = ta.selectionStart, end = ta.selectionEnd;
