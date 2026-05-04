@@ -21,6 +21,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { requireOwner } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -85,6 +86,11 @@ Deno.serve(async (req) => {
 
   // ── save ───────────────────────────────────────────────────────────────
   if (action === 'save') {
+    // OWNER ONLY: settings include payment config, branding, tier prices —
+    // any tenant_admin shouldn't be able to silently rewrite these.
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can change club settings' }, 403);
+    }
     const value = (body.value ?? {}) as Record<string, unknown>;
     if (typeof value !== 'object' || Array.isArray(value)) {
       return jsonResponse({ ok: false, error: '`value` must be a JSON object' }, 400);

@@ -99,6 +99,12 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'onboard' || action === 'refresh_link') {
+    // OWNER ONLY: connecting a Stripe account routes all the club's money
+    // through it. A scoped admin should never be able to redirect funds.
+    const { requireOwner } = await import('../_shared/auth.ts');
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can connect or change Stripe accounts' }, 403);
+    }
     if (!STRIPE_KEY) return jsonResponse({ ok: false, error: 'Stripe not configured on the platform yet (STRIPE_SECRET_KEY missing)' }, 503);
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;

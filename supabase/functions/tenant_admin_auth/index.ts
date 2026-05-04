@@ -25,6 +25,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { requireOwner } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -487,6 +488,11 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'invite_admin') {
+    // OWNER ONLY: inviting new admins is a privilege-escalation surface
+    // (you could invite yourself with new scopes via a deactivated peer).
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can invite new admins' }, 403);
+    }
     const usernameRaw = String(body.username ?? '').trim().toLowerCase();
     const email       = String(body.email ?? '').trim().toLowerCase();
     const display_name = String(body.display_name ?? '').trim();
@@ -579,6 +585,12 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'update_admin_role') {
+    // OWNER ONLY: changing roles can promote any admin (including the
+    // caller) to 'owner' or grant new scopes. Was previously open to any
+    // tenant_admin token = privilege escalation.
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can change admin roles' }, 403);
+    }
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
 
@@ -630,6 +642,11 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'deactivate_admin') {
+    // OWNER ONLY: deactivating peers locks them out (and combined with
+    // password reset, lets a non-owner take over peer accounts).
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can deactivate other admins' }, 403);
+    }
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
     if (id === payload.sub) return jsonResponse({ ok: false, error: 'Can\'t deactivate yourself' }, 400);
@@ -652,6 +669,11 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'reset_admin_password') {
+    // OWNER ONLY: was previously open to any tenant_admin — meaning a
+    // scoped admin could reset a peer's password and steal their session.
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can reset other admins\' passwords' }, 403);
+    }
     // Reset a peer's password — generates a fresh temp, returns it to caller
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);

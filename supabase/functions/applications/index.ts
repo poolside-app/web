@@ -22,6 +22,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { requireScope } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -382,6 +383,12 @@ Deno.serve(async (req) => {
   }
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
   const TID = payload.tid;
+
+  // Scope gate: admin actions on applications require the 'applications' scope.
+  // Synthetic webhook tokens bypass (used by stripe_webhook for auto-approve).
+  if (!payload.synthetic && !(await requireScope(sb, payload as never, 'applications'))) {
+    return jsonResponse({ ok: false, error: 'Missing required scope: applications' }, 403);
+  }
 
   if (action === 'list') {
     const status = String(body.status ?? 'pending');

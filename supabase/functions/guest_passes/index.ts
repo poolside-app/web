@@ -24,6 +24,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { requireScope } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -123,6 +124,12 @@ Deno.serve(async (req) => {
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = tokRaw ? await verifyToken(tokRaw) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
+
+  // Scope gate: this function's admin actions require the 'passes' scope.
+  // Synthetic webhook tokens bypass; super + owner roles bypass.
+  if (!(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'passes'))) {
+    return jsonResponse({ ok: false, error: 'Missing required scope: passes' }, 403);
+  }
   const TID = payload.tid;
   const isMember = payload.kind === 'member';
   const isAdmin  = payload.kind === 'tenant_admin';
