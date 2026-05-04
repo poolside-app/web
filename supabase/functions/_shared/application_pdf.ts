@@ -76,12 +76,38 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
 
+  // pdf-lib's StandardFonts (Helvetica) use WinAnsi encoding which only
+  // covers Latin-1 + a few extras. ANY emoji, smart quote, em-dash, ✓, →,
+  // etc. crashes with 'WinAnsi cannot encode'. Strip non-WinAnsi chars
+  // before rendering. Replaces common offenders with ASCII equivalents
+  // and drops anything else.
+  const SUBSTITUTIONS: Record<string, string> = {
+    '–': '-',  '—': '-',           // en/em dash
+    '‘': "'",  '’': "'",           // smart single quotes
+    '“': '"',  '”': '"',           // smart double quotes
+    '…': '...',                          // ellipsis
+    '•': '*',                            // bullet
+    '→': '->', '←': '<-',          // arrows
+    '✓': '[X]','✗': '[ ]',         // check / x
+    '…': '...',                          // ellipsis
+    ' ': ' ',                            // nbsp
+  };
+  const sanitize = (s: string): string => {
+    let out = String(s ?? '');
+    for (const [from, to] of Object.entries(SUBSTITUTIONS)) {
+      out = out.split(from).join(to);
+    }
+    // Drop any remaining char outside WinAnsi (codepoint > 0xFF) so pdf-lib
+    // doesn't throw. Loses emoji/CJK but the alternative is a crashed PDF.
+    return Array.from(out).filter(c => c.codePointAt(0)! <= 0xFF).join('');
+  };
+
   const text = (s: string, opts: { x?: number; size?: number; bold?: boolean; color?: ReturnType<typeof rgb> } = {}) => {
     const x = opts.x ?? MARGIN;
     const size = opts.size ?? 10;
     const font = opts.bold ? fontBold : fontReg;
     const color = opts.color ?? COLOR_TEXT;
-    page.drawText(String(s ?? ''), { x, y, size, font, color });
+    page.drawText(sanitize(String(s ?? '')), { x, y, size, font, color });
   };
   const ensureSpace = (needed: number) => {
     if (y - needed < MARGIN) {
@@ -167,7 +193,7 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
     sectionHeading('Children');
     app.children_json.forEach((c, i) => {
       ensureSpace(14);
-      text(`${i + 1}. ${c.name || '(unnamed)'}${c.dob ? ` — DOB ${c.dob}` : ''}`, { size: 10 });
+      text(`${i + 1}. ${c.name || '(unnamed)'}${c.dob ? ` - DOB ${c.dob}` : ''}`, { size: 10 });
       moveDown(13);
     });
   }
@@ -179,7 +205,7 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
     acceptedSlugs.forEach(slug => {
       const title = app.policies_titles?.[slug] || slug;
       ensureSpace(13);
-      text(`✓ ${title}`, { size: 10, color: COLOR_BLUE });
+      text(`[X] ${title}`, { size: 10, color: COLOR_BLUE });
       moveDown(13);
     });
   }
