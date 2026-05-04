@@ -155,3 +155,7 @@ verify_jwt = false
 # Reads from the in-code EMAIL_REGISTRY; writes to email_templates table.
 [functions.email_templates]
 verify_jwt = false
+
+# Admin Health — single-page diagnostic dashboard. Auth verified inside.
+[functions.admin_health]
+verify_jwt = false

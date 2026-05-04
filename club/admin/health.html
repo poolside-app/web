@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Status — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb;
+    --green:#16a34a; --green-l:#dcfce7;
+    --yellow:#d97706; --yellow-l:#fef3c7;
+    --red:#dc2626; --red-l:#fee2e2;
+    --gray:#94a3b8; --gray-l:#f1f5f9;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 17px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:880px; width:100%; margin:0 auto; }
+
+  /* Overall status banner */
+  .banner { padding:18px 22px; border-radius:var(--r-lg); margin-bottom:18px; box-shadow:var(--shadow); }
+  .banner.green  { background: linear-gradient(135deg, var(--green-l), #f0fdf4); border:1px solid #bbf7d0; }
+  .banner.yellow { background: linear-gradient(135deg, var(--yellow-l), #fffbeb); border:1px solid #fde68a; }
+  .banner.red    { background: linear-gradient(135deg, var(--red-l), #fef2f2); border:1px solid #fca5a5; }
+  .banner.unknown{ background: var(--gray-l); border:1px solid var(--border); }
+  .banner h1 { font-size:22px; }
+  .banner .sub { font-size:13px; color:var(--muted); margin-top:4px; }
+  .banner .meta { font-size:11px; color:var(--muted); margin-top:8px; font-weight:500; }
+
+  /* Card */
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 22px; box-shadow:var(--shadow); margin-bottom:18px; }
+  .card h2 { margin:0 0 12px; }
+  .card .sub { color:var(--muted); font-size:13px; margin-top:-6px; margin-bottom:12px; }
+
+  /* Issue rows (top "things to do") */
+  .issue { display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border); }
+  .issue:first-child { border-top:0; padding-top:0; }
+  .issue .dot { flex:none; width:10px; height:10px; border-radius:50%; margin-top:7px; }
+  .issue .dot.red    { background:var(--red); }
+  .issue .dot.yellow { background:var(--yellow); }
+  .issue .dot.green  { background:var(--green); }
+  .issue .dot.unknown{ background:var(--gray); }
+  .issue .body { flex:1; min-width:0; }
+  .issue .ttl { font-weight:600; font-size:14px; color:var(--text); }
+  .issue .det { font-size:13px; color:var(--muted); margin-top:2px; }
+  .issue .why { font-size:12px; color:#7c2d12; background:var(--yellow-l); padding:6px 10px; border-radius:8px; margin-top:6px; display:inline-block; }
+  .issue .actions { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* Capability rows */
+  .cap { display:flex; align-items:center; padding:12px 0; gap:12px; border-top:1px solid var(--border); }
+  .cap:first-child { border-top:0; padding-top:0; }
+  .cap .icon { flex:none; font-size:16px; width:22px; text-align:center; }
+  .cap .lbl { flex:1; min-width:0; }
+  .cap .lbl-main { font-size:14px; font-weight:500; }
+  .cap .lbl-note { font-size:12px; color:var(--muted); }
+  .cap .lbl-note.warn { color:var(--yellow); }
+  .cap .lbl-note.err  { color:var(--red); }
+
+  /* Buttons */
+  .btn { padding:7px 14px; border-radius:var(--r-md); font:600 12px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:#fff; color:var(--text); }
+  .btn:hover { filter:brightness(.97); }
+  .btn-primary { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .btn-ghost   { background:#fff; border-color:var(--border); color:var(--blue); }
+  .btn-warn    { background:#fff; border-color:#fed7aa; color:var(--yellow); }
+  .btn-danger  { background:#fff; border-color:#fecaca; color:var(--red); }
+
+  /* Behind-the-scenes details list */
+  .scene { padding:10px 0; border-top:1px solid var(--border); display:flex; align-items:flex-start; gap:10px; }
+  .scene:first-child { border-top:0; padding-top:0; }
+  .scene .dot { flex:none; width:8px; height:8px; border-radius:50%; margin-top:8px; }
+  .scene .dot.green  { background:var(--green); }
+  .scene .dot.yellow { background:var(--yellow); }
+  .scene .dot.red    { background:var(--red); }
+  .scene .dot.unknown{ background:var(--gray); }
+  .scene .body { flex:1; min-width:0; }
+  .scene .ttl { font-size:13px; font-weight:500; }
+  .scene .det { font-size:12px; color:var(--muted); margin-top:1px; }
+
+  /* This week stats */
+  .week { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; }
+  .week .stat { background:var(--bg-2); border-radius:10px; padding:12px 14px; }
+  .week .stat .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  .week .stat .val { font-family:'Fraunces',serif; font-size:22px; color:var(--blue); margin-top:2px; }
+  .week .stat.err .val { color:var(--red); }
+
+  /* Modal for multi-step instructions */
+  .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:center; justify-content:center; z-index:50; }
+  .modal-bg.open { display:flex; }
+  .modal { background:#fff; border-radius:var(--r-lg); padding:24px; max-width:520px; width:90%; max-height:80vh; overflow-y:auto; }
+  .modal h3 { font-family:'Fraunces',serif; font-size:18px; margin:0 0 10px; color:var(--blue); }
+  .modal ol { margin:12px 0; padding-left:20px; }
+  .modal ol li { margin-bottom:8px; font-size:14px; line-height:1.5; }
+  .modal .close { float:right; cursor:pointer; color:var(--muted); font-size:18px; line-height:1; background:none; border:0; padding:0 4px; }
+
+  /* Section spacing */
+  details > summary { cursor:pointer; list-style:none; font-weight:600; }
+  details > summary::-webkit-details-marker { display:none; }
+  details[open] > summary .chev { transform:rotate(90deg); }
+  .chev { display:inline-block; transition:transform .15s; margin-right:4px; }
+
+  /* Loading state */
+  .skeleton { background:linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:6px; height:14px; margin:6px 0; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .toast { position:fixed; bottom:20px; right:20px; background:var(--blue); color:#fff; padding:14px 18px; border-radius:10px; font-size:14px; box-shadow:var(--shadow); display:none; z-index:60; max-width:320px; }
+  .toast.show { display:block; }
+  .toast.err  { background:var(--red); }
+
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/emails.html">Emails</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/health.html" class="on">Status</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div id="banner" class="banner unknown">
+    <h1 id="banner-title">Checking your club status…</h1>
+    <div class="sub" id="banner-sub">Running through every part of your setup. This usually takes a few seconds.</div>
+    <div class="skeleton" style="width:50%;margin-top:12px"></div>
+  </div>
+
+  <div class="card" id="issues-card" style="display:none">
+    <h2>📋 Things to do</h2>
+    <div class="sub">Each item below is fixable in a few minutes. Tackle the red ones first.</div>
+    <div id="issues-list"></div>
+  </div>
+
+  <div class="card" id="caps-card" style="display:none">
+    <h2>What your members can do right now</h2>
+    <div class="sub">A green check means a member can use that feature today. Yellow = working but limited. Red = broken.</div>
+    <div id="caps-list"></div>
+  </div>
+
+  <div class="card" id="week-card" style="display:none">
+    <h2>This week at your club</h2>
+    <div class="week" id="week-stats"></div>
+  </div>
+
+  <div class="card" id="scenes-card" style="display:none">
+    <details>
+      <summary><span class="chev">▶</span> Behind the scenes (technical detail)</summary>
+      <div style="margin-top:14px" id="scenes-list"></div>
+    </details>
+  </div>
+
+  <div style="text-align:center;margin-top:28px">
+    <button class="btn btn-ghost" onclick="emailSupport()">📧 Email support — your status report attaches automatically</button>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<!-- Modal for multi-step instructions -->
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="close" type="button" onclick="closeModal()">×</button>
+    <h3 id="modal-title">Instructions</h3>
+    <ol id="modal-list"></ol>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const HEALTH_URL   = `${SUPABASE_URL}/functions/v1/admin_health`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function api(url, action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+let LAST_REPORT = null;
+
+const STATUS_TEXT = {
+  green: { hd: 'Everything\'s running', sub: 'Members can sign in, pay dues, and get emails.' },
+  yellow:{ hd: 'A few things to clean up', sub: 'The basics work — there are improvements waiting for you.' },
+  red:   { hd: 'Something needs your attention', sub: 'One or more features are broken for your members. See "Things to do" below.' },
+  unknown:{hd: 'Couldn\'t fully check', sub: 'Some checks didn\'t complete. Refresh in a moment, or contact support.' },
+};
+
+const ICON = { green: '✅', yellow: '🟡', red: '🔴', unknown: '⚪' };
+
+function renderBanner(overall, checkedAt) {
+  const banner = document.getElementById('banner');
+  banner.className = `banner ${overall}`;
+  document.getElementById('banner-title').textContent = STATUS_TEXT[overall].hd;
+  const sub = document.getElementById('banner-sub');
+  const t = checkedAt ? new Date(checkedAt) : new Date();
+  sub.innerHTML = `<div>${escapeHtml(STATUS_TEXT[overall].sub)}</div><div class="meta">Last checked: ${t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>`;
+}
+
+function renderIssues(issues) {
+  const card = document.getElementById('issues-card');
+  const list = document.getElementById('issues-list');
+  if (!issues || !issues.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  // Sort: red first, then yellow
+  const sorted = [...issues].sort((a, b) => {
+    const rank = { red: 0, yellow: 1, unknown: 2, green: 3 };
+    return (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
+  });
+
+  list.innerHTML = sorted.map((c, i) => {
+    let action = '';
+    if (c.fix) {
+      if (c.fix.kind === 'link') {
+        action = `<a class="btn btn-primary" href="${escapeHtml(c.fix.href)}">${escapeHtml(c.fix.label)} →</a>`;
+      } else if (c.fix.kind === 'modal') {
+        action = `<button class="btn btn-ghost" onclick="openModal(${i})">${escapeHtml(c.fix.label)}</button>`;
+      }
+    }
+    return `<div class="issue">
+      <div class="dot ${c.status}"></div>
+      <div class="body">
+        <div class="ttl">${escapeHtml(c.title)}</div>
+        ${c.detail ? `<div class="det">${escapeHtml(c.detail)}</div>` : ''}
+        ${c.why    ? `<div class="why">Why this matters: ${escapeHtml(c.why)}</div>` : ''}
+        ${action   ? `<div class="actions">${action}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Stash issues for modal lookup (instructions live on the issue.fix)
+  list.dataset.payload = JSON.stringify(sorted);
+}
+
+function openModal(idx) {
+  const list = document.getElementById('issues-list');
+  let payload;
+  try { payload = JSON.parse(list.dataset.payload || '[]'); } catch { payload = []; }
+  const issue = payload[idx];
+  if (!issue?.fix?.instructions) return;
+  document.getElementById('modal-title').textContent = issue.title;
+  document.getElementById('modal-list').innerHTML = issue.fix.instructions
+    .map(step => `<li>${escapeHtml(step)}</li>`).join('');
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function renderCapabilities(caps) {
+  const card = document.getElementById('caps-card');
+  const list = document.getElementById('caps-list');
+  if (!caps || !caps.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  list.innerHTML = caps.map(c => {
+    const noteCls = c.status === 'red' ? 'err' : c.status === 'yellow' ? 'warn' : '';
+    let testBtn = '';
+    if (c.test?.kind === 'open_url' && c.test.url) {
+      testBtn = `<a class="btn btn-ghost" href="${escapeHtml(c.test.url)}" target="_blank" rel="noopener">Try it ↗</a>`;
+    } else if (c.test?.kind === 'send_self') {
+      testBtn = `<button class="btn btn-ghost" onclick="testSend('${escapeHtml(c.test.action)}', this)">Send to me</button>`;
+    }
+    return `<div class="cap">
+      <div class="icon">${ICON[c.status] || '⚪'}</div>
+      <div class="lbl">
+        <div class="lbl-main">${escapeHtml(c.label)}</div>
+        ${c.note ? `<div class="lbl-note ${noteCls}">${escapeHtml(c.note)}</div>` : ''}
+      </div>
+      <div>${testBtn}</div>
+    </div>`;
+  }).join('');
+}
+
+async function testSend(action, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const r = await api(HEALTH_URL, action);
+    if (!r.ok) {
+      toast(`Couldn't send: ${r.error}`, true);
+    } else {
+      toast(`Sent to ${r.sent_to || 'you'} — check your inbox`);
+    }
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+function renderScenes(sections) {
+  const card = document.getElementById('scenes-card');
+  const list = document.getElementById('scenes-list');
+  if (!sections || !sections.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  list.innerHTML = sections.map(sec => {
+    const checks = (sec.checks || []).map(c =>
+      `<div class="scene">
+        <div class="dot ${c.status}"></div>
+        <div class="body">
+          <div class="ttl">${escapeHtml(c.title)}</div>
+          ${c.detail ? `<div class="det">${escapeHtml(c.detail)}</div>` : ''}
+        </div>
+      </div>`
+    ).join('');
+    return `<div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">${escapeHtml(sec.label)}</div>
+      ${checks || '<div class="scene"><div class="dot unknown"></div><div class="body"><div class="ttl">No data</div></div></div>'}
+    </div>`;
+  }).join('');
+}
+
+function renderWeek(week) {
+  const card = document.getElementById('week-card');
+  const stats = document.getElementById('week-stats');
+  if (!week) { card.style.display = 'none'; return; }
+  const items = [
+    { lbl: 'New applications', val: week.applications ?? 0, err: false },
+    { lbl: 'Payments processed', val: week.payments ?? 0, err: false },
+    { lbl: 'Texts sent', val: week.texts ?? 0, err: false },
+    { lbl: 'Errors', val: week.errors ?? 0, err: (week.errors ?? 0) > 0 },
+  ];
+  stats.innerHTML = items.map(s => `
+    <div class="stat ${s.err ? 'err' : ''}">
+      <div class="lbl">${escapeHtml(s.lbl)}</div>
+      <div class="val">${s.val}</div>
+    </div>`).join('');
+  card.style.display = '';
+}
+
+function emailSupport() {
+  const dump = LAST_REPORT
+    ? '\n\n--- Status snapshot (auto-generated, please leave intact) ---\n' + JSON.stringify(LAST_REPORT, null, 2)
+    : '';
+  const body = encodeURIComponent(`Hi Poolside team,\n\n[Describe what you need help with]\n${dump}`);
+  window.location.href = `mailto:support@poolsideapp.com?subject=${encodeURIComponent('Help with my Poolside club')}&body=${body}`;
+}
+
+function toast(msg, isErr) {
+  const el = document.getElementById('toast');
+  el.className = 'toast show' + (isErr ? ' err' : '');
+  el.textContent = msg;
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+async function loadStatus() {
+  try {
+    const r = await api(HEALTH_URL, 'check');
+    if (!r.ok) throw new Error(r.error || 'check failed');
+    LAST_REPORT = r;
+    renderBanner(r.overall, r.checked_at);
+    renderIssues(r.setup_issues);
+    renderCapabilities(r.capabilities);
+    renderWeek(r.this_week);
+    renderScenes(r.sections);
+  } catch (e) {
+    document.getElementById('banner').className = 'banner red';
+    document.getElementById('banner-title').textContent = 'Couldn\'t load status';
+    document.getElementById('banner-sub').textContent = e.message;
+  }
+}
+
+// Whoami in header
+async function loadWhoami() {
+  try {
+    const r = await api(ME_URL, 'me');
+    if (r.ok && r.user) document.getElementById('whoami').textContent = r.user.email || '';
+  } catch { /* ignore */ }
+}
+
+loadWhoami();
+loadStatus();
+// Auto-refresh every 60s while the tab is focused
+setInterval(() => { if (!document.hidden) loadStatus(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadStatus(); });
+</script>
+</body>
+</html>
