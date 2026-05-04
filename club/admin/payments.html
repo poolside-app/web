@@ -140,6 +140,7 @@
           <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
           <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
           <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
+          <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
           <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
         </div>
         <div class="err" id="drive-err"></div>
@@ -508,6 +509,7 @@ async function loadDriveStatus() {
     if (r.spreadsheet_link) { sheetLink.href  = r.spreadsheet_link;  sheetLink.style.display  = 'inline-flex'; }
     if (r.pending_in_queue) retryBtn.style.display = 'inline-block';
     document.getElementById('drive-backfill-btn').style.display = 'inline-block';
+    document.getElementById('drive-reformat-btn').style.display = 'inline-block';
     disconnect.style.display = 'inline-block';
   } catch (e) {
     box.innerHTML = `<b>Couldn't load Drive status:</b> ${escapeHtml(e.message)}`;
@@ -551,6 +553,25 @@ async function backfillDrive() {
       alert(msg);
     }
     await loadDriveStatus();
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function reformatDriveTabs() {
+  const btn = document.getElementById('drive-reformat-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Reformatting…';
+  try {
+    const r = await api(DRIVE_URL, 'reformat_tabs');
+    if (!r.ok) throw new Error(r.error || 'reformat failed');
+    let msg = `Restyled tabs: ${r.reformatted.join(', ') || '(none)'}`;
+    if (r.failed && r.failed.length) {
+      msg += '\n\nFailures:\n' + r.failed.map(f => `  ${f.year}: ${f.error}`).join('\n');
+    }
+    alert(msg);
   } catch (e) {
     const errEl = document.getElementById('drive-err');
     errEl.textContent = e.message; errEl.classList.add('show');

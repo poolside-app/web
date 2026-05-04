@@ -27,6 +27,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify, create as jwtCreate, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { syncApplicationToDrive, enqueueDriveSync } from '../_shared/sync_application.ts';
+import { getAccessToken, formatYearTab, loadGrant } from '../_shared/google_drive.ts';
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -309,6 +310,32 @@ Deno.serve(async (req) => {
       }
     }
     return jsonResponse({ ok: true, total_unsynced: missing.length, attempted, succeeded, failed, errors });
+  }
+
+  // reformat_tabs — re-applies styling to all year tabs in this tenant's
+  // spreadsheet. Used after a formatting upgrade so existing tabs pick up
+  // the new look without re-syncing every application.
+  if (action === 'reformat_tabs') {
+    if (!GOOGLE_ID || !GOOGLE_SECRET) {
+      return jsonResponse({ ok: false, error: 'Platform Google OAuth not configured' }, 503);
+    }
+    const grant = await loadGrant(sb, payload.tid);
+    if (!grant || !grant.spreadsheet_id) {
+      return jsonResponse({ ok: false, error: 'Drive not connected or no spreadsheet yet' }, 400);
+    }
+    const accessToken = await getAccessToken(grant.refresh_token, GOOGLE_ID, GOOGLE_SECRET);
+    const tabs = grant.year_tab_ids ?? {};
+    const reformatted: string[] = [];
+    const failed: Array<{ year: string; error: string }> = [];
+    for (const [year, sheetId] of Object.entries(tabs)) {
+      try {
+        await formatYearTab(accessToken, grant.spreadsheet_id as string, sheetId as number);
+        reformatted.push(year);
+      } catch (e) {
+        failed.push({ year, error: (e as Error).message });
+      }
+    }
+    return jsonResponse({ ok: true, reformatted, failed });
   }
 
   if (action === 'retry_queue') {

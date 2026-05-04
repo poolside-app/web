@@ -68,8 +68,10 @@ export const SHEET_COLUMNS: ColSpec[] = [
 export const SHEET_HEADERS = SHEET_COLUMNS.map(c => c.label);
 
 // Brand colors (Poolside) — referenced by formatYearTab when styling a new tab.
-const BRAND_BLUE  = { red: 0.039, green: 0.231, blue: 0.361 }; // #0a3b5c
-const BRAND_BLUE_L = { red: 0.949, green: 0.965, blue: 0.984 }; // #f2f4fc (banding light)
+const BRAND_BLUE  = { red: 0.039, green: 0.231, blue: 0.361 }; // #0a3b5c — header bg
+const BAND_LIGHT  = { red: 0.969, green: 0.976, blue: 0.984 }; // #f7f9fb — alternating row
+const TEXT_DARK   = { red: 0.059, green: 0.090, blue: 0.165 }; // #0f172a — body text (slate-900)
+const BORDER_GRAY = { red: 0.898, green: 0.910, blue: 0.922 }; // #e5e7eb — subtle row borders
 const WHITE       = { red: 1, green: 1, blue: 1 };
 
 // Refresh access token using the stored refresh_token. Cached only in
@@ -400,13 +402,20 @@ export async function formatYearTab(
     },
   });
 
-  // — Per-column data alignment + number format (rows 2…∞)
+  // — Per-column data alignment + number format + EXPLICIT dark text
+  // (rows 2…∞). The foregroundColorStyle is critical — without it, the
+  // text inherits an unresolved default that renders white-on-white over
+  // the banded backgrounds in some Sheets clients.
   SHEET_COLUMNS.forEach((col, i) => {
     const fmt: Record<string, unknown> = {
       horizontalAlignment: col.align ?? 'LEFT',
       verticalAlignment: 'MIDDLE',
-      textFormat: { fontSize: 10 },
-      padding: { top: 4, bottom: 4, left: 8, right: 8 },
+      textFormat: {
+        fontSize: 10,
+        foregroundColorStyle: { rgbColor: TEXT_DARK },
+        bold: false,
+      },
+      padding: { top: 6, bottom: 6, left: 10, right: 10 },
     };
     if (col.numberFormat) {
       fmt.numberFormat = { type: col.numberFormat.type, pattern: col.numberFormat.pattern };
@@ -422,24 +431,26 @@ export async function formatYearTab(
     });
   });
 
-  // — Banded rows (alternating white / very-light-blue) — biggest readability win
+  // — Banded rows (alternating white / very-light-gray-blue). The header
+  // band is intentionally NOT set here because the explicit repeatCell
+  // above already styles row 1 and we don't want banding to fight it.
   requests.push({
     addBanding: {
       bandedRange: {
         range: {
           sheetId,
-          startRowIndex: 0,
+          startRowIndex: 1,            // start AT data, not header
           startColumnIndex: 0,
           endColumnIndex: numCols,
         },
         rowProperties: {
-          headerColorStyle:     { rgbColor: BRAND_BLUE },
           firstBandColorStyle:  { rgbColor: WHITE },
-          secondBandColorStyle: { rgbColor: BRAND_BLUE_L },
+          secondBandColorStyle: { rgbColor: BAND_LIGHT },
         },
       },
     },
   });
+
 
   // — Basic filter on the full range so admin gets sortable column headers
   requests.push({

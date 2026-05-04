@@ -225,6 +225,22 @@ Deno.serve(async (req) => {
       });
     } catch { /* best-effort — never fails submission */ }
 
+    // ── Render the legal-evidence PDF ONCE at submit time ──────────────
+    // The same bytes are reused for: (a) attachment to the applicant's
+    // confirmation email, (b) Drive upload for the club's archive. Single
+    // render = single source of truth (the PDF the member receives is
+    // bit-for-bit identical to what the club archives).
+    let pdfBytes: Uint8Array | null = null;
+    let pdfData: import('../_shared/application_pdf.ts').ApplicationForPdf | null = null;
+    try {
+      const { loadApplicationForPdf } = await import('../_shared/sync_application.ts');
+      const { renderApplicationPdf } = await import('../_shared/application_pdf.ts');
+      pdfData = await loadApplicationForPdf(sb, tenant.id, data.id);
+      if (pdfData) pdfBytes = await renderApplicationPdf(pdfData);
+    } catch (e) {
+      console.error('PDF build at submit failed (non-fatal):', (e as Error).message);
+    }
+
     // Drive sync — fire inline so the PDF + Sheet row are in the club's
     // Drive within seconds of submit. Failures enqueue silently for retry;
     // user-facing submit response is unaffected.
@@ -236,6 +252,7 @@ Deno.serve(async (req) => {
         const r = await syncApplicationToDrive(sb, {
           tenantId: tenant.id, applicationId: data.id,
           googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SEC,
+          prebuilt: pdfData && pdfBytes ? { pdfData, pdfBytes } : undefined,
         });
         if (!r.ok) await enqueueDriveSync(sb, tenant.id, data.id, r.error);
       } catch (e) {
@@ -293,9 +310,25 @@ Deno.serve(async (req) => {
         : payment_method === 'stripe_plan' ? 'application_received_stripe_plan'
         : 'application_received_other';
 
+        // Build attachment if the PDF rendered successfully. The applicant
+        // gets the bit-for-bit-identical legal-evidence PDF the club
+        // archives — full policy text, acceptance stamp, signatures.
+        let attachments: Array<{ filename: string; content: string; contentType?: string }> | undefined;
+        if (pdfBytes) {
+          const { bytesToBase64 } = await import('../_shared/send_email.ts');
+          const safeFamily = family_name.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
+          const dateStr = new Date().toISOString().slice(0, 10);
+          attachments = [{
+            filename: `${safeFamily}-application-${dateStr}.pdf`,
+            content: bytesToBase64(pdfBytes),
+            contentType: 'application/pdf',
+          }];
+        }
+
         await renderAndSend(sb, {
           tenantId: tenant.id, templateKey,
           to: primary_email, variables: baseVars,
+          attachments,
         });
       } catch { /* never fail submission because of an email hiccup */ }
     }

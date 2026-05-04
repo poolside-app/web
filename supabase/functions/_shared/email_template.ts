@@ -18,7 +18,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendEmail, escHtml, emailShell } from './send_email.ts';
+import { sendEmail, escHtml, emailShell, type EmailAttachment } from './send_email.ts';
 
 export type EmailTemplateDef = {
   key: string;
@@ -61,6 +61,9 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: send your Venmo payment</h3>
       <p style="margin:0 0 12px">Send your annual dues to <b>@{{venmo_handle}}</b> ({{tier_price}} for the {{tier_label}} tier). Once the board verifies your payment, you'll receive a separate email with your member sign-in link.</p>
       <p style="margin:0;color:#64748b;font-size:13px">Tip: include the family name in your Venmo memo so we can match it quickly.</p>
+      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
       <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
     `),
   },
@@ -83,6 +86,9 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       </div>
       <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: complete your card payment</h3>
       <p style="margin:0 0 12px">If you didn't already complete Stripe checkout, return to your application tab and click <b>Pay with card</b>. The moment your payment goes through, your membership is approved automatically and we'll email you a sign-in link.</p>
+      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
       <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
     `),
   },
@@ -104,6 +110,9 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       </div>
       <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: complete your first installment</h3>
       <p style="margin:0 0 12px">If you didn't already complete Stripe checkout, return to your application tab and click <b>Start payment plan</b>. We'll charge <b>{{first_amount}}</b> now and auto-charge <b>{{second_amount}}</b> on <b>{{final_due_date}}</b>. Your membership activates as soon as the first payment goes through.</p>
+      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
       <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
     `),
   },
@@ -123,6 +132,9 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
         <div><b>Adults:</b> {{num_adults}} · <b>Children:</b> {{num_kids}}</div>
       </div>
       <p style="margin:0 0 12px">A board member will reach out within a few days with payment options. Once payment is sorted, you'll receive a separate email with your member sign-in link.</p>
+      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
       <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
     `),
   },
@@ -330,6 +342,7 @@ export async function renderAndSend(
     to: string;
     variables: Record<string, string | number | null | undefined>;
     replyTo?: string;
+    attachments?: EmailAttachment[];
   },
 ): Promise<{ sent: boolean; error?: string; suppressed?: boolean }> {
   const def = getRegistryEntry(args.templateKey);
@@ -373,6 +386,7 @@ export async function renderAndSend(
     subject: renderedSubject,
     html,
     replyTo: args.replyTo,
+    attachments: args.attachments,
   });
 }
 

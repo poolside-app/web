@@ -27,6 +27,18 @@ export type AdultRow = {
 };
 export type ChildRow = { name?: string; dob?: string | null };
 
+// Full policy record — body text is rendered inline so the PDF is a complete
+// legal-evidence document (the applicant agreed to THIS exact text, not
+// "policy slug X" which could later be edited).
+export type PolicyForPdf = {
+  slug: string;
+  title: string;
+  body: string;
+  accepted: boolean;
+  accepted_at?: string | null;     // ISO timestamp; falls back to app.submitted_at
+  sort_order?: number;
+};
+
 export type ApplicationForPdf = {
   id: string;
   tenant_display_name: string;
@@ -47,7 +59,8 @@ export type ApplicationForPdf = {
   adults_json: AdultRow[];
   children_json: ChildRow[];
   waivers_accepted: Record<string, boolean>;
-  policies_titles: Record<string, string>;   // slug → human title (resolved by caller)
+  policies_titles: Record<string, string>;   // slug → human title (legacy fallback)
+  policies?: PolicyForPdf[];                 // full policy bodies for legal-evidence rendering
   signature_primary?: string | null;          // legacy fallback
   signature_guardian?: string | null;
 };
@@ -198,15 +211,83 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
     });
   }
 
-  // ── Accepted policies ─────────────────────────────────────────────────
-  const acceptedSlugs = Object.keys(app.waivers_accepted ?? {}).filter(s => app.waivers_accepted[s]);
-  if (acceptedSlugs.length) {
-    sectionHeading('Policies accepted');
-    acceptedSlugs.forEach(slug => {
-      const title = app.policies_titles?.[slug] || slug;
-      ensureSpace(13);
-      text(`[X] ${title}`, { size: 10, color: COLOR_BLUE });
-      moveDown(13);
+  // ── Policies (full legal-evidence text + acceptance) ─────────────────
+  // For each policy, render: title + ACCEPTED/NOT-ACCEPTED status + the
+  // verbatim body text the applicant agreed to. This is the legal record:
+  // the contract IS the document, not a hyperlink that might rot.
+  const policyMaxWidth = PAGE_W - MARGIN * 2 - 14;  // leave room for body indent
+
+  // Greedy word-wrap. pdf-lib has no built-in wrap. font.widthOfTextAtSize
+  // is exact; we measure each candidate line and break before overflow.
+  const wrapText = (s: string, size: number): string[] => {
+    const sourceLines = sanitize(s).split(/\r?\n/);
+    const out: string[] = [];
+    for (const para of sourceLines) {
+      if (!para.trim()) { out.push(''); continue; }   // preserve blank-line gaps
+      const words = para.split(/(\s+)/);              // keep whitespace as tokens
+      let cur = '';
+      for (const tok of words) {
+        const cand = cur + tok;
+        if (fontReg.widthOfTextAtSize(cand, size) <= policyMaxWidth) {
+          cur = cand;
+        } else {
+          if (cur.trim()) out.push(cur.trimEnd());
+          cur = tok.replace(/^\s+/, '');
+        }
+      }
+      if (cur.trim()) out.push(cur.trimEnd());
+    }
+    return out;
+  };
+
+  // Determine which policies to render. Prefer the full `policies` array
+  // (with bodies). Legacy callers passing only `policies_titles` still get
+  // a list rendered, just without bodies.
+  const policiesFull: PolicyForPdf[] = (app.policies && app.policies.length)
+    ? [...app.policies].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    : Object.entries(app.policies_titles ?? {}).map(([slug, title]) => ({
+        slug, title, body: '',
+        accepted: !!app.waivers_accepted?.[slug],
+      }));
+
+  if (policiesFull.length) {
+    sectionHeading('Policies — verbatim text & acceptance record');
+    policiesFull.forEach((p, idx) => {
+      // Always start each policy with at least its title + status visible.
+      ensureSpace(38);
+
+      // Policy heading
+      text(`${idx + 1}. ${p.title}`, { size: 12, bold: true, color: COLOR_BLUE });
+      moveDown(15);
+
+      // Acceptance status badge
+      const accepted = p.accepted || !!app.waivers_accepted?.[p.slug];
+      const stamp = accepted
+        ? `[X] ACCEPTED${p.accepted_at ? ` on ${p.accepted_at}` : (app.submitted_at ? ` on ${app.submitted_at}` : '')}`
+        : `[ ] NOT ACCEPTED`;
+      text(stamp, { size: 9, bold: true, color: accepted ? COLOR_BLUE : COLOR_MUTED });
+      moveDown(14);
+
+      // Full body (verbatim text the applicant agreed to)
+      if (p.body && p.body.trim()) {
+        const bodySize = 9;
+        const lineH = 12;
+        const lines = wrapText(p.body, bodySize);
+        for (const ln of lines) {
+          ensureSpace(lineH);
+          if (ln === '') {
+            // blank line — paragraph gap
+            moveDown(lineH * 0.6);
+          } else {
+            text(ln, { size: bodySize, x: MARGIN + 14 });
+            moveDown(lineH);
+          }
+        }
+      } else {
+        text('(no policy text on file)', { size: 9, x: MARGIN + 14, color: COLOR_MUTED });
+        moveDown(12);
+      }
+      moveDown(8);
     });
   }
 

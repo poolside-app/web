@@ -11,11 +11,30 @@ const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsid
 
 export type SendResult = { sent: boolean; error?: string; id?: string };
 
+// File attachment as accepted by Resend. content is base64-encoded bytes.
+export type EmailAttachment = {
+  filename: string;
+  content: string;            // base64 string (no data:URL prefix)
+  contentType?: string;       // e.g. 'application/pdf'; Resend infers if omitted
+};
+
+// Helper: encode raw bytes to base64 for attachment payloads. Chunked so we
+// don't blow String.fromCharCode's argument limit on large PDFs.
+export function bytesToBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
 export async function sendEmail(args: {
   to: string;
   subject: string;
   html: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 }): Promise<SendResult> {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   if (!args.to || !args.subject || !args.html) {
@@ -29,6 +48,13 @@ export async function sendEmail(args: {
       html: args.html,
     };
     if (args.replyTo) body.reply_to = args.replyTo;
+    if (args.attachments && args.attachments.length) {
+      body.attachments = args.attachments.map(a => ({
+        filename: a.filename,
+        content: a.content,
+        ...(a.contentType ? { content_type: a.contentType } : {}),
+      }));
+    }
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },

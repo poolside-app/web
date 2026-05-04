@@ -14,64 +14,61 @@ import {
   getAccessToken, loadGrant, updateGrantCache, driveFileLink,
   updateRowCellByAppId,
 } from './google_drive.ts';
-import { renderApplicationPdf, type ApplicationForPdf } from './application_pdf.ts';
+import { renderApplicationPdf, type ApplicationForPdf, type PolicyForPdf } from './application_pdf.ts';
 
 export type SyncResult =
   | { ok: true; pdf_id: string; spreadsheet_id: string; tab_name: string; row_index: number; skipped?: never }
   | { ok: true; skipped: true; reason: string }
   | { ok: false; error: string };
 
-export async function syncApplicationToDrive(
+// Build everything needed to render the legal-evidence PDF for an
+// application. Exposed so callers (submit handler, retry queue) can render
+// the PDF once and reuse the bytes (e.g. attach to the confirmation email
+// AND upload to Drive without re-rendering).
+export async function loadApplicationForPdf(
   sb: SupabaseClient,
-  args: {
-    tenantId: string;
-    applicationId: string;
-    googleClientId: string;
-    googleClientSecret: string;
-  },
-): Promise<SyncResult> {
-  // 1) Idempotency check — already synced? bail.
-  const { data: existing } = await sb.from('drive_sync_log')
-    .select('id, drive_file_id, spreadsheet_id, tab_name, row_index')
-    .eq('tenant_id', args.tenantId).eq('application_id', args.applicationId)
-    .maybeSingle();
-  if (existing) {
-    return { ok: true, skipped: true, reason: 'already synced' };
-  }
-
-  // 2) Load grant. Drive not connected → not an error, just a no-op.
-  const grant = await loadGrant(sb, args.tenantId);
-  if (!grant) return { ok: true, skipped: true, reason: 'drive not connected' };
-
-  // 3) Load tenant + application + policies.
+  tenantId: string,
+  applicationId: string,
+): Promise<ApplicationForPdf | null> {
   const [tenantRes, appRes] = await Promise.all([
-    sb.from('tenants').select('id, slug, display_name').eq('id', args.tenantId).maybeSingle(),
-    sb.from('applications').select('*').eq('id', args.applicationId).eq('tenant_id', args.tenantId).maybeSingle(),
+    sb.from('tenants').select('id, slug, display_name').eq('id', tenantId).maybeSingle(),
+    sb.from('applications').select('*').eq('id', applicationId).eq('tenant_id', tenantId).maybeSingle(),
   ]);
-  if (!tenantRes.data) return { ok: false, error: 'tenant not found' };
-  if (!appRes.data)    return { ok: false, error: 'application not found' };
+  if (!tenantRes.data || !appRes.data) return null;
   const tenant = tenantRes.data as { id: string; slug: string; display_name: string };
   const app    = appRes.data    as Record<string, unknown>;
 
   const { data: policies } = await sb.from('policies')
-    .select('slug, title').eq('tenant_id', args.tenantId);
+    .select('slug, title, body, sort_order')
+    .eq('tenant_id', tenantId)
+    .order('sort_order', { ascending: true });
+
   const policyTitles: Record<string, string> = {};
-  (policies ?? []).forEach(p => { policyTitles[p.slug as string] = p.title as string; });
+  const waivers = (app.waivers_accepted as Record<string, boolean> | null) ?? {};
+  const acceptedAt = (app.accepted_at as string | null) ?? null;
+  const policiesFull: PolicyForPdf[] = (policies ?? []).map(p => {
+    policyTitles[p.slug as string] = p.title as string;
+    return {
+      slug: p.slug as string,
+      title: p.title as string,
+      body: (p.body as string) ?? '',
+      sort_order: (p.sort_order as number) ?? 0,
+      accepted: !!waivers[p.slug as string],
+      accepted_at: waivers[p.slug as string] ? acceptedAt : null,
+    };
+  });
 
   let tierLabel: string | null = null;
   if (app.tier_slug) {
     const { data: settings } = await sb.from('settings')
-      .select('value').eq('tenant_id', args.tenantId).maybeSingle();
+      .select('value').eq('tenant_id', tenantId).maybeSingle();
     const tiers = (settings?.value as { membership_tiers?: Array<{ slug: string; label?: string }> } | undefined)?.membership_tiers ?? [];
-    const t = tiers.find(x => x.slug === app.tier_slug);
+    const t = tiers.find(x => x.slug === (app.tier_slug as string));
     if (t) tierLabel = t.label ?? null;
   }
 
-  // 4) Render PDF.
   const submittedAt = new Date(app.created_at as string);
-  const year = String(submittedAt.getUTCFullYear());
-
-  const pdfData: ApplicationForPdf = {
+  return {
     id: app.id as string,
     tenant_display_name: tenant.display_name,
     submitted_at: submittedAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',
@@ -90,13 +87,65 @@ export async function syncApplicationToDrive(
     payment_method:    (app.payment_method    as string | null) ?? null,
     adults_json:       (app.adults_json       as Array<Record<string, unknown>> | null) as unknown as ApplicationForPdf['adults_json'] ?? [],
     children_json:     (app.children_json     as Array<Record<string, unknown>> | null) as unknown as ApplicationForPdf['children_json'] ?? [],
-    waivers_accepted:  (app.waivers_accepted  as Record<string, boolean> | null) ?? {},
+    waivers_accepted:  waivers,
     policies_titles:   policyTitles,
+    policies:          policiesFull,
     signature_primary: (app.signature_primary as string | null) ?? null,
     signature_guardian:(app.signature_guardian as string | null) ?? null,
   };
+}
 
-  const pdfBytes = await renderApplicationPdf(pdfData);
+export async function syncApplicationToDrive(
+  sb: SupabaseClient,
+  args: {
+    tenantId: string;
+    applicationId: string;
+    googleClientId: string;
+    googleClientSecret: string;
+    // Optional: pre-rendered PDF + data, so submit-time can attach to email
+    // AND sync without rendering twice. If omitted, sync renders itself.
+    prebuilt?: { pdfData: ApplicationForPdf; pdfBytes: Uint8Array };
+  },
+): Promise<SyncResult> {
+  // 1) Idempotency check — already synced? bail.
+  const { data: existing } = await sb.from('drive_sync_log')
+    .select('id, drive_file_id, spreadsheet_id, tab_name, row_index')
+    .eq('tenant_id', args.tenantId).eq('application_id', args.applicationId)
+    .maybeSingle();
+  if (existing) {
+    return { ok: true, skipped: true, reason: 'already synced' };
+  }
+
+  // 2) Load grant. Drive not connected → not an error, just a no-op.
+  const grant = await loadGrant(sb, args.tenantId);
+  if (!grant) return { ok: true, skipped: true, reason: 'drive not connected' };
+
+  // 3) Load tenant + app for row-append fields (always need raw app columns).
+  const [tenantRes, appRes] = await Promise.all([
+    sb.from('tenants').select('id, slug, display_name').eq('id', args.tenantId).maybeSingle(),
+    sb.from('applications').select('*').eq('id', args.applicationId).eq('tenant_id', args.tenantId).maybeSingle(),
+  ]);
+  if (!tenantRes.data) return { ok: false, error: 'tenant not found' };
+  if (!appRes.data)    return { ok: false, error: 'application not found' };
+  const tenant = tenantRes.data as { id: string; slug: string; display_name: string };
+  const app    = appRes.data    as Record<string, unknown>;
+
+  // 4) PDF data + bytes — reuse prebuilt if provided, otherwise build now.
+  const submittedAt = new Date(app.created_at as string);
+  const year = String(submittedAt.getUTCFullYear());
+
+  let pdfData: ApplicationForPdf;
+  let pdfBytes: Uint8Array;
+  if (args.prebuilt) {
+    pdfData = args.prebuilt.pdfData;
+    pdfBytes = args.prebuilt.pdfBytes;
+  } else {
+    const data = await loadApplicationForPdf(sb, args.tenantId, args.applicationId);
+    if (!data) return { ok: false, error: 'failed to load application for pdf' };
+    pdfData = data;
+    pdfBytes = await renderApplicationPdf(pdfData);
+  }
+  const tierLabel = pdfData.tier_label ?? null;
 
   // 5) Get access token, ensure folders + spreadsheet + year tab.
   const accessToken = await getAccessToken(grant.refresh_token, args.googleClientId, args.googleClientSecret);
