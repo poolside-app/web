@@ -24,7 +24,7 @@ The first tier in the list is the default — it's pre-selected on the applicati
 2. Click into the price field on any tier and type the new amount.
 3. Click **Save tiers**.
 
-> **Heads-up:** Changing a price doesn't change what current members already owe — it only affects new applications and next year's renewals. If you need to adjust an outstanding charge for a current family, do that on **Payments**.
+> **Heads-up:** Changing a price doesn't change what current members already owe. It only affects new applications and next year's renewals. To adjust an open charge for a current family, head to **Payments**.
 
 ### Don't have set prices? (per-household billing)
 

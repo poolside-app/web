@@ -8,7 +8,7 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#475569;
     --border:#e5e7eb;
     --green:#16a34a; --green-l:#dcfce7;
     --yellow:#d97706; --yellow-l:#fef3c7;
@@ -20,6 +20,35 @@
   *,*::before,*::after { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
   a { color: var(--blue); }
+
+  /* Visually hidden — for sr-only labels and skip links until focused */
+  .sr-only {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0;
+  }
+  .skip-link {
+    position: absolute; left: 8px; top: -40px;
+    background: var(--blue); color: #fff;
+    padding: 8px 14px; border-radius: 6px;
+    text-decoration: none; font-weight: 600; font-size: 13px;
+    z-index: 100;
+    transition: top .15s;
+  }
+  .skip-link:focus { top: 8px; outline: 2px solid var(--sun); outline-offset: 2px; }
+
+  /* Universal visible focus ring — never invisible to keyboard users */
+  a:focus-visible,
+  button:focus-visible,
+  [tabindex]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
   h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
   h1 { font-size: 28px; }
   h2 { font-size: 17px; }
@@ -58,7 +87,7 @@
     box-shadow: 0 0 0 3px rgba(10,59,92,.12);
   }
   .search-wrap .ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 18px; opacity: .5; pointer-events: none; }
-  .search-wrap .clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; padding: 4px 10px; border-radius: 6px; }
+  .search-wrap .clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: 0; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
   .search-wrap .clear:hover { background: var(--gray-l); }
   .search-wrap .clear.hidden { display: none; }
 
@@ -221,7 +250,10 @@
 
   /* Reduce motion */
   @media (prefers-reduced-motion: reduce) {
-    .article-head .chev { transition: none; }
+    .article-head .chev,
+    .article-head,
+    .skip-link,
+    .search-wrap input { transition: none; }
     .skeleton { animation: none; }
   }
 
@@ -233,9 +265,10 @@
 </style>
 </head>
 <body>
+<a href="#main-content" class="skip-link">Skip to help articles</a>
 <header>
   <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
-  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+  <div class="who"><span id="whoami">…</span><a id="signout" tabindex="0" role="button">Sign out</a></div>
 </header>
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
@@ -252,19 +285,19 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 
-<main>
+<main id="main-content">
   <div class="hero">
     <h1>How can we help?</h1>
-    <div class="lede">Type a question in plain English, or browse the topics below. If you can't find what you need, scroll to the bottom and email us — we reply the same business day.</div>
+    <div class="lede">Type a question in plain English, or browse the topics below. If you can't find what you need, scroll to the bottom and email us — we reply the same business day. <span style="display:inline-block;margin-left:4px;font-size:12px;opacity:.85">Tip: press <kbd style="font-family:monospace;background:#fff;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:11px">/</kbd> to search.</span></div>
     <div class="search-wrap">
-      <span class="ico">🔍</span>
+      <label for="search" class="sr-only">Search help articles</label>
+      <span class="ico" aria-hidden="true">🔍</span>
       <input
         id="search"
         type="search"
         autocomplete="off"
         autofocus
         placeholder="Search help — try 'dues reminder', 'who paid', 'add admin'…"
-        aria-label="Search help articles"
       >
       <button class="clear hidden" id="clear-search" type="button" aria-label="Clear search">×</button>
     </div>
@@ -540,9 +573,9 @@ function renderArticles(list, query = '') {
         ${arts.map(a => `
           <div class="article" data-slug="${escapeHtml(a.slug)}">
             <div class="article-head" tabindex="0" role="button" aria-expanded="false" data-action="toggle">
-              <span class="chev">▶</span>
+              <span class="chev" aria-hidden="true">▶</span>
               <span class="ttl">${highlightHtml(a.title, query)}</span>
-              <span class="hint">Click to ${query ? 'read' : 'open'}</span>
+              <span class="hint" aria-hidden="true">Click to ${query ? 'read' : 'open'}</span>
             </div>
             <div class="article-body">${highlightInRenderedHtml(a.html, query)}</div>
           </div>
@@ -666,9 +699,45 @@ searchInput.addEventListener('input', () => {
   searchTimer = setTimeout(runSearch, 80);
 });
 searchInput.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { searchInput.value = ''; runSearch(); }
+  if (e.key === 'Escape') {
+    if (searchInput.value) {
+      searchInput.value = '';
+      runSearch();
+    } else {
+      // Search already empty — let global Escape handler close any open article
+      searchInput.blur();
+    }
+  }
 });
 clearBtn.addEventListener('click', () => { searchInput.value = ''; searchInput.focus(); runSearch(); });
+
+// Global keyboard shortcuts:
+//   "/" focuses search from anywhere
+//   Escape closes any open article (when search isn't focused / is empty)
+document.addEventListener('keydown', e => {
+  // Don't hijack typing into inputs/textareas
+  const t = e.target;
+  const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  if (e.key === '/' && !inField && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+    return;
+  }
+  if (e.key === 'Escape') {
+    // If search is focused with content, its own handler clears it.
+    // Otherwise close every open article.
+    if (t === searchInput && searchInput.value) return;
+    const open = document.querySelectorAll('.article.open');
+    if (open.length) {
+      open.forEach(a => {
+        a.classList.remove('open');
+        const head = a.querySelector('.article-head');
+        if (head) head.setAttribute('aria-expanded', 'false');
+      });
+    }
+  }
+});
 
 // ---- Email support ----
 function getBrowserInfo() {

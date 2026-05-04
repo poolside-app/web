@@ -25,11 +25,11 @@ The welcome email is what new members see first when you approve their applicati
 
 ### The little blue tags (auto-fill bits)
 
-You'll see colored tags inside the editor with names like **Member's name**, **Club name**, or **Sign-in link**. These are placeholders — Poolside swaps them for the right info every time the email is sent. So one template with a "Member's name" tag becomes "Hi Linda," for Linda and "Hi Carlos," for Carlos.
+You'll see colored tags inside the editor with names like **Member's name**, **Club name**, or **Sign-in link**. These are placeholders. Each time we send the email, Poolside swaps them for the real info. So one template with a "Member's name" tag becomes "Hi Linda," for Linda and "Hi Carlos," for Carlos.
 
 To add one, click into the body where you want it and pick a tag from the toolbar above the editor. To remove one, click the tag and press Delete like any other word.
 
-**Don't remove the Sign-in link tag** — it's how a new member actually gets into the app.
+**Don't remove the Sign-in link tag.** It's how a new member actually gets into the app.
 
 ### Test it before going live
 

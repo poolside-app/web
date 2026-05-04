@@ -3,9 +3,9 @@ title: "How do I switch from test mode to taking real card payments?"
 category: "Payments"
 ---
 
-Poolside uses a card processor called **Stripe** behind the scenes — that's the company that actually moves the money from your members' cards to your club's bank account. (You don't need a Stripe account before signing up; Poolside walks you through making one.)
+Poolside uses a payment company called **Stripe** to move money from your members' cards into your club's bank account. You don't need a Stripe account before you sign up — Poolside walks you through making one.
 
-When you first set up your club, card payments start in **test mode**. That's a practice mode where you and the board can click through everything without any real money moving. When you're ready to take real dues payments, you flip the switch to **live mode**.
+When you first set up your club, card payments start in **test mode**. Test mode is a practice mode. You and the board can click through everything, and no real money moves. When you're ready to take real dues, you flip the switch to **live mode**.
 
 ### You don't have to take cards at all
 
@@ -23,9 +23,9 @@ Most boards trip on at least one of these:
 
 Stripe will ask for some paperwork. Have these ready before you start, or you'll have to come back:
 
-- **Your club's tax ID number** — the 9-digit number the IRS gave your club. If your club is a non-profit you almost certainly have one. Ask whoever did your last tax filing. (If your club is run informally with no tax ID, one board member can use their own Social Security number instead.)
-- **Your club's bank account info** — the routing number and account number. These are on the bottom of a club check, or in your online banking.
-- **One board member's full name, home address, and date of birth.** Stripe calls this person the "responsible person" — it's just the human Stripe can call if something looks fishy. The treasurer or president usually does it.
+- **Your club's tax ID number** — the 9-digit number the IRS gave your club. If your club is a non-profit, you almost certainly have one. Ask whoever did your last tax filing. If your club has no tax ID, one board member can use their own Social Security number instead.
+- **Your club's bank account info** — the routing number and account number. You'll find these on the bottom of a club check, or in your online banking.
+- **One board member's full name, home address, and date of birth.** Stripe calls this person the "responsible person." It's just the human Stripe can call if something looks fishy. The treasurer or president usually does it.
 
 ### Flipping the switch
 
@@ -33,7 +33,7 @@ Stripe will ask for some paperwork. Have these ready before you start, or you'll
 2. Find the **Card payments** area.
 3. You'll see a yellow banner that says "Test mode — no real money is moving."
 4. Click **Go live**.
-5. You'll be sent through Stripe's quick verification using the info you gathered above. It usually takes a few minutes; sometimes Stripe needs a day to review.
+5. Stripe will walk you through a quick check using the info you gathered above. It usually takes a few minutes. Sometimes Stripe needs a day to review.
 6. When the banner turns green, you're live.
 
 ### What happens after I go live?

@@ -24,6 +24,6 @@ Click **Email applicant** on the application page. It opens your email app with 
 
 ### What if I approved by mistake?
 
-Don't worry — go to the household's record under Members and click **Remove household**. It's a soft delete, so you can restore it later if needed.
+Don't worry — go to the household's record under Members and click **Remove household**. They're hidden, not erased. You can bring them back later if you need to.
 
 > **Tip:** Most boards approve applications once a week. Set a reminder on your phone for Sunday evenings.

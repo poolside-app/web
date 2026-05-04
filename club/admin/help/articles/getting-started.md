@@ -30,6 +30,6 @@ If you want members to pay dues by credit card instead of just check or Venmo, s
 
 ### 6. Check the Status page
 
-Go to **Status** in the top nav. Anything yellow or red is something to fix. Green checks mean members can actually do that thing (sign in, pay, get email, etc.). It's a good first pass to find anything that fell through the cracks.
+Go to **Status** in the top nav. Anything yellow or red is something to fix. Green checks mean members can actually do that thing — sign in, pay, get email, and so on. It's a good way to spot anything that fell through the cracks.
 
 > **Tip:** Don't try to do all six in one sitting. Most boards spread setup over a week. The order above is the right one — finish #1 today, even if you do nothing else.

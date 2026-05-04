@@ -16,7 +16,7 @@ When dues season opens, you'll want to remind everyone to pay. Poolside has a on
    - **Last season's members** — bring back everyone who was a member last year, paid or not.
    - **All active households** — everyone currently in your member list.
    The count of families updates as you click between options, so you can see who you're about to reach.
-4. Under **Compose & send**, pick **Email**, **SMS** (text), or both. Most boards send email first, then a text blast a week before the deadline since texts get higher open rates.
+4. Under **Compose & send**, pick **Email**, **SMS** (text), or both. Most boards send email first. Then a week before the deadline, they send a text blast — texts get opened more often.
 5. (Optional) Type a custom intro in the **Custom intro** box. If you leave it blank, Poolside writes a friendly default for you using your club's name.
 6. Click **Send blast →**.
 

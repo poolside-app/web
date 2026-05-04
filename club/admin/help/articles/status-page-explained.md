@@ -28,7 +28,7 @@ You can click **Send to me** next to email or text checks to send yourself a rea
 
 **Behind the scenes** (collapsed by default)
 
-The technical detail: which integrations are connected, your domain status, payment processor info, etc. Most days you don't need to look at this. Open it only when our support team asks you to.
+The technical details — which outside services are hooked up, your web address status, the card processor, and so on. Most days you don't need to look here. Open it only when our support team asks you to.
 
 ### When should I check Status?
 
@@ -38,4 +38,4 @@ The technical detail: which integrations are connected, your domain status, paym
 
 ### The Email Support button
 
-At the bottom there's a button to email Poolside support. It auto-attaches a snapshot of everything on the Status page so we can help without a long back-and-forth. Use it freely.
+At the bottom there's a button to email Poolside support. It attaches a snapshot of everything on the Status page for you, so we can help without a long back-and-forth. Use it any time.

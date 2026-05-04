@@ -20,7 +20,7 @@ The new admin gets an email with a sign-in link. Once they click it, they're in.
 
 ### What can each admin do?
 
-Right now, every admin has the same access — they can see everything and change everything. We're working on per-role permissions for a future update (so a Membership Chair can't accidentally edit payments). For now, only invite people you trust with the full club account.
+Right now, every admin has the same access. They can see everything and change everything. Per-role limits are coming in a future update — so a Membership Chair won't accidentally edit payments. For now, only invite people you trust with the full club account.
 
 ### Removing an admin
 
@@ -30,7 +30,7 @@ Boards turn over every year. When someone steps off the board:
 2. Click the **×** next to their name.
 3. Confirm.
 
-Their sign-in stops working immediately. Their past actions stay in the audit log so you can always see who did what.
+Their sign-in stops working right away. Their past actions stay in the activity log, so you can always see who did what.
 
 ### What if I forget to add a backup and lose my own access?
 

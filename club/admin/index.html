@@ -103,6 +103,7 @@
   <a href="/club/wizard.html">Wizard</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
@@ -312,7 +313,13 @@ document.getElementById('signout').addEventListener('click', logout);
 
     const card = document.getElementById('activity-card');
     if (items.length === 0) {
-      card.innerHTML = `<h2>What needs your attention</h2><div class="placeholder">✓ All caught up — no pending applications, party requests, or unpaid items.</div>`;
+      card.innerHTML = `<h2>What needs your attention</h2>
+        <div class="placeholder">
+          ✓ All caught up — no pending applications, party requests, or unpaid items.
+          <div style="margin-top:14px;font-size:13px">
+            New here? <a href="/club/admin/help.html" style="color:var(--blue);font-weight:600;text-decoration:underline">Browse the help center</a> for setup tips and how-tos.
+          </div>
+        </div>`;
     } else {
       card.innerHTML = `<h2>What needs your attention</h2>
         <div style="display:flex;flex-direction:column;gap:8px">${items.map(it => `

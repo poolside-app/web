@@ -3,7 +3,7 @@ title: "How do I reset a member's sign-in?"
 category: "Members & Households"
 ---
 
-Members sign in to your club app using a **magic link** — they type their email, and a sign-in link arrives in their inbox. There's no password to forget, which means there's not much to "reset."
+Members sign in to your club app using a **magic link**. They type their email, and a sign-in link arrives in their inbox. There's no password to forget, so there's not much to "reset."
 
 But sometimes a member calls and says "I can't get in." Here's the fix.
 
