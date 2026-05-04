@@ -98,9 +98,11 @@ async function verifyState(tok: string): Promise<{ tid: string; aid: string } | 
   } catch { return null; }
 }
 
-function redirectUri(req: Request): string {
-  const url = new URL(req.url);
-  return `${url.origin}${url.pathname}`;
+function redirectUri(_req: Request): string {
+  // Use the public Supabase URL — req.url inside the edge runtime reflects
+  // the INTERNAL routing (http://, no /functions/v1/ prefix) which doesn't
+  // match what's registered in Google Cloud Console.
+  return `${SUPABASE_URL}/functions/v1/google_drive_sync`;
 }
 
 // Kick off the OAuth flow with drive.file scope (least-privilege — only

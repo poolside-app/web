@@ -22,8 +22,12 @@ const JWT_SECRET   = Deno.env.get('ADMIN_JWT_SECRET');
 
 const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+// Google requires the registered redirect URI to match the one we send
+// EXACTLY — including query string. Cloud Console registers the bare URL,
+// so we can't append ?action=callback. Detect callback by presence of the
+// `code` parameter Google appends instead.
 const GOOGLE_REDIRECT_URI  = Deno.env.get('GOOGLE_REDIRECT_URI')
-  || `${SUPABASE_URL}/functions/v1/google_oauth?action=callback`;
+  || `${SUPABASE_URL}/functions/v1/google_oauth`;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -63,7 +67,12 @@ async function encodeState(payload: Record<string, unknown>): Promise<string> {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const url = new URL(req.url);
-  const action = url.searchParams.get('action') || '';
+  // If Google redirected back to us, the `code` query param will be set.
+  // Treat that as the 'callback' action so we don't need the redirect URI
+  // to carry an explicit ?action=callback (which would have to be registered
+  // separately in Google Cloud Console).
+  const action = url.searchParams.get('action')
+    || (url.searchParams.get('code') ? 'callback' : '');
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     return htmlError('Google sign-in isn\'t configured yet — ask the club admin to wire GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET.', 503);
