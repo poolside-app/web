@@ -59,10 +59,24 @@ async function verifyAdmin(token: string): Promise<AdminPayload | null> {
     return p as unknown as AdminPayload;
   } catch { return null; }
 }
-function hasPaymentsScope(p: AdminPayload): boolean {
+function hasPaymentsScopeFromJwt(p: AdminPayload): boolean {
   if (p.is_super) return true;
   if (p.role_template === 'owner') return true;
   return Array.isArray(p.scopes) && p.scopes.includes('payments');
+}
+// JWT-first, DB-fallback. Old tokens (issued before role_template/scopes
+// were embedded in the payload) lack those fields; we fall back to a DB
+// lookup so they still work without forcing re-login.
+async function hasPaymentsScope(sb: ReturnType<typeof createClient>, p: AdminPayload): Promise<boolean> {
+  if (hasPaymentsScopeFromJwt(p)) return true;
+  if (p.role_template !== undefined && p.scopes !== undefined) return false;
+  const { data: admin } = await sb.from('admin_users')
+    .select('role_template, scopes, is_super, active').eq('id', p.sub).maybeSingle();
+  if (!admin || !admin.active) return false;
+  if (admin.is_super) return true;
+  if (admin.role_template === 'owner') return true;
+  const scopes = (admin.scopes as string[] | null) ?? [];
+  return scopes.includes('payments');
 }
 
 // State token signed with our JWT secret. Carries tenant_id + admin_id +
@@ -192,13 +206,15 @@ Deno.serve(async (req) => {
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = tokRaw ? await verifyAdmin(tokRaw) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
-  if (!hasPaymentsScope(payload)) return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+  if (!(await hasPaymentsScope(sb, payload))) {
+    return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
+  }
 
   // ── status ──────────────────────────────────────────────────────────────
   if (action === 'status') {

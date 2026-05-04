@@ -25,7 +25,7 @@
 // This function reads it to compose the body's discount line.
 // =============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkSmsCap, recordSms } from '../_shared/sms_cap.ts';
 
@@ -64,10 +64,21 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-function hasScope(p: Payload, scope: string): boolean {
+function hasScopeFromJwt(p: Payload, scope: string): boolean {
   if (p.is_super) return true;
   if (p.role_template === 'owner') return true;
   const scopes = Array.isArray(p.scopes) ? p.scopes : [];
+  return scopes.includes(scope);
+}
+async function hasScope(sb: SupabaseClient, p: Payload, scope: string): Promise<boolean> {
+  if (hasScopeFromJwt(p, scope)) return true;
+  if (p.role_template !== undefined && p.scopes !== undefined) return false;
+  const { data: admin } = await sb.from('admin_users')
+    .select('role_template, scopes, is_super, active').eq('id', p.sub).maybeSingle();
+  if (!admin || !admin.active) return false;
+  if (admin.is_super) return true;
+  if (admin.role_template === 'owner') return true;
+  const scopes = (admin.scopes as string[] | null) ?? [];
   return scopes.includes(scope);
 }
 
@@ -164,15 +175,15 @@ Deno.serve(async (req) => {
   const token = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = token ? await verifyTenantAdmin(token) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
-  if (!hasScope(payload, 'renewals')) {
-    return jsonResponse({ ok: false, error: 'Missing renewals scope' }, 403);
-  }
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+  if (!(await hasScope(sb, payload, 'renewals'))) {
+    return jsonResponse({ ok: false, error: 'Missing renewals scope' }, 403);
+  }
 
   if (action === 'sms_usage') {
     const { data: tenant } = await sb.from('tenants')
