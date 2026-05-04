@@ -15,7 +15,7 @@ The welcome email is what new members see first when you approve their applicati
 ### What you can change
 
 - **Subject line** — keep it short. "Welcome to [Your Club]!" works well.
-- **Greeting** — `Hi {{first_name}},` will fill in the new member's first name automatically.
+- **Greeting** — start with something warm like "Hi" and then the member's first name.
 - **Body** — write a few short paragraphs. Cover:
   - When the pool opens and closes
   - Where to find the gate code or app
@@ -23,15 +23,13 @@ The welcome email is what new members see first when you approve their applicati
   - Any rules they should know upfront (no glass, etc.)
 - **Sign-off** — "Welcome aboard, [Your Name], Membership Chair" feels personal.
 
-### The placeholders (those `{{double curly braces}}`)
+### The little blue tags (auto-fill bits)
 
-These get filled in automatically for each member:
+You'll see colored tags inside the editor with names like **Member's name**, **Club name**, or **Sign-in link**. These are placeholders — Poolside swaps them for the right info every time the email is sent. So one template with a "Member's name" tag becomes "Hi Linda," for Linda and "Hi Carlos," for Carlos.
 
-- `{{first_name}}` — the new member's first name
-- `{{club_name}}` — your club's name
-- `{{signin_link}}` — their personal sign-in link
+To add one, click into the body where you want it and pick a tag from the toolbar above the editor. To remove one, click the tag and press Delete like any other word.
 
-Don't remove the sign-in link — it's how they get into the app.
+**Don't remove the Sign-in link tag** — it's how a new member actually gets into the app.
 
 ### Test it before going live
 

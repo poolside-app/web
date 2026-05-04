@@ -23,7 +23,7 @@ If you spot a typo:
 
 Go to the **Status** page (the link is in the top nav). If you see a yellow or red item under "What members can do right now" next to "Get emails," that's your culprit.
 
-Usually this means your custom sending domain isn't verified yet. The Status page will tell you exactly what to fix.
+Usually this means the email address your club sends from hasn't been verified yet — a one-time setup step that proves to inbox providers like Gmail that emails really are from you. The Status page tells you exactly what to fix and gives you a "Send to me" button to test once you're done.
 
 ### Still stuck?
 

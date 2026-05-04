@@ -255,7 +255,7 @@
 <main>
   <div class="hero">
     <h1>How can we help?</h1>
-    <div class="lede">Search for an answer, or browse the topics below. Most questions are answered in under a minute.</div>
+    <div class="lede">Type a question in plain English, or browse the topics below. If you can't find what you need, scroll to the bottom and email us — we reply the same business day.</div>
     <div class="search-wrap">
       <span class="ico">🔍</span>
       <input
@@ -263,7 +263,7 @@
         type="search"
         autocomplete="off"
         autofocus
-        placeholder="Search help — try 'add member', 'send reminder', etc."
+        placeholder="Search help — try 'dues reminder', 'who paid', 'add admin'…"
         aria-label="Search help articles"
       >
       <button class="clear hidden" id="clear-search" type="button" aria-label="Clear search">×</button>
@@ -283,7 +283,7 @@
   <div id="empty" class="empty" style="display:none;">
     <div class="big">🤔</div>
     <h3>No matches — try different words?</h3>
-    <p>Try searching for "email," "payment," "member," or "sign in." Or scroll through the categories.</p>
+    <p>Try shorter words like <em>"dues,"</em> <em>"reminder,"</em> <em>"admin,"</em> <em>"welcome,"</em> or <em>"paid."</em> Or scroll through the categories below. Still stuck? Click <strong>Email support</strong> at the bottom — we'll write back the same day.</p>
   </div>
 
   <section class="support">
@@ -298,8 +298,12 @@
 
     <div class="btn-row">
       <button class="btn btn-primary" id="email-support" type="button">📧 Email support</button>
-      <span class="reassure">We'll reply within a day. Your account info is auto-attached so we can help fast.</span>
+      <button class="btn btn-ghost" id="copy-support" type="button" title="Copy a pre-filled email if your computer doesn't open one automatically">📋 Copy email instead</button>
     </div>
+    <div class="reassure" style="margin-top:10px;font-size:13px;color:var(--muted)">
+      We reply within one business day. Your club name, your admin email, browser, and the page you came from are auto-attached so we can help quickly. <strong>No member info or passwords are sent.</strong>
+    </div>
+    <div id="copy-result" role="status" aria-live="polite" style="display:none;margin-top:10px;padding:10px 14px;background:var(--green-l);border:1px solid var(--green);color:#14532d;border-radius:8px;font-size:13px"></div>
   </section>
 </main>
 
@@ -339,13 +343,19 @@ const CATEGORY_ORDER = [
 ];
 
 const ARTICLE_FILES = [
-  'status-page-explained.md',
+  // Getting Started — listed first so a brand-new admin sees them at the top
+  'getting-started.md',
   'add-another-admin.md',
+  'set-dues-amounts.md',
+  'status-page-explained.md',
+  // Members & Households
   'add-new-family.md',
   'approve-application.md',
   'reset-member-signin.md',
+  // Payments
   'see-who-paid.md',
   'go-live-card-payments.md',
+  // Email & Text
   'send-renewal-blast.md',
   'customize-welcome-email.md',
   'welcome-email-not-received.md',
@@ -396,8 +406,83 @@ function parseArticle(slug, raw) {
     .replace(/\s+/g, ' ')
     .toLowerCase();
 
-  return { slug, title, category, body, html, plainText, titleLower: title.toLowerCase(), categoryLower: category.toLowerCase() };
+  // Per-slug synonym bag. Lets a treasurer find an article by what they'd
+  // naturally type, not by the words our writer picked. Volunteer-friendly
+  // phrasings (e.g. "tell people to pay") matter more than keyword density.
+  const synonyms = (SYNONYMS[slug] || []).join(' ').toLowerCase();
+
+  return {
+    slug, title, category, body, html, plainText, synonyms,
+    titleLower: title.toLowerCase(),
+    categoryLower: category.toLowerCase(),
+  };
 }
+
+// Synonym bags per slug. Add alternate phrasings here, not in the article body.
+// Keep these short and natural — the way a 60-year-old volunteer treasurer
+// would actually type a question into a help search.
+const SYNONYMS = {
+  'send-renewal-blast': [
+    'remind', 'reminder', 'remind everyone', 'tell people to pay',
+    'dues reminder', 'pay dues', 'unpaid', 'who hasn\'t paid',
+    'blast', 'mass email', 'mass text', 'group email', 'group text',
+    'season opening', 'open season', 'membership renewal', 'renew',
+    'collect dues', 'collect money', 'send everyone an email',
+    'last year members', 'lapsed members',
+  ],
+  'see-who-paid': [
+    'paid', 'unpaid', 'owe', 'owes', 'overdue', 'late', 'aged',
+    'who paid', 'who hasn\'t paid', 'check payment', 'cash payment',
+    'venmo', 'mark paid', 'record check', 'record cash',
+    'export spreadsheet', 'csv', 'excel', 'board report', 'treasurer report',
+  ],
+  'add-new-family': [
+    'new member', 'new family', 'add household', 'add member',
+    'sign up', 'add manually', 'enter family', 'new signup',
+    'apply', 'application form', 'application link',
+  ],
+  'approve-application': [
+    'pending', 'review', 'approve', 'decline', 'reject',
+    'new application', 'someone applied', 'who wants to join',
+  ],
+  'reset-member-signin': [
+    'can\'t sign in', 'cant sign in', 'forgot password', 'no password',
+    'magic link', 'login', 'log in', 'sign in problem', 'login problem',
+    'resend link', 'expired link',
+  ],
+  'go-live-card-payments': [
+    'stripe', 'card payments', 'credit card', 'accept cards',
+    'test mode', 'live mode', 'go live', 'real money', 'turn on payments',
+    'connect bank', 'bank account',
+  ],
+  'customize-welcome-email': [
+    'welcome message', 'change welcome', 'edit welcome',
+    'email template', 'change email wording',
+  ],
+  'welcome-email-not-received': [
+    'didn\'t get email', 'didnt get email', 'no email',
+    'spam', 'junk folder', 'missing email', 'lost email',
+    'email not delivered', 'email bounced',
+  ],
+  'add-another-admin': [
+    'second admin', 'backup admin', 'another admin', 'invite admin',
+    'invite board member', 'add board member', 'co-treasurer',
+    'multiple admins', 'admin team',
+  ],
+  'status-page-explained': [
+    'status', 'health', 'is everything working', 'what\'s broken',
+    'whats broken', 'green light', 'red light',
+  ],
+  'getting-started': [
+    'just signed up', 'first time', 'where do i start', 'where to start',
+    'new club', 'setup', 'onboarding', 'beginning',
+  ],
+  'set-dues-amounts': [
+    'how much', 'set price', 'dues amount', 'how much to charge',
+    'tier price', 'change price', 'membership tiers', 'tier',
+    'family tier', 'senior tier', 'levels',
+  ],
+};
 
 function renderMarkdownSafe(md) {
   if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
@@ -550,17 +635,28 @@ function runSearch() {
   const q = searchInput.value.trim().toLowerCase();
   clearBtn.classList.toggle('hidden', !q);
   if (!q) { renderArticles(ARTICLES); return; }
-  const filtered = ARTICLES.filter(a =>
-    a.titleLower.includes(q) ||
-    a.categoryLower.includes(q) ||
-    a.plainText.includes(q)
-  );
-  // Prioritize title matches first
-  filtered.sort((a, b) => {
-    const at = a.titleLower.includes(q) ? 0 : 1;
-    const bt = b.titleLower.includes(q) ? 0 : 1;
-    return at - bt;
-  });
+
+  // Score by best match location: title > synonym > category > body. We also
+  // try matching individual words from the query so multi-word searches like
+  // "remind everyone to pay" still hit articles that match any of those words
+  // via synonym ("remind") rather than requiring the full phrase.
+  const words = q.split(/\s+/).filter(w => w.length >= 3);
+  function score(a) {
+    if (a.titleLower.includes(q)) return 0;
+    if (a.synonyms.includes(q)) return 1;
+    if (a.categoryLower.includes(q)) return 2;
+    if (a.plainText.includes(q)) return 3;
+    // Word-level fallback: if any meaningful word in the query hits a synonym
+    // or the title, count that as a synonym match.
+    if (words.some(w => a.synonyms.includes(w) || a.titleLower.includes(w))) return 4;
+    if (words.some(w => a.plainText.includes(w))) return 5;
+    return 99;
+  }
+  const filtered = ARTICLES
+    .map(a => ({ a, s: score(a) }))
+    .filter(x => x.s < 99)
+    .sort((x, y) => x.s - y.s)
+    .map(x => x.a);
   renderArticles(filtered, searchInput.value.trim());
 }
 
@@ -646,6 +742,23 @@ ${diag}
 document.getElementById('email-support').addEventListener('click', () => {
   const { href } = buildSupportEmail();
   window.location.href = href;
+});
+
+// Fallback for users whose computer doesn't open a mail app on mailto:.
+// Copies the recipient + subject + body to the clipboard as a single block.
+document.getElementById('copy-support').addEventListener('click', async () => {
+  const { subject, body } = buildSupportEmail();
+  const blob = `To: support@poolsideapp.com\nSubject: ${subject}\n\n${body}`;
+  const out = document.getElementById('copy-result');
+  try {
+    await navigator.clipboard.writeText(blob);
+    out.textContent = 'Copied! Open your email and paste — the To: address and subject are at the top.';
+    out.style.display = '';
+    setTimeout(() => { out.style.display = 'none'; }, 6000);
+  } catch {
+    out.style.display = '';
+    out.textContent = 'Couldn\'t copy automatically. Email support@poolsideapp.com directly and tell us what you need.';
+  }
 });
 
 // ---- Whoami ----
