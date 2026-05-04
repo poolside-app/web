@@ -181,6 +181,19 @@ Deno.serve(async (req) => {
       ? 'If your number is on file, a sign-in text is on the way.'
       : 'If your email is on file, a sign-in link is on the way.' };
 
+    // Anti-timing-leak: ensure both no-match and match paths return at
+    // roughly the same wall-clock time so an attacker can't enumerate
+    // members. Without this, the match path takes ~700ms (DB insert +
+    // Resend/Twilio POST) while the no-match path returns in ~50ms.
+    const startMs = Date.now();
+    const MIN_RESPONSE_MS = 800;
+    const padTime = async () => {
+      const elapsed = Date.now() - startMs;
+      if (elapsed < MIN_RESPONSE_MS) {
+        await new Promise(r => setTimeout(r, MIN_RESPONSE_MS - elapsed));
+      }
+    };
+
     let memberQuery = sb.from('household_members')
       .select('id, name, email, phone_e164, household_id, active')
       .eq('tenant_id', tenant.id).eq('active', true);
@@ -189,7 +202,7 @@ Deno.serve(async (req) => {
     const { data: member } = await memberQuery.maybeSingle();
 
     if (!member) {
-      await new Promise(r => setTimeout(r, 250));
+      await padTime();
       return jsonResponse(generic);
     }
 
@@ -214,7 +227,7 @@ Deno.serve(async (req) => {
         tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
         success: send.sent, error: send.error ?? null, source: 'member_auth.start',
       });
-      if (send.sent) return jsonResponse(generic);
+      if (send.sent) { await padTime(); return jsonResponse(generic); }
       return jsonResponse({
         ok: true, sent: false,
         message: 'SMS sending is not configured. Use the link below to sign in.',
@@ -254,7 +267,10 @@ Deno.serve(async (req) => {
     const { data: tenant } = await sb.from('tenants')
       .select('id, slug, display_name').eq('id', link.tenant_id).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
-    if (slug && slug !== tenant.slug) {
+    // Tighten cross-tenant guard: previously `slug &&` short-circuited so an
+    // empty slug bypassed the check. Now require the slug to be non-empty
+    // AND match. m/verify.html always sends a slug from the subdomain.
+    if (!slug || slug !== tenant.slug) {
       return jsonResponse({ ok: false, error: 'Link does not match this club' }, 401);
     }
 
