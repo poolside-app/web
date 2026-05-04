@@ -9,7 +9,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export const PLAN_HOUSEHOLD_CAPS: Record<string, number> = {
-  free:       30,
+  free:       20,    // matches pricing memory ("Free Forever ≤20 households")
   starter:    100,
   pro:        300,
   enterprise: Number.POSITIVE_INFINITY,

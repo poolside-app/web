@@ -879,6 +879,15 @@ const App = (() => {
         admin_notes: document.getElementById('am-admin_notes').value.trim() || null,
       });
       if (!data.ok) throw new Error(data.error || 'Approve failed');
+      // If some submitted family members couldn't be added (most often the
+      // 8-member household cap), surface it loudly so the admin can fix it
+      // manually. Previously this was silently dropped on the floor.
+      if (data.partial_failures && data.partial_failures.length) {
+        const list = data.partial_failures.map(e => `  • ${e.name}: ${e.error}`).join('\n');
+        alert(
+          `Approved — but ${data.partial_failures.length} household member${data.partial_failures.length === 1 ? '' : 's'} couldn't be added:\n\n${list}\n\nReview the household to add them manually.`,
+        );
+      }
       closeM();
       await refresh();
       // Approving creates a household — refresh that side too

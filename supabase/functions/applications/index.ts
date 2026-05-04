@@ -120,10 +120,25 @@ Deno.serve(async (req) => {
     const slug = String(body.slug ?? '').trim().toLowerCase();
     if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
     const { data: tenant } = await sb.from('tenants')
-      .select('id, status').eq('slug', slug).maybeSingle();
+      .select('id, status, plan').eq('slug', slug).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
     if (tenant.status === 'churned' || tenant.status === 'suspended') {
       return jsonResponse({ ok: false, error: 'This club isn\'t accepting applications right now' }, 403);
+    }
+
+    // Capacity gate at SUBMIT time, not just approve. Avoids the bad UX where
+    // a family fills out the form, gets a "we received it!" confirmation,
+    // and then never hears back because the admin can't approve them.
+    {
+      const { getHouseholdCapStatus } = await import('../_shared/plan_caps.ts');
+      const cap = await getHouseholdCapStatus(sb, tenant.id, tenant.plan);
+      if (cap.at_cap) {
+        return jsonResponse({
+          ok: false,
+          error: `This club is at capacity right now (${cap.count} of ${cap.cap === Infinity ? '∞' : cap.cap} household${cap.cap === 1 ? '' : 's'}). Please contact the club directly to be added to a waitlist.`,
+          at_capacity: true,
+        }, 409);
+      }
     }
 
     const family_name = String(body.family_name ?? '').trim();
@@ -145,9 +160,23 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Invalid payment method' }, 400);
     }
 
-    // Full-detail fields (BE parity): adults, children, waivers, signatures
-    const adultsArr   = Array.isArray(body.adults)   ? body.adults   as Array<Record<string, unknown>> : [];
-    const childrenArr = Array.isArray(body.children) ? body.children as Array<Record<string, unknown>> : [];
+    // Full-detail fields (BE parity): adults, children, waivers, signatures.
+    // Hard caps on array length so a malicious submitter can't blow up the
+    // payload + spam Resend / Drive with a 100MB request.
+    const MAX_ADULTS_PER_HOUSEHOLD = 12;     // generous — most families ≤4
+    const MAX_CHILDREN_PER_HOUSEHOLD = 16;
+    const adultsArr   = Array.isArray(body.adults)
+      ? (body.adults   as Array<Record<string, unknown>>).slice(0, MAX_ADULTS_PER_HOUSEHOLD)
+      : [];
+    const childrenArr = Array.isArray(body.children)
+      ? (body.children as Array<Record<string, unknown>>).slice(0, MAX_CHILDREN_PER_HOUSEHOLD)
+      : [];
+    if (Array.isArray(body.adults) && (body.adults as unknown[]).length > MAX_ADULTS_PER_HOUSEHOLD) {
+      return jsonResponse({ ok: false, error: `Maximum ${MAX_ADULTS_PER_HOUSEHOLD} adults per household. Contact the club if your situation is unusual.` }, 400);
+    }
+    if (Array.isArray(body.children) && (body.children as unknown[]).length > MAX_CHILDREN_PER_HOUSEHOLD) {
+      return jsonResponse({ ok: false, error: `Maximum ${MAX_CHILDREN_PER_HOUSEHOLD} children per household.` }, 400);
+    }
 
     // Validate per-adult shape if provided. Adults must each have a name; phone normalization happens here.
     const adults_json: Array<Record<string, unknown>> = [];
@@ -491,6 +520,10 @@ Deno.serve(async (req) => {
     }
 
     let createdExtraMembers = 0;
+    // Surface failed inserts so admin knows if the 8-member household cap (or
+    // any other DB constraint) silently dropped someone. Previously these
+    // errors were eaten and approval succeeded with a partial household.
+    const insertErrors: Array<{ name: string; error: string }> = [];
     for (let i = 0; i < adults.length; i++) {
       const a = adults[i];
       const aName = String(a?.name ?? '').trim();
@@ -511,6 +544,7 @@ Deno.serve(async (req) => {
         confirmed_at: new Date().toISOString(),
       });
       if (!spErr) createdExtraMembers++;
+      else insertErrors.push({ name: aName, error: spErr.message });
     }
     for (const c of children) {
       const cName = String(c?.name ?? '').trim();
@@ -531,6 +565,7 @@ Deno.serve(async (req) => {
         confirmed_at: new Date().toISOString(),
       });
       if (!chErr) createdExtraMembers++;
+      else insertErrors.push({ name: cName, error: chErr.message });
     }
 
     const decided_by = payload.synthetic ? null : payload.sub;
@@ -618,6 +653,10 @@ Deno.serve(async (req) => {
       household_id: hh.id, primary_id: pm.id,
       members_created: 1 + createdExtraMembers,
       welcome_sent, welcome_dev_link,
+      // Non-empty list = some members the family submitted couldn't be
+      // created (most commonly the per-household 8-member DB cap). Admin
+      // sees this in the response and can fix it manually.
+      partial_failures: insertErrors.length ? insertErrors : undefined,
     });
   }
 
