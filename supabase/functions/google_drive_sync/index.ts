@@ -279,6 +279,38 @@ Deno.serve(async (req) => {
     }
   }
 
+  if (action === 'backfill_unsynced') {
+    if (!GOOGLE_ID || !GOOGLE_SECRET) return jsonResponse({ ok: false, error: 'Platform Google OAuth not configured' }, 503);
+    // Find applications that have NO drive_sync_log entry yet — these are
+    // either pre-Drive-connect applications or ones that errored without
+    // queueing. Re-run sync for each.
+    const { data: apps } = await sb.from('applications')
+      .select('id, family_name, created_at')
+      .eq('tenant_id', payload.tid)
+      .order('created_at', { ascending: true });
+    const { data: synced } = await sb.from('drive_sync_log')
+      .select('application_id').eq('tenant_id', payload.tid);
+    const syncedSet = new Set((synced ?? []).map(s => s.application_id as string));
+    const missing = (apps ?? []).filter(a => !syncedSet.has(a.id as string));
+    let attempted = 0, succeeded = 0, failed = 0;
+    const errors: Array<{ family: string; error: string }> = [];
+    for (const app of missing) {
+      attempted++;
+      try {
+        const r = await syncApplicationToDrive(sb, {
+          tenantId: payload.tid, applicationId: app.id as string,
+          googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET,
+        });
+        if (r.ok) succeeded++;
+        else { failed++; errors.push({ family: app.family_name as string, error: r.error }); }
+      } catch (e) {
+        failed++;
+        errors.push({ family: app.family_name as string, error: (e as Error).message });
+      }
+    }
+    return jsonResponse({ ok: true, total_unsynced: missing.length, attempted, succeeded, failed, errors });
+  }
+
   if (action === 'retry_queue') {
     if (!GOOGLE_ID || !GOOGLE_SECRET) return jsonResponse({ ok: false, error: 'Platform Google OAuth not configured' }, 503);
     const { data: rows } = await sb.from('drive_sync_queue')
