@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Help — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb;
+    --green:#16a34a; --green-l:#dcfce7;
+    --yellow:#d97706; --yellow-l:#fef3c7;
+    --red:#dc2626; --red-l:#fee2e2;
+    --gray:#94a3b8; --gray-l:#f1f5f9;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 17px; }
+  h3 { font-size: 16px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:880px; width:100%; margin:0 auto; }
+
+  /* Hero */
+  .hero { background: linear-gradient(135deg, var(--blue-l), #fff); border-radius: var(--r-lg); padding: 28px 24px; margin-bottom: 22px; box-shadow: var(--shadow); }
+  .hero h1 { color: var(--blue); margin-bottom: 6px; }
+  .hero .lede { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+
+  /* Search */
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    width: 100%;
+    padding: 14px 16px 14px 44px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--r-md);
+    font: 16px 'Inter';
+    background: #fff;
+    color: var(--text);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-wrap input:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(10,59,92,.12);
+  }
+  .search-wrap .ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 18px; opacity: .5; pointer-events: none; }
+  .search-wrap .clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; padding: 4px 10px; border-radius: 6px; }
+  .search-wrap .clear:hover { background: var(--gray-l); }
+  .search-wrap .clear.hidden { display: none; }
+
+  /* Category section */
+  .category {
+    margin-bottom: 22px;
+  }
+  .category h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    font-family: 'Inter', sans-serif;
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+  .category-list {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .article {
+    border-top: 1px solid var(--border);
+  }
+  .article:first-child { border-top: 0; }
+  .article-head {
+    padding: 14px 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    user-select: none;
+    transition: background .15s;
+  }
+  .article-head:hover { background: var(--bg-2); }
+  .article-head:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+  .article-head .chev {
+    flex: none;
+    width: 20px;
+    text-align: center;
+    color: var(--muted);
+    transition: transform .2s;
+    font-size: 12px;
+  }
+  .article.open .article-head .chev { transform: rotate(90deg); }
+  .article-head .ttl {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+  }
+  .article-head .hint {
+    flex: none;
+    font-size: 12px;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .article-head:hover .hint { opacity: 1; }
+
+  .article-body {
+    display: none;
+    padding: 4px 22px 22px 48px;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text);
+    border-top: 1px solid var(--bg-2);
+  }
+  .article.open .article-body { display: block; }
+  .article-body h3 { font-size: 16px; margin: 18px 0 6px; color: var(--blue); }
+  .article-body h4 { font-size: 14px; margin: 14px 0 4px; font-weight: 600; }
+  .article-body p { margin: 8px 0; }
+  .article-body ol, .article-body ul { margin: 8px 0; padding-left: 22px; }
+  .article-body li { margin: 4px 0; }
+  .article-body code {
+    background: var(--bg-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+  }
+  .article-body blockquote {
+    margin: 14px 0;
+    padding: 10px 14px;
+    background: var(--yellow-l);
+    border-left: 3px solid var(--yellow);
+    border-radius: 6px;
+    font-size: 14px;
+    color: #7c2d12;
+  }
+  .article-body blockquote p { margin: 4px 0; }
+  .article-body strong { font-weight: 600; }
+  .article-body a { color: var(--blue); }
+  .article-body a:hover { text-decoration: underline; }
+  .article-body mark {
+    background: #fef08a;
+    color: var(--text);
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+
+  /* Empty state */
+  .empty {
+    padding: 60px 22px;
+    text-align: center;
+    color: var(--muted);
+    border: 2px dashed var(--border);
+    border-radius: var(--r-lg);
+    margin-bottom: 22px;
+  }
+  .empty .big { font-size: 36px; margin-bottom: 8px; }
+  .empty h3 { font-size: 18px; color: var(--text); margin-bottom: 6px; }
+  .empty p { font-size: 14px; }
+
+  /* Loading */
+  .skeleton { background:linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:6px; height:16px; margin:8px 0; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  .loading-card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 22px; box-shadow:var(--shadow); margin-bottom:18px; }
+
+  /* Support CTA */
+  .support {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
+    margin-top: 28px;
+  }
+  .support h2 { font-size: 20px; color: var(--blue); margin-bottom: 4px; }
+  .support .sub { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+  .support label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 6px; }
+  .support textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--r-md);
+    font: 14px/1.5 'Inter';
+    color: var(--text);
+    background: #fff;
+    resize: vertical;
+  }
+  .support textarea:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(10,59,92,.12);
+  }
+  .support .btn-row { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 10px 18px; border-radius: var(--r-md); font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: #fff; color: var(--text); }
+  .btn:hover { filter: brightness(.97); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-ghost { background: #fff; border-color: var(--border); color: var(--blue); }
+  .support .reassure { font-size: 13px; color: var(--muted); }
+
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    .article-head .chev { transition: none; }
+    .skeleton { animation: none; }
+  }
+
+  @media (max-width: 600px) {
+    .hero { padding: 22px 18px; }
+    h1 { font-size: 24px; }
+    .article-body { padding: 4px 16px 18px 28px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/emails.html">Emails</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/health.html">Status</a>
+  <a href="/club/admin/help.html" class="on">Help</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="hero">
+    <h1>How can we help?</h1>
+    <div class="lede">Search for an answer, or browse the topics below. Most questions are answered in under a minute.</div>
+    <div class="search-wrap">
+      <span class="ico">🔍</span>
+      <input
+        id="search"
+        type="search"
+        autocomplete="off"
+        autofocus
+        placeholder="Search help — try 'add member', 'send reminder', etc."
+        aria-label="Search help articles"
+      >
+      <button class="clear hidden" id="clear-search" type="button" aria-label="Clear search">×</button>
+    </div>
+  </div>
+
+  <div id="result-summary" style="display:none; margin-bottom:14px; font-size:13px; color:var(--muted); padding:0 4px;"></div>
+
+  <div id="articles-host">
+    <div class="loading-card">
+      <div class="skeleton" style="width:30%"></div>
+      <div class="skeleton" style="width:80%"></div>
+      <div class="skeleton" style="width:65%"></div>
+    </div>
+  </div>
+
+  <div id="empty" class="empty" style="display:none;">
+    <div class="big">🤔</div>
+    <h3>No matches — try different words?</h3>
+    <p>Try searching for "email," "payment," "member," or "sign in." Or scroll through the categories.</p>
+  </div>
+
+  <section class="support">
+    <h2>Still need help?</h2>
+    <div class="sub">We reply within one business day. Tell us what you were trying to do — we'll take it from there.</div>
+
+    <label for="ctx">What were you trying to do? (optional, but it helps a lot)</label>
+    <textarea
+      id="ctx"
+      placeholder="e.g. I tried to send a renewal email to all unpaid families but only some of them got it…"
+    ></textarea>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="email-support" type="button">📧 Email support</button>
+      <span class="reassure">We'll reply within a day. Your account info is auto-attached so we can help fast.</span>
+    </div>
+  </section>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<!-- Markdown parser + sanitizer -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+function tenantInfo() {
+  try { return JSON.parse(localStorage.getItem('poolside_tenant_tenant') || '{}'); }
+  catch { return {}; }
+}
+function userInfo() {
+  try { return JSON.parse(localStorage.getItem('poolside_tenant_user') || '{}'); }
+  catch { return {}; }
+}
+
+// ---- Article catalog ----
+// Order within category controls display order. Category order controls section order.
+const CATEGORY_ORDER = [
+  'Getting Started',
+  'Members & Households',
+  'Payments',
+  'Email & Text',
+  'Photos',
+  'Troubleshooting',
+];
+
+const ARTICLE_FILES = [
+  'status-page-explained.md',
+  'add-another-admin.md',
+  'add-new-family.md',
+  'approve-application.md',
+  'reset-member-signin.md',
+  'see-who-paid.md',
+  'go-live-card-payments.md',
+  'send-renewal-blast.md',
+  'customize-welcome-email.md',
+  'welcome-email-not-received.md',
+];
+
+let ARTICLES = []; // { slug, title, category, body, html, plainText }
+
+async function loadArticles() {
+  const results = await Promise.all(ARTICLE_FILES.map(async fname => {
+    try {
+      const res = await fetch(`/club/admin/help/articles/${fname}`, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const raw = await res.text();
+      return parseArticle(fname.replace(/\.md$/, ''), raw);
+    } catch (e) {
+      console.error(`Failed to load ${fname}:`, e);
+      return null;
+    }
+  }));
+  ARTICLES = results.filter(Boolean);
+  renderArticles(ARTICLES);
+}
+
+function parseArticle(slug, raw) {
+  // Parse YAML frontmatter (only supports `key: "value"` style we use)
+  let title = slug;
+  let category = 'General';
+  let body = raw;
+
+  const fm = raw.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n([\s\S]*)$/);
+  if (fm) {
+    const front = fm[1];
+    body = fm[2];
+    front.split(/\r?\n/).forEach(line => {
+      const m = line.match(/^\s*(\w+)\s*:\s*"([^"]*)"\s*$/) || line.match(/^\s*(\w+)\s*:\s*(.+?)\s*$/);
+      if (!m) return;
+      if (m[1] === 'title') title = m[2];
+      else if (m[1] === 'category') category = m[2];
+    });
+  }
+
+  const html = renderMarkdownSafe(body);
+  // Plain-text version of body for searching (strip markdown markers + html)
+  const plainText = body
+    .replace(/`{1,3}[^`]*`{1,3}/g, ' ')
+    .replace(/[#>*_\-]+/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+  return { slug, title, category, body, html, plainText, titleLower: title.toLowerCase(), categoryLower: category.toLowerCase() };
+}
+
+function renderMarkdownSafe(md) {
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    // Fallback: just escape and turn newlines into paragraphs
+    return '<p>' + escapeHtml(md).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+  }
+  marked.setOptions({ gfm: true, breaks: false, headerIds: false, mangle: false });
+  const dirty = marked.parse(md);
+  return DOMPurify.sanitize(dirty, {
+    ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','ul','ol','li','strong','em','code','pre','blockquote','a','br','hr','mark'],
+    ALLOWED_ATTR: ['href'],
+    ALLOW_DATA_ATTR: false,
+  });
+}
+
+function groupByCategory(list) {
+  const map = new Map();
+  list.forEach(a => {
+    if (!map.has(a.category)) map.set(a.category, []);
+    map.get(a.category).push(a);
+  });
+  // Order known categories first, then any unknown ones alphabetically
+  const ordered = [];
+  CATEGORY_ORDER.forEach(c => { if (map.has(c)) { ordered.push([c, map.get(c)]); map.delete(c); } });
+  [...map.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(p => ordered.push(p));
+  return ordered;
+}
+
+function renderArticles(list, query = '') {
+  const host = document.getElementById('articles-host');
+  const empty = document.getElementById('empty');
+  const summary = document.getElementById('result-summary');
+
+  if (list.length === 0) {
+    host.innerHTML = '';
+    empty.style.display = '';
+    summary.style.display = query ? '' : 'none';
+    summary.textContent = query ? `No matches for "${query}".` : '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  if (query) {
+    summary.style.display = '';
+    summary.textContent = `${list.length} ${list.length === 1 ? 'match' : 'matches'} for "${query}"`;
+  } else {
+    summary.style.display = 'none';
+  }
+
+  const grouped = groupByCategory(list);
+  host.innerHTML = grouped.map(([cat, arts]) => `
+    <section class="category">
+      <h2>${escapeHtml(cat)}</h2>
+      <div class="category-list">
+        ${arts.map(a => `
+          <div class="article" data-slug="${escapeHtml(a.slug)}">
+            <div class="article-head" tabindex="0" role="button" aria-expanded="false" data-action="toggle">
+              <span class="chev">▶</span>
+              <span class="ttl">${highlightHtml(a.title, query)}</span>
+              <span class="hint">Click to ${query ? 'read' : 'open'}</span>
+            </div>
+            <div class="article-body">${highlightInRenderedHtml(a.html, query)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `).join('');
+
+  // If filtered to results, auto-open the first match for instant gratification
+  if (query && list.length <= 3) {
+    const firstHead = host.querySelector('.article-head');
+    if (firstHead) toggleArticle(firstHead);
+  }
+}
+
+function toggleArticle(headEl) {
+  const article = headEl.closest('.article');
+  const open = article.classList.toggle('open');
+  headEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+document.getElementById('articles-host').addEventListener('click', e => {
+  const head = e.target.closest('[data-action="toggle"]');
+  if (head) toggleArticle(head);
+});
+document.getElementById('articles-host').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const head = e.target.closest('[data-action="toggle"]');
+  if (head) { e.preventDefault(); toggleArticle(head); }
+});
+
+// ---- Highlighting ----
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function highlightHtml(text, query) {
+  if (!query) return escapeHtml(text);
+  const re = new RegExp(`(${escapeRegExp(query)})`, 'ig');
+  return escapeHtml(text).replace(re, '<mark>$1</mark>');
+}
+
+// Highlight matches inside already-rendered (and sanitized) HTML.
+// Uses DOM walking so we never break tags. Skips text inside <code>/<pre>.
+function highlightInRenderedHtml(html, query) {
+  if (!query) return html;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const re = new RegExp(escapeRegExp(query), 'ig');
+
+  const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      let p = node.parentNode;
+      while (p && p !== tmp) {
+        if (p.nodeName === 'CODE' || p.nodeName === 'PRE' || p.nodeName === 'MARK' || p.nodeName === 'A') return NodeFilter.FILTER_REJECT;
+        p = p.parentNode;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const matches = [];
+  let n;
+  while ((n = walker.nextNode())) matches.push(n);
+
+  matches.forEach(node => {
+    const text = node.nodeValue;
+    if (!re.test(text)) return;
+    re.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      if (m.index > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
+      const mark = document.createElement('mark');
+      mark.textContent = m[0];
+      frag.appendChild(mark);
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    node.parentNode.replaceChild(frag, node);
+  });
+
+  return tmp.innerHTML;
+}
+
+// ---- Search ----
+const searchInput = document.getElementById('search');
+const clearBtn = document.getElementById('clear-search');
+
+function runSearch() {
+  const q = searchInput.value.trim().toLowerCase();
+  clearBtn.classList.toggle('hidden', !q);
+  if (!q) { renderArticles(ARTICLES); return; }
+  const filtered = ARTICLES.filter(a =>
+    a.titleLower.includes(q) ||
+    a.categoryLower.includes(q) ||
+    a.plainText.includes(q)
+  );
+  // Prioritize title matches first
+  filtered.sort((a, b) => {
+    const at = a.titleLower.includes(q) ? 0 : 1;
+    const bt = b.titleLower.includes(q) ? 0 : 1;
+    return at - bt;
+  });
+  renderArticles(filtered, searchInput.value.trim());
+}
+
+let searchTimer = null;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 80);
+});
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { searchInput.value = ''; runSearch(); }
+});
+clearBtn.addEventListener('click', () => { searchInput.value = ''; searchInput.focus(); runSearch(); });
+
+// ---- Email support ----
+function getBrowserInfo() {
+  const ua = navigator.userAgent;
+  let name = 'Unknown', version = '';
+  // Order matters
+  const tests = [
+    [/Edg\/(\S+)/, 'Edge'],
+    [/OPR\/(\S+)/, 'Opera'],
+    [/Firefox\/(\S+)/, 'Firefox'],
+    [/Chrome\/(\S+)/, 'Chrome'],
+    [/Version\/(\S+).*Safari/, 'Safari'],
+  ];
+  for (const [re, n] of tests) {
+    const m = ua.match(re);
+    if (m) { name = n; version = m[1]; break; }
+  }
+  return `${name} ${version}`.trim();
+}
+
+function getReferrerPage() {
+  const ref = document.referrer;
+  if (!ref) return 'help (direct)';
+  try {
+    const u = new URL(ref);
+    if (u.host !== window.location.host) return ref;
+    return u.pathname;
+  } catch { return ref; }
+}
+
+function buildSupportEmail() {
+  const tenant = tenantInfo();
+  const user = userInfo();
+  const ctx = document.getElementById('ctx').value.trim();
+  const slug = tenant.slug || 'unknown-tenant';
+  const plan = tenant.plan || 'unknown';
+  const tenantName = tenant.name || tenant.club_name || slug;
+
+  const diag = [
+    `Club: ${tenantName} (${slug})`,
+    `Plan: ${plan}`,
+    `Admin: ${user.email || 'unknown'}`,
+    `Page: ${getReferrerPage()}`,
+    `Browser: ${getBrowserInfo()}`,
+    `Screen: ${window.screen.width}x${window.screen.height} @ ${window.devicePixelRatio || 1}x`,
+    `Window: ${window.innerWidth}x${window.innerHeight}`,
+    `Time: ${new Date().toISOString()}`,
+    `Language: ${navigator.language || ''}`,
+    `Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone || ''}`,
+  ].join('\n');
+
+  const subject = `Help: ${tenantName} (${slug})`;
+  const userPart = ctx
+    ? `What I was trying to do:\n${ctx}\n\n`
+    : `[Describe what you need help with]\n\n`;
+
+  const body =
+`Hi Poolside team,
+
+${userPart}--- Account info (auto-attached, please leave intact) ---
+${diag}
+`;
+
+  return {
+    subject,
+    body,
+    href: `mailto:support@poolsideapp.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+  };
+}
+
+document.getElementById('email-support').addEventListener('click', () => {
+  const { href } = buildSupportEmail();
+  window.location.href = href;
+});
+
+// ---- Whoami ----
+async function loadWhoami() {
+  const t = token(); if (!t) return;
+  try {
+    const res = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'me' }),
+    });
+    if (res.status === 401) { logout(); return; }
+    const r = await res.json();
+    if (r.ok && r.user) document.getElementById('whoami').textContent = r.user.email || '';
+  } catch { /* ignore */ }
+}
+
+// ---- Boot ----
+loadWhoami();
+loadArticles();
+</script>
+</body>
+</html>
