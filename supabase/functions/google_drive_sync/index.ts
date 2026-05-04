@@ -118,6 +118,7 @@ function buildAuthUrl(state: string, redirect: string): string {
   u.searchParams.set('include_granted_scopes', 'true');
   u.searchParams.set('scope', [
     'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/userinfo.email',
   ].join(' '));
   u.searchParams.set('state', state);

@@ -299,7 +299,53 @@ export async function ensureYearTab(
   // 3. One batchUpdate that applies ALL the styling at once.
   await formatYearTab(accessToken, spreadsheetId, newId);
 
+  // 4. Delete the default "Sheet1" tab if it exists and is empty —
+  // otherwise users land on it and think the spreadsheet is empty.
+  await deleteDefaultSheet1IfEmpty(accessToken, spreadsheetId);
+
   return newId;
+}
+
+// Drops the auto-created "Sheet1" tab that Stripe creates with a fresh
+// spreadsheet, but only if it's still empty. Keeps tabs clean so admins
+// only see year tabs (2026, 2027, ...) not a junk default.
+async function deleteDefaultSheet1IfEmpty(
+  accessToken: string,
+  spreadsheetId: string,
+): Promise<void> {
+  try {
+    const metaRes = await fetch(
+      `${SHEETS_API}/${spreadsheetId}?fields=sheets(properties(sheetId,title))`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!metaRes.ok) return;
+    const meta = await metaRes.json();
+    const sheet1 = (meta.sheets ?? []).find((s: { properties: { title: string; sheetId: number } }) =>
+      s.properties?.title === 'Sheet1',
+    );
+    if (!sheet1) return;
+
+    // Check if Sheet1 has any non-empty cell. If empty, delete.
+    const valuesRes = await fetch(
+      `${SHEETS_API}/${spreadsheetId}/values/Sheet1!A1:Z100`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (valuesRes.ok) {
+      const data = await valuesRes.json();
+      if (data.values && data.values.length > 0) return;  // has data, keep it
+    }
+
+    await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [{ deleteSheet: { sheetId: sheet1.properties.sheetId } }],
+      }),
+    });
+  } catch {
+    // Best-effort. If deletion fails, the orphan Sheet1 is annoying but
+    // not blocking; sync still succeeds.
+  }
 }
 
 // Apply professional styling to a tab. Idempotent — safe to call multiple
