@@ -349,6 +349,32 @@
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const TRACK_URL    = `${SUPABASE_URL}/functions/v1/help_track`;
+
+// Fire-and-forget product analytics. Failures are silent — analytics never
+// blocks the user-facing flow. Uses sendBeacon for unload-safe events
+// (article_close fires when the user navigates away or closes the article)
+// and falls back to fetch with keepalive so the request survives nav.
+function helpTrack(eventType, fields = {}) {
+  try {
+    const t = localStorage.getItem('poolside_tenant_token');
+    if (!t) return;
+    const body = JSON.stringify({
+      event_type: eventType,
+      page_referrer: location.pathname + location.search,
+      ...fields,
+    });
+    // sendBeacon needs a Blob with the right content-type but DOESN'T
+    // accept custom headers — auth token has to ride in the URL or skip.
+    // We can't auth-via-URL safely, so just use fetch+keepalive.
+    fetch(TRACK_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body,
+      keepalive: true,
+    }).catch(() => { /* ignore */ });
+  } catch { /* ignore */ }
+}
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -611,8 +637,21 @@ function renderArticles(list, query = '') {
 
 function toggleArticle(headEl) {
   const article = headEl.closest('.article');
+  const slug = article?.dataset?.slug || null;
+  const wasOpen = article.classList.contains('open');
   const open = article.classList.toggle('open');
   headEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+  // Track view + close-with-duration. The opened-at timestamp lives on the
+  // element so each article tracks its own view independently.
+  if (open && !wasOpen) {
+    article._openedAt = performance.now();
+    helpTrack('article_view', { article_slug: slug });
+  } else if (!open && wasOpen) {
+    const ms = article._openedAt ? Math.round(performance.now() - article._openedAt) : null;
+    helpTrack('article_close', { article_slug: slug, duration_ms: ms });
+    article._openedAt = null;
+  }
 }
 
 document.getElementById('articles-host').addEventListener('click', e => {
@@ -709,6 +748,27 @@ function runSearch() {
     .sort((x, y) => x.s - y.s)
     .map(x => x.a);
   renderArticles(filtered, searchInput.value.trim());
+
+  // Schedule analytics track for after the user "settles" — we don't want a
+  // sample for every keystroke. 1.5s of idle = a query worth recording.
+  scheduleTrackSearch(q, filtered.length);
+}
+
+// Search-tracking debouncer (separate from the UI debounce so the UI stays
+// snappy while analytics waits for the user to finish typing).
+let trackSearchTimer = null;
+let lastTrackedQuery = '';
+function scheduleTrackSearch(query, resultsCount) {
+  clearTimeout(trackSearchTimer);
+  if (!query || query.length < 2) return;     // ignore single-char dribble
+  if (query === lastTrackedQuery) return;     // skip duplicate fire
+  trackSearchTimer = setTimeout(() => {
+    lastTrackedQuery = query;
+    helpTrack('search', { query, results_count: resultsCount });
+    if (resultsCount === 0) {
+      helpTrack('no_results', { query });    // signal — write an article for this
+    }
+  }, 1500);
 }
 
 let searchTimer = null;
@@ -827,6 +887,12 @@ ${diag}
 }
 
 document.getElementById('email-support').addEventListener('click', () => {
+  // Track from which article (if any) the support escalation came — high
+  // signal that the article didn't answer their question.
+  const lastViewed = document.querySelector('.article.open');
+  helpTrack('support_email_clicked', {
+    article_slug: lastViewed?.dataset?.slug || null,
+  });
   const { href } = buildSupportEmail();
   window.location.href = href;
 });
@@ -834,6 +900,10 @@ document.getElementById('email-support').addEventListener('click', () => {
 // Fallback for users whose computer doesn't open a mail app on mailto:.
 // Copies the recipient + subject + body to the clipboard as a single block.
 document.getElementById('copy-support').addEventListener('click', async () => {
+  const lastViewed = document.querySelector('.article.open');
+  helpTrack('support_email_clicked', {
+    article_slug: lastViewed?.dataset?.slug || null,
+  });
   const { subject, body } = buildSupportEmail();
   const blob = `To: support@poolsideapp.com\nSubject: ${subject}\n\n${body}`;
   const out = document.getElementById('copy-result');
@@ -846,6 +916,20 @@ document.getElementById('copy-support').addEventListener('click', async () => {
     out.style.display = '';
     out.textContent = 'Couldn\'t copy automatically. Email support@poolsideapp.com directly and tell us what you need.';
   }
+});
+
+// Catch the "user navigates away with article still open" case — without
+// this, article_close never fires for the most engaged users (they read,
+// then click another tab, never closing the article). visibilitychange
+// fires on tab-hide and page-unload reliably across browsers.
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden') return;
+  document.querySelectorAll('.article.open').forEach(article => {
+    if (!article._openedAt) return;
+    const ms = Math.round(performance.now() - article._openedAt);
+    helpTrack('article_close', { article_slug: article.dataset.slug || null, duration_ms: ms });
+    article._openedAt = null;
+  });
 });
 
 // ---- Whoami ----

@@ -57,6 +57,24 @@
       a.setAttribute('title', 'Help (open help center)');
       // Question-mark glyph; aria-label carries the meaning for screen readers
       a.innerHTML = '?<span class="label">Help</span>';
+      // Track FAB clicks so we know which admin pages drive admins into the
+      // help center most. Fire-and-forget; uses keepalive so the request
+      // survives the navigation that the click triggers.
+      a.addEventListener('click', function () {
+        try {
+          var t = localStorage.getItem('poolside_tenant_token');
+          if (!t) return;
+          fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/help_track', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + t },
+            body: JSON.stringify({
+              event_type: 'fab_clicked',
+              page_referrer: location.pathname + location.search,
+            }),
+            keepalive: true,
+          }).catch(function () { /* ignore */ });
+        } catch (_) { /* ignore */ }
+      });
       document.body.appendChild(a);
 
       // Hide while a modal scrim is open (every admin modal uses .scrim.open or

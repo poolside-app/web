@@ -159,3 +159,8 @@ verify_jwt = false
 # Admin Health — single-page diagnostic dashboard. Auth verified inside.
 [functions.admin_health]
 verify_jwt = false
+
+# Help-center analytics — admin events (searches, article views, etc.).
+# Auth verified inside via shared verifyTenantAdmin.
+[functions.help_track]
+verify_jwt = false
