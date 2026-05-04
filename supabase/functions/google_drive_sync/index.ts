@@ -159,15 +159,17 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   // Browser-redirect callback — Google sends the user back here as GET.
+  // Detect by presence of `code` (Google appends it on success). The bare
+  // redirect URI matches what's registered in Cloud Console.
   if (req.method === 'GET') {
     const u = new URL(req.url);
-    if (u.searchParams.get('action') !== 'callback') {
-      return new Response('Not found', { status: 404, headers: cors });
-    }
     const code  = u.searchParams.get('code');
     const state = u.searchParams.get('state');
-    if (!code || !state || !GOOGLE_ID || !GOOGLE_SECRET) {
-      return new Response('Missing code/state or platform Google OAuth not configured', { status: 400, headers: cors });
+    if (!code) {
+      return new Response('Not found', { status: 404, headers: cors });
+    }
+    if (!state || !GOOGLE_ID || !GOOGLE_SECRET) {
+      return new Response('Missing state or platform Google OAuth not configured', { status: 400, headers: cors });
     }
     const stateData = await verifyState(state);
     if (!stateData) return new Response('Invalid or expired state', { status: 401, headers: cors });
