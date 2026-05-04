@@ -29,7 +29,15 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET   = Deno.env.get('ADMIN_JWT_SECRET');
 const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 
-const PLATFORM_FEE_BPS = 150;  // 1.5% (basis points)
+// Per-kind platform fee (basis points). Source of truth for "what does
+// Poolside charge?" — referenced by both stripe_checkout and payment_plans.
+// Pricing memory: 0.5% dues, 1.5% programs/snack, 2% tickets, 0% donations,
+// 5% late fees. Dues fee MUST match payment_plans/index.ts (which uses 0.5%
+// for installments + reactivation) so a family pays the same fee regardless
+// of full-pay vs installment path.
+const FEE_BPS_DUES     = 50;    // 0.5% — application full-pay + plan installments
+const FEE_BPS_PROGRAMS = 150;   // 1.5% — programs, swim lessons, parties, passes
+const FEE_BPS_DEFAULT  = 150;   // safety net for unknown kinds
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -60,9 +68,10 @@ async function stripeCheckout(params: {
   cancelUrl: string;
   metadata: Record<string, string>;
   customerEmail?: string;
+  feeBps: number;       // explicit so the caller picks the right rate per kind
 }): Promise<{ ok: boolean; url?: string; session_id?: string; error?: string }> {
   if (!STRIPE_KEY) return { ok: false, error: 'STRIPE_SECRET_KEY not set' };
-  const platformFee = Math.max(0, Math.floor(params.amountCents * PLATFORM_FEE_BPS / 10000));
+  const platformFee = Math.max(0, Math.floor(params.amountCents * params.feeBps / 10000));
   const body = new URLSearchParams();
   body.append('mode', 'payment');
   body.append('success_url', params.successUrl);
@@ -139,6 +148,7 @@ Deno.serve(async (req) => {
         tenant_id: String(app.tenant_id),
       },
       customerEmail: app.primary_email || undefined,
+      feeBps: FEE_BPS_DUES,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
 
@@ -219,7 +229,7 @@ Deno.serve(async (req) => {
 
     // Stripe Checkout — mode=payment + setup_future_usage=off_session so we
     // can charge the second installment without the member returning.
-    const platformFee = Math.max(0, Math.floor(firstCents * PLATFORM_FEE_BPS / 10000));
+    const platformFee = Math.max(0, Math.floor(firstCents * FEE_BPS_DUES / 10000));
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
@@ -293,6 +303,7 @@ Deno.serve(async (req) => {
       successUrl: `${clubUrl}/m/?paid=1`,
       cancelUrl: `${clubUrl}/m/?paid=0`,
       metadata: { kind: 'program_booking', booking_id: bk.id, tenant_id: TID },
+      feeBps: FEE_BPS_PROGRAMS,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('program_bookings').update({ stripe_session_id: session.session_id }).eq('id', bk.id);
@@ -313,6 +324,7 @@ Deno.serve(async (req) => {
       successUrl: `${clubUrl}/m/?paid=1`,
       cancelUrl: `${clubUrl}/m/?paid=0`,
       metadata: { kind: 'guest_pass_pack', pack_id: pack.id, tenant_id: TID },
+      feeBps: FEE_BPS_PROGRAMS,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('guest_pass_packs').update({ stripe_session_id: session.session_id }).eq('id', pack.id);

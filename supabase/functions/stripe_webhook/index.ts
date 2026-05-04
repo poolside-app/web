@@ -16,6 +16,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+// CRITICAL: this used to be missing — without it, the payment_method ID never
+// gets persisted on the plan, and the off-session re-charge for installment 2
+// always fails. Every payment-plan family lapsed silently. Don't remove.
+const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +69,39 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const type = String(event.type || '');
+  const eventId = String(event.id || '');
+
+  // ── Idempotency: short-circuit if we've already processed this event ────
+  // Stripe retries on any non-2xx response and occasionally re-fires events
+  // that already returned 2xx (rare but observed). Without this guard a
+  // duplicate checkout.session.completed re-fires every side effect:
+  // re-emails the welcome message, double-flips household paid status,
+  // reopens admin tasks. INSERT first, side-effect second.
+  if (eventId) {
+    const evtTenant = (() => {
+      const obj = event.data && typeof event.data === 'object'
+        ? (event.data as Record<string, unknown>).object as Record<string, unknown>
+        : null;
+      const md = (obj?.metadata as Record<string, string> | undefined) || {};
+      return md.tenant_id || null;
+    })();
+    const { error: insErr } = await sb.from('stripe_processed_events').insert({
+      id: eventId,
+      event_type: type,
+      tenant_id: evtTenant,
+    });
+    if (insErr) {
+      // 23505 = unique violation = we've already processed this event id.
+      // Any other error: log + continue (best-effort; we'd rather process
+      // a duplicate than miss an event).
+      const msg = String(insErr.message || '');
+      const code = String((insErr as { code?: string }).code || '');
+      if (code === '23505' || msg.includes('duplicate key')) {
+        return new Response('duplicate (already processed)', { status: 200 });
+      }
+      console.error('idempotency insert non-conflict error:', code, msg);
+    }
+  }
 
   if (type === 'checkout.session.completed') {
     const session = event.data && typeof event.data === 'object'
@@ -79,7 +116,9 @@ Deno.serve(async (req) => {
       const now = new Date().toISOString();
       await sb.from('applications').update({
         payment_status: 'paid', payment_method: 'stripe',
-        paid_at: now, verified_at: now, stripe_session_id: String(session.id || ''),
+        paid_at: now, verified_at: now,
+        stripe_session_id: String(session.id || ''),
+        stripe_payment_intent_id: (session.payment_intent as string) || null,
       }).eq('id', md.application_id).eq('tenant_id', tenantId);
 
       // Auto-approve: applicant paid via Stripe = they're a member, no manual
@@ -187,6 +226,7 @@ Deno.serve(async (req) => {
       await sb.from('applications').update({
         payment_status: 'pending', payment_method: 'stripe',
         stripe_session_id: sessionId,
+        stripe_payment_intent_id: piId,
       }).eq('id', md.application_id).eq('tenant_id', tenantId);
 
       // Auto-approve: applicant put a card on file + paid first half = they're a member.
@@ -201,11 +241,19 @@ Deno.serve(async (req) => {
         } catch (e) { console.error('plan auto-approve failed:', (e as Error).message); }
       }
 
-      // Link plan to household now that approval may have created one
+      // Link plan to household now that approval may have created one,
+      // AND flip dues_paid_for_year. Per the dunning model, putting a card
+      // on file + paying the first installment activates the family — they
+      // get gate access immediately. Failing the second charge starts the
+      // retry/lapse flow, NOT a "they were never paid" state.
       const { data: appAfter } = await sb.from('applications')
-        .select('household_id').eq('id', md.application_id).maybeSingle();
+        .select('household_id, paid_until_year').eq('id', md.application_id).maybeSingle();
       if (appAfter?.household_id) {
         await sb.from('payment_plans').update({ household_id: appAfter.household_id }).eq('id', md.plan_id);
+        await sb.from('households').update({
+          dues_paid_for_year: true,
+          paid_until_year: appAfter.paid_until_year ?? new Date().getFullYear(),
+        }).eq('id', appAfter.household_id);
       }
     }
 
@@ -246,6 +294,119 @@ Deno.serve(async (req) => {
         .eq('id', md.pack_id).eq('tenant_id', tenantId);
     }
 
+    return new Response('ok', { status: 200 });
+  }
+
+  // ── charge.refunded — full or partial refund issued in Stripe Dashboard
+  // or via API. We DON'T auto-flip the family's gate access (that risks a
+  // bad reconciliation if the refund was a mistake / partial). We DO open
+  // a high-priority admin task so the treasurer reviews it the same day.
+  if (type === 'charge.refunded') {
+    const charge = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
+    const piId = String(charge?.payment_intent || '');
+    const amountRefunded = Number(charge?.amount_refunded || 0);
+    const fullRefund = !!charge?.refunded;
+    if (piId) {
+      const { data: app } = await sb.from('applications')
+        .select('id, tenant_id, family_name, household_id')
+        .eq('stripe_payment_intent_id', piId).maybeSingle();
+      if (app) {
+        await sb.from('applications').update({
+          payment_status: fullRefund ? 'refunded' : 'partial_refund',
+          refunded_at: new Date().toISOString(),
+        }).eq('id', app.id);
+        await sb.from('admin_tasks').insert({
+          tenant_id: app.tenant_id,
+          target_scopes: ['payments'],
+          kind: 'application.refund',
+          summary: `[REVIEW] Stripe refund: ${app.family_name} — $${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'}`,
+          link_url: '/club/admin/members.html#applications',
+          source_kind: 'application', source_id: app.id,
+        });
+        await sb.from('audit_log').insert({
+          tenant_id: app.tenant_id,
+          kind: 'application.payment_refunded',
+          entity_type: 'application', entity_id: app.id,
+          summary: `Stripe refund $${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'} for ${app.family_name}`,
+          actor_kind: 'stripe',
+        });
+      } else {
+        // Could be a plan installment refund — log either way for audit
+        await sb.from('audit_log').insert({
+          tenant_id: null,
+          kind: 'stripe.refund.unmatched',
+          entity_type: 'stripe_charge',
+          summary: `Refund $${(amountRefunded / 100).toFixed(2)} for PI ${piId} (no matching application)`,
+          actor_kind: 'stripe',
+        });
+      }
+    }
+    return new Response('ok', { status: 200 });
+  }
+
+  // ── charge.dispute.created — chargeback opened by the cardholder. More
+  // urgent than a refund: Stripe holds the funds, the club may need to
+  // submit evidence within the dispute window. Always opens an admin task.
+  if (type === 'charge.dispute.created') {
+    const dispute = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
+    const piId = String(dispute?.payment_intent || '');
+    const amount = Number(dispute?.amount || 0);
+    const reason = String(dispute?.reason || 'unknown');
+    if (piId) {
+      const { data: app } = await sb.from('applications')
+        .select('id, tenant_id, family_name')
+        .eq('stripe_payment_intent_id', piId).maybeSingle();
+      if (app) {
+        await sb.from('applications').update({
+          payment_status: 'disputed',
+          disputed_at: new Date().toISOString(),
+        }).eq('id', app.id);
+        await sb.from('admin_tasks').insert({
+          tenant_id: app.tenant_id,
+          target_scopes: ['payments'],
+          kind: 'application.dispute',
+          summary: `[URGENT] Chargeback: ${app.family_name} — $${(amount / 100).toFixed(2)} (${reason})`,
+          link_url: '/club/admin/members.html#applications',
+          source_kind: 'application', source_id: app.id,
+        });
+        await sb.from('audit_log').insert({
+          tenant_id: app.tenant_id,
+          kind: 'application.payment_disputed',
+          entity_type: 'application', entity_id: app.id,
+          summary: `Chargeback $${(amount / 100).toFixed(2)} (${reason}) for ${app.family_name}`,
+          actor_kind: 'stripe',
+        });
+      }
+    }
+    return new Response('ok', { status: 200 });
+  }
+
+  // ── payment_intent.payment_failed — for off-session installment retries
+  // (the cron's chargeInstallment). Mark the installment failed so the
+  // dunning logic can decide on retry vs lapse.
+  if (type === 'payment_intent.payment_failed') {
+    const pi = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
+    const piId = String(pi?.id || '');
+    const lastErr = (pi?.last_payment_error as { message?: string } | undefined)?.message || 'card declined';
+    if (piId) {
+      const { data: ins } = await sb.from('payment_plan_installments')
+        .select('id, plan_id, sequence, tenant_id')
+        .eq('stripe_payment_intent_id', piId).maybeSingle();
+      if (ins) {
+        await sb.from('payment_plan_installments').update({
+          status: 'failed',
+          last_error: String(lastErr).slice(0, 300),
+          last_attempt_at: new Date().toISOString(),
+        }).eq('id', ins.id);
+        await sb.from('audit_log').insert({
+          tenant_id: ins.tenant_id,
+          kind: 'plan.installment_failed',
+          entity_type: 'payment_plan_installment', entity_id: ins.id,
+          summary: `Installment ${ins.sequence} failed: ${String(lastErr).slice(0, 100)}`,
+          actor_kind: 'stripe',
+        });
+      }
+    }
     return new Response('ok', { status: 200 });
   }
 
