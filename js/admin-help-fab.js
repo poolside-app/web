@@ -58,6 +58,29 @@
       // Question-mark glyph; aria-label carries the meaning for screen readers
       a.innerHTML = '?<span class="label">Help</span>';
       document.body.appendChild(a);
+
+      // Hide while a modal scrim is open (every admin modal uses .scrim.open or
+      // .modal-bg with display:flex). A 48x48 floating button hovering above an
+      // open dialog covers the close button on mobile and is just visual noise.
+      var fab = a;
+      var setHidden = function () {
+        var modalOpen = !!(
+          document.querySelector('.scrim.open') ||
+          document.querySelector('.scrim[style*="display: flex"]') ||
+          document.querySelector('.modal-bg[style*="display: flex"]') ||
+          document.querySelector('.modal-bg[style*="display:flex"]')
+        );
+        fab.style.display = modalOpen ? 'none' : '';
+      };
+      try {
+        var mo = new MutationObserver(setHidden);
+        mo.observe(document.body, {
+          attributes: true,
+          subtree: true,
+          attributeFilter: ['class', 'style'],
+          childList: true,
+        });
+      } catch (_) { /* old browser — fall through, FAB stays visible */ }
     };
 
     if (document.readyState === 'loading') {

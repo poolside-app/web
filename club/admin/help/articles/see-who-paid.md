@@ -7,38 +7,36 @@ This is the question every treasurer asks. Here's how to get a clean list in und
 
 ### The fastest way
 
-1. Go to **Payments** in the top nav.
-2. At the top, click the **Unpaid** filter.
+Click **Payments** in the top nav (it's a sub-tab under **Members** in the strip).
 
-You'll see every household that still owes dues, sorted by oldest first. Click any name to email or text them directly.
+The page only lists **open balances** — every household that still owes you something, sorted by who's been waiting longest. Anyone not on this list has paid (or doesn't owe anything yet).
 
-### The full picture
+### Filtering by what they owe
 
-Stay on **Payments** with no filter applied. The columns tell you:
+The buttons at the top of Payments narrow the list:
 
-- **Household** — family last name
-- **Type** — dues, application fee, program, etc.
-- **Amount** — what they owe (or paid)
-- **Status** — paid, unpaid, or aged (more than 30 days late)
-- **Date** — when it was paid
+- **All sources** (default) — every type of payment due
+- **Dues** — just the season membership dues
+- **Memberships** — application fees from new families
+- **Programs** — swim lessons, camps, etc.
+- **Passes** — guest pass packs
 
-You can sort any column by clicking the header.
+The "**aged**" red pill on a row means it's been more than 14 days unpaid — those are the families to call personally.
 
-### Recording a cash or check payment
+### Recording a cash, check, or Venmo payment
 
 When a family hands you a check at the pool:
 
-1. Go to **Payments**.
-2. Find the household.
-3. Click **Mark paid**.
-4. Pick the method (check, cash, Venmo, etc.).
-5. Optional: add a note like "Check #1234."
-6. Save.
+1. Find their row on **Payments**.
+2. Click **Mark paid** at the right end of the row.
+3. Confirm.
 
-That household instantly moves from unpaid to paid, and they stop getting renewal reminders.
+That charge instantly moves to paid, and the family stops getting renewal reminders for it.
 
-### Exporting for the board meeting
+### Need a list of who DID pay?
 
-Click **Export to spreadsheet** at the top of the page. You'll get a CSV file you can open in Excel or Google Sheets. Bring the printout to your meeting — board members love seeing real numbers.
+Right now, the Payments page only shows open balances. If you connect Google Drive (under **Payments → Payment options setup**), every approved member is automatically archived in your Drive — including a master roster spreadsheet you can open in Google Sheets and filter however you want.
 
-> **Tip:** The "aged" pill (red, in the Status column) means it's been more than 30 days unpaid. Those are the families to call personally.
+If you're not using Drive, ask the support team — we can email you a CSV export of paid households on request.
+
+> **Tip:** During dues season, check Payments daily. Numbers shrinking each day is a good sign your blast is working.

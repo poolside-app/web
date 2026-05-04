@@ -1,23 +1,13 @@
 ---
-title: "How do I switch from test mode to taking real card payments?"
+title: "How do I turn on card payments?"
 category: "Payments"
 ---
 
-Poolside uses a payment company called **Stripe** to move money from your members' cards into your club's bank account. You don't need a Stripe account before you sign up — Poolside walks you through making one.
-
-When you first set up your club, card payments start in **test mode**. Test mode is a practice mode. You and the board can click through everything, and no real money moves. When you're ready to take real dues, you flip the switch to **live mode**.
+Poolside uses a payment company called **Stripe** to move money from your members' cards into your club's bank account. You don't need a Stripe account before you sign up — Poolside walks you through making one when you're ready.
 
 ### You don't have to take cards at all
 
-This is optional. Many small clubs run an entire season on cash and checks alone. You can record those payments by hand under **Members → Payments**, then click **Mark paid**. Skip the rest of this article unless you actually want to accept cards.
-
-### Before you flip the switch — three quick checks
-
-Most boards trip on at least one of these:
-
-1. **Your bank account is connected.** Money goes there when members pay.
-2. **Your business name is verified.** Stripe needs to confirm your club is a real organization.
-3. **You've done at least one practice payment.** While still in test mode, run a $1 charge with your own card to make sure the flow works end-to-end. (In test mode the $1 doesn't actually leave your account.)
+This is optional. Many small clubs run an entire season on cash and checks alone. You can record those payments by hand under **Payments** by clicking **Mark paid** on each row. Skip the rest of this article unless you actually want to accept cards.
 
 ### What you'll need to gather first
 
@@ -27,23 +17,26 @@ Stripe will ask for some paperwork. Have these ready before you start, or you'll
 - **Your club's bank account info** — the routing number and account number. You'll find these on the bottom of a club check, or in your online banking.
 - **One board member's full name, home address, and date of birth.** Stripe calls this person the "responsible person." It's just the human Stripe can call if something looks fishy. The treasurer or president usually does it.
 
-### Flipping the switch
+### Connecting Stripe — step by step
 
-1. Go to **Settings**, then look for the **Payments** section.
-2. Find the **Card payments** area.
-3. You'll see a yellow banner that says "Test mode — no real money is moving."
-4. Click **Go live**.
-5. Stripe will walk you through a quick check using the info you gathered above. It usually takes a few minutes. Sometimes Stripe needs a day to review.
-6. When the banner turns green, you're live.
+1. Click **Payments** in the top nav (it's a sub-tab under **Members** in the strip).
+2. At the top of the Payments page, click the **Payment options setup** drop-down to open it.
+3. Find the **Card payments (Stripe)** section.
+4. Click **Connect Stripe**.
+5. You'll be sent over to Stripe to enter the info you gathered above. It usually takes a few minutes. Sometimes Stripe needs a day to review.
+6. When you're sent back to Poolside, the box will say "✓ Stripe ready" with charges and payouts enabled.
 
-### What happens after I go live?
+If you got partway through and bailed, click **Resume onboarding** to pick back up. If something looks stale, click **Refresh status**.
 
-- Members paying through your club app are charged for real.
+### What happens after Stripe is connected?
+
+- Members paying through your club app are charged for real, on their card.
 - Funds land in your club's bank account in 2-3 business days.
-- You'll see real payments on the **Payments** page with a "card" pill.
+- Poolside takes a 1.5% platform fee per charge — it's deducted automatically before money lands in your account.
+- You'll see card payments on the **Payments** page just like cash and check, only with a "stripe" tag.
 
 ### Not ready yet? That's fine.
 
-Stay in test mode as long as you want. You can still record cash and check payments by hand under **Payments → Mark paid**. You can flip to live mode any time later.
+Skip this. You can still record cash and check payments by hand under **Payments → Mark paid**. You can connect Stripe any time later.
 
-> **Tip:** Don't go live during dues week. Pick a slow week so you have time to handle questions if anything looks unfamiliar.
+> **Tip:** Don't connect Stripe during dues week. Pick a slow week so you have time to handle questions if anything looks unfamiliar.

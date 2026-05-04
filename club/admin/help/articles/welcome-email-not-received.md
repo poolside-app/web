@@ -3,7 +3,7 @@ title: "Why didn't my member get the welcome email?"
 category: "Email & Text"
 ---
 
-This happens occasionally and it's almost always one of three reasons. Don't worry — it's fixable in under a minute.
+This happens occasionally and it's almost always one of three reasons.
 
 ### 1. The email landed in spam
 
@@ -11,19 +11,18 @@ Ask the member to check their spam or junk folder. Tell them to mark it "Not spa
 
 ### 2. There's a typo in their email address
 
-Go to **Members**, find the household, and click into their info. Look closely at the email field — common typos are `gmial.com`, missing letters, or an extra space at the end.
+1. Click **Members** in the top nav.
+2. Find the household and click their row.
+3. Look closely at the email field — common typos are `gmial.com`, missing letters, or an extra space at the end.
+4. Fix it and save.
 
-If you spot a typo:
-
-1. Fix the email.
-2. Save.
-3. Click **Resend welcome email** on the household page.
+To get them a working sign-in link after the fix, send them to your member sign-in page (`https://<your-slug>.poolsideapp.com/m/`) — they enter their (corrected) email, and a fresh magic link arrives in their inbox right away. No admin step needed.
 
 ### 3. Email isn't fully set up for your club yet
 
-Go to the **Status** page (the link is in the top nav). If you see a yellow or red item under "What members can do right now" next to "Get emails," that's your culprit.
+Click **Status** in the top nav. If you see a yellow or red item under "What your members can do right now" next to "Get emails," that's your culprit.
 
-Usually this means the email address your club sends from isn't fully checked out yet. This is a one-time step that proves to Gmail and other providers that the emails really are from you. The Status page tells you exactly what to fix. It also has a "Send to me" button you can use to test once you're done.
+Usually this means the email address your club sends from isn't fully verified yet. This is a one-time step that proves to Gmail and other providers that the emails really are from you. The Status page tells you exactly what to fix. Click **Send to me** next to the email check to test it once you're done.
 
 ### Still stuck?
 
