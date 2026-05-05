@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Admins & roles — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#475569;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+    --green-soft:#dcfce7; --amber-soft:#fef3c7; --red-soft:#fee2e2;
+    --blue-soft:#e0e7ef; --purple-soft:#ede4f5;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 18px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:1240px; width:100%; margin:0 auto; }
+  .crumb { font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .lede { font-size:15px; color:var(--muted); margin:6px 0 24px; max-width:640px; line-height:1.55; }
+
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:24px; align-items:start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow); margin-bottom:18px; }
+  .card-head { padding:16px 20px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; }
+  .card-head h2 { margin:0; }
+  .card-head .sub { font-size:12.5px; color:var(--muted); }
+
+  .btn { padding:8px 14px; border-radius:8px; font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:#fff; color:var(--text); }
+  .btn:hover { filter:brightness(.97); }
+  .btn-primary { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .btn-ghost { background:#fff; border-color:var(--border); color:var(--blue); }
+  .btn-danger { background:#fff; border-color:#fecaca; color:var(--red); }
+  .btn:disabled { opacity:.5; cursor:wait; }
+
+  /* Admin row */
+  .arow { display:grid; grid-template-columns:42px 1fr auto; gap:14px; align-items:center; padding:14px 20px; border-top:1px solid var(--border); }
+  .arow:first-of-type { border-top:0; }
+  .arow:hover { background:#fbfaf4; }
+  .av { width:36px; height:36px; border-radius:50%; background:var(--bg-2); color:var(--blue); display:grid; place-items:center; font-weight:600; font-size:13px; }
+  .av.invite { background:var(--amber-soft); color:#7c2d12; font-style:italic; }
+  .arow .nm { font-weight:600; color:var(--text); font-size:14.5px; }
+  .arow .em { color:var(--muted); font-size:12.5px; margin-top:1px; }
+  .roles-line { display:flex; gap:6px; flex-wrap:wrap; margin-top:5px; }
+  .role-chip { font-size:11.5px; padding:2px 9px; border-radius:999px; font-weight:500; white-space:nowrap; }
+  .role-chip.owner       { background:#efe1c0; color:#5a3d00; }
+  .role-chip.treasurer   { background:var(--green-soft); color:#0a5a2a; }
+  .role-chip.membership  { background:var(--blue-soft); color:var(--blue); }
+  .role-chip.events      { background:#d6ebd6; color:#1f6033; }
+  .role-chip.communications { background:var(--purple-soft); color:#5b2a78; }
+  .role-chip.custom      { background:#f1f5f9; color:#475569; }
+  .row-meta { font-size:12px; color:var(--muted); text-align:right; min-width:140px; }
+  .row-actions { display:flex; gap:6px; justify-content:flex-end; margin-top:6px; opacity:.55; transition:opacity .15s; }
+  .arow:hover .row-actions { opacity:1; }
+  .ico-btn { background:transparent; border:1px solid var(--border); color:var(--muted); padding:5px 10px; border-radius:6px; cursor:pointer; font:500 12.5px 'Inter'; }
+  .ico-btn:hover { background:#fff; color:var(--blue); border-color:var(--blue); }
+  .ico-btn.danger:hover { color:var(--red); border-color:var(--red); }
+  .pending-pill { display:inline-block; padding:2px 8px; border-radius:999px; background:var(--amber-soft); color:#7c2d12; font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; margin-left:6px; }
+  .you-marker { color:var(--muted); font-weight:500; font-size:12.5px; margin-left:6px; }
+
+  /* Inline invite form */
+  .invite-form { padding:18px 20px; border-top:1px solid var(--border); background:#fbfaf4; display:none; }
+  .invite-form.open { display:block; }
+  .invite-form label { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; font-weight:600; }
+  .invite-form .grid2 { display:grid; grid-template-columns:1.4fr 1fr; gap:12px; margin-bottom:12px; }
+  .invite-form input { padding:9px 11px; border:1px solid var(--border); border-radius:8px; font:14px 'Inter'; background:#fff; width:100%; }
+  .invite-form input:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(10,59,92,.1); }
+  .role-pickers { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  @media (max-width: 600px) { .role-pickers { grid-template-columns:1fr; } .invite-form .grid2 { grid-template-columns:1fr; } }
+  .role-picker { padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; cursor:pointer; background:#fff; transition:border-color .12s, background .12s; }
+  .role-picker:hover { border-color:var(--blue); }
+  .role-picker.checked { border-color:var(--blue); background:#f0f6fb; }
+  .role-picker input { width:auto; margin-right:8px; vertical-align:middle; }
+  .role-picker .rp-label { font-weight:600; font-size:13.5px; color:var(--text); }
+  .role-picker .rp-desc { font-size:12px; color:var(--muted); margin-top:2px; line-height:1.4; }
+  .invite-actions { display:flex; gap:10px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
+  .invite-err { display:none; background:var(--red-soft); border:1px solid #fca5a5; color:#7f1d1d; padding:9px 11px; border-radius:8px; font-size:13px; margin-bottom:10px; }
+  .invite-err.show { display:block; }
+  .invite-success { display:none; padding:14px; background:var(--green-soft); border:1px solid #bbf7d0; border-radius:10px; margin-top:12px; }
+  .invite-success.show { display:block; }
+  .invite-success b { color:#0a5a2a; }
+  .invite-success code { background:#fff; border:1px solid #bbf7d0; padding:3px 8px; border-radius:6px; font:600 13px 'Menlo', monospace; user-select:all; }
+
+  /* Right-rail "what each role can do" + bus-factor */
+  .rail { display:grid; gap:18px; }
+  .rail .card { padding:18px 20px; }
+  .rail h3 { font-family:'Inter'; margin:0 0 4px; font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+  .rail .what { font-family:'Fraunces',serif; font-size:17px; font-weight:600; color:var(--blue); margin-bottom:10px; }
+  .role-def { padding:12px 0; border-top:1px solid var(--border); }
+  .role-def:first-of-type { border-top:0; padding-top:0; }
+  .role-def .rd-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .role-def .rd-count { font-size:11px; color:var(--muted); font-weight:500; }
+  .role-def .can { font-size:12.5px; color:var(--text); margin-bottom:2px; line-height:1.45; }
+  .role-def .can b { color:var(--blue); font-weight:600; }
+  .role-def .cant { font-size:12px; color:var(--muted); }
+
+  .bus-card { background:#fef9e7; border-color:#fcd34d; }
+  .bus-card .what { color:#7c2d12; }
+
+  /* Toast for 30s undo */
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--blue); color:#fff; padding:12px 18px; border-radius:10px; font-size:13.5px; display:none; align-items:center; gap:14px; box-shadow:0 12px 32px -10px rgba(0,0,0,.3); z-index:50; }
+  .toast.open { display:flex; }
+  .toast .undo { color:var(--sun); font-weight:700; cursor:pointer; padding:2px 8px; border-radius:4px; }
+  .toast .undo:hover { background:rgba(245,158,11,.18); }
+  .toast .secs { color:#cbd5e1; font-size:12px; }
+
+  .empty-state { padding:48px 20px; text-align:center; color:var(--muted); }
+  .empty-state h3 { font-family:'Fraunces',serif; font-size:18px; color:var(--blue); margin:0 0 6px; }
+
+  .skel { height:64px; background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:sh 1.4s infinite; border-bottom:1px solid var(--border); }
+  @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .access-denied { padding:60px 20px; text-align:center; color:var(--muted); }
+  .access-denied h2 { color:var(--red); margin-bottom:8px; }
+
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/emails.html">Emails</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/impact.html">Impact</a>
+  <a href="/club/admin/health.html">Status</a>
+  <a href="/club/admin/help.html">Help</a>
+  <a href="/club/admin/settings.html" class="on">Settings</a>
+</nav>
+
+<main id="main">
+  <div class="crumb"><a href="/club/admin/settings.html">Settings</a> · Admins &amp; roles</div>
+  <h1>Admins &amp; roles</h1>
+  <p class="lede">The people who help you run the club online. Each one only sees the parts of Poolside that match their job.</p>
+
+  <div id="root">
+    <div class="card"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  </div>
+</main>
+
+<footer></footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span id="toast-msg"></span>
+  <span class="secs" id="toast-secs"></span>
+  <span class="undo" id="toast-undo">Undo</span>
+</div>
+
+<script src="/js/admin-flags.js"></script>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const ADMIN_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function api(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(ADMIN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+let ME = null;
+let ADMINS = [];
+let TEMPLATES = [];
+
+function isOwner(admin) {
+  if (!admin) return false;
+  if (admin.is_super) return true;
+  const roles = admin.roles || [];
+  return roles.includes('owner') || admin.role_template === 'owner';
+}
+
+function fmtRelative(iso) {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 5) return 'active now';
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return 'yesterday';
+  if (day < 30) return `${day} days ago`;
+  const mo = Math.floor(day / 30);
+  return `${mo} month${mo === 1 ? '' : 's'} ago`;
+}
+
+function initials(name, email) {
+  const src = (name || email || '?').trim();
+  const parts = src.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return src.slice(0, 2).toUpperCase();
+}
+
+function roleLabel(slug) {
+  const t = TEMPLATES.find(x => x.key === slug);
+  return t?.label || slug;
+}
+
+function renderRoot() {
+  if (!isOwner(ME)) {
+    document.getElementById('root').innerHTML = `
+      <div class="card access-denied">
+        <h2>Only Board chairs can manage admins</h2>
+        <p>If you need access changed, ask whoever signed up the club to update your role.</p>
+        <a class="btn btn-ghost" href="/club/admin/">← Back to dashboard</a>
+      </div>`;
+    return;
+  }
+
+  const activeAdmins = ADMINS.filter(a => a.active);
+  const pending = ADMINS.filter(a => a.is_default_pw && a.last_login_at == null && a.active);
+  const owners = activeAdmins.filter(a => isOwner(a));
+
+  // Build the role-counts map for the right rail
+  const roleCounts = {};
+  TEMPLATES.forEach(t => { roleCounts[t.key] = 0; });
+  activeAdmins.forEach(a => {
+    (a.roles || [a.role_template || 'owner']).forEach(r => {
+      if (roleCounts[r] !== undefined) roleCounts[r]++;
+    });
+  });
+
+  document.getElementById('root').innerHTML = `
+    <div class="layout">
+      <div>
+        <section class="card">
+          <div class="card-head">
+            <h2>${activeAdmins.length} admin${activeAdmins.length === 1 ? '' : 's'} on this club</h2>
+            <button class="btn btn-primary" id="invite-btn">＋ Invite an admin</button>
+          </div>
+
+          <div class="invite-form" id="invite-form">
+            <div class="invite-err" id="invite-err"></div>
+            <div class="grid2">
+              <div><label for="iv-email">Their email</label><input type="email" id="iv-email" placeholder="margaret@example.com" autocomplete="off" required></div>
+              <div><label for="iv-name">Their first name (or full name)</label><input type="text" id="iv-name" placeholder="Margaret Kowalski" autocomplete="off" required></div>
+            </div>
+            <label style="margin-bottom:10px">What do they help with? <span style="font-weight:500;color:var(--muted)">(pick one or more)</span></label>
+            <div class="role-pickers" id="role-pickers">
+              ${TEMPLATES.filter(t => t.key !== 'custom').map(t => `
+                <label class="role-picker" data-role="${escapeHtml(t.key)}">
+                  <input type="checkbox" value="${escapeHtml(t.key)}">
+                  <span class="rp-label">${escapeHtml(t.label)}</span>
+                  <div class="rp-desc">${escapeHtml(t.description)}</div>
+                </label>
+              `).join('')}
+            </div>
+            <div class="invite-actions">
+              <button class="btn btn-ghost" id="invite-cancel" type="button">Cancel</button>
+              <button class="btn btn-primary" id="invite-send" type="button">Send invite</button>
+            </div>
+            <div class="invite-success" id="invite-success"></div>
+          </div>
+
+          ${activeAdmins.map(a => renderAdminRow(a)).join('')}
+        </section>
+      </div>
+
+      <aside class="rail">
+        ${owners.length <= 1 ? `
+          <div class="card bus-card">
+            <h3>Heads up</h3>
+            <div class="what">Only one Board chair right now</div>
+            <p style="font-size:13px;color:var(--text);margin:0 0 12px;line-height:1.5">If something happens to your account, no one else can manage admins or club settings. Add a second Board chair as a backup so the club isn't stuck.</p>
+          </div>
+        ` : ''}
+
+        <div class="card">
+          <h3>What each role can do</h3>
+          <div class="what">Plain English, not checkboxes.</div>
+          ${TEMPLATES.map(t => `
+            <div class="role-def">
+              <div class="rd-head">
+                <span class="role-chip ${escapeHtml(t.key)}">${escapeHtml(t.label)}</span>
+                <span class="rd-count">${roleCounts[t.key] || 0} ${roleCounts[t.key] === 1 ? 'person' : 'people'}</span>
+              </div>
+              <div class="can">${escapeHtml(t.description)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </aside>
+    </div>
+  `;
+
+  document.getElementById('invite-btn').addEventListener('click', () => {
+    const form = document.getElementById('invite-form');
+    form.classList.toggle('open');
+    if (form.classList.contains('open')) {
+      document.getElementById('iv-email').focus();
+    }
+  });
+  document.getElementById('invite-cancel').addEventListener('click', () => {
+    document.getElementById('invite-form').classList.remove('open');
+  });
+  document.getElementById('invite-send').addEventListener('click', sendInvite);
+
+  // Toggle role-picker checked state (clicking the card or the checkbox)
+  document.querySelectorAll('.role-picker').forEach(card => {
+    const cb = card.querySelector('input[type=checkbox]');
+    card.addEventListener('click', e => {
+      if (e.target !== cb) cb.checked = !cb.checked;
+      card.classList.toggle('checked', cb.checked);
+    });
+  });
+
+  // Wire up Change role / Remove buttons
+  document.querySelectorAll('[data-action="change-role"]').forEach(b =>
+    b.addEventListener('click', () => openRoleEditor(b.dataset.id)));
+  document.querySelectorAll('[data-action="remove"]').forEach(b =>
+    b.addEventListener('click', () => removeAdmin(b.dataset.id)));
+  document.querySelectorAll('[data-action="resend"]').forEach(b =>
+    b.addEventListener('click', () => alert('Resend invite — not yet implemented (the original temp password is still valid).')));
+}
+
+function renderAdminRow(a) {
+  const isYou = a.id === ME.id;
+  const rolesArr = a.roles || [a.role_template || 'owner'];
+  const isPending = a.is_default_pw && a.last_login_at == null;
+  const lastSeenStr = a.last_login_at ? fmtRelative(a.last_login_at) : (isPending ? 'Hasn\'t signed in yet' : 'Never signed in');
+  const showActions = !isYou;
+  const isLastOwner = rolesArr.includes('owner') && ADMINS.filter(x => x.active && (x.roles?.includes('owner') || x.role_template === 'owner')).length <= 1;
+  return `
+    <div class="arow">
+      <div class="av ${isPending ? 'invite' : ''}">${escapeHtml(initials(a.display_name, a.email))}</div>
+      <div>
+        <div class="nm">
+          ${escapeHtml(a.display_name || a.email || 'Admin')}
+          ${isYou ? '<span class="you-marker">(you)</span>' : ''}
+          ${isPending ? '<span class="pending-pill">Invited</span>' : ''}
+        </div>
+        <div class="em">${escapeHtml(a.email || '')}</div>
+        <div class="roles-line">${rolesArr.map(r => `<span class="role-chip ${escapeHtml(r)}">${escapeHtml(roleLabel(r))}</span>`).join('')}</div>
+      </div>
+      <div class="row-meta">
+        ${escapeHtml(lastSeenStr)}
+        ${showActions ? `
+          <div class="row-actions">
+            <button class="ico-btn" data-action="change-role" data-id="${escapeHtml(a.id)}">Change role</button>
+            <button class="ico-btn danger" data-action="remove" data-id="${escapeHtml(a.id)}" ${isLastOwner ? 'disabled title="Last Board chair — promote someone else first"' : ''}>Remove</button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function sendInvite() {
+  const errEl = document.getElementById('invite-err');
+  const successEl = document.getElementById('invite-success');
+  errEl.classList.remove('show');
+  successEl.classList.remove('show');
+
+  const email = document.getElementById('iv-email').value.trim().toLowerCase();
+  const name  = document.getElementById('iv-name').value.trim();
+  const roles = [...document.querySelectorAll('#role-pickers input:checked')].map(c => c.value);
+
+  if (!email || !email.includes('@')) { errEl.textContent = 'Please add a valid email address.'; errEl.classList.add('show'); return; }
+  if (!name) { errEl.textContent = 'Please add their name.'; errEl.classList.add('show'); return; }
+  if (!roles.length) { errEl.textContent = 'Pick at least one role.'; errEl.classList.add('show'); return; }
+
+  const btn = document.getElementById('invite-send');
+  btn.disabled = true; btn.textContent = 'Sending invite…';
+  try {
+    const r = await api('invite_admin', { username: email, email, display_name: name, roles });
+    if (!r.ok) throw new Error(r.error || 'Invite failed');
+    if (r.invite_email_sent) {
+      successEl.innerHTML = `<b>Invite sent to ${escapeHtml(email)}.</b> They'll get an email with a temporary password and a link to sign in.`;
+    } else {
+      successEl.innerHTML = `<b>Invite created.</b> Email didn't go through — share these manually:<br><br>Sign in at <code>${escapeHtml(window.location.origin)}/club/admin/login.html</code> with email <code>${escapeHtml(email)}</code> and password <code>${escapeHtml(r.temp_password)}</code>.<br><br>They'll be asked to set their own password on first sign-in.`;
+    }
+    successEl.classList.add('show');
+
+    // Reset form
+    document.getElementById('iv-email').value = '';
+    document.getElementById('iv-name').value = '';
+    document.querySelectorAll('#role-pickers input').forEach(c => { c.checked = false; });
+    document.querySelectorAll('.role-picker').forEach(c => c.classList.remove('checked'));
+
+    // Reload list
+    await loadAdmins();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send invite';
+  }
+}
+
+function openRoleEditor(id) {
+  const target = ADMINS.find(a => a.id === id);
+  if (!target) return;
+  const currentRoles = new Set(target.roles || [target.role_template || 'owner']);
+  const isLastOwner = currentRoles.has('owner') && ADMINS.filter(x => x.active && (x.roles?.includes('owner') || x.role_template === 'owner')).length <= 1;
+
+  // Simple modal — overlays the page, lets you tick/untick roles
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:80;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;padding:24px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto">
+      <h2 style="margin:0 0 4px">Change role for ${escapeHtml(target.display_name || target.email)}</h2>
+      <p class="lede" style="margin:6px 0 18px">Pick one or more roles. They'll see only the parts of Poolside that match.</p>
+      <div class="role-pickers" id="edit-role-pickers" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        ${TEMPLATES.filter(t => t.key !== 'custom').map(t => `
+          <label class="role-picker ${currentRoles.has(t.key) ? 'checked' : ''}" data-role="${escapeHtml(t.key)}">
+            <input type="checkbox" value="${escapeHtml(t.key)}" ${currentRoles.has(t.key) ? 'checked' : ''} ${isLastOwner && t.key === 'owner' ? 'disabled' : ''}>
+            <span class="rp-label">${escapeHtml(t.label)}</span>
+            <div class="rp-desc">${escapeHtml(t.description)}</div>
+          </label>
+        `).join('')}
+      </div>
+      ${isLastOwner ? '<p style="font-size:12px;color:#7c2d12;background:#fef3c7;padding:8px 12px;border-radius:8px;margin:0 0 12px">This person is the only Board chair. Demoting them would lock you out of admin management — promote someone else first.</p>' : ''}
+      <div class="invite-err" id="edit-err"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-ghost" id="edit-cancel">Cancel</button>
+        <button class="btn btn-primary" id="edit-save">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Same toggle behavior as the invite form
+  overlay.querySelectorAll('.role-picker').forEach(card => {
+    const cb = card.querySelector('input[type=checkbox]');
+    card.addEventListener('click', e => {
+      if (cb.disabled) return;
+      if (e.target !== cb) cb.checked = !cb.checked;
+      card.classList.toggle('checked', cb.checked);
+    });
+  });
+
+  overlay.querySelector('#edit-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#edit-save').addEventListener('click', async () => {
+    const newRoles = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    const errEl = overlay.querySelector('#edit-err');
+    if (!newRoles.length) { errEl.textContent = 'Pick at least one role.'; errEl.classList.add('show'); return; }
+    const btn = overlay.querySelector('#edit-save');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const r = await api('update_admin_role', { id, roles: newRoles });
+      if (!r.ok) throw new Error(r.error || 'Update failed');
+      overlay.remove();
+      await loadAdmins();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+      btn.disabled = false; btn.textContent = 'Save';
+    }
+  });
+}
+
+let undoState = null;
+async function removeAdmin(id) {
+  const target = ADMINS.find(a => a.id === id);
+  if (!target) return;
+  const name = target.display_name || target.email;
+
+  // Optimistic remove + 30s undo toast
+  const r = await api('deactivate_admin', { id });
+  if (!r.ok) { alert(r.error || 'Remove failed'); return; }
+  await loadAdmins();
+  showUndoToast(`Removed ${name} from admins.`, async () => {
+    const u = await api('reactivate_admin', { id });
+    if (!u.ok) { alert('Couldn\'t restore: ' + (u.error || 'unknown error')); return; }
+    await loadAdmins();
+  });
+}
+
+function showUndoToast(msg, undoFn) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  const undoBtn = document.getElementById('toast-undo');
+  const secsEl = document.getElementById('toast-secs');
+  toast.classList.add('open');
+
+  let secs = 30;
+  secsEl.textContent = `${secs}s`;
+  if (undoState?.timer) clearInterval(undoState.timer);
+  if (undoState?.timeout) clearTimeout(undoState.timeout);
+
+  undoState = {
+    timer: setInterval(() => {
+      secs -= 1;
+      secsEl.textContent = `${secs}s`;
+      if (secs <= 0) {
+        clearInterval(undoState.timer);
+        toast.classList.remove('open');
+        undoState = null;
+      }
+    }, 1000),
+    timeout: setTimeout(() => {
+      toast.classList.remove('open');
+      undoState = null;
+    }, 30000),
+  };
+  undoBtn.onclick = async () => {
+    clearInterval(undoState.timer);
+    clearTimeout(undoState.timeout);
+    toast.classList.remove('open');
+    undoState = null;
+    await undoFn();
+  };
+}
+
+async function loadAdmins() {
+  const r = await api('list_admins');
+  ADMINS = r.admins || [];
+  renderRoot();
+}
+
+async function loadEverything() {
+  try {
+    const meRes = await api('me');
+    if (!meRes.ok) throw new Error(meRes.error || 'Not signed in');
+    ME = meRes.user;
+    document.getElementById('whoami').textContent = ME.email || ME.display_name || '';
+
+    const tplRes = await api('list_role_templates');
+    TEMPLATES = tplRes.templates || [];
+
+    await loadAdmins();
+  } catch (e) {
+    document.getElementById('root').innerHTML = `<div class="card access-denied"><h2>Couldn't load</h2><p>${escapeHtml(e.message)}</p></div>`;
+  }
+}
+
+loadEverything();
+</script>
+</body>
+</html>
