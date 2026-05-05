@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Redesign · Provider Dashboard · Poolside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0b1622;
+    --surface:   #0f1d2c;
+    --surface-2: #14283c;
+    --rule:      #1c3147;
+    --rule-2:    #243b54;
+    --ink:       #e6edf6;
+    --ink-2:     #9fb1c4;
+    --ink-3:     #6c7f93;
+    --accent:    #f0a020;
+    --accent-2:  #ffc979;
+    --good:      #34c46a;
+    --warn:      #f0a020;
+    --bad:       #e85a4a;
+    --bad-2:     #f88a7a;
+    --info:      #5db1ff;
+    --row-hover: #14283c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+  .app {
+    display: grid;
+    grid-template-columns: 224px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ===== Sidebar ===== */
+  .side {
+    background: var(--surface);
+    border-right: 1px solid var(--rule);
+    padding: 18px 14px;
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+  }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .brand .name {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+  }
+  .brand-tag {
+    margin: 0 8px 16px;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+    font-weight: 600;
+  }
+  .nav-section {
+    margin-top: 14px;
+    padding: 0 8px 6px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--ink-2);
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .nav-item:hover { background: var(--surface-2); color: var(--ink); }
+  .nav-item.active { background: var(--surface-2); color: var(--ink); font-weight: 500; }
+  .nav-item .ind { width: 14px; color: var(--ink-3); }
+  .nav-item.active .ind { color: var(--accent); }
+  .nav-item .badge {
+    margin-left: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .nav-item .badge.warn { color: var(--warn); }
+  .nav-item .badge.bad  { color: var(--bad); }
+  .side-foot {
+    margin-top: auto;
+    border-top: 1px solid var(--rule);
+    padding-top: 12px;
+    color: var(--ink-3);
+    font-size: 11px;
+  }
+  .side-foot .who {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--ink-2); margin-bottom: 4px;
+  }
+  .who .av {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--surface-2);
+    display: grid; place-items: center;
+    font-size: 11px; color: var(--ink); font-weight: 600;
+  }
+
+  /* ===== Main ===== */
+  main { padding: 18px 24px 60px; min-width: 0; }
+
+  .topline {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 18px;
+  }
+  .topline h1 {
+    margin: 0;
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 22px;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .topline .sep { color: var(--ink-3); }
+  .topline .count { color: var(--ink-3); font-size: 13px; }
+  .topline .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .kbd {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    color: var(--ink-3);
+    border: 1px solid var(--rule-2);
+    border-radius: 4px;
+    padding: 2px 6px;
+    background: var(--surface);
+  }
+  .search {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    border-radius: 6px;
+    padding: 5px 9px;
+    color: var(--ink-2);
+    width: 280px;
+  }
+  .search input {
+    background: transparent; border: 0; outline: 0;
+    color: var(--ink); flex: 1;
+    font: inherit;
+  }
+  .btn {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--rule-2);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .btn.primary { background: var(--accent); color: #2a1700; border-color: var(--accent); font-weight: 600; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary:hover { background: var(--accent-2); }
+
+  /* ===== KPI strip ===== */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .kpi {
+    background: var(--surface);
+    padding: 12px 14px;
+  }
+  .kpi .k {
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .kpi .v {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 24px;
+    color: var(--ink);
+    margin-top: 4px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .kpi .d {
+    margin-top: 6px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .kpi .d.up   { color: var(--good); }
+  .kpi .d.down { color: var(--bad); }
+  .kpi .spark {
+    margin-top: 4px;
+    height: 18px;
+    width: 100%;
+  }
+
+  /* ===== Filters ===== */
+  .filters {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .chip {
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    color: var(--ink-2);
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .chip:hover { color: var(--ink); }
+  .chip.active { background: var(--surface-2); border-color: var(--accent); color: var(--ink); }
+  .chip .n {
+    font-family: "JetBrains Mono", monospace;
+    color: var(--ink-3);
+    margin-left: 6px;
+    font-size: 11px;
+  }
+  .chip.active .n { color: var(--accent-2); }
+  .filters .spacer { flex: 1; }
+  .filters .meta { color: var(--ink-3); font-size: 12px; }
+
+  /* ===== Table ===== */
+  .table-wrap {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    padding: 9px 12px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+  }
+  thead th .sort { color: var(--accent); margin-left: 4px; font-size: 10px; }
+  thead th .num { color: var(--ink-3); float: right; font-family: "JetBrains Mono", monospace; }
+  tbody td {
+    padding: 10px 12px;
+    border-top: 1px solid var(--rule-2);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr.flag-row { box-shadow: inset 2px 0 0 var(--bad); }
+  tbody tr.warn-row { box-shadow: inset 2px 0 0 var(--warn); }
+
+  .club {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .club .avc {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: var(--surface-2);
+    display: grid; place-items: center;
+    font-size: 11px; color: var(--ink); font-weight: 600;
+    flex-shrink: 0;
+  }
+  .club .nm { font-weight: 500; color: var(--ink); }
+  .club .sub { color: var(--ink-3); font-size: 11.5px; }
+
+  .health {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.good { background: var(--good); }
+  .dot.warn { background: var(--warn); }
+  .dot.bad  { background: var(--bad); box-shadow: 0 0 0 3px rgba(232,90,74,0.18); }
+  .dot.idle { background: var(--ink-3); }
+
+  .mrr { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--ink); }
+  .mrr.dim { color: var(--ink-3); }
+  .delta-c {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .delta-c.up   { color: var(--good); }
+  .delta-c.down { color: var(--bad); }
+
+  .since { color: var(--ink-3); font-size: 12px; }
+  .since.bad  { color: var(--bad-2); }
+  .since.warn { color: var(--accent-2); }
+
+  .plan-pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--surface-2);
+    color: var(--ink-2);
+    border: 1px solid var(--rule-2);
+  }
+  .plan-pill.trial { color: var(--accent-2); border-color: rgba(240,160,32,0.4); }
+
+  .fail {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--bad-2);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+  }
+  .fail.zero { color: var(--ink-3); }
+
+  .row-actions { display: flex; gap: 4px; opacity: 0.55; }
+  tbody tr:hover .row-actions { opacity: 1; }
+  .ico-btn {
+    background: transparent;
+    border: 1px solid var(--rule-2);
+    color: var(--ink-2);
+    padding: 3px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+  }
+  .ico-btn:hover { background: var(--surface-2); color: var(--ink); }
+  .ico-btn.danger:hover { color: var(--bad-2); border-color: var(--bad); }
+
+  .legend {
+    display: flex; gap: 18px; padding: 10px 14px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--rule);
+    font-size: 11.5px;
+    color: var(--ink-3);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .annot {
+    margin-top: 18px;
+    padding: 12px 16px;
+    border: 1px dashed var(--rule-2);
+    border-radius: 8px;
+    color: var(--ink-2);
+    font-size: 12.5px;
+  }
+  .annot b { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============= Sidebar ============= -->
+  <aside class="side">
+    <div class="brand">
+      <span class="dot"></span>
+      <span class="name">Poolside</span>
+    </div>
+    <div class="brand-tag">Platform admin</div>
+
+    <div class="nav-section">Operate</div>
+    <div class="nav-item active"><span class="ind">›</span> Dashboard</div>
+    <div class="nav-item"><span class="ind"></span> Clubs <span class="badge">42</span></div>
+    <div class="nav-item"><span class="ind"></span> Money</div>
+    <div class="nav-item"><span class="ind"></span> Audit log <span class="badge warn">3</span></div>
+    <div class="nav-item"><span class="ind"></span> Support <span class="badge bad">2</span></div>
+
+    <div class="nav-section">Configure</div>
+    <div class="nav-item"><span class="ind"></span> Integrations</div>
+    <div class="nav-item"><span class="ind"></span> Plans &amp; pricing</div>
+    <div class="nav-item"><span class="ind"></span> System status</div>
+
+    <div class="side-foot">
+      <div class="who"><span class="av">DF</span><span>Doug Frevele</span></div>
+      <div>Press <span class="kbd">?</span> for shortcuts</div>
+    </div>
+  </aside>
+
+  <!-- ============= Main ============= -->
+  <main>
+
+    <div class="topline">
+      <h1>Dashboard</h1>
+      <span class="sep">·</span>
+      <span class="count">42 clubs · 3 trials · 2 at risk</span>
+      <div class="right">
+        <div class="search">
+          <span>⌕</span>
+          <input placeholder="Find a club, admin email, subdomain…" />
+          <span class="kbd">⌘K</span>
+        </div>
+        <button class="btn primary">＋ Invite club</button>
+      </div>
+    </div>
+
+    <!-- KPI strip -->
+    <section class="kpis">
+      <div class="kpi">
+        <div class="k">MRR</div>
+        <div class="v">$8,420</div>
+        <div class="d up">▲ $640 · 7d</div>
+      </div>
+      <div class="kpi">
+        <div class="k">Active clubs</div>
+        <div class="v">39</div>
+        <div class="d up">▲ 2 · 7d</div>
+      </div>
+      <div class="kpi">
+        <div class="k">Trials ending &lt; 7d</div>
+        <div class="v">3</div>
+        <div class="d">2 unresponsive</div>
+      </div>
+      <div class="kpi">
+        <div class="k">Failed payments</div>
+        <div class="v" style="color:var(--bad-2);">7</div>
+        <div class="d down">▲ 4 · 24h</div>
+      </div>
+      <div class="kpi">
+        <div class="k">At-risk clubs</div>
+        <div class="v" style="color:var(--bad-2);">2</div>
+        <div class="d">no admin login 14d+</div>
+      </div>
+      <div class="kpi">
+        <div class="k">Households (all)</div>
+        <div class="v">1,284</div>
+        <div class="d up">▲ 31 · 7d</div>
+      </div>
+    </section>
+
+    <!-- Filters -->
+    <div class="filters">
+      <span class="chip active">All <span class="n">42</span></span>
+      <span class="chip">At risk <span class="n">2</span></span>
+      <span class="chip">Trials <span class="n">3</span></span>
+      <span class="chip">Failed payment <span class="n">7</span></span>
+      <span class="chip">No admin login 14d <span class="n">5</span></span>
+      <span class="chip">No member login 30d <span class="n">8</span></span>
+      <span class="chip">Stripe disconnected <span class="n">1</span></span>
+      <span class="spacer"></span>
+      <span class="meta">Sorted by health, worst first</span>
+      <button class="btn">Export</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:240px;">Club</th>
+            <th>Plan</th>
+            <th>Health</th>
+            <th>MRR <span class="num">↓</span><span class="sort">•</span></th>
+            <th>Households</th>
+            <th>Failed</th>
+            <th>Last admin</th>
+            <th>Last member</th>
+            <th>Since</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="flag-row">
+            <td>
+              <div class="club">
+                <span class="avc">SC</span>
+                <div>
+                  <div class="num"></div>
+                  <div class="nm">Sycamore Cove Swim</div>
+                  <div class="sub mono">sycamore.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot bad"></span> Critical</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">128</td>
+            <td><span class="fail">●&nbsp;3</span></td>
+            <td><span class="since bad">21d</span></td>
+            <td><span class="since warn">9d</span></td>
+            <td class="since mono">Jan 2025</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr class="flag-row">
+            <td>
+              <div class="club">
+                <span class="avc">RH</span>
+                <div>
+                  <div class="nm">Rolling Hills Country Pool</div>
+                  <div class="sub mono">rollinghills.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot bad"></span> Critical</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">94</td>
+            <td><span class="fail">●&nbsp;2</span></td>
+            <td><span class="since bad">31d</span></td>
+            <td><span class="since bad">22d</span></td>
+            <td class="since mono">Aug 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr class="warn-row">
+            <td>
+              <div class="club">
+                <span class="avc">CV</span>
+                <div>
+                  <div class="nm">Cedarville Cabana Co-op</div>
+                  <div class="sub mono">cedarville.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill trial">Trial · 4d</span></td>
+            <td><span class="health"><span class="dot warn"></span> At risk</span></td>
+            <td><span class="mrr dim">—</span></td>
+            <td class="mono">38</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since warn">8d</span></td>
+            <td><span class="since">2d</span></td>
+            <td class="since mono">Apr 30, 2026</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Nudge admin</button></div></td>
+          </tr>
+
+          <tr class="warn-row">
+            <td>
+              <div class="club">
+                <span class="avc">BE</span>
+                <div>
+                  <div class="nm">Bishop Estates Cabana Club</div>
+                  <div class="sub mono">bishopestates.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill trial">Trial · 24d</span></td>
+            <td><span class="health"><span class="dot warn"></span> Stripe not connected</span></td>
+            <td><span class="mrr dim">—</span></td>
+            <td class="mono">6</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Apr 30, 2026</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">PV</span>
+                <div>
+                  <div class="nm">Pinevale Pool &amp; Tennis</div>
+                  <div class="sub mono">pinevale.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">142</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Mar 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">WB</span>
+                <div>
+                  <div class="nm">Westbrook Swim &amp; Racquet</div>
+                  <div class="sub mono">westbrook.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Pro</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$499</span></td>
+            <td class="mono">211</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Feb 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">HM</span>
+                <div>
+                  <div class="nm">Harbor Meadows Aquatic</div>
+                  <div class="sub mono">harbormeadows.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">87</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">1d</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">May 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">FG</span>
+                <div>
+                  <div class="nm">Fairgrove Cabana Club</div>
+                  <div class="sub mono">fairgrove.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">66</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">2d</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Jul 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">OK</span>
+                <div>
+                  <div class="nm">Oakhill Recreation Pool</div>
+                  <div class="sub mono">oakhill.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Pro</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$499</span></td>
+            <td class="mono">175</td>
+            <td><span class="fail">●&nbsp;1</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Sep 2023</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">LV</span>
+                <div>
+                  <div class="nm">Linden Village Swim</div>
+                  <div class="sub mono">linden.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">54</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Jun 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">MR</span>
+                <div>
+                  <div class="nm">Maplewood Racquet Club Pool</div>
+                  <div class="sub mono">maplewood.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Pro</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$499</span></td>
+            <td class="mono">198</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Apr 2023</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">TS</span>
+                <div>
+                  <div class="nm">Tanager Springs Pool</div>
+                  <div class="sub mono">tanager.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">73</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Aug 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">QC</span>
+                <div>
+                  <div class="nm">Quail Creek Cabana</div>
+                  <div class="sub mono">quailcreek.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">61</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">Sep 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">BR</span>
+                <div>
+                  <div class="nm">Briar Ridge Pool Association</div>
+                  <div class="sub mono">briarridge.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Pro</span></td>
+            <td><span class="health"><span class="dot good"></span> Healthy</span></td>
+            <td><span class="mrr">$499</span></td>
+            <td class="mono">231</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since">today</span></td>
+            <td><span class="since">today</span></td>
+            <td class="since mono">May 2023</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="club">
+                <span class="avc">HV</span>
+                <div>
+                  <div class="nm">Hollow Valley Cabana</div>
+                  <div class="sub mono">hollowvalley.poolsideapp.com</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="plan-pill">Standard</span></td>
+            <td><span class="health"><span class="dot idle"></span> Idle</span></td>
+            <td><span class="mrr">$249</span></td>
+            <td class="mono">42</td>
+            <td><span class="fail zero">—</span></td>
+            <td><span class="since warn">5d</span></td>
+            <td><span class="since warn">11d</span></td>
+            <td class="since mono">Oct 2024</td>
+            <td><div class="row-actions"><button class="ico-btn">Open</button><button class="ico-btn">Impersonate</button></div></td>
+          </tr>
+
+        </tbody>
+      </table>
+      <div class="legend">
+        <span><span class="dot bad"></span>Critical: failed payment + idle &gt;14d</span>
+        <span><span class="dot warn"></span>At risk: trial ending or Stripe disconnected</span>
+        <span><span class="dot good"></span>Healthy</span>
+        <span><span class="dot idle"></span>Idle: no member login 7d+</span>
+        <span style="margin-left:auto;">Showing 15 of 42 — keys: <span class="kbd">j</span> <span class="kbd">k</span> nav · <span class="kbd">i</span> impersonate · <span class="kbd">e</span> edit · <span class="kbd">⌘K</span> search · <span class="kbd">?</span> all</span>
+      </div>
+    </div>
+
+    <div class="annot">
+      <b>What changed:</b> dark dense console, rows half the previous height, KPIs answer the operator's first three questions (MRR, trial risk, failed payments) instead of vanity counts. Health column computed from failed-payment count + login recency + Stripe state. Filter chips on the most common triage queries. Global search with <span class="kbd">⌘K</span>; row keyboard nav with <span class="kbd">j</span>/<span class="kbd">k</span>; impersonate-from-row with <span class="kbd">i</span>. Card chrome around the table dropped. Friendliness copy stripped. Sidebar reorganized into Operate / Configure with Audit log promoted (compliance), Test cockpit hidden behind a debug flag, account stuff moved out of nav.
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>

@@ -34,8 +34,9 @@ export type AdminPayload = {
   kind: string;                      // 'tenant_admin'
   tid: string;                       // tenant_id
   slug?: string;
-  role_template?: string;            // 'owner' | 'treasurer' | 'membership' | etc.
-  scopes?: string[];
+  role_template?: string;            // legacy single-role: 'owner' | 'treasurer' | etc.
+  roles?: string[];                  // multi-role: ['communications', 'volunteer']
+  scopes?: string[];                 // pre-computed union of scopes
   is_super?: boolean;
   synthetic?: boolean;               // service-to-service (e.g. webhook auto-approve)
   exp?: number;
@@ -78,30 +79,39 @@ async function resolveRole(
   // Synthetic service tokens (e.g. webhook auto-approve) get full access.
   if (payload.synthetic) return { active: true, isSuper: true, isOwner: true, scopes: [] };
 
-  // JWT-resolved fields override DB if present
-  const jwtComplete = payload.role_template !== undefined && payload.scopes !== undefined;
+  // JWT-resolved fields override DB if present. Owner detection now reads
+  // BOTH the legacy role_template field AND the new roles[] array — a
+  // multi-role admin can hold 'owner' as one of several roles.
+  const jwtComplete =
+    (payload.role_template !== undefined || payload.roles !== undefined) &&
+    payload.scopes !== undefined;
   if (jwtComplete) {
     // Still need to check `active` — JWT can't carry that safely (would
     // need rotation on deactivate). Quick targeted query.
     const { data: row } = await sb.from('admin_users')
       .select('active').eq('id', payload.sub).maybeSingle();
     if (!row || !row.active) return { active: false, isSuper: false, isOwner: false, scopes: [] };
+    const rolesArr = Array.isArray(payload.roles) ? payload.roles : [];
+    const isOwner = payload.role_template === 'owner' || rolesArr.includes('owner');
     return {
       active: true,
       isSuper: !!payload.is_super,
-      isOwner: payload.role_template === 'owner',
+      isOwner,
       scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
     };
   }
 
   const { data: admin } = await sb.from('admin_users')
-    .select('role_template, scopes, is_super, active')
+    .select('role_template, roles, scopes, is_super, active')
     .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle();
   if (!admin || !admin.active) return { active: false, isSuper: false, isOwner: false, scopes: [] };
+  const rolesArr = (admin.roles as string[] | null) ?? [];
+  const legacyTpl = (admin.role_template as string | null) ?? 'owner';
+  const isOwner = legacyTpl === 'owner' || rolesArr.includes('owner');
   return {
     active: true,
     isSuper: !!admin.is_super,
-    isOwner: (admin.role_template ?? 'owner') === 'owner',
+    isOwner,
     scopes: (admin.scopes as string[] | null) ?? [],
   };
 }

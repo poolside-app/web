@@ -648,6 +648,32 @@ Deno.serve(async (req) => {
       .eq('kind', 'application.submitted')
       .is('completed_at', null);
 
+    // Auto-link: if the approved primary's email matches an active admin on
+    // this tenant, set admin_users.linked_member_id so we know that admin is
+    // also a member of the club. The "Set up my membership" banner on the
+    // admin home checks this flag — once linked, the banner disappears.
+    if (app.primary_email) {
+      try {
+        const { data: matchedAdmin } = await sb.from('admin_users')
+          .select('id, linked_member_id')
+          .eq('tenant_id', TID)
+          .eq('active', true)
+          .ilike('email', app.primary_email as string)
+          .maybeSingle();
+        if (matchedAdmin && !matchedAdmin.linked_member_id) {
+          await sb.from('admin_users')
+            .update({ linked_member_id: pm.id })
+            .eq('id', matchedAdmin.id);
+          await sb.from('audit_log').insert({
+            tenant_id: TID, kind: 'admin.linked_to_member',
+            entity_type: 'admin_user', entity_id: matchedAdmin.id,
+            summary: `Admin auto-linked to household member after application approval`,
+            actor_kind: 'system',
+          });
+        }
+      } catch { /* never fail approval over this */ }
+    }
+
     return jsonResponse({
       ok: true,
       household_id: hh.id, primary_id: pm.id,

@@ -119,29 +119,39 @@ type TenantAdminPayload = {
 // Customize a template by editing scopes after assignment; role_template
 // flips to 'custom' the moment the resolved scopes diverge from the
 // template's canonical set.
-const ROLE_TEMPLATES: Record<string, { label: string; scopes: string[] }> = {
+// Role-template labels follow the 2026-05 design spec: volunteer-job names,
+// not "Owner / President". The slugs stay the same for back-compat — DB
+// rows already reference them and changing them would force a data migration
+// for zero functional benefit. Labels are what humans see; slugs are internal.
+const ROLE_TEMPLATES: Record<string, { label: string; description: string; scopes: string[] }> = {
   owner: {
-    label: 'Owner / President',
-    scopes: [],   // sentinel: empty + owner template = full access
+    label: 'Board chair',
+    description: 'Sees and changes everything. Can also add or remove other admins.',
+    scopes: [],   // sentinel: empty + owner = full access (bypasses scope checks)
   },
   treasurer: {
     label: 'Treasurer',
+    description: 'Money and payments. Can mark paid, send reminders, refund.',
     scopes: ['payments', 'applications', 'tiers', 'renewals', 'audit', 'impact'],
   },
   membership: {
-    label: 'Membership Chair',
+    label: 'Membership chair',
+    description: 'Applications and households. Approves new members.',
     scopes: ['applications', 'households', 'tiers', 'renewals', 'directory', 'documents', 'impact'],
   },
   events: {
-    label: 'Events / Programs',
+    label: 'Volunteer coordinator',
+    description: 'Events and signups. Schedules parties, programs, and volunteer slots.',
     scopes: ['events', 'parties', 'programs', 'volunteer', 'passes', 'impact'],
   },
   communications: {
-    label: 'Communications / Marketing',
+    label: 'Communications',
+    description: 'Announcements, campaigns, and photo gallery.',
     scopes: ['announcements', 'campaigns', 'photos', 'documents', 'policies', 'impact'],
   },
   custom: {
     label: 'Custom',
+    description: 'Pick exactly what this person can see and change. For unusual cases — most boards don\'t need this.',
     scopes: [],
   },
 };
@@ -381,7 +391,7 @@ Deno.serve(async (req) => {
   if (action === 'me') {
     const [{ data: user }, { data: tenant }, { data: settings }] = await Promise.all([
       sb.from('admin_users')
-        .select('id, email, display_name, is_super, is_default_pw, active, scopes, role_template, phone_e164')
+        .select('id, email, display_name, is_super, is_default_pw, active, scopes, role_template, roles, linked_member_id, member_apply_dismissed, phone_e164')
         .eq('id', payload.sub).maybeSingle(),
       sb.from('tenants')
         .select('slug, display_name, status, plan')
@@ -426,7 +436,12 @@ Deno.serve(async (req) => {
       user: {
         ...user,
         scopes: user.scopes ?? [],
+        roles: (user.roles && Array.isArray(user.roles) && user.roles.length)
+          ? user.roles
+          : [user.role_template ?? 'owner'],
         role_template: user.role_template ?? 'owner',
+        linked_member_id: user.linked_member_id ?? null,
+        member_apply_dismissed: !!user.member_apply_dismissed,
         impersonated: !!payload.impersonated_by,
       },
     });
@@ -470,19 +485,26 @@ Deno.serve(async (req) => {
 
   if (action === 'list_admins') {
     const { data, error } = await sb.from('admin_users')
-      .select('id, username, email, display_name, notify_pref, is_default_pw, is_super, active, last_login_at, created_at, scopes, role_template, phone_e164')
+      .select('id, username, email, display_name, notify_pref, is_default_pw, is_super, active, last_login_at, created_at, scopes, role_template, roles, linked_member_id, phone_e164')
       .eq('tenant_id', payload.tid)
       .order('created_at', { ascending: true });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, admins: data ?? [] });
+    // Normalize roles[]: if the row has only legacy role_template, surface
+    // it as a single-element roles[] so the UI can treat them uniformly.
+    const admins = (data ?? []).map(a => ({
+      ...a,
+      roles: (a.roles && Array.isArray(a.roles) && a.roles.length)
+        ? a.roles
+        : [a.role_template ?? 'owner'],
+    }));
+    return jsonResponse({ ok: true, admins });
   }
 
   if (action === 'list_role_templates') {
     return jsonResponse({
       ok: true,
       templates: Object.entries(ROLE_TEMPLATES)
-        .filter(([k]) => k !== 'custom')
-        .map(([key, t]) => ({ key, label: t.label, scopes: t.scopes })),
+        .map(([key, t]) => ({ key, label: t.label, description: t.description, scopes: t.scopes })),
       all_scopes: ALL_SCOPES,
     });
   }
@@ -503,19 +525,34 @@ Deno.serve(async (req) => {
     }
     if (!display_name) return jsonResponse({ ok: false, error: 'Name is required' }, 400);
 
-    // Resolve role template + scopes. If caller passes scopes, those win
-    // (template flips to 'custom'). Otherwise we use the named template's set.
-    const requestedTemplate = String(body.role_template ?? 'membership').toLowerCase();
-    const knownTemplate = ROLE_TEMPLATES[requestedTemplate] ? requestedTemplate : 'membership';
-    let scopes = templateScopes(knownTemplate);
-    let role_template = knownTemplate;
+    // Resolve roles + scopes. New API accepts a `roles[]` array (multi-role,
+    // e.g. ['communications', 'volunteer']). Legacy `role_template` (single
+    // string) is honored for backward compatibility. If neither is provided,
+    // default to 'membership' so the form has a sensible fallback.
+    let roles: string[] = [];
+    if (Array.isArray(body.roles) && body.roles.length) {
+      const valid = new Set(Object.keys(ROLE_TEMPLATES));
+      roles = [...new Set((body.roles as unknown[]).map(r => String(r).toLowerCase()).filter(r => valid.has(r)))];
+    } else if (body.role_template) {
+      const t = String(body.role_template).toLowerCase();
+      if (ROLE_TEMPLATES[t]) roles = [t];
+    }
+    if (!roles.length) roles = ['membership'];
+
+    // Compute scopes as the UNION of every role's template scopes. If the
+    // caller passes an explicit scopes[] that doesn't match the union, the
+    // role flips to 'custom' as a single-role record (custom = bespoke).
+    const unionScopes = [...new Set(roles.flatMap(r => templateScopes(r)))];
+    let scopes = unionScopes;
+    let role_template = roles.length === 1 ? roles[0] : 'custom';
     if (body.scopes !== undefined) {
       const customScopes = sanitizeScopes(body.scopes);
-      const matchesTemplate = customScopes.length === scopes.length &&
-        customScopes.every(s => scopes.includes(s));
-      if (!matchesTemplate) {
+      const matchesUnion = customScopes.length === unionScopes.length &&
+        customScopes.every(s => unionScopes.includes(s));
+      if (!matchesUnion) {
         scopes = customScopes;
         role_template = 'custom';
+        roles = ['custom'];
       }
     }
     // Phone normalization (best-effort; reject obvious garbage but keep it permissive)
@@ -537,10 +574,10 @@ Deno.serve(async (req) => {
       await sb.from('admin_users').update({
         active: true, display_name,
         email: email || username,
-        scopes, role_template,
+        scopes, role_template, roles,
         phone_e164: phone ?? null,
       }).eq('id', clash.id);
-      return jsonResponse({ ok: true, admin_id: clash.id, reactivated: true, role_template, scopes });
+      return jsonResponse({ ok: true, admin_id: clash.id, reactivated: true, role_template, roles, scopes });
     }
 
     // Generate a temporary password — admin must change on first login.
@@ -555,7 +592,7 @@ Deno.serve(async (req) => {
       password_hash: hash,
       notify_pref: 'email',
       is_default_pw: true, active: true,
-      scopes, role_template, phone_e164: phone,
+      scopes, role_template, roles, phone_e164: phone,
     }).select('id, username, display_name, email').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
@@ -578,7 +615,7 @@ Deno.serve(async (req) => {
       roleLabel: ROLE_TEMPLATES[role_template]?.label ?? role_template,
     });
     return jsonResponse({
-      ok: true, admin_id: data.id, temp_password: tempPw, role_template, scopes,
+      ok: true, admin_id: data.id, temp_password: tempPw, role_template, roles, scopes,
       invite_email_sent: inviteEmail.sent,
       invite_email_error: inviteEmail.sent ? null : inviteEmail.error,
     });
@@ -595,50 +632,72 @@ Deno.serve(async (req) => {
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
 
     const { data: target } = await sb.from('admin_users')
-      .select('id, tenant_id, role_template')
+      .select('id, tenant_id, role_template, roles')
       .eq('id', id).maybeSingle();
     if (!target || target.tenant_id !== payload.tid) {
       return jsonResponse({ ok: false, error: 'Admin not found' }, 404);
     }
 
+    // Resolve the new roles[] from the request. Same logic as invite.
+    let roles: string[] = [];
+    if (Array.isArray(body.roles) && body.roles.length) {
+      const valid = new Set(Object.keys(ROLE_TEMPLATES));
+      roles = [...new Set((body.roles as unknown[]).map(r => String(r).toLowerCase()).filter(r => valid.has(r)))];
+    } else if (body.role_template) {
+      const t = String(body.role_template).toLowerCase();
+      if (ROLE_TEMPLATES[t]) roles = [t];
+    }
+    if (!roles.length) roles = ['membership'];
+
     // Refuse to demote the last owner — would lock the tenant out of admin
-    // management forever. (Other owners exist? Then it's safe.)
-    if (target.role_template === 'owner') {
-      const { count } = await sb.from('admin_users').select('id', { count: 'exact', head: true })
-        .eq('tenant_id', payload.tid).eq('active', true).eq('role_template', 'owner');
-      if ((count ?? 0) <= 1) {
-        return jsonResponse({ ok: false, error: 'At least one Owner must remain. Promote someone else first.' }, 400);
+    // management. Detect demotion by checking if the target currently has
+    // 'owner' (in either roles[] or legacy role_template) but the new
+    // roles[] does NOT include 'owner'.
+    const targetRoles = (target.roles as string[] | null) ?? [];
+    const wasOwner = target.role_template === 'owner' || targetRoles.includes('owner');
+    const willBeOwner = roles.includes('owner');
+    if (wasOwner && !willBeOwner) {
+      const { data: owners } = await sb.from('admin_users')
+        .select('id, role_template, roles')
+        .eq('tenant_id', payload.tid).eq('active', true);
+      const ownerCount = (owners ?? []).filter(a =>
+        a.role_template === 'owner' ||
+        (Array.isArray(a.roles) && a.roles.includes('owner'))
+      ).length;
+      if (ownerCount <= 1) {
+        return jsonResponse({ ok: false, error: 'At least one Board chair must remain. Promote someone else first.' }, 400);
       }
     }
 
-    const requestedTemplate = String(body.role_template ?? 'membership').toLowerCase();
-    const knownTemplate = ROLE_TEMPLATES[requestedTemplate] ? requestedTemplate : 'membership';
-    let scopes = templateScopes(knownTemplate);
-    let role_template = knownTemplate;
+    // Compute scopes as union of the new roles[]. Custom scopes flip to 'custom'.
+    const unionScopes = [...new Set(roles.flatMap(r => templateScopes(r)))];
+    let scopes = unionScopes;
+    let role_template = roles.length === 1 ? roles[0] : 'custom';
     if (body.scopes !== undefined) {
       const customScopes = sanitizeScopes(body.scopes);
-      const matchesTemplate = customScopes.length === scopes.length &&
-        customScopes.every(s => scopes.includes(s));
-      if (!matchesTemplate) {
+      const matchesUnion = customScopes.length === unionScopes.length &&
+        customScopes.every(s => unionScopes.includes(s));
+      if (!matchesUnion) {
         scopes = customScopes;
         role_template = 'custom';
+        roles = ['custom'];
       }
     }
 
-    const { error } = await sb.from('admin_users').update({ scopes, role_template })
+    const { error } = await sb.from('admin_users').update({ scopes, role_template, roles })
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
     try {
       await sb.from('audit_log').insert({
         tenant_id: payload.tid, kind: 'admin.role_changed', entity_type: 'admin_user', entity_id: id,
-        summary: `Changed role to ${ROLE_TEMPLATES[role_template]?.label ?? role_template}`,
+        summary: `Changed role to ${roles.map(r => ROLE_TEMPLATES[r]?.label ?? r).join(' + ')}`,
         actor_id: payload.sub, actor_kind: 'tenant_admin',
-        metadata: { scopes, role_template },
+        metadata: { scopes, role_template, roles },
       });
     } catch { /* ignore */ }
 
-    return jsonResponse({ ok: true, role_template, scopes });
+    return jsonResponse({ ok: true, role_template, roles, scopes });
   }
 
   if (action === 'deactivate_admin') {
@@ -650,21 +709,80 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
     if (id === payload.sub) return jsonResponse({ ok: false, error: 'Can\'t deactivate yourself' }, 400);
-    // Don't strand the tenant — refuse if this is the last active admin
+
+    // Look up the target's roles so we can detect last-owner removal.
+    const { data: target } = await sb.from('admin_users')
+      .select('id, role_template, roles, display_name, email')
+      .eq('id', id).eq('tenant_id', payload.tid).maybeSingle();
+    if (!target) return jsonResponse({ ok: false, error: 'Admin not found' }, 404);
+
+    // Don't strand the tenant — refuse if this is the last active admin overall.
     const { count } = await sb.from('admin_users').select('id', { count: 'exact', head: true })
       .eq('tenant_id', payload.tid).eq('active', true);
     if ((count ?? 0) <= 1) {
       return jsonResponse({ ok: false, error: 'At least one admin must remain active' }, 400);
     }
+
+    // Bus-factor-1 owner guard: refuse if this is the last active Board chair
+    // (owner). Otherwise no one would be able to manage admins or club settings.
+    const targetRoles = (target.roles as string[] | null) ?? [];
+    const targetIsOwner = target.role_template === 'owner' || targetRoles.includes('owner');
+    if (targetIsOwner) {
+      const { data: owners } = await sb.from('admin_users')
+        .select('id, role_template, roles')
+        .eq('tenant_id', payload.tid).eq('active', true);
+      const ownerCount = (owners ?? []).filter(a =>
+        a.role_template === 'owner' ||
+        (Array.isArray(a.roles) && a.roles.includes('owner'))
+      ).length;
+      if (ownerCount <= 1) {
+        return jsonResponse({
+          ok: false,
+          error: 'This is your last Board chair — promote someone else to Board chair first, then come back.',
+        }, 400);
+      }
+    }
+
     const { error } = await sb.from('admin_users').update({ active: false })
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     try {
       await sb.from('audit_log').insert({
         tenant_id: payload.tid, kind: 'admin.deactivated', entity_type: 'admin_user', entity_id: id,
-        summary: 'Co-admin deactivated', actor_id: payload.sub, actor_kind: 'tenant_admin',
+        summary: `Removed ${target.display_name || target.email || 'admin'}`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
       });
     } catch { /* ignore */ }
+    return jsonResponse({ ok: true });
+  }
+
+  // Reactivate an admin who was previously deactivated. Mirrors the 30s-undo
+  // pattern in the UI — admin clicks Remove, then Undo within the toast.
+  // OWNER ONLY (same guard as deactivate).
+  if (action === 'reactivate_admin') {
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can reactivate admins' }, 403);
+    }
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { error } = await sb.from('admin_users').update({ active: true })
+      .eq('id', id).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid, kind: 'admin.reactivated', entity_type: 'admin_user', entity_id: id,
+        summary: 'Reactivated admin (undo)', actor_id: payload.sub, actor_kind: 'tenant_admin',
+      });
+    } catch { /* ignore */ }
+    return jsonResponse({ ok: true });
+  }
+
+  // Self-service: dismiss the founder "set up your membership" banner. The
+  // banner reappears if the admin clicks "Set up my membership" later (the
+  // banner is gated on linked_member_id IS NULL AND member_apply_dismissed=false).
+  if (action === 'dismiss_member_apply') {
+    await sb.from('admin_users').update({ member_apply_dismissed: true })
+      .eq('id', payload.sub).eq('tenant_id', payload.tid);
     return jsonResponse({ ok: true });
   }
 

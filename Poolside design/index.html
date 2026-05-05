@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Poolside · UX Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --navy: #0a3b5c;
+    --navy-2: #0e2a47;
+    --navy-ink: #0a2540;
+    --ink: #1a2a3a;
+    --ink-2: #4a5a6a;
+    --ink-3: #7a8a9a;
+    --rule: #e6e2d6;
+    --rule-2: #ede9dc;
+    --paper: #faf6ec;
+    --paper-2: #f4ead7;
+    --card: #ffffff;
+    --amber: #f0a020;
+    --amber-soft: #fde9c2;
+    --amber-ink: #6d3d00;
+    --green: #0e8a3e;
+    --red: #b13a2c;
+    --red-soft: #f3d9d2;
+    --green-soft: #d4ecd8;
+    --blue-soft: #d6e4f1;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .serif { font-family: "Newsreader", Georgia, serif; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+  /* ===== Top hero ===== */
+  .hero {
+    background: var(--navy);
+    color: #f6f1e0;
+    padding: 56px 48px 44px;
+    border-bottom: 1px solid var(--navy-2);
+  }
+  .hero-inner { max-width: 1080px; margin: 0 auto; }
+  .hero .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--amber);
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 500;
+    font-size: 58px;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    margin: 0 0 18px;
+    color: #fff;
+    max-width: 780px;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--amber);
+    font-weight: 500;
+  }
+  .hero .lede {
+    font-size: 17px;
+    color: #d8d2c0;
+    max-width: 640px;
+    margin: 0 0 26px;
+  }
+  .hero .meta {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    font-size: 13px;
+    color: #a8b3c0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 18px;
+  }
+  .hero .meta b { color: #f6f1e0; font-weight: 600; }
+
+  /* ===== Container ===== */
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 48px 96px;
+  }
+
+  /* ===== Section primitives ===== */
+  h2 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 32px;
+    line-height: 1.15;
+    letter-spacing: -0.018em;
+    margin: 64px 0 6px;
+    color: var(--navy-ink);
+  }
+  h2:first-of-type { margin-top: 0; }
+  h2 .nm {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-right: 14px;
+    font-weight: 500;
+    letter-spacing: 0;
+    vertical-align: 6px;
+  }
+  h3 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 22px;
+    margin: 36px 0 10px;
+    color: var(--navy-ink);
+    letter-spacing: -0.01em;
+  }
+  .section-sub {
+    font-size: 14px;
+    color: var(--ink-3);
+    margin: 0 0 28px;
+    max-width: 720px;
+  }
+  p { margin: 0 0 14px; }
+  p, li { color: var(--ink); }
+  ul { padding-left: 20px; margin: 0 0 16px; }
+  li { margin-bottom: 6px; }
+  b, strong { color: var(--navy-ink); font-weight: 600; }
+  code, .code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 90%;
+    background: var(--paper-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--navy-ink);
+  }
+
+  /* ===== TL;DR cards ===== */
+  .tldr {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 64px;
+  }
+  .tldr .col {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 22px 22px 18px;
+    box-shadow: 0 1px 2px rgba(10,37,64,0.04);
+  }
+  .tldr .col h3 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    margin: 0 0 4px;
+    font-size: 22px;
+    color: var(--navy-ink);
+    letter-spacing: -0.01em;
+  }
+  .tldr .col .for {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--amber-ink);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .tldr .col ol {
+    padding-left: 18px;
+    margin: 0;
+    font-size: 14px;
+  }
+  .tldr .col li { margin-bottom: 10px; line-height: 1.45; }
+
+  /* ===== Audience exec summary cards ===== */
+  .exec {
+    display: grid; gap: 18px;
+    grid-template-columns: 1fr;
+    margin-bottom: 24px;
+  }
+  .exec .card {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 24px 28px;
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+  .exec .left .who {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 22px;
+    color: var(--navy-ink);
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+  }
+  .exec .left .score {
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 56px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--navy);
+    letter-spacing: -0.03em;
+  }
+  .exec .left .score .out { font-size: 18px; color: var(--ink-3); font-weight: 400; }
+  .exec .left .verdict { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+  .exec .right p { font-size: 14.5px; line-height: 1.6; }
+  .exec .right p:last-child { margin-bottom: 0; }
+
+  /* ===== Per-screen punch lists ===== */
+  .screen {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    margin-bottom: 22px;
+    overflow: hidden;
+  }
+  .screen-head {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--rule-2);
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .screen-head h3 { margin: 0; }
+  .screen-head .counts {
+    display: flex; gap: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .sev-badge {
+    padding: 3px 9px;
+    border-radius: 999px;
+    text-transform: uppercase;
+  }
+  .sev-badge.crit { background: var(--red-soft); color: #7a1c12; }
+  .sev-badge.maj  { background: var(--amber-soft); color: var(--amber-ink); }
+  .sev-badge.min  { background: #ebebe2; color: var(--ink-2); }
+  .punch {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .punch td { padding: 14px 22px; vertical-align: top; border-top: 1px solid var(--rule-2); }
+  .punch tr:first-child td { border-top: 0; }
+  .punch td.id {
+    font-family: "JetBrains Mono", monospace;
+    color: var(--ink-3);
+    width: 38px;
+    font-size: 12px;
+    padding-top: 17px;
+  }
+  .punch td.sev { width: 76px; padding-top: 14px; }
+  .punch td.issue { width: 46%; padding-right: 10px; }
+  .punch td.fix { color: var(--ink-2); }
+  .punch td.fix b { color: var(--navy-ink); }
+  .sev-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .sev-tag.crit { background: var(--red-soft); color: #7a1c12; }
+  .sev-tag.maj  { background: var(--amber-soft); color: var(--amber-ink); }
+  .sev-tag.min  { background: #ebebe2; color: var(--ink-2); }
+
+  /* ===== IA table ===== */
+  .ia-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    overflow: hidden;
+    font-size: 13.5px;
+  }
+  .ia-table th, .ia-table td {
+    padding: 11px 16px;
+    text-align: left;
+    border-top: 1px solid var(--rule-2);
+    vertical-align: top;
+  }
+  .ia-table th {
+    background: var(--paper-2);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    font-weight: 600;
+    border-top: 0;
+  }
+  .ia-table td.from { color: var(--ink-2); }
+  .ia-table td.to b { color: var(--navy-ink); }
+  .ia-table tr td:nth-child(2) {
+    font-family: "JetBrains Mono", monospace;
+    color: var(--amber-ink);
+    text-align: center;
+    width: 40px;
+    font-size: 14px;
+  }
+
+  .moves-summary {
+    background: var(--navy);
+    color: #f6f1e0;
+    border-radius: 14px;
+    padding: 22px 28px;
+    margin: 22px 0 12px;
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 22px;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    font-weight: 500;
+  }
+  .moves-summary b {
+    color: var(--amber);
+    font-weight: 600;
+    font-style: italic;
+  }
+
+  /* ===== Redesign cards ===== */
+  .redesign-strip {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    margin: 16px 0 24px;
+  }
+  .redesign-card {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .redesign-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -16px rgba(10,37,64,0.25);
+  }
+  .redesign-card .preview {
+    aspect-ratio: 16 / 10;
+    background: var(--paper-2);
+    border-bottom: 1px solid var(--rule-2);
+    overflow: hidden;
+    position: relative;
+  }
+  .redesign-card.dark .preview { background: #0b1622; }
+  .redesign-card .preview iframe {
+    border: 0;
+    width: 1320px;
+    height: 825px;
+    transform: scale(0.41);
+    transform-origin: 0 0;
+    pointer-events: none;
+  }
+  .redesign-card.dark .preview iframe {
+    width: 1440px;
+    height: 900px;
+    transform: scale(0.375);
+  }
+  .redesign-card .meta {
+    padding: 18px 22px 20px;
+  }
+  .redesign-card h4 {
+    margin: 0 0 6px;
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--navy-ink);
+    letter-spacing: -0.01em;
+  }
+  .redesign-card p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+  .redesign-card .open {
+    margin-top: 10px;
+    color: var(--navy);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  /* ===== Plain run ===== */
+  .label-tbl {
+    width: 100%; border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    overflow: hidden;
+    font-size: 13.5px;
+    margin-bottom: 18px;
+  }
+  .label-tbl th, .label-tbl td {
+    padding: 10px 16px;
+    border-top: 1px solid var(--rule-2);
+    text-align: left;
+    vertical-align: top;
+  }
+  .label-tbl th {
+    background: var(--paper-2);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    font-weight: 600;
+    border-top: 0;
+    width: 50%;
+  }
+  .label-tbl td.from {
+    color: var(--ink-2);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+  }
+  .label-tbl td.to { color: var(--navy-ink); font-weight: 500; }
+
+  .callout {
+    background: var(--amber-soft);
+    border-left: 3px solid var(--amber);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 18px 0;
+    font-size: 14px;
+    color: var(--amber-ink);
+  }
+  .callout b { color: #4a2700; }
+
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 16px 22px;
+    margin-bottom: 40px;
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    font-size: 13px;
+  }
+  .toc a {
+    color: var(--navy);
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--paper-2);
+  }
+  .toc a:hover { background: #ecddb8; }
+
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 56px 0; }
+
+  .footer-note {
+    margin-top: 56px;
+    padding: 22px 26px;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--navy);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .footer-note h4 {
+    margin: 0 0 8px;
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 18px;
+    color: var(--navy-ink);
+  }
+  .footer-note ul { padding-left: 20px; }
+  .footer-note li { margin-bottom: 6px; }
+
+  .download {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 14px;
+    padding: 9px 16px;
+    background: var(--navy);
+    color: #fff;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .download:hover { filter: brightness(1.1); }
+</style>
+</head>
+<body>
+
+<!-- ============= Hero ============= -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Poolside · UX review · May 2026</div>
+    <h1>The voice is right. The <em>information architecture</em> is upside-down.</h1>
+    <p class="lede">A direct, opinionated review of six Poolside surfaces across the three audiences — members, club admins, and the platform operator. Pre-launch posture: break what needs breaking.</p>
+    <div class="meta">
+      <span><b>Stage:</b> Pre-launch / pilot</span>
+      <span><b>Screens reviewed:</b> 6 of ~25</span>
+      <span><b>Posture:</b> Direct, no hedging</span>
+      <span><b>Output:</b> for Claude Code</span>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+
+  <!-- ============= TOC ============= -->
+  <nav class="toc">
+    <a href="#tldr">If you only fix three things</a>
+    <a href="#exec">Executive summary</a>
+    <a href="#screens">Per-screen punch lists</a>
+    <a href="#ia">IA moves</a>
+    <a href="#labels">Label changes</a>
+    <a href="#missing">What's missing</a>
+    <a href="#redesigns">Redesign mocks</a>
+    <a href="#cc">Notes for Claude Code</a>
+  </nav>
+
+  <!-- ============= TL;DR ============= -->
+  <h2 id="tldr"><span class="nm">§1</span>If you only fix three things per audience</h2>
+  <p class="section-sub">Each list is ordered. The first one is the one you skip at your own peril.</p>
+
+  <div class="tldr">
+    <div class="col">
+      <div class="for">For Members</div>
+      <h3>Three things</h3>
+      <ol>
+        <li>Land them on what's <b>overdue</b>, not what's possible. The unpaid-dues pill is the most important pixel and it's a footnote — replace the 5-button hero with a single CTA.</li>
+        <li>Stop greeting people by their <b>username</b>. "Hi, sjfa!" is a login handle. Use first name or skip it.</li>
+        <li>Pick desktop or don't. Right now the member surface is a 600px column floating in a 1440px sea. Commit to a real desktop layout, or design mobile-only.</li>
+      </ol>
+    </div>
+    <div class="col">
+      <div class="for">For Club Admins</div>
+      <h3>Three things</h3>
+      <ol>
+        <li>Collapse the top nav from <b>12 tabs to 5</b>: Home · People · Calendar · Money · Messages · Club info. The current grid is a memory test.</li>
+        <li>Make every form <b>auto-save</b>. "Save changes" on a 6-input form is a forgetting tax — the treasurer will lose work.</li>
+        <li>Replace the dashboard <b>stat grid with the action queue</b>. They land here because something needs doing, not to admire numbers.</li>
+      </ol>
+    </div>
+    <div class="col">
+      <div class="for">For Super-admin</div>
+      <h3>Three things</h3>
+      <ol>
+        <li>Show <b>money and risk</b>, not vanity counts. MRR · MRR Δ7d · Failed payments · At-risk clubs · Trials ending &lt;7d.</li>
+        <li>Densify the tenants table 2×. Sortable headers, filter chips, ⌘K search, columns the operator triages on (MRR, last login, failed payments, health).</li>
+        <li>Drop the friendliness padding. "Welcome back!", "1 club ever", emoji headers — strip every line of explainer copy.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ============= Exec summary ============= -->
+  <h2 id="exec"><span class="nm">§2</span>Per-audience executive summary</h2>
+  <p class="section-sub">Three audiences, three different products, three different definitions of "done."</p>
+
+  <div class="exec">
+    <div class="card">
+      <div class="left">
+        <div class="who">Members</div>
+        <div class="score">3<span class="out">/10</span></div>
+        <div class="verdict">Right tone, wrong IA</div>
+      </div>
+      <div class="right">
+        <p>The serif headlines, the warm navy hero, the "Pool closed for chemicals" event copy — these are <b>good</b>. It feels like a pool club, not a SaaS. But the home screen is laid out around what the <em>system</em> can do (5 actions in a hero), not what the <em>member</em> needs to do.</p>
+        <p>The most consequential fact on the page (DUES UNPAID) is rendered as a 12px pill, and there's no "Pay" button anywhere on the screen. A 45-year-old mom on her phone <b>will not</b> succeed at the most important member task. Voice is keepable; layout has to be redrawn around the action she came for.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="left">
+        <div class="who">Club admins</div>
+        <div class="score">4<span class="out">/10</span></div>
+        <div class="verdict">Voice right, IA upside-down</div>
+      </div>
+      <div class="right">
+        <p>The hint copy ("shown on the home page", "if you have one") is exactly the warm, plain-English tone this audience needs — <b>keep that writer</b>. But the navigation is a maze: 12 top tabs, 10 sub-tabs under Members alone, with labels (Wizard, Impact, Status) that mean nothing to a board treasurer.</p>
+        <p>The dashboard buries the action queue under vanity stats. The settings form requires manual saving. Forms have inconsistent jargon ("eyebrow", "tier", "default city"). The bones of a friendly admin product are here; the IA needs to be torn up and rebuilt on a 5-tab spine.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="left">
+        <div class="who">Super-admin</div>
+        <div class="score">5<span class="out">/10</span></div>
+        <div class="verdict">Right instinct, wrong execution</div>
+      </div>
+      <div class="right">
+        <p>Sidebar instead of top tabs, table-with-actions instead of card-with-padding, impersonation banner working — these are correct calls. But it's still designed like a club admin surface: chrome around tables, friendliness copy, zero risk signals, no MRR, no sort/filter.</p>
+        <p>For an operator triaging 50 clubs this is a list of names, not a triage console. The fix is mostly subtractive — strip chrome, copy, padding — plus add the three signals (money, risk, recency) that aren't there at all.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============= Per-screen punch lists ============= -->
+  <h2 id="screens"><span class="nm">§3</span>Per-screen punch lists</h2>
+  <p class="section-sub">Severity: <span class="sev-tag crit">Critical</span> blocks the primary task or actively misleads · <span class="sev-tag maj">Major</span> significant friction · <span class="sev-tag min">Minor</span> polish.</p>
+
+  <!-- 1. Member home -->
+  <div class="screen">
+    <div class="screen-head">
+      <h3>1 · Member home</h3>
+      <div class="counts">
+        <span class="sev-badge crit">2 critical</span>
+        <span class="sev-badge maj">4 major</span>
+        <span class="sev-badge min">3 minor</span>
+      </div>
+    </div>
+    <table class="punch">
+      <tr><td class="id">1.1</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">DUES UNPAID is the most important fact, rendered as a small amber pill in the corner. <b>No "Pay" button anywhere</b> on the home screen.</td><td class="fix">Promote unpaid status to a full-width banner with one primary CTA: <b>"Pay dues — $450 due May 31"</b>. Keep the pill on inner pages.</td></tr>
+      <tr><td class="id">1.2</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">Hero greets with username ("Hi, sjfa!").</td><td class="fix">Greet by first name. If unknown, no greeting — start with the actual content.</td></tr>
+      <tr><td class="id">1.3</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Hero stacks 5 buttons of equal weight (Request a party / Edit my info / Upload a photo / Subscribe to calendar / Public home →). On mobile this is a wall of buttons before any content.</td><td class="fix">Reduce hero to 1 contextual primary action ("Pay dues" or "Get a guest pass for this weekend") + a single secondary "Quick actions" sheet.</td></tr>
+      <tr><td class="id">1.4</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Desktop layout is a 600px mobile column with huge dead margins.</td><td class="fix">Either build a proper desktop layout (sidebar + content) or accept mobile-only and drop the desktop view.</td></tr>
+      <tr><td class="id">1.5</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Public home →" inside a signed-in hero — why would I leave the app I just entered?</td><td class="fix">Remove from hero. If for board members previewing, put it in the footer or an admin-only badge.</td></tr>
+      <tr><td class="id">1.6</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"TIER: family" — <code>tier</code> is jargon, and <code>family</code> alone tells the member nothing.</td><td class="fix">Plain text: "Family membership · $450/yr" — or remove.</td></tr>
+      <tr><td class="id">1.7</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">All-caps eyebrows on cards (ADDRESS, MEMBERS) read corporate-SaaS.</td><td class="fix">Sentence case throughout. Or remove the eyebrow — the data is self-evident.</td></tr>
+      <tr><td class="id">1.8</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">"Coming up" event list is good. Date chip + icon + title + time + location pattern.</td><td class="fix"><b>Keep this.</b></td></tr>
+      <tr><td class="id">1.9</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Sign-out rendered as inline text top-right. Touch target tiny.</td><td class="fix">Wrap username + Sign out in a 44px tappable avatar menu.</td></tr>
+    </table>
+  </div>
+
+  <!-- 2. Admin dashboard -->
+  <div class="screen">
+    <div class="screen-head">
+      <h3>2 · Admin dashboard</h3>
+      <div class="counts">
+        <span class="sev-badge crit">3 critical</span>
+        <span class="sev-badge maj">5 major</span>
+        <span class="sev-badge min">2 minor</span>
+      </div>
+    </div>
+    <table class="punch">
+      <tr><td class="id">2.1</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">12 top tabs (Dashboard, Members, Calendar, Announcements, Campaigns, Emails, Policies, Photos, Impact, Status, Help, Settings, Wizard). Untenable for a 65-year-old volunteer.</td><td class="fix">Collapse to 5: <b>Home · People · Calendar · Money · Messages · Club info</b>. (Full IA map below.)</td></tr>
+      <tr><td class="id">2.2</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">Hero is a 8-tile vanity stat grid. None of the numbers are actionable.</td><td class="fix">Replace hero with the action queue. Move stats to a right-rail or supporting section.</td></tr>
+      <tr><td class="id">2.3</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">"What needs your attention" is the right pattern but rendered as a quiet card below the stats. Single item, no click affordance beyond an arrow.</td><td class="fix">Promote to hero. Each item shows count + one-click bulk resolve ("9 open payments → Review", "2 applications waiting → Review").</td></tr>
+      <tr><td class="id">2.4</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"FREE TRIAL" status pill but plan reads "Free" — these contradict.</td><td class="fix">Pick one source of truth. If it's a trial: "Free trial · 24 days left".</td></tr>
+      <tr><td class="id">2.5</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"6 / 30 households · Free Forever — 24 left" progress meter at the top. Reads as a paywall but plan is "Free Forever". What is the admin meant to do with this?</td><td class="fix">Either remove (no paywall) or label clearly: "Plan limit: 30 households. 6 used." Don't render a progress bar with no upgrade affordance.</td></tr>
+      <tr><td class="id">2.6</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Wizard" as a permanent top-level tab.</td><td class="fix">Rename "Setup checklist". Hide once setup is 100%.</td></tr>
+      <tr><td class="id">2.7</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Impact" — label communicates nothing.</td><td class="fix">Rename to whatever it shows. Engagement metrics → "Engagement"; donations → "Donations"; impact-score → kill it.</td></tr>
+      <tr><td class="id">2.8</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Status" — ambiguous. System status? Club status?</td><td class="fix">Platform health: tiny pill in footer. Club-state ("Open for the season"): rename "Season" / "Pool status" and surface on Home.</td></tr>
+      <tr><td class="id">2.9</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Page is a 600px column on a 1280px viewport. Admin needs the width.</td><td class="fix">Full width with responsive max-width (~1200px). Stop centering admin in a phone column.</td></tr>
+      <tr><td class="id">2.10</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">All-caps tile labels (STATUS / PLAN / HOUSEHOLDS) read corporate.</td><td class="fix">Sentence case throughout.</td></tr>
+    </table>
+  </div>
+
+  <!-- 3. Households -->
+  <div class="screen">
+    <div class="screen-head">
+      <h3>3 · Admin → Members → Households</h3>
+      <div class="counts">
+        <span class="sev-badge crit">3 critical</span>
+        <span class="sev-badge maj">6 major</span>
+        <span class="sev-badge min">1 minor</span>
+      </div>
+    </div>
+    <table class="punch">
+      <tr><td class="id">3.1</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">The most common task here is <b>chase unpaid dues</b>. The only primary action available is "Add household".</td><td class="fix">Bulk action above the table: <b>"Send reminder to N unpaid"</b>. Row-level "Send reminder" on hover.</td></tr>
+      <tr><td class="id">3.2</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">No sortable headers. Treasurer can't sort by oldest unpaid, by tier, by primary contact.</td><td class="fix">Every header sortable. Default sort: longest unpaid first.</td></tr>
+      <tr><td class="id">3.3</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">"Payments" buried as a sub-tab under Members. It is the treasurer's entire job.</td><td class="fix">Promote Payments / Money to a top-level tab.</td></tr>
+      <tr><td class="id">3.4</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Tier column shows "FAMILY" pill on every row — same value everywhere = visual noise.</td><td class="fix">Include the price ("Family · $450"), or hide column when only one tier exists.</td></tr>
+      <tr><td class="id">3.5</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"FOB" column all-dashes.</td><td class="fix">Hide columns until they have data.</td></tr>
+      <tr><td class="id">3.6</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Status pill inconsistency: "PAID 2025" vs "UNPAID" (no year).</td><td class="fix">Pick one shape: "Paid · May 1, 2026" / "Unpaid · 60 days late".</td></tr>
+      <tr><td class="id">3.7</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Primary column shows usernames, not full names ("frev1", "dohlghos", "sifa", "dfnfds").</td><td class="fix">Always render full name; usernames live on profile detail only.</td></tr>
+      <tr><td class="id">3.8</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">No filter chips. Search is text-only.</td><td class="fix">Quick filters: <b>Unpaid only · New this year · Renewing soon · Has fob</b>.</td></tr>
+      <tr><td class="id">3.9</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Row click target ambiguous — only the family name appears clickable.</td><td class="fix">Whole row clickable, hover highlight, caret affordance.</td></tr>
+      <tr><td class="id">3.10</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">"Powered by Poolside" footer on signed-in admin pages.</td><td class="fix">Remove on admin/super-admin. Keep on public/member pages.</td></tr>
+    </table>
+  </div>
+
+  <!-- 4. Payments -->
+  <div class="screen">
+    <div class="screen-head">
+      <h3>4 · Admin → Members → Payments</h3>
+      <div class="counts">
+        <span class="sev-badge crit">4 critical</span>
+        <span class="sev-badge maj">5 major</span>
+        <span class="sev-badge min">1 minor</span>
+      </div>
+    </div>
+    <table class="punch">
+      <tr><td class="id">4.1</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">"Mark paid" has no undo. One misclick records a $450 phantom payment.</td><td class="fix">5-second undo toast on every Mark paid. Log to audit trail.</td></tr>
+      <tr><td class="id">4.2</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">AMOUNT column all-dashes. Treasurer's #1 question is "how much" and the system doesn't know.</td><td class="fix">Capture amount at row creation. Prompt inline if unknown; never render "—".</td></tr>
+      <tr><td class="id">4.3</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">"KNOWN $ OWED $0.00" with 9 open items reads as "we're square" but means "we don't know amounts". <b>Actively misleading.</b></td><td class="fix">Show real total once amounts exist, or rephrase: "9 items open · amounts not captured for any".</td></tr>
+      <tr><td class="id">4.4</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">No way to record a check / cash payment. Small clubs get paper checks weekly.</td><td class="fix">Primary action: <b>"Record a payment"</b> — member + method (check / cash / Venmo / Zelle / Stripe) + amount + memo.</td></tr>
+      <tr><td class="id">4.5</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Payment options setup" disclosure at top of working list. Config doesn't belong above an everyday list.</td><td class="fix">Move to Settings → Payments. If incomplete, show a one-time dismissable banner.</td></tr>
+      <tr><td class="id">4.6</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">No bulk action.</td><td class="fix">Checkboxes per row + bulk action bar (Mark paid · Send receipt · Export).</td></tr>
+      <tr><td class="id">4.7</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"WAITING" column conflates two things: admin SLA on Venmo confirms vs. days dues unpaid.</td><td class="fix">Split, or single "Action needed since" with tooltip explaining source.</td></tr>
+      <tr><td class="id">4.8</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">WHAT column conflates payment status ("Venmo payment pending") with what's owed ("Dues for 2026").</td><td class="fix">WHAT = what's owed. STATUS column = workflow position.</td></tr>
+      <tr><td class="id">4.9</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">All "Mark paid" buttons rendered as bright green. Visually shouts.</td><td class="fix">Demote to secondary. Reserve saturated green for post-paid confirmation.</td></tr>
+      <tr><td class="id">4.10</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Filter chips good. Missing the most useful one.</td><td class="fix">Add <b>"Pending my action"</b> chip. Make it the default landing filter.</td></tr>
+    </table>
+  </div>
+
+  <!-- 5. Settings -->
+  <div class="screen">
+    <div class="screen-head">
+      <h3>5 · Admin → Settings</h3>
+      <div class="counts">
+        <span class="sev-badge crit">2 critical</span>
+        <span class="sev-badge maj">3 major</span>
+        <span class="sev-badge min">2 minor</span>
+      </div>
+    </div>
+    <table class="punch">
+      <tr><td class="id">5.1</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">Tab labeled "Settings" — your brief flagged this audience hates that word. Confirmed: contents are <em>club info</em> + <em>public website copy</em>.</td><td class="fix">Split: <b>"Club info"</b> (name, location, swim team, defaults) + <b>"Website"</b> (front-page intro, headline, tagline).</td></tr>
+      <tr><td class="id">5.2</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">"Save changes" on a 6+ input form. Treasurer who edits and navigates away silently loses work.</td><td class="fix">Auto-save on blur. "Saved · just now" pill. Reserve explicit save for transactional flows (publishing a campaign).</td></tr>
+      <tr><td class="id">5.3</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Eyebrow" as a field label is publishing jargon.</td><td class="fix">Label: <b>"Small line above the headline"</b>. Drop the explainer parenthetical; field is self-describing.</td></tr>
+      <tr><td class="id">5.4</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Default city / Default zip" — "Default" is jargon.</td><td class="fix"><b>"City to fill in for new families"</b> / <b>"Zip to fill in for new families"</b>.</td></tr>
+      <tr><td class="id">5.5</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">"Re-run wizard" button + Wizard tab persisting.</td><td class="fix">Replace with "Reopen setup checklist". Show only when something incomplete.</td></tr>
+      <tr><td class="id">5.6</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Red dot next to "Club name" with no tooltip / label. Means?</td><td class="fix">Either label ("Required" / "Unsaved" / "Validation error") or remove. Invisible UI.</td></tr>
+      <tr><td class="id">5.7</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Hint copy ("(prefills new households)", "(if you have one)") is the right tone.</td><td class="fix"><b>Keep this writer.</b> Apply same voice everywhere.</td></tr>
+    </table>
+  </div>
+
+  <!-- 6. Super-admin -->
+  <div class="screen">
+    <div class="screen-head">
+      <h3>6 · Super-admin → Provider Dashboard</h3>
+      <div class="counts">
+        <span class="sev-badge crit">3 critical</span>
+        <span class="sev-badge maj">5 major</span>
+        <span class="sev-badge min">5 minor</span>
+      </div>
+    </div>
+    <table class="punch">
+      <tr><td class="id">6.1</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">Stat row is vanity counts. No money, no risk, no recency.</td><td class="fix">Replace with: <b>MRR · MRR Δ7d · Failed payments · At-risk clubs · Trials ending &lt;7d · Active admins last 7d</b>.</td></tr>
+      <tr><td class="id">6.2</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">Tenants table not sortable, not filterable. Operator can't find at-risk clubs in a 50+ list.</td><td class="fix">Sortable headers; filter chips: Trials · Trials ending &lt;7d · Failed payment · No admin login 30d · Stripe disconnected.</td></tr>
+      <tr><td class="id">6.3</td><td class="sev"><span class="sev-tag crit">Crit</span></td><td class="issue">No risk signal anywhere. No way to spot "this club is about to churn" without opening each one.</td><td class="fix">HEALTH column: green / amber / red, reason on hover. Computed from failed payments × days-since-admin-login × days-since-member-login × trial proximity.</td></tr>
+      <tr><td class="id">6.4</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">No global search.</td><td class="fix">⌘K across clubs, admin emails, subdomains.</td></tr>
+      <tr><td class="id">6.5</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Friendliness copy on the operator surface ("Welcome back — here's how the platform is doing", "1 club ever"). <b>Your brief explicitly forbids this.</b></td><td class="fix">Remove. Operator surface goes terse.</td></tr>
+      <tr><td class="id">6.6</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Mocked-surface banner shipped on the dashboard ("Gate Integrations is the only mocked surface — everything else is live").</td><td class="fix">Replace with a System status pill linking to Status. Wall the dev banner behind <code>?debug=1</code>.</td></tr>
+      <tr><td class="id">6.7</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Tenant row columns miss the operator's actual triage signals.</td><td class="fix">Add: <b>MRR · last admin login · last member login · failed payments · health</b>. Drop subdomain to a hover/secondary line.</td></tr>
+      <tr><td class="id">6.8</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">No keyboard shortcuts despite being explicitly desired.</td><td class="fix">At minimum: <code>⌘K</code> search, <code>j/k</code> row nav, <code>i</code> impersonate, <code>e</code> edit, <code>?</code> shortcut sheet.</td></tr>
+      <tr><td class="id">6.9</td><td class="sev"><span class="sev-tag maj">Maj</span></td><td class="issue">Confirm an audit log of impersonation actions exists. A platform-owner control panel without one is a compliance liability.</td><td class="fix">Add Impersonation log on Tenant detail + global Audit view.</td></tr>
+      <tr><td class="id">6.10</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Sidebar has both "Integrations" and "Gate integrations" as peers.</td><td class="fix">Collapse Gate under Integrations as a section.</td></tr>
+      <tr><td class="id">6.11</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">"My profile" + "Sign out" as nav rows.</td><td class="fix">Move to header avatar menu. Sidebar is for product surfaces, not account.</td></tr>
+      <tr><td class="id">6.12</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Test cockpit visible in production sidebar.</td><td class="fix">Hide behind debug flag.</td></tr>
+      <tr><td class="id">6.13</td><td class="sev"><span class="sev-tag min">Min</span></td><td class="issue">Tenants card has chrome wrapping a dense table.</td><td class="fix">Drop card chrome — table goes edge-to-edge. Density &gt; decoration.</td></tr>
+    </table>
+  </div>
+
+  <!-- ============= IA section ============= -->
+  <h2 id="ia"><span class="nm">§4</span>Information architecture — concrete moves</h2>
+  <p class="section-sub">No "consider grouping these differently" — actual moves. Read the right column as the destination.</p>
+
+  <h3>Club admin: 12 tabs → 5</h3>
+
+  <table class="ia-table">
+    <thead><tr><th>Current</th><th></th><th>Target</th></tr></thead>
+    <tr><td class="from">Dashboard</td><td>→</td><td class="to"><b>Home</b> — becomes the action queue</td></tr>
+    <tr><td class="from">Members → Households</td><td>→</td><td class="to"><b>People → Households</b></td></tr>
+    <tr><td class="from">Members → Applications</td><td>→</td><td class="to"><b>People → Applications</b></td></tr>
+    <tr><td class="from">Members → Tiers</td><td>→</td><td class="to"><b>Club info → Membership types</b> <span style="color:var(--ink-3)">— config, not member view</span></td></tr>
+    <tr><td class="from">Members → Renewals</td><td>→</td><td class="to"><b>Money → Renewals</b> <span style="color:var(--ink-3)">— it's money + comms</span></td></tr>
+    <tr><td class="from">Members → Payments</td><td>→</td><td class="to"><b>Money → Payments</b> <span style="color:var(--ink-3)">— treasurer's main surface</span></td></tr>
+    <tr><td class="from">Members → Programs</td><td>→</td><td class="to"><b>Calendar → Programs</b> <span style="color:var(--ink-3)">— programs are events</span></td></tr>
+    <tr><td class="from">Members → Parties</td><td>→</td><td class="to"><b>Calendar → Parties</b></td></tr>
+    <tr><td class="from">Members → Volunteer</td><td>→</td><td class="to"><b>Calendar → Volunteer signups</b></td></tr>
+    <tr><td class="from">Members → Passes</td><td>→</td><td class="to"><b>Calendar → Guest passes</b> <span style="color:var(--ink-3)">— time-bound bookings</span></td></tr>
+    <tr><td class="from">Members → Documents</td><td>→</td><td class="to"><b>Club info → Documents</b> <span style="color:var(--ink-3)">— club-wide</span></td></tr>
+    <tr><td class="from">Calendar</td><td>→</td><td class="to"><b>Calendar</b> <span style="color:var(--ink-3)">— stays as parent</span></td></tr>
+    <tr><td class="from">Announcements</td><td>→</td><td class="to"><b>Messages → Announcements</b></td></tr>
+    <tr><td class="from">Campaigns</td><td>→</td><td class="to"><b>Messages → Campaigns</b></td></tr>
+    <tr><td class="from">Emails</td><td>→</td><td class="to"><b>Messages → Sent log</b> <span style="color:var(--ink-3)">— it's the record, not a channel</span></td></tr>
+    <tr><td class="from">Policies</td><td>→</td><td class="to"><b>Club info → Policies</b></td></tr>
+    <tr><td class="from">Photos</td><td>→</td><td class="to"><b>Photos</b> (top-level if high-engagement)</td></tr>
+    <tr><td class="from">Impact</td><td>→</td><td class="to"><b>Decide what it shows.</b> Engagement → fold into Home. Donations → Money. Otherwise remove.</td></tr>
+    <tr><td class="from">Status</td><td>→</td><td class="to"><b>Remove from nav.</b> Make it a small pill in the header.</td></tr>
+    <tr><td class="from">Help</td><td>→</td><td class="to"><b>Avatar menu.</b> Help docs aren't a primary tab.</td></tr>
+    <tr><td class="from">Settings</td><td>→</td><td class="to"><b>Club info</b> (rename) + <b>Website</b> (new — see §5.1)</td></tr>
+    <tr><td class="from">Wizard</td><td>→</td><td class="to"><b>Conditional banner on Home.</b> Hide unless setup incomplete.</td></tr>
+  </table>
+
+  <div class="moves-summary">
+    Result: <b>Home</b> · <b>People</b> · <b>Calendar</b> · <b>Money</b> · <b>Messages</b> · <b>Club info</b>
+  </div>
+
+  <h3>Super-admin sidebar</h3>
+  <p class="section-sub">Current: Dashboard / Tenants / Integrations / Gate integrations / Test cockpit / My profile / Billing / Analytics / Support / Sign out — 10 rows.</p>
+  <table class="ia-table">
+    <thead><tr><th>Section</th><th></th><th>Items</th></tr></thead>
+    <tr><td class="from">Operate</td><td></td><td class="to"><b>Dashboard</b> · <b>Clubs</b> (renamed from Tenants) · <b>Money</b> (Billing + Analytics merged) · <b>Audit</b> (NEW) · <b>Support</b></td></tr>
+    <tr><td class="from">Configure</td><td></td><td class="to"><b>Integrations</b> (Gate as sub-tab, not peer) · <b>Plans &amp; pricing</b> · <b>System status</b></td></tr>
+    <tr><td class="from">Hidden</td><td></td><td class="to">Test cockpit (debug flag) · My profile + Sign out (avatar menu)</td></tr>
+  </table>
+
+  <!-- ============= Labels ============= -->
+  <h2 id="labels"><span class="nm">§5</span>Label changes — current → suggested</h2>
+
+  <h3>Members surface</h3>
+  <table class="label-tbl">
+    <thead><tr><th>Current</th><th>Suggested</th></tr></thead>
+    <tr><td class="from">"Hi, sjfa!"</td><td class="to">"Hi, [first name]" — or no greeting</td></tr>
+    <tr><td class="from">TIER · family</td><td class="to">(drop label) — render as "Family membership · $450/yr"</td></tr>
+    <tr><td class="from">"DUES UNPAID" pill in corner</td><td class="to">"Dues — $450 due May 31" banner + "Pay now" button</td></tr>
+    <tr><td class="from">"Public home →"</td><td class="to">(Remove from signed-in hero)</td></tr>
+    <tr><td class="from">"Subscribe to calendar"</td><td class="to">"Add to my phone calendar"</td></tr>
+    <tr><td class="from">"Edit my info"</td><td class="to">"My household"</td></tr>
+  </table>
+
+  <h3>Club admin surface</h3>
+  <table class="label-tbl">
+    <thead><tr><th>Current</th><th>Suggested</th></tr></thead>
+    <tr><td class="from">Settings</td><td class="to">Club info / Website (split)</td></tr>
+    <tr><td class="from">Wizard</td><td class="to">Setup checklist</td></tr>
+    <tr><td class="from">Impact</td><td class="to">Engagement / Donations / (remove) — depends on contents</td></tr>
+    <tr><td class="from">Status (top-level tab)</td><td class="to">(remove from nav; small pill)</td></tr>
+    <tr><td class="from">Tiers</td><td class="to">Membership types</td></tr>
+    <tr><td class="from">Default city</td><td class="to">City to fill in for new families</td></tr>
+    <tr><td class="from">Default zip</td><td class="to">Zip to fill in for new families</td></tr>
+    <tr><td class="from">Eyebrow</td><td class="to">Small line above the headline</td></tr>
+    <tr><td class="from">Configuration / Configure</td><td class="to">Set up</td></tr>
+    <tr><td class="from">Audience / Tier / Scope</td><td class="to">Who this is for</td></tr>
+    <tr><td class="from">"Save changes" button</td><td class="to">(remove — auto-save)</td></tr>
+    <tr><td class="from">FREE TRIAL pill + Free plan label</td><td class="to">"Free trial · 24 days left" — single source of truth</td></tr>
+    <tr><td class="from">"Free Forever — 24 left" progress bar</td><td class="to">"Plan limit: 30 households. 6 used." — or remove</td></tr>
+    <tr><td class="from">"Mark paid" (saturated green)</td><td class="to">"Mark paid" (secondary) → green confirmation state</td></tr>
+  </table>
+
+  <h3>Super-admin surface</h3>
+  <table class="label-tbl">
+    <thead><tr><th>Current</th><th>Suggested</th></tr></thead>
+    <tr><td class="from">"Welcome back — here's how the platform is doing."</td><td class="to">(delete)</td></tr>
+    <tr><td class="from">"1 club ever", "1 household across the network"</td><td class="to">(delete sub-copy; let numbers speak)</td></tr>
+    <tr><td class="from">"Tenants"</td><td class="to">"Clubs" — internal too. Tenants is platform-jargon.</td></tr>
+    <tr><td class="from">"Provider Admin" badge</td><td class="to">"Platform admin"</td></tr>
+    <tr><td class="from">"Gate integrations" (top-level)</td><td class="to">(sub-section under Integrations)</td></tr>
+    <tr><td class="from">"Test cockpit"</td><td class="to">(hide behind <code>?debug=1</code>)</td></tr>
+  </table>
+
+  <!-- ============= Missing ============= -->
+  <h2 id="missing"><span class="nm">§6</span>What's missing entirely</h2>
+
+  <h3>Member surface</h3>
+  <ul>
+    <li>A clear "I forgot my magic link, send another" flow. <b>Sign-in friction was your stated #1 enemy.</b></li>
+    <li>Guest pass — appears in your task list but no surface for it.</li>
+    <li>A "Help me, something's wrong" path that doesn't require knowing the admin's email.</li>
+    <li>Push / SMS notification preferences. Members will absolutely sign up for pool-closure alerts.</li>
+  </ul>
+
+  <h3>Admin surface</h3>
+  <ul>
+    <li>Audit log per household ("who changed what when").</li>
+    <li>Bulk import (CSV) for migrating from the spreadsheet they're currently using.</li>
+    <li>A "season ended" mode that gracefully archives the year's data.</li>
+    <li>Export-to-CSV exists on Households (good); needs to exist on Payments and every list.</li>
+  </ul>
+
+  <h3>Super-admin surface</h3>
+  <ul>
+    <li><b>Impersonation audit log</b> — cannot ship without this.</li>
+    <li><b>MRR breakdown by plan + cohort retention</b> — sparkline-shaped, on the dashboard.</li>
+    <li><b>Health column / page per club</b>, computed from failed payments × admin-login-recency × member-login-recency × trial-end proximity.</li>
+    <li><b>"Send a note to all club admins" broadcast tool.</b> Outages and feature ships will need this.</li>
+  </ul>
+
+  <!-- ============= Redesigns ============= -->
+  <h2 id="redesigns"><span class="nm">§7</span>Two redesign mocks</h2>
+  <p class="section-sub">The two screens with the highest leverage. Admin dashboard sets the tone for the whole admin surface; super-admin dashboard is furthest from where it needs to be — densifying it unblocks a clear pattern for the rest of the operator UI.</p>
+
+  <div class="redesign-strip">
+    <a class="redesign-card" href="redesign-admin-dashboard.html" target="_blank" rel="noopener">
+      <div class="preview"><iframe src="redesign-admin-dashboard.html" loading="lazy" title="Admin dashboard preview"></iframe></div>
+      <div class="meta">
+        <h4>Admin dashboard — action queue as hero</h4>
+        <p>5-tab IA. "What needs you" promoted to hero with one-click bulk resolves and concrete amounts. Vanity stats demoted to a right-rail summary. Setup wizard becomes a checklist that hides when complete.</p>
+        <div class="open">Open full mock →</div>
+      </div>
+    </a>
+    <a class="redesign-card dark" href="redesign-super-admin.html" target="_blank" rel="noopener">
+      <div class="preview"><iframe src="redesign-super-admin.html" loading="lazy" title="Super-admin dashboard preview"></iframe></div>
+      <div class="meta">
+        <h4>Super-admin — triage console</h4>
+        <p>Dark, dense, money-and-risk first. KPIs answer the operator's actual questions. Health column computed from real signals. Filter chips, sortable headers, ⌘K, j/k row nav, audit log promoted in sidebar.</p>
+        <div class="open">Open full mock →</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="callout">
+    <b>Why these two:</b> get the admin dashboard right and every other admin screen inherits the pattern (action queue + auto-save + 5-tab nav). Get the super-admin dashboard right and the rest of the operator surface (clubs detail, money, audit) follows the same density rules. The member home needs redesign too, but its fix is dominated by the IA + copy moves above; less novel structure to demonstrate.
+  </div>
+
+  <!-- ============= Notes for CC ============= -->
+  <h2 id="cc"><span class="nm">§8</span>Notes for Claude Code</h2>
+
+  <div class="footer-note">
+    <h4>Implementation notes that aren't UX but will block you if you skip them</h4>
+    <ul>
+      <li><b>Audit-log model first.</b> Every "Mark paid", every impersonation, every settings auto-save needs to write to an audit table. Without this you can't ship undo (4.1) or impersonation safely (6.9).</li>
+      <li><b>Optimistic UI + undo toast</b> as a shared pattern. Implement once, apply to: Mark paid, Approve application, Send reminder, Archive household, Delete photo.</li>
+      <li><b>Replace top-tab nav with a route-driven sidebar collapsing to a hamburger on mobile.</b> Once you accept the IA collapse from 12→5, the tab pattern stops scaling anyway (5 tabs fit; 5 tabs with sub-tabs need a sidebar).</li>
+      <li><b>Treat the super-admin surface as a separate app.</b> Shares auth and a few primitives; UX rules are inverted (density &gt; whitespace, terseness &gt; explainers). Don't share layout components 1:1 — share tokens.</li>
+      <li><b>Auto-save infra:</b> debounce 600ms on blur, optimistic state, "Saved · just now" pill that fades after 2s. Same component everywhere.</li>
+      <li><b>Keyboard shortcuts</b> on super-admin only, behind a <code>useShortcuts(scope: 'platform-admin')</code> hook. Centralize the registry so <code>?</code> can render the cheat sheet.</li>
+    </ul>
+    <a href="poolside-ux-review.md" class="download" download>↓ Download as Markdown</a>
+  </div>
+
+</div>
+
+</body>
+</html>
