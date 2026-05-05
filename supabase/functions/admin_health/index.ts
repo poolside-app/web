@@ -453,11 +453,12 @@ async function checkBackgroundJobs(sb: ReturnType<typeof createClient>, _tenantI
 async function checkTenantConfig(sb: ReturnType<typeof createClient>, tenantId: string): Promise<Check[]> {
   const checks: Check[] = [];
 
-  const [tenantRes, settingsRes, policiesRes, adminsRes] = await Promise.all([
+  const [tenantRes, settingsRes, policiesRes, adminsRes, allAdminsRes] = await Promise.all([
     sb.from('tenants').select('id, slug, display_name, status, custom_domain').eq('id', tenantId).maybeSingle(),
     sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle(),
     sb.from('policies').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true),
     sb.from('admin_users').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('active', true),
+    sb.from('admin_users').select('role_template, roles').eq('tenant_id', tenantId).eq('active', true),
   ]);
 
   const tenant = tenantRes.data as { display_name?: string; status?: string } | null;
@@ -531,25 +532,43 @@ async function checkTenantConfig(sb: ReturnType<typeof createClient>, tenantId: 
     });
   }
 
-  // Active admins — there should be at least one OWNER, or we lock the club out.
+  // Active admins — surface separately how many TOTAL active admins there
+  // are vs how many can actually MANAGE the club (Board chairs / owners).
+  // A club with 4 scoped admins but no Board chair would be functional but
+  // unable to invite/remove admins or change settings — hidden danger.
   const adminCount = adminsRes.count ?? 0;
+  const allAdmins = (allAdminsRes.data ?? []) as Array<{ role_template: string | null; roles: string[] | null }>;
+  const ownerCount = allAdmins.filter(a =>
+    a.role_template === 'owner' ||
+    (Array.isArray(a.roles) && a.roles.includes('owner'))
+  ).length;
+
   if (adminCount === 0) {
     checks.push({
       id: 'admins', status: 'red',
       title: 'No active admins',
       detail: 'Without an active admin, no one can manage the club.',
     });
-  } else if (adminCount === 1) {
+  } else if (ownerCount === 0) {
+    checks.push({
+      id: 'admins', status: 'red',
+      title: 'No Board chair on the team',
+      detail: `${adminCount} admins active, but none have the Board chair role. Without a Board chair, no one can invite admins or change club settings.`,
+      fix: { label: 'Promote someone to Board chair', kind: 'link', href: '/club/admin/admins.html' },
+    });
+  } else if (ownerCount === 1) {
     checks.push({
       id: 'admins', status: 'yellow',
-      title: 'Only one admin account',
-      detail: 'If you lose access, no one else can manage the club. Add a backup admin.',
-      fix: { label: 'Invite an admin', kind: 'link', href: '/club/admin/settings.html#admins' },
+      title: adminCount === 1 ? 'Only one admin account' : 'Only one Board chair',
+      detail: adminCount === 1
+        ? 'If you lose access, no one else can manage the club. Add a backup admin.'
+        : `${adminCount} admins on the team, but only one Board chair. If something happens to that account, no one else can invite admins or change settings.`,
+      fix: { label: 'Invite a backup chair', kind: 'link', href: '/club/admin/admins.html' },
     });
   } else {
     checks.push({
       id: 'admins', status: 'green',
-      title: `${adminCount} active admins`,
+      title: `${adminCount} active admins (${ownerCount} Board chairs)`,
     });
   }
 
