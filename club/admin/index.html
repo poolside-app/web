@@ -181,6 +181,41 @@ document.getElementById('signout').addEventListener('click', logout);
     document.body.insertBefore(banner, document.body.firstChild);
   }
 
+  // Founder banner: this admin signed up the club but their family isn't
+  // in the system as members yet. Show until they either fill out the
+  // apply form (linked_member_id auto-set on approval) or dismiss with
+  // "I'm just an admin." Hide for impersonators (they're not the actual
+  // user). The "Set up my membership" link opens apply.html in a new tab
+  // with prefill=admin so the form pre-fills their name + email.
+  if (!user.impersonated && !user.linked_member_id && !user.member_apply_dismissed) {
+    const founderBanner = document.createElement('div');
+    founderBanner.id = 'founder-banner';
+    founderBanner.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:18px 22px;margin:0 22px 18px;display:flex;align-items:center;gap:18px;flex-wrap:wrap';
+    founderBanner.innerHTML = `
+      <div style="flex:1;min-width:240px">
+        <div style="font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18px;color:#7c2d12;margin-bottom:4px">🏊 Are you (or your family) using the pool too?</div>
+        <div style="font-size:13.5px;color:#78350f;line-height:1.5">Fill out the application so you're on the gate list, signed up for the season, and your family shows up in the member directory — same form your members use.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com/apply.html?prefill=admin" target="_blank" rel="noopener" style="padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;background:#0a3b5c;color:#fff;text-decoration:none;white-space:nowrap">Set up my membership →</a>
+        <button id="founder-dismiss" style="padding:9px 14px;border-radius:8px;font:600 13px Inter,sans-serif;background:transparent;border:1.5px solid #fde68a;color:#7c2d12;cursor:pointer;white-space:nowrap">I'm just an admin</button>
+      </div>
+    `;
+    // Insert before the main element. (After body bootstraps; before the dashboard.)
+    const main = document.getElementById('main');
+    main.parentNode.insertBefore(founderBanner, main);
+    document.getElementById('founder-dismiss').addEventListener('click', async () => {
+      try {
+        await fetch(AUTH_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'dismiss_member_apply' }),
+        });
+      } catch { /* swallow — banner just won't reappear next load */ }
+      founderBanner.remove();
+    });
+  }
+
   // First-run: kick the user into the setup wizard if they haven't finished it.
   try {
     const sRes = await fetch(SETTINGS_URL, {

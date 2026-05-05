@@ -901,6 +901,59 @@ async function submitApplication() {
   await loadPolicies();
   paintTiers();
   paintVenmoQR();
+
+  // Founder prefill: if the admin opened this form via the dashboard
+  // "Set up my membership" banner (?prefill=admin), pull their identity
+  // from tenant_admin_auth.me and pre-fill name + email + phone. Saves
+  // them retyping data the system already knows.
+  if (params.has('prefill') && params.get('prefill') === 'admin') {
+    try {
+      const t = localStorage.getItem('poolside_tenant_token');
+      if (t) {
+        const me = await fetch(`${SUPABASE_URL}/functions/v1/tenant_admin_auth`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+          body: JSON.stringify({ action: 'me' }),
+        }).then(r => r.json());
+        if (me.ok && me.user) {
+          const u = me.user;
+          // family_name = last word of display_name (best-effort)
+          if (u.display_name) {
+            const parts = String(u.display_name).trim().split(/\s+/);
+            const lastName = parts[parts.length - 1];
+            const fn = document.getElementById('family_name');
+            if (fn && !fn.value) fn.value = lastName;
+            const pn = document.getElementById('primary_name');
+            if (pn && !pn.value) pn.value = u.display_name;
+          }
+          if (u.email) {
+            const e = document.getElementById('primary_email');
+            if (e && !e.value) e.value = u.email;
+          }
+          if (u.phone_e164) {
+            const p = document.getElementById('primary_phone');
+            if (p && !p.value) {
+              // Format E.164 → display: +19255551234 → (925) 555-1234
+              const digits = String(u.phone_e164).replace(/^\+1/, '');
+              if (digits.length === 10) {
+                p.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+              } else {
+                p.value = u.phone_e164;
+              }
+            }
+          }
+          // Friendly heads-up so the admin understands why fields are filled
+          const titleEl = document.getElementById('title');
+          if (titleEl) {
+            const note = document.createElement('div');
+            note.style.cssText = 'background:#f0f6fb;border:1px solid #cfe1f0;color:#0a3b5c;padding:10px 14px;border-radius:8px;font-size:13px;margin:10px 0 0';
+            note.innerHTML = '👋 We pre-filled your info from your admin account. Edit anything that needs to change.';
+            titleEl.parentNode.insertBefore(note, titleEl.nextSibling);
+          }
+        }
+      }
+    } catch { /* prefill is best-effort; form still works manually */ }
+  }
 })();
 </script>
 </body>
