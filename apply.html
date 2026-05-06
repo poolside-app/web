@@ -35,6 +35,11 @@
   input, textarea, select { width: 100%; padding: 11px 13px; font: 14px 'Inter', sans-serif; border:1.5px solid var(--border); border-radius: var(--r-md); background:#fff; }
   input:focus, textarea:focus, select:focus { outline:0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
   .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Phone viewports: stack DOB + Phone (and any other 1fr 1fr grid) so the
+     native date picker + phone inputs don't get crushed below readable width. */
+  @media (max-width: 520px) {
+    .row2 { grid-template-columns: 1fr; gap: 8px; }
+  }
 
   .check-row { display:flex; align-items:center; gap: 10px; padding: 10px 12px; border:1.5px solid var(--border); border-radius:10px; cursor:pointer; margin: 8px 0; font-size: 14px; }
   .check-row input { width:auto; margin: 0; }
@@ -863,9 +868,13 @@ async function submitApplication() {
         TENANT_PUBLIC = d;
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
-        // Show the Stripe option only when this tenant has Connect onboarded
-        // and charges are enabled. Otherwise the option appears but checkout fails.
-        if (d.tenant.stripe_charges_enabled) {
+        // Show the Stripe option whenever the tenant has *connected* Stripe,
+        // even if charges_enabled is briefly false (Stripe periodically
+        // re-evaluates test-mode accounts and toggles this flag, which
+        // shouldn't make the option vanish on the apply form).
+        // If charges actually fail at Checkout time, Stripe surfaces a
+        // clear error to the user — much better UX than silently hiding.
+        if (d.tenant.stripe_account_id) {
           const opt = document.getElementById('pay-opt-stripe');
           if (opt) opt.style.display = '';
           // Pay-in-2 option requires (a) plan enabled in club settings,
