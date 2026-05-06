@@ -84,6 +84,15 @@
   .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
   .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
   .err.show { display: block; }
+  /* Email callout — same shape as on payments.html. Deep-links into emails.html */
+  .email-callout { margin-top:24px; padding:12px 14px; background:var(--bg-2); border:1px dashed var(--border); border-radius:10px; }
+  .email-callout .ec-title { font-size:12px; font-weight:700; color:var(--blue); margin-bottom:8px; letter-spacing:.02em; }
+  .email-callout ul { margin:0 0 10px; padding-left:18px; font-size:13px; line-height:1.7; color:var(--text); }
+  .email-callout ul a { color:var(--blue); text-decoration:none; font-weight:500; }
+  .email-callout ul a:hover { text-decoration:underline; }
+  .email-callout .ec-when { color:var(--muted); font-size:12px; font-weight:400; }
+  .email-callout .ec-all { font-size:12px; color:var(--muted); text-decoration:none; }
+  .email-callout .ec-all:hover { color:var(--blue); }
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -128,6 +137,15 @@
     </div>
   </div>
   <div id="list"><div class="empty">Loading…</div></div>
+
+  <div class="email-callout">
+    <div class="ec-title">📧 Emails sent from this page</div>
+    <ul>
+      <li><a href="/club/admin/emails.html#tpl=application_rejected">Application rejected</a> <span class="ec-when">when you click Reject (the admin note shows up as the reason)</span></li>
+      <li><a href="/club/admin/emails.html#tpl=application_approved_other">Welcome — payment TBD</a> <span class="ec-when">when you approve and no specific payment branch matches</span></li>
+    </ul>
+    <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
+  </div>
 </main>
 
 <div class="scrim" id="scrim">

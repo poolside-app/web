@@ -67,6 +67,17 @@
   details[open] > summary .chev { transform: rotate(90deg); }
   .chev { display: inline-block; transition: transform .15s; margin-right: 4px; }
 
+  /* Email callouts on each setup card link to the master Emails page so admins
+     discover related templates in context without duplicating the editor. */
+  .email-callout { margin-top:18px; padding:12px 14px; background:var(--bg-2); border:1px dashed var(--border); border-radius:10px; }
+  .email-callout .ec-title { font-size:12px; font-weight:700; color:var(--blue); margin-bottom:8px; letter-spacing:.02em; }
+  .email-callout ul { margin:0 0 10px; padding-left:18px; font-size:13px; line-height:1.7; color:var(--text); }
+  .email-callout ul a { color:var(--blue); text-decoration:none; font-weight:500; }
+  .email-callout ul a:hover { text-decoration:underline; }
+  .email-callout .ec-when { color:var(--muted); font-size:12px; font-weight:400; }
+  .email-callout .ec-all { font-size:12px; color:var(--muted); text-decoration:none; }
+  .email-callout .ec-all:hover { color:var(--blue); }
+
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -102,11 +113,20 @@
     <div style="margin-top:12px">
       <div class="card" data-owner-only>
         <h2>Card payments (Stripe)</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, applications, programs, and guest passes. Charges land directly in your bank. Poolside takes a 1.5% platform fee per charge.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, applications, programs, and guest passes. Charges land directly in your bank. Poolside takes a 0.5% platform fee on dues; 1.5% on programs/passes.</p>
         <div id="stripe-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
         <button class="btn btn-primary" id="stripe-connect-btn" type="button" onclick="connectStripe()" style="display:none;background:var(--blue)">Connect Stripe</button>
         <button class="btn btn-ghost" id="stripe-resume-btn" type="button" onclick="connectStripe()" style="display:none">Resume onboarding</button>
         <button class="btn btn-ghost" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
+
+        <div class="email-callout">
+          <div class="ec-title">📧 Emails members get from this setup</div>
+          <ul>
+            <li><a href="/club/admin/emails.html#tpl=application_received_stripe">Application received — Stripe path</a> <span class="ec-when">when an applicant chose card payment</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_stripe_paid">Welcome — Stripe paid</a> <span class="ec-when">when their card payment clears</span></li>
+          </ul>
+          <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
+        </div>
       </div>
 
       <div class="card" id="plans-card">
@@ -131,6 +151,18 @@
         <div class="err" id="plan-err"></div>
         <h3 style="margin:18px 0 8px;font-size:14px">Active plans</h3>
         <div id="plans-list" style="font-size:13px"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
+
+        <div class="email-callout">
+          <div class="ec-title">📧 Emails members get from this setup</div>
+          <ul>
+            <li><a href="/club/admin/emails.html#tpl=application_received_stripe_plan">Application received — Stripe payment plan</a> <span class="ec-when">at submit time</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_plan_first">Welcome — first installment paid</a> <span class="ec-when">when their first half clears</span></li>
+            <li><a href="/club/admin/emails.html#tpl=plan_installment_paid_partial">Installment cleared (more to go)</a> <span class="ec-when">when an auto-charge succeeds with installments left</span></li>
+            <li><a href="/club/admin/emails.html#tpl=plan_installment_paid_final">Installment cleared (paid in full)</a> <span class="ec-when">when the final auto-charge succeeds</span></li>
+            <li><a href="/club/admin/emails.html#tpl=plan_installment_failed">Installment failed (card declined)</a> <span class="ec-when">when an auto-charge declines</span></li>
+          </ul>
+          <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
+        </div>
       </div>
 
       <div class="card" id="drive-card">
@@ -161,6 +193,17 @@
           <span class="saved" id="pm-saved" style="display:none">✓ Saved</span>
         </div>
         <div class="err" id="pm-err"></div>
+
+        <div class="email-callout">
+          <div class="ec-title">📧 Emails members get from this setup</div>
+          <ul>
+            <li><a href="/club/admin/emails.html#tpl=application_received_venmo">Application received — Venmo path</a> <span class="ec-when">when an applicant chose Venmo</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_unpaid_venmo">Approved — final step is Venmo payment</a> <span class="ec-when">if you approve before they've paid</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_venmo_verified">Welcome — Venmo verified at approval</a> <span class="ec-when">if you approve and verify in one step</span></li>
+            <li><a href="/club/admin/emails.html#tpl=payment_verified_venmo">Venmo payment verified</a> <span class="ec-when">when you click "Verify Venmo" later</span></li>
+          </ul>
+          <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
+        </div>
       </div>
     </div>
   </details>

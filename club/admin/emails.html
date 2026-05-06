@@ -524,6 +524,26 @@ async function loadTemplates() {
   }
 }
 
+// Deep-link from setup pages: callouts on payments.html / applications.html
+// link here with #tpl=<key>. We auto-select that template on load (and on
+// hashchange in case the user paste-navigates).
+function templateKeyFromHash() {
+  const m = (window.location.hash || '').match(/[#&]tpl=([a-z0-9_]+)/i);
+  return m ? m[1] : null;
+}
+function applyDeepLink() {
+  const key = templateKeyFromHash();
+  if (!key) return;
+  // Find the template in our loaded list; ignore if not a known key
+  const exists = TEMPLATES.some(t => t.key === key);
+  if (!exists) return;
+  selectTemplate(key);
+  // Scroll the editor into view (mobile + small screens benefit from this).
+  const ed = document.getElementById('editor') || document.querySelector('.editor');
+  if (ed) ed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.addEventListener('hashchange', applyDeepLink);
+
 (async () => {
   if (!token()) { logout(); return; }
   let me;
@@ -536,6 +556,7 @@ async function loadTemplates() {
   document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
   if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   await loadTemplates();
+  applyDeepLink();
 })();
 </script>
 </body>

@@ -656,28 +656,13 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // list_directory removed 2026-05-05 — the cross-household member roster
+  // exposed names to anyone who could sign in, even with an opt-in toggle.
+  // For small clubs with kids that's a privacy concern. Admins still see
+  // contacts via the admin Households page. The DB column
+  // household_members.directory_visible is kept but unread.
   if (action === 'list_directory') {
-    // Return opted-in members across the tenant (replaces the paper directory).
-    // Only the requesting member's household sees full contact; everyone else
-    // sees just name + role + (optional) family_name. Members can opt in/out
-    // via update_household_member { directory_visible: bool }.
-    const { data: members } = await sb.from('household_members')
-      .select('id, name, role, household_id, directory_visible')
-      .eq('tenant_id', payload.tid as string)
-      .eq('active', true).eq('directory_visible', true)
-      .order('name', { ascending: true });
-    const hids = [...new Set((members ?? []).map(m => m.household_id))];
-    const { data: households } = hids.length
-      ? await sb.from('households').select('id, family_name').in('id', hids).eq('active', true)
-      : { data: [] };
-    const byHid = new Map((households ?? []).map(h => [h.id, h.family_name]));
-    return jsonResponse({
-      ok: true,
-      members: (members ?? []).map(m => ({
-        id: m.id, name: m.name, role: m.role,
-        family_name: byHid.get(m.household_id) ?? null,
-      })),
-    });
+    return jsonResponse({ ok: false, error: 'Member directory has been removed.' }, 410);
   }
 
   if (action === 'logout') {
