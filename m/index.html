@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Club — Poolside</title>
+<!-- PWA / "Add to Home Screen" wiring. Manifest is per-tenant via Vercel
+     rewrite; apple-touch-icon + theme-color get set by /js/pwa.js once the
+     branding lands from tenant_public. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" id="apple-touch-icon" href="">
+<meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
+<script src="/js/pwa.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/js/calendar.css">
 <!-- Signature capture for "add household member" modal (only loaded for primary members) -->
@@ -1322,6 +1332,71 @@ async function claimReward(rewardType) {
   }
 }
 
+// ── "Add to Home Screen" install card ───────────────────────────────────
+// Hidden when the page is already running standalone (i.e. installed). On
+// iOS we explain Share → Add to Home Screen (Safari has no programmatic
+// install API). On Android Chrome we expose a one-tap button that fires
+// the deferred beforeinstallprompt event.
+function renderInstallCard() {
+  const host = document.getElementById('install-card-host');
+  if (!host || !window.Pwa) return;
+  if (window.Pwa.isStandalone()) { host.innerHTML = ''; return; }
+  const platform = window.Pwa.detectPlatform();
+
+  const iosBlock = `
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 14px;margin-top:10px">
+      <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#0369a1;font-weight:700;margin-bottom:6px">📱 iPhone &amp; iPad (Safari)</div>
+      <ol style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:var(--text)">
+        <li>Tap the <b>Share</b> button (square with an up-arrow)</li>
+        <li>Scroll down and tap <b>"Add to Home Screen"</b></li>
+        <li>Tap <b>Add</b> in the top-right</li>
+      </ol>
+    </div>`;
+  const androidBlock = `
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;margin-top:10px">
+      <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#15803d;font-weight:700;margin-bottom:6px">📱 Android (Chrome)</div>
+      <div id="android-prompt-wrap" style="margin-bottom:8px;${window.Pwa.canPromptInstall() ? '' : 'display:none'}">
+        <button class="btn" onclick="installAndroid()" style="background:var(--blue);color:#fff;width:100%">Install app</button>
+      </div>
+      <ol style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:var(--text)">
+        <li>Tap the <b>three-dot menu (⋮)</b> top-right of Chrome</li>
+        <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
+        <li>Tap <b>Install</b> to confirm</li>
+      </ol>
+    </div>`;
+
+  let inner;
+  if (platform === 'ios') inner = iosBlock;
+  else if (platform === 'android') inner = androidBlock;
+  else inner = iosBlock + androidBlock;
+
+  host.innerHTML = `
+    <details class="card" style="padding:14px 16px">
+      <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:var(--blue)">📲 Add this club to your home screen</span>
+        <span style="font-size:12px;color:var(--muted)">Tap to expand</span>
+      </summary>
+      <p style="font-size:13px;color:var(--muted);margin:10px 0 0;line-height:1.5">Use it like a regular app — full screen, your club's icon, no browser bars.</p>
+      ${inner}
+    </details>`;
+
+  // If the deferred prompt arrives later (Chrome fires it after page load),
+  // reveal the inline Install button automatically.
+  document.addEventListener('pwa-installable', () => {
+    const wrap = document.getElementById('android-prompt-wrap');
+    if (wrap) wrap.style.display = '';
+  });
+  document.addEventListener('pwa-installed', () => {
+    const h = document.getElementById('install-card-host');
+    if (h) h.innerHTML = '';
+  });
+}
+
+async function installAndroid() {
+  if (!window.Pwa) return;
+  await window.Pwa.promptInstall();
+}
+
 // ── Remote keyfob (gate unlock) ─────────────────────────────────────────
 // Checks eligibility on load + after dues changes. Shows nothing if the
 // tenant doesn't have the gate add-on. Otherwise: big "Unlock gate" button
@@ -1567,6 +1642,18 @@ async function submitProfile() {
   }
   // (Logo paint already handled above via #brand-link.)
 
+  // PWA wiring — set apple-touch-icon, theme-color, app title from branding
+  // and register the service worker. Hide the install card if already
+  // installed (running as standalone), otherwise show platform-specific
+  // instructions.
+  if (window.Pwa) {
+    window.Pwa.setup({
+      branding: publicData.public_settings?.branding || {},
+      displayName: me.tenant.display_name,
+    });
+    renderInstallCard();
+  }
+
   const { user, household, tenant } = me;
   const venmo = publicData.public_settings?.payments?.venmo_handle;
   const dueText = household.dues_paid_for_year
@@ -1687,6 +1774,11 @@ async function submitProfile() {
       <p class="sub">Welcome back to ${escapeHtml(tenant.display_name)}.</p>
       <div class="actions">${heroActions.join('')}</div>
     </div>
+
+    <!-- "Add to home screen" install card — populated by renderInstallCard()
+         after Pwa.setup runs. Hidden by default; revealed on iOS/Android
+         non-standalone. -->
+    <div id="install-card-host"></div>
 
     <!-- Gate-unlock card. Hidden by default; loadGateCard() flips it visible
          + enables/disables the button based on tenant + member eligibility. -->

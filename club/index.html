@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Loading…</title>
+<!-- PWA / "Add to Home Screen" wiring. /js/pwa.js sets the icon + theme
+     color from branding once tenant_public lands. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" id="apple-touch-icon" href="">
+<meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
+<script src="/js/pwa.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -368,6 +377,15 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
     const b = parseInt(hex.slice(4,6), 16);
     const dim = (n) => Math.max(0, Math.round(n * 0.86)).toString(16).padStart(2, '0');
     document.documentElement.style.setProperty('--blue-2', `#${dim(r)}${dim(g)}${dim(b)}`);
+  }
+
+  // PWA: wire apple-touch-icon, theme-color, app title from branding +
+  // register the service worker so this club is installable as an app.
+  if (window.Pwa) {
+    window.Pwa.setup({
+      branding: ps?.branding || {},
+      displayName: t?.display_name || 'Poolside',
+    });
   }
 
   // Coming-up = next 5 upcoming derived from the wider events list.

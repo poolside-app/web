@@ -61,6 +61,12 @@ Deno.serve(async (req) => {
       background_photo_url: v.branding?.background_photo_url ?? null,
       logo_url:             v.branding?.logo_url ?? null,
       primary_color:        v.branding?.primary_color ?? null,
+      // PWA install icons — generated client-side at settings save time
+      // from the logo (or initials fallback). Member/public pages read these
+      // to wire <link rel="apple-touch-icon"> on iOS where manifest icons
+      // are unreliable.
+      icon_192_url:         v.branding?.icon_192_url ?? null,
+      icon_512_url:         v.branding?.icon_512_url ?? null,
     },
     club: {
       location: v.club?.location ?? null,

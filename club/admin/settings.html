@@ -186,9 +186,20 @@
     <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
     <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Primary color <span style="color:var(--muted);font-weight:500;font-size:12px">— replaces Poolside blue across your member + public pages</span></h3>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <input type="color" id="primary_color" value="#0a3b5c" style="width:80px;height:44px;padding:2px;cursor:pointer">
-      <button type="button" class="btn-ghost btn" onclick="document.getElementById('primary_color').value='#0a3b5c'">Reset to default</button>
+      <input type="color" id="primary_color" value="#0a3b5c" style="width:80px;height:44px;padding:2px;cursor:pointer" oninput="paintIconPreview()">
+      <button type="button" class="btn-ghost btn" onclick="document.getElementById('primary_color').value='#0a3b5c';paintIconPreview()">Reset to default</button>
       <span style="font-size:12px;color:var(--muted)">Pick a darker shade — text on top of it stays readable.</span>
+    </div>
+
+    <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">App icon <span style="color:var(--muted);font-weight:500;font-size:12px">— shown when members "Add to Home Screen"</span></h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;line-height:1.55">Generated from your logo + primary color. If you haven't uploaded a logo, we use the first two letters of your club name on a colored background. Saving regenerates the icon when these change.</p>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <canvas id="icon-preview" width="192" height="192" style="width:96px;height:96px;border-radius:18px;border:1px solid var(--border);background:var(--bg-2)"></canvas>
+      <div style="flex:1;min-width:200px">
+        <div id="icon-status" style="font-size:12px;color:var(--muted);margin-bottom:8px">Live preview — saves when you click Save.</div>
+        <button type="button" class="btn-ghost btn" onclick="regenerateAndSaveIcons()" style="font-size:12px">Regenerate &amp; save icon now</button>
+      </div>
     </div>
   </div>
 
@@ -371,7 +382,143 @@ function syncLogoPreview() {
   const img  = document.getElementById('logo-preview-img');
   if (url) { img.src = url; wrap.style.display = 'block'; }
   else { img.removeAttribute('src'); wrap.style.display = 'none'; }
+  paintIconPreview();
 }
+
+// ── App icon (PWA install) ────────────────────────────────────────────────
+// Live canvas preview + on-save generate+upload pipeline. The icons are
+// 192x192 and 512x512 PNGs uploaded to the same `club-assets` bucket as the
+// logo, with their public URLs persisted to settings.value.branding.
+// `tenant_manifest` reads those URLs so /manifest.webmanifest serves
+// per-tenant icons; member/public pages set apple-touch-icon from them too.
+let LOGO_BITMAP = null;          // cached <img> for the current logo URL
+let LAST_LOGO_URL_RENDERED = '';
+let ICON_FONT_READY = false;
+(function ensureFont() {
+  if (!('fonts' in document)) { ICON_FONT_READY = true; return; }
+  document.fonts.ready.then(() => { ICON_FONT_READY = true; paintIconPreview(); });
+})();
+
+function fingerprintIconInputs() {
+  return [val('logo_url') || '', val('primary_color') || '', val('display_name') || (TENANT?.display_name || '')].join('|');
+}
+
+async function loadLogoIfNeeded() {
+  const url = val('logo_url');
+  if (!url) { LOGO_BITMAP = null; LAST_LOGO_URL_RENDERED = ''; return null; }
+  if (url === LAST_LOGO_URL_RENDERED && LOGO_BITMAP) return LOGO_BITMAP;
+  try {
+    LOGO_BITMAP = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Image load failed'));
+      img.src = url;
+    });
+    LAST_LOGO_URL_RENDERED = url;
+  } catch {
+    LOGO_BITMAP = null;
+    LAST_LOGO_URL_RENDERED = '';
+  }
+  return LOGO_BITMAP;
+}
+
+function clubInitials() {
+  const name = val('display_name') || (TENANT?.display_name || 'Poolside');
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function drawIconAt(canvas, size) {
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const color = val('primary_color') || '#0a3b5c';
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, size, size);
+
+  if (LOGO_BITMAP) {
+    // Fit logo inside the maskable safe area (~80% of canvas) with padding.
+    const pad = size * 0.16;
+    const inner = size - pad * 2;
+    const ratio = LOGO_BITMAP.width / LOGO_BITMAP.height;
+    let w, h;
+    if (ratio > 1) { w = inner; h = inner / ratio; }
+    else            { h = inner; w = inner * ratio; }
+    ctx.drawImage(LOGO_BITMAP, (size - w) / 2, (size - h) / 2, w, h);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    const fontFamily = ICON_FONT_READY ? "'Inter','Fraunces',system-ui,sans-serif" : 'system-ui,sans-serif';
+    ctx.font = `bold ${Math.round(size * 0.42)}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(clubInitials(), size / 2, size * 0.54);
+  }
+}
+
+async function paintIconPreview() {
+  await loadLogoIfNeeded();
+  const c = document.getElementById('icon-preview');
+  if (c) drawIconAt(c, 192);
+}
+
+async function canvasToBase64(canvas) {
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Could not read icon'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function uploadGeneratedIcon(canvas, filename) {
+  const base64 = await canvasToBase64(canvas);
+  const t = token();
+  if (!t) throw new Error('Not signed in');
+  const res = await fetch(UPLOAD_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ filename, content_type: 'image/png', base64 }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Icon upload failed');
+  return data.url;
+}
+
+// Render 192 + 512, upload both, return { icon_192_url, icon_512_url }.
+// Caller persists those into branding.
+async function generateAndUploadIcons() {
+  await loadLogoIfNeeded();
+  const c192 = document.createElement('canvas');
+  const c512 = document.createElement('canvas');
+  drawIconAt(c192, 192);
+  drawIconAt(c512, 512);
+  const [icon_192_url, icon_512_url] = await Promise.all([
+    uploadGeneratedIcon(c192, 'icon-192.png'),
+    uploadGeneratedIcon(c512, 'icon-512.png'),
+  ]);
+  return { icon_192_url, icon_512_url };
+}
+
+async function regenerateAndSaveIcons() {
+  const status = document.getElementById('icon-status');
+  status.textContent = 'Generating…';
+  try {
+    const icons = await generateAndUploadIcons();
+    LAST_SETTINGS = LAST_SETTINGS || {};
+    LAST_SETTINGS.branding = { ...(LAST_SETTINGS.branding || {}), ...icons };
+    await call(SETTINGS_URL, 'save', { value: LAST_SETTINGS, display_name: val('display_name') || TENANT?.display_name || null });
+    LAST_ICON_FINGERPRINT = fingerprintIconInputs();
+    status.textContent = '✓ App icon saved.';
+    toast('App icon saved.');
+  } catch (e) {
+    status.textContent = e.message || 'Could not save icon';
+    toast(e.message || 'Icon save failed', 'err');
+  }
+}
+
+let LAST_ICON_FINGERPRINT = '';
 function clearLogo() {
   setVal('logo_url', '');
   document.getElementById('logo-file').value = '';
@@ -405,6 +552,7 @@ async function uploadLogo(input) {
     if (!data.ok) throw new Error(data.error || 'Upload failed');
     setVal('logo_url', data.url);
     syncLogoPreview();
+    paintIconPreview();
     status.textContent = '✓ Uploaded.';
   } catch (e) {
     status.textContent = e.message || 'Upload failed';
@@ -470,6 +618,8 @@ function populate(s) {
   setVal('primary_color',         s.branding?.primary_color || '#0a3b5c');
   syncBgPreview();
   syncLogoPreview();
+  paintIconPreview();
+  LAST_ICON_FINGERPRINT = fingerprintIconInputs();
   setVal('lat',  s.pool?.lat);
   setVal('lng',  s.pool?.lng);
   if (s.pool?.opens_at)  setVal('opens_at', s.pool.opens_at);
@@ -505,6 +655,10 @@ function collect(prevSettings) {
       background_photo_url: val('background_photo_url') || null,
       logo_url:             val('logo_url') || null,
       primary_color:        val('primary_color') || null,
+      // Icon URLs are merged in below by save() if regen is needed; if not,
+      // we preserve the previous URLs from prevSettings.
+      icon_192_url:         prevSettings?.branding?.icon_192_url ?? null,
+      icon_512_url:         prevSettings?.branding?.icon_512_url ?? null,
     },
     pool: {
       ...(prevSettings?.pool ?? {}),
@@ -534,8 +688,31 @@ let LAST_SETTINGS = {};
 async function save() {
   const btns = [document.getElementById('save-btn'), document.getElementById('save-btn-2')];
   btns.forEach(b => b.disabled = true);
+  const iconStatus = document.getElementById('icon-status');
   try {
     const value = collect(LAST_SETTINGS);
+
+    // Regenerate the PWA app icon on save when (a) icon inputs changed
+    // (logo / primary color / display name), or (b) we don't have icons
+    // saved yet at all. Skip when nothing relevant changed — keeps the
+    // bucket free of orphaned regenerations on no-op saves.
+    const fp = fingerprintIconInputs();
+    const needIcons = !value.branding?.icon_192_url || !value.branding?.icon_512_url || fp !== LAST_ICON_FINGERPRINT;
+    if (needIcons) {
+      if (iconStatus) iconStatus.textContent = 'Generating app icon…';
+      try {
+        const icons = await generateAndUploadIcons();
+        value.branding = { ...(value.branding || {}), ...icons };
+        LAST_ICON_FINGERPRINT = fp;
+        if (iconStatus) iconStatus.textContent = '✓ App icon updated.';
+      } catch (e) {
+        // Icon failure shouldn't block the rest of the save — log and continue
+        // with whatever icon URLs were already on the record.
+        console.error('Icon generation failed (non-fatal):', e);
+        if (iconStatus) iconStatus.textContent = 'Could not regenerate icon — other settings saved.';
+      }
+    }
+
     const dn = val('display_name') || (TENANT?.display_name ?? null);
     const data = await call(SETTINGS_URL, 'save', { value, display_name: dn });
     if (!data.ok) throw new Error(data.error || 'Save failed');

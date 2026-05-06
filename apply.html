@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apply for membership — Poolside</title>
+<!-- PWA wiring on the apply page so the icon + theme color match if a user
+     adds it to their home screen mid-application. (We don't show an install
+     prompt here — the form is the focus.) -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" id="apple-touch-icon" href="">
+<meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
+<script src="/js/pwa.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
@@ -1000,6 +1010,14 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
         if (logoUrl) {
           const link = document.getElementById('brand-link');
           if (link) link.innerHTML = `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(d.tenant.display_name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> <span id="brand-name">${escapeHtml(d.tenant.display_name)}</span>`;
+        }
+        // PWA: wire icon + theme color from branding so a mid-form
+        // "Add to Home Screen" picks up this club's identity.
+        if (window.Pwa) {
+          window.Pwa.setup({
+            branding: d.public_settings?.branding || {},
+            displayName: d.tenant.display_name,
+          });
         }
       }
     }

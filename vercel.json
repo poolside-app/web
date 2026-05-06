@@ -1,6 +1,20 @@
 {
   "rewrites": [
     {
+      "source": "/manifest.webmanifest",
+      "has": [
+        {
+          "type": "host",
+          "value": "(?<slug>[a-z0-9][a-z0-9-]*)\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_manifest?slug=:slug"
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_manifest"
+    },
+    {
       "source": "/",
       "has": [
         {

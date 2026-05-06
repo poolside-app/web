@@ -185,3 +185,8 @@ verify_jwt = false
 # verify_referral fired by stripe_webhook + applications.verify_payment).
 [functions.referrals]
 verify_jwt = false
+
+# Per-tenant Web App Manifest for PWA install. Public, fetched by browsers
+# at /manifest.webmanifest via a Vercel rewrite that forwards the slug.
+[functions.tenant_manifest]
+verify_jwt = false
