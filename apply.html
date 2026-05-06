@@ -731,6 +731,7 @@ async function submitApplication() {
     // with the application_full_detail schema column.
     signature_primary:  (adults[0] && adults[0].signature_url) || null,
     signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
+    referral_code: window.__POOLSIDE_REF_CODE__ || null,
   };
 
   const btn = document.getElementById('next-btn');
@@ -901,6 +902,41 @@ async function submitApplication() {
   await loadPolicies();
   paintTiers();
   paintVenmoQR();
+
+  // Referral capture: ?ref=CODE in URL means a current member sent this
+  // person here. Validate the code, show a friendly banner so the new
+  // applicant knows their friend gets a reward when they pay, and stash
+  // the code to send up with the submit POST.
+  if (params.has('ref')) {
+    const code = String(params.get('ref') || '').trim().toUpperCase();
+    if (code) {
+      try {
+        const slug = getSlug();
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/referrals`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'validate_code', code, slug }),
+        }).then(x => x.json());
+        if (r.ok && r.valid) {
+          window.__POOLSIDE_REF_CODE__ = r.code;
+          const referrerName = r.referrer_first_name || (r.referrer_family ? r.referrer_family + ' family' : 'A current member');
+          const titleEl = document.getElementById('title');
+          if (titleEl) {
+            const banner = document.createElement('div');
+            banner.style.cssText = 'background:linear-gradient(90deg,#fef3c7,#fde68a);border:1px solid #fcd34d;border-radius:12px;padding:14px 18px;margin:14px 0 0;display:flex;gap:12px;align-items:flex-start';
+            banner.innerHTML = `
+              <div style="font-size:28px;line-height:1;flex-shrink:0">💌</div>
+              <div style="flex:1">
+                <div style="font-weight:700;color:#7c2d12;font-size:15px">${escapeHtml(referrerName)} invited you!</div>
+                <div style="font-size:13px;color:#78350f;margin-top:2px;line-height:1.45">When you join and pay your dues, ${escapeHtml(referrerName)} gets <b>$100 off</b> their next dues. Welcome to ${escapeHtml(r.tenant_display_name || 'the club')}!</div>
+              </div>
+            `;
+            titleEl.parentNode.insertBefore(banner, titleEl.nextSibling);
+          }
+        }
+      } catch { /* invalid code → no banner, application still works normally */ }
+    }
+  }
 
   // Founder prefill: if the admin opened this form via the dashboard
   // "Set up my membership" banner (?prefill=admin), pull their identity

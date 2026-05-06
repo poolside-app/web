@@ -179,3 +179,9 @@ verify_jwt = false
 
 [functions.gate_bridge]
 verify_jwt = false
+
+# Refer-a-friend rewards engine. Auth verified inside (member JWT for
+# get_my_code/claim_reward, admin JWT for list, service-internal for
+# verify_referral fired by stripe_webhook + applications.verify_payment).
+[functions.referrals]
+verify_jwt = false

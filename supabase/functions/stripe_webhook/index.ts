@@ -179,6 +179,15 @@ Deno.serve(async (req) => {
           });
         } catch { /* never fails the webhook */ }
       }
+
+      // Fire referral verification (idempotent, no-op if no referral exists).
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/referrals`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+          body: JSON.stringify({ action: 'verify_referral', application_id: md.application_id, tenant_id: tenantId }),
+        });
+      } catch { /* never blocks the webhook */ }
     }
 
     // ── Payment plan: first installment paid via Checkout. Save the customer

@@ -238,6 +238,7 @@ Deno.serve(async (req) => {
       signature_primary:  sigPrimary,
       signature_guardian: sigGuardian,
       tier_slug: strOrNull(body.tier_slug),
+      referral_code: body.referral_code ? String(body.referral_code).trim().toUpperCase().slice(0, 32) : null,
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
@@ -254,6 +255,27 @@ Deno.serve(async (req) => {
         source_kind: 'application', source_id: data.id,
       });
     } catch { /* best-effort — never fails submission */ }
+
+    // Referral capture: if this application came in via a code, create a
+    // referrals row at status='applied'. Will flip to 'verified' (or
+    // 'rejected' on returning-member detection) when payment clears.
+    if (body.referral_code) {
+      try {
+        const code = String(body.referral_code).trim().toUpperCase().slice(0, 32);
+        const { data: rc } = await sb.from('referral_codes')
+          .select('id').eq('tenant_id', tenant.id).eq('code', code).eq('active', true).maybeSingle();
+        if (rc) {
+          await sb.from('referrals').insert({
+            tenant_id: tenant.id,
+            referral_code_id: rc.id,
+            application_id: data.id,
+            applied_by_email: email,
+            applied_by_family: family_name,
+            status: 'applied',
+          });
+        }
+      } catch { /* best-effort — referral failure never blocks the application */ }
+    }
 
     // ── Render the legal-evidence PDF ONCE at submit time ──────────────
     // The same bytes are reused for: (a) attachment to the applicant's
@@ -763,6 +785,17 @@ Deno.serve(async (req) => {
         });
       } catch { /* never block verify */ }
     }
+
+    // Trigger referral verification — flips the referral row from 'applied'
+    // to 'verified' if eligibility passes, or 'rejected' if the applicant
+    // was a returning member. Idempotent — safe if no referral exists.
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/referrals`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+        body: JSON.stringify({ action: 'verify_referral', application_id: id, tenant_id: TID }),
+      });
+    } catch { /* never block verify */ }
 
     return jsonResponse({ ok: true });
   }
