@@ -363,35 +363,279 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, reward_type: rewardType, amount_cents: amount });
   }
 
-  // ── Admin: list ────────────────────────────────────────────────────────
+  // ── Admin: list (enriched with both-membership facts) ──────────────────
   if (action === 'list') {
     if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
-    // No scope check — visible to all admins; reading audit data isn't sensitive
+
     const { data: refs } = await sb.from('referrals')
-      .select('id, status, applied_at, applied_by_email, applied_by_family, reward_type, reward_amount_cents, rejection_reason, reward_chosen_at, referral_code_id, application_id')
+      .select(`
+        id, status, applied_at, applied_by_email, applied_by_family,
+        reward_type, reward_amount_cents, reward_chosen_at,
+        rejection_reason, application_id, referral_code_id,
+        refund_method, refund_id, refund_at, refund_by, refund_decline_reason
+      `)
       .eq('tenant_id', tid)
       .order('applied_at', { ascending: false })
       .limit(200);
-    const codeIds = [...new Set((refs ?? []).map(r => r.referral_code_id))];
-    const { data: codes } = codeIds.length
-      ? await sb.from('referral_codes').select('id, code, member_id').in('id', codeIds)
-      : { data: [] };
-    const memberIds = [...new Set((codes ?? []).map(c => c.member_id))];
-    const { data: members } = memberIds.length
-      ? await sb.from('household_members').select('id, name').in('id', memberIds)
-      : { data: [] };
+
+    if (!refs || !refs.length) return jsonResponse({ ok: true, referrals: [] });
+
+    // Pull referrer info (member + household)
+    const codeIds = [...new Set(refs.map(r => r.referral_code_id))];
+    const { data: codes } = await sb.from('referral_codes')
+      .select('id, code, member_id, household_id').in('id', codeIds);
     const codeById = new Map((codes ?? []).map(c => [c.id, c]));
-    const memberById = new Map((members ?? []).map(m => [m.id, m]));
-    const enriched = (refs ?? []).map(r => {
+
+    const refMemberIds = [...new Set((codes ?? []).map(c => c.member_id))];
+    const refHhIds     = [...new Set((codes ?? []).map(c => c.household_id))];
+    const { data: refMembers } = refMemberIds.length
+      ? await sb.from('household_members').select('id, name, active, household_id').in('id', refMemberIds)
+      : { data: [] };
+    const { data: refHhs } = refHhIds.length
+      ? await sb.from('households').select('id, family_name, dues_paid_for_year, paid_until_year, active').in('id', refHhIds)
+      : { data: [] };
+    const refMemberById = new Map((refMembers ?? []).map(m => [m.id, m]));
+    const refHhById     = new Map((refHhs ?? []).map(h => [h.id, h]));
+
+    // Pull referrer's most recent application for refund-channel detection
+    const { data: refApps } = refMemberIds.length
+      ? await sb.from('applications')
+          .select('id, household_id, payment_method, payment_status, stripe_payment_intent_id, paid_at, paid_until_year')
+          .in('household_id', refHhIds)
+          .order('created_at', { ascending: false })
+      : { data: [] };
+    const refAppByHhId = new Map();
+    (refApps ?? []).forEach(a => {
+      if (!refAppByHhId.has(a.household_id)) refAppByHhId.set(a.household_id, a);
+    });
+
+    // Pull referee info (the application that came in via the code)
+    const refereeAppIds = refs.map(r => r.application_id).filter(Boolean) as string[];
+    const { data: refereeApps } = refereeAppIds.length
+      ? await sb.from('applications')
+          .select('id, family_name, primary_name, primary_email, primary_phone, payment_method, payment_status, paid_at, paid_until_year, status')
+          .in('id', refereeAppIds)
+      : { data: [] };
+    const refereeAppById = new Map((refereeApps ?? []).map(a => [a.id, a]));
+
+    const enriched = refs.map(r => {
       const code = codeById.get(r.referral_code_id);
-      const member = code ? memberById.get(code.member_id) : null;
+      const refMember = code ? refMemberById.get(code.member_id) : null;
+      const refHh     = code ? refHhById.get(code.household_id) : null;
+      const refApp    = refHh ? refAppByHhId.get(refHh.id) : null;
+      const refereeApp = r.application_id ? refereeAppById.get(r.application_id) : null;
+
+      const refundChannelHint = (() => {
+        if (!refApp) return 'unknown';
+        if (refApp.payment_method === 'stripe' && refApp.stripe_payment_intent_id) return 'stripe';
+        return 'manual';   // venmo/check/etc — admin handles off-platform
+      })();
+
       return {
-        ...r,
-        referrer_name: member?.name || 'Unknown',
-        referral_code: code?.code || '',
+        // The referral itself
+        id: r.id,
+        status: r.status,
+        applied_at: r.applied_at,
+        reward_type: r.reward_type,
+        reward_amount_cents: r.reward_amount_cents,
+        reward_chosen_at: r.reward_chosen_at,
+        rejection_reason: r.rejection_reason,
+
+        // Refund disposition
+        refund_method: r.refund_method,
+        refund_id: r.refund_id,
+        refund_at: r.refund_at,
+        refund_decline_reason: r.refund_decline_reason,
+
+        // Referrer (the member earning the reward)
+        referrer: {
+          name: refMember?.name || 'Unknown',
+          family: refHh?.family_name || null,
+          active: !!refMember?.active,
+          household_active: !!refHh?.active,
+          dues_paid: !!refHh?.dues_paid_for_year,
+          paid_until_year: refHh?.paid_until_year || null,
+          payment_method: refApp?.payment_method || null,
+          stripe_payment_intent_id: refApp?.stripe_payment_intent_id || null,
+        },
+        // Referee (the new applicant who used the code)
+        referee: refereeApp ? {
+          family: refereeApp.family_name,
+          name: refereeApp.primary_name,
+          email: refereeApp.primary_email,
+          payment_method: refereeApp.payment_method,
+          payment_status: refereeApp.payment_status,
+          paid_at: refereeApp.paid_at,
+          status: refereeApp.status,
+        } : null,
+
+        // What admin can do
+        refund_channel_hint: refundChannelHint,   // 'stripe' | 'manual' | 'unknown'
+        is_pending_refund: r.reward_type === 'current_year_refund' && r.status === 'rewarded' && !r.refund_at,
       };
     });
+
     return jsonResponse({ ok: true, referrals: enriched });
+  }
+
+  // ── Admin: issue_refund — record disposition AND optionally fire the
+  //    Stripe refund API call for card-paid referrers. Payments-scope only.
+  if (action === 'issue_refund') {
+    if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
+    // Scope check: payments
+    const { requireScope } = await import('../_shared/auth.ts');
+    if (!(await requireScope(sb, payload as never, 'payments'))) {
+      return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
+    }
+
+    const referralId  = String(body.referral_id ?? '');
+    const method      = String(body.method ?? '');   // 'stripe' | 'venmo' | 'check'
+    const note        = body.note ? String(body.note).slice(0, 500) : null;
+    if (!referralId)                                 return jsonResponse({ ok: false, error: 'referral_id required' }, 400);
+    if (!['stripe', 'venmo', 'check'].includes(method)) {
+      return jsonResponse({ ok: false, error: 'method must be stripe / venmo / check' }, 400);
+    }
+
+    // Load + sanity-check the referral
+    const { data: ref } = await sb.from('referrals')
+      .select('id, status, reward_type, reward_amount_cents, refund_at, application_id, referral_code_id')
+      .eq('id', referralId).eq('tenant_id', tid).maybeSingle();
+    if (!ref) return jsonResponse({ ok: false, error: 'Referral not found' }, 404);
+    if (ref.status !== 'rewarded' || ref.reward_type !== 'current_year_refund') {
+      return jsonResponse({ ok: false, error: 'Only refund-type rewards in rewarded state can be issued' }, 409);
+    }
+    if (ref.refund_at) {
+      return jsonResponse({ ok: false, error: 'Refund already recorded for this referral' }, 409);
+    }
+
+    const amount = Number(ref.reward_amount_cents || 10000);
+    const now = new Date().toISOString();
+    let refundId: string | null = null;
+
+    // Stripe path: actually call the API. Manual paths (venmo/check) just
+    // record the admin's action — the human did the off-platform work.
+    if (method === 'stripe') {
+      // Find the referrer's household + their most recent paid application
+      const { data: code } = await sb.from('referral_codes')
+        .select('household_id').eq('id', ref.referral_code_id).maybeSingle();
+      if (!code) return jsonResponse({ ok: false, error: 'Referral code missing' }, 500);
+      const { data: refApp } = await sb.from('applications')
+        .select('id, payment_method, stripe_payment_intent_id')
+        .eq('household_id', code.household_id)
+        .eq('payment_status', 'paid')
+        .order('paid_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!refApp || refApp.payment_method !== 'stripe' || !refApp.stripe_payment_intent_id) {
+        return jsonResponse({ ok: false, error: 'Referrer has no recent Stripe-paid application — use Venmo or check instead' }, 409);
+      }
+
+      // Look up the tenant's connected Stripe account
+      const { data: tenant } = await sb.from('tenants')
+        .select('stripe_account_id').eq('id', tid).maybeSingle();
+      const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY');
+      if (!STRIPE_KEY)                                 return jsonResponse({ ok: false, error: 'Stripe not configured on platform' }, 503);
+      if (!tenant?.stripe_account_id)                  return jsonResponse({ ok: false, error: 'This club isn\'t connected to Stripe yet' }, 503);
+
+      const params = new URLSearchParams();
+      params.append('payment_intent', refApp.stripe_payment_intent_id);
+      params.append('amount', String(amount));
+      params.append('reason', 'requested_by_customer');
+      params.append('metadata[poolside_kind]', 'referral_reward');
+      params.append('metadata[referral_id]', referralId);
+      try {
+        const res = await fetch('https://api.stripe.com/v1/refunds', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${STRIPE_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Stripe-Account': tenant.stripe_account_id,
+          },
+          body: params.toString(),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return jsonResponse({ ok: false, error: data?.error?.message || `Stripe ${res.status}: refund failed`, stripe_code: data?.error?.code }, 500);
+        }
+        refundId = data.id;
+      } catch (e) {
+        return jsonResponse({ ok: false, error: `Stripe call failed: ${(e as Error).message}` }, 500);
+      }
+    } else {
+      // venmo / check — admin's note is the receipt
+      refundId = note || `${method} (manual)`;
+    }
+
+    // Record the disposition
+    const { error: updErr } = await sb.from('referrals').update({
+      refund_method: method,
+      refund_id: refundId,
+      refund_amount_cents: amount,
+      refund_at: now,
+      refund_by: sub,
+      updated_at: now,
+    }).eq('id', referralId);
+    if (updErr) return jsonResponse({ ok: false, error: updErr.message }, 500);
+
+    // Close the related admin task
+    await sb.from('admin_tasks')
+      .update({ completed_at: now, completed_by: sub })
+      .eq('tenant_id', tid).eq('source_kind', 'referral').eq('source_id', referralId)
+      .is('completed_at', null);
+
+    await sb.from('audit_log').insert({
+      tenant_id: tid,
+      kind: 'referral.refund_issued',
+      entity_type: 'referral', entity_id: referralId,
+      summary: `Refund $${(amount / 100).toFixed(0)} issued via ${method}${refundId ? ' (' + String(refundId).slice(0, 80) + ')' : ''}`,
+      actor_id: sub, actor_kind: 'tenant_admin',
+      metadata: { method, amount_cents: amount, refund_id: refundId },
+    });
+
+    return jsonResponse({ ok: true, method, refund_id: refundId, amount_cents: amount });
+  }
+
+  // ── Admin: decline_refund — admin says "this isn't legit, no money out" ─
+  if (action === 'decline_refund') {
+    if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
+    const { requireScope } = await import('../_shared/auth.ts');
+    if (!(await requireScope(sb, payload as never, 'payments'))) {
+      return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
+    }
+    const referralId = String(body.referral_id ?? '');
+    const reason     = String(body.reason ?? '').trim();
+    if (!referralId)                          return jsonResponse({ ok: false, error: 'referral_id required' }, 400);
+    if (!reason)                              return jsonResponse({ ok: false, error: 'A reason is required when declining' }, 400);
+
+    const { data: ref } = await sb.from('referrals')
+      .select('id, status, refund_at').eq('id', referralId).eq('tenant_id', tid).maybeSingle();
+    if (!ref)                                 return jsonResponse({ ok: false, error: 'Referral not found' }, 404);
+    if (ref.refund_at)                        return jsonResponse({ ok: false, error: 'Already disposed' }, 409);
+
+    const now = new Date().toISOString();
+    await sb.from('referrals').update({
+      refund_method: 'declined',
+      refund_decline_reason: reason.slice(0, 500),
+      refund_at: now,
+      refund_by: sub,
+      updated_at: now,
+    }).eq('id', referralId);
+
+    await sb.from('admin_tasks')
+      .update({ completed_at: now, completed_by: sub })
+      .eq('tenant_id', tid).eq('source_kind', 'referral').eq('source_id', referralId)
+      .is('completed_at', null);
+
+    await sb.from('audit_log').insert({
+      tenant_id: tid,
+      kind: 'referral.refund_declined',
+      entity_type: 'referral', entity_id: referralId,
+      summary: `Refund declined: ${reason.slice(0, 120)}`,
+      actor_id: sub, actor_kind: 'tenant_admin',
+      metadata: { reason },
+    });
+
+    return jsonResponse({ ok: true });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

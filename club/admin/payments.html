@@ -223,6 +223,19 @@
   </div>
   <div id="summary" class="summary"></div>
   <div id="list"><div class="empty">Loading…</div></div>
+
+  <!-- Pending referral refunds — populated by loadRefundQueue() on page load.
+       Hidden when there's nothing to do. -->
+  <div id="refunds-card" class="card" style="display:none;margin-top:24px">
+    <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      💌 Pending referral refunds
+      <span id="refunds-count" style="font-size:12px;color:var(--muted);font-weight:500"></span>
+    </h2>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;line-height:1.5">
+      Members who chose "refund me $100 now" instead of next-year credit. Confirm both memberships look legitimate, then issue the refund through the right channel.
+    </p>
+    <div id="refunds-list"></div>
+  </div>
 </main>
 
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
@@ -666,6 +679,115 @@ async function savePaymentMethods() {
   }
 }
 
+// ── Referral refunds queue ─────────────────────────────────────────────
+const REFERRALS_URL = `${SUPABASE_URL}/functions/v1/referrals`;
+
+async function loadRefundQueue() {
+  try {
+    const r = await api(REFERRALS_URL, 'list');
+    if (!r.ok) return;
+    const pending = (r.referrals || []).filter(x => x.is_pending_refund);
+    const card = document.getElementById('refunds-card');
+    const list = document.getElementById('refunds-list');
+    const count = document.getElementById('refunds-count');
+    if (!pending.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    count.textContent = `${pending.length} pending`;
+    list.innerHTML = pending.map(ref => renderRefundRow(ref)).join('');
+  } catch { /* ignore */ }
+}
+
+function refundFact(label, ok, detail) {
+  const icon = ok ? '✅' : '⚠️';
+  const color = ok ? 'var(--green)' : 'var(--yellow)';
+  return `<div style="font-size:13px;line-height:1.55;padding:3px 0">
+    <span style="color:${color}">${icon}</span>
+    <b>${escapeHtml(label)}</b>
+    ${detail ? `<span style="color:var(--muted)"> — ${escapeHtml(detail)}</span>` : ''}
+  </div>`;
+}
+
+function renderRefundRow(ref) {
+  const amt = `$${Math.round((ref.reward_amount_cents || 10000) / 100)}`;
+  const referrerName = ref.referrer.name + (ref.referrer.family ? ` · ${ref.referrer.family} family` : '');
+  const referrerOK = ref.referrer.active && ref.referrer.household_active && ref.referrer.dues_paid;
+  const referrerDetail = (() => {
+    if (!ref.referrer.active)               return 'Member is no longer active';
+    if (!ref.referrer.household_active)     return 'Household is inactive';
+    if (!ref.referrer.dues_paid)            return 'Dues unpaid for current year';
+    const py = ref.referrer.paid_until_year ? `paid through ${ref.referrer.paid_until_year}` : 'paid';
+    const pm = ref.referrer.payment_method || 'unknown method';
+    return `Active member, ${py}, ${pm}`;
+  })();
+
+  const refereeOK = ref.referee && ref.referee.payment_status === 'paid' && ref.referee.status === 'approved';
+  const refereeDetail = (() => {
+    if (!ref.referee)                                       return 'Application missing — was it deleted?';
+    if (ref.referee.payment_status !== 'paid')              return `Payment status: ${ref.referee.payment_status}`;
+    if (ref.referee.status !== 'approved')                  return `Application status: ${ref.referee.status}`;
+    return `Joined as new member, ${ref.referee.payment_method || 'unknown method'}, paid ${ref.referee.paid_at ? new Date(ref.referee.paid_at).toLocaleDateString() : ''}`;
+  })();
+
+  const stripeAvailable = ref.refund_channel_hint === 'stripe';
+  const buttons = [];
+  if (stripeAvailable) {
+    buttons.push(`<button class="btn btn-primary" onclick="issueRefund('${ref.id}','stripe')" style="background:#635bff;color:#fff;border-color:#635bff">💳 Issue ${amt} Stripe refund (auto)</button>`);
+  }
+  buttons.push(`<button class="btn" onclick="markManualRefund('${ref.id}','venmo')" style="background:#3D95CE;color:#fff;border-color:#3D95CE">📱 I sent ${amt} via Venmo</button>`);
+  buttons.push(`<button class="btn" onclick="markManualRefund('${ref.id}','check')">📝 I sent a check</button>`);
+  buttons.push(`<button class="btn btn-danger" onclick="declineRefund('${ref.id}')" style="margin-left:auto">❌ Decline</button>`);
+
+  return `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <b style="font-family:'Fraunces',serif;font-size:17px;color:var(--blue)">${escapeHtml(referrerName)} wants ${amt} refund</b>
+        <span style="font-size:11.5px;color:var(--muted)">claimed ${ref.reward_chosen_at ? new Date(ref.reward_chosen_at).toLocaleString() : 'recently'}</span>
+      </div>
+      <div style="background:var(--bg-2);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        ${refundFact(`Referrer (${ref.referrer.name})`, referrerOK, referrerDetail)}
+        ${refundFact(`Referee (${ref.referee?.family || ref.referee?.name || 'unknown'})`, refereeOK, refereeDetail)}
+      </div>
+      ${!stripeAvailable
+        ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-style:italic">Stripe auto-refund not available — referrer paid via ${ref.referrer.payment_method || 'a non-Stripe method'}, so issue manually below.</div>`
+        : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${buttons.join('')}</div>
+    </div>
+  `;
+}
+
+async function issueRefund(referralId, method) {
+  if (!confirm(`Issue $100 ${method.toUpperCase()} refund?\n\nFor Stripe: this immediately calls the Stripe API and the money goes back to the member's card.\nFor Venmo/check: this just records that you've sent it manually.`)) return;
+  try {
+    const r = await api(REFERRALS_URL, 'issue_refund', { referral_id: referralId, method });
+    if (!r.ok) throw new Error(r.error || 'Refund failed');
+    alert(`✓ Refund recorded. ${method === 'stripe' ? 'Stripe will email a receipt to the member; the refund lands on their card in 5-10 business days.' : 'Recorded.'}`);
+    loadRefundQueue();
+  } catch (e) {
+    alert('Refund failed: ' + e.message);
+  }
+}
+
+async function markManualRefund(referralId, method) {
+  const note = prompt(`How did you send the ${method === 'venmo' ? 'Venmo' : 'check'}?\n(Optional note for the audit log — e.g. "Venmo to @margaret-k" or "check #1234")`, '') ;
+  // null means user clicked Cancel — bail
+  if (note === null) return;
+  try {
+    const r = await api(REFERRALS_URL, 'issue_refund', { referral_id: referralId, method, note });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    loadRefundQueue();
+  } catch (e) { alert(e.message); }
+}
+
+async function declineRefund(referralId) {
+  const reason = prompt('Why are you declining this refund?\n(Required — gets logged + visible to the team)');
+  if (!reason || !reason.trim()) return;
+  try {
+    const r = await api(REFERRALS_URL, 'decline_refund', { referral_id: referralId, reason: reason.trim() });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    loadRefundQueue();
+  } catch (e) { alert(e.message); }
+}
+
 (async () => {
   if (!token()) { logout(); return; }
   try {
@@ -686,6 +808,7 @@ async function savePaymentMethods() {
   loadDriveStatus();
   loadPlanConfig();
   loadPlansList();
+  loadRefundQueue();
 })();
 </script>
 </body>
