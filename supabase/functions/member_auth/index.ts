@@ -290,12 +290,16 @@ Deno.serve(async (req) => {
     }).eq('id', member.id);
 
     const key = await getKey();
+    // Long-lived JWT — members are expected to "stay logged in forever"
+    // once they install the app. Sliding renewal in the `me` action below
+    // keeps active users on a rolling window so they effectively never
+    // see a login form again.
     const jwt = await create(
       { alg: 'HS256', typ: 'JWT' },
       {
         sub: member.id, kind: 'member',
         tid: tenant.id, slug: tenant.slug, hid: member.household_id,
-        exp: getNumericDate(60 * 60 * 24 * 30),  // 30 days
+        exp: getNumericDate(60 * 60 * 24 * 365 * 5),  // 5 years
       },
       key,
     );
@@ -358,12 +362,31 @@ Deno.serve(async (req) => {
       .order('created_at', { ascending: false })
       .limit(50);
 
+    // Sliding session: mint a fresh 5-year token on every `me` call. Active
+    // users (anyone who opens the app at any cadence) stay logged in
+    // indefinitely. /m/ writes the new token back to localStorage so the
+    // expiry rolls forward without the user noticing.
+    let refreshed_token: string | null = null;
+    try {
+      const key = await getKey();
+      refreshed_token = await create(
+        { alg: 'HS256', typ: 'JWT' },
+        {
+          sub: payload.sub, kind: 'member',
+          tid: payload.tid, slug: tenant.slug, hid: payload.hid,
+          exp: getNumericDate(60 * 60 * 24 * 365 * 5),
+        },
+        key,
+      );
+    } catch { /* non-fatal — caller keeps the existing token */ }
+
     return jsonResponse({
       ok: true,
       user: member,
       tenant,
       household: { ...household, members: housemates ?? [] },
       documents: docs ?? [],
+      refreshed_token,
     });
   }
 

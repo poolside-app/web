@@ -194,6 +194,14 @@
   .perr.show { display:block; }
 
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* Hide the "Add to home screen" instructions whenever the page is running
+     as an installed PWA — both display-mode for Android/desktop and the
+     iOS-specific media-feature. JS already no-ops in this case, but the CSS
+     guard hides any flash if JS is slow. */
+  @media (display-mode: standalone), (display-mode: minimal-ui) {
+    #install-card-host { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -1591,6 +1599,13 @@ async function submitProfile() {
     return;
   }
   if (!me.ok) { logout(); return; }
+
+  // Sliding session: server returns a freshly-minted 5-year token on every
+  // `me` call. Persist it so each visit rolls the expiry forward — active
+  // members effectively stay logged in forever.
+  if (me.refreshed_token) {
+    try { localStorage.setItem('poolside_member_token', me.refreshed_token); } catch (_) {}
+  }
 
   ME_USER = me.user;
   document.title = `${me.tenant.display_name} — My Club`;

@@ -136,6 +136,43 @@ function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&qu
 
 const SLUG = getSlugFromHostname();
 
+// If we already have a member token, validate it server-side and short-
+// circuit straight to /m/. Avoids the "click brand → land on public →
+// come back → why am I logging in again?" loop. If the token is stale or
+// from a different tenant, drop it quietly and show the form.
+async function autoSignInIfPossible() {
+  const tok = localStorage.getItem('poolside_member_token');
+  if (!tok) return false;
+  try {
+    const res = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tok}` },
+      body: JSON.stringify({ action: 'me' }),
+    });
+    if (!res.ok) {
+      localStorage.removeItem('poolside_member_token');
+      return false;
+    }
+    const data = await res.json();
+    if (!data.ok) {
+      localStorage.removeItem('poolside_member_token');
+      return false;
+    }
+    // Cross-tenant guard: if the cached token is for a different club, don't
+    // silently log them in here — they'd see the wrong member home.
+    if (SLUG && data.tenant && data.tenant.slug && data.tenant.slug !== SLUG) {
+      return false;
+    }
+    if (data.refreshed_token) {
+      try { localStorage.setItem('poolside_member_token', data.refreshed_token); } catch (_) {}
+    }
+    window.location.replace('/m/');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 (async () => {
   if (!SLUG) {
     document.getElementById('title').textContent = 'Wrong page';
@@ -144,6 +181,9 @@ const SLUG = getSlugFromHostname();
     document.getElementById('submit').disabled = true;
     return;
   }
+  // Skip the form entirely if a valid token is on this device. Done before
+  // the tenant-public lookup so the redirect happens as fast as possible.
+  if (await autoSignInIfPossible()) return;
   try {
     const res = await fetch(TENANT_LOOKUP, {
       method: 'POST', headers: { 'content-type': 'application/json' },
