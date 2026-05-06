@@ -1643,15 +1643,14 @@ async function submitProfile() {
   // (Logo paint already handled above via #brand-link.)
 
   // PWA wiring — set apple-touch-icon, theme-color, app title from branding
-  // and register the service worker. Hide the install card if already
-  // installed (running as standalone), otherwise show platform-specific
-  // instructions.
+  // and register the service worker. The install card itself gets populated
+  // *after* main.innerHTML lands below — calling it now would no-op because
+  // its host div doesn't exist yet.
   if (window.Pwa) {
     window.Pwa.setup({
       branding: publicData.public_settings?.branding || {},
       displayName: me.tenant.display_name,
     });
-    renderInstallCard();
   }
 
   const { user, household, tenant } = me;
@@ -1924,6 +1923,9 @@ async function submitProfile() {
   refreshGuestPasses();
   loadGateCard();
   showCampaignPopup();
+  // Populate the "Add to Home Screen" instruction card now that its host
+  // div exists in the DOM (it lives inside the main innerHTML block above).
+  renderInstallCard();
 
   if (user.can_book_parties) {
     refreshParties();
