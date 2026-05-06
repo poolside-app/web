@@ -40,13 +40,28 @@
     return sponsor;
   }
 
+  // Auto-popups must NOT land on top of a modal the user opened
+  // intentionally. Returns true if any user-action scrim is currently
+  // visible — checks both `.scrim.open` (the m/ modal pattern) and any
+  // inline-style scrim with display:flex (the club/ landing pattern).
+  function isUserModalOpen() {
+    if (document.querySelector('.scrim.open')) return true;
+    const inline = Array.from(document.querySelectorAll('[id$="-scrim"]'));
+    for (const el of inline) {
+      if (el.id === 'sponsor-scrim') continue;             // ourselves
+      if (el.classList.contains('campaign-popup-host')) continue;  // sibling auto-popup
+      if (getComputedStyle(el).display !== 'none') return true;
+    }
+    return false;
+  }
+
   function injectStyles() {
     if (document.getElementById('sponsor-popup-styles')) return;
     const css = `
       #sponsor-scrim {
         position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
         display: none; align-items: center; justify-content: center;
-        z-index: 200; padding: 20px; backdrop-filter: blur(2px);
+        z-index: 180; padding: 20px; backdrop-filter: blur(2px);
       }
       #sponsor-scrim.open { display: flex; }
       #sponsor-popup {
@@ -131,9 +146,17 @@
       if (!config.popup_enabled) return;
       const freq = config.popup_frequency || 'once_per_session';
       if (!shouldShow(freq)) return;
+      // Don't fire if a user-opened modal is already up.
+      if (isUserModalOpen()) return;
       const sponsor = pickNext(sponsors);
-      // Defer one tick so the host page paint isn't blocked.
-      setTimeout(() => show(sponsor), 600);
+      // Defer one tick so the host page paint isn't blocked. Re-check at
+      // fire time too — the user might have opened a modal in the
+      // intervening 600ms (this was the root cause of the "add-member
+      // modal disappears" bug — sponsor popup was landing on top).
+      setTimeout(() => {
+        if (isUserModalOpen()) return;
+        show(sponsor);
+      }, 600);
     },
   };
 })();
