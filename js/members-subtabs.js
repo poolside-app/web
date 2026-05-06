@@ -13,10 +13,14 @@
 (function () {
   'use strict';
 
+  // Sub-tab labels are intentionally distinct from the top-nav "Application"
+  // (the apply-form EDITOR). The sub-tab below is the *queue* of incoming
+  // applicants — separate concern. We renamed it from "Applications" to
+  // "Pipeline" so the two surfaces don't read as duplicates in the chrome.
+  // Tiers ALSO moved out of here — it lives under top-nav Application now.
   const SUBTABS = [
     { key: 'households',   label: 'Households',   href: '/club/admin/members.html#households',   scope: 'households'   },
-    { key: 'applications', label: 'Applications', href: '/club/admin/members.html#applications', scope: 'applications' },
-    { key: 'tiers',        label: 'Tiers',        href: '/club/admin/members.html#tiers',        scope: 'tiers'        },
+    { key: 'applications', label: 'Pipeline',     href: '/club/admin/members.html#applications', scope: 'applications' },
     { key: 'renewals',     label: 'Renewals',     href: '/club/admin/members.html#renewals',     scope: 'renewals'     },
     { key: 'payments',     label: 'Payments',     href: '/club/admin/payments.html',             scope: 'payments'     },
     { key: 'programs',     label: 'Programs',     href: '/club/admin/programs.html',             scope: 'programs'     },
