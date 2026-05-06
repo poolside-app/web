@@ -695,10 +695,31 @@ function renderGateActive(panel, health) {
 }
 
 async function setGateLock(wantLocked) {
-  const msg = wantLocked
-    ? 'Lock the panel configuration?\n\nNo one (not even you) can change panel host/user/password or rotate the bridge secret without unlocking first. The bridge keeps running and members can still unlock the gate normally.'
-    : 'Unlock the panel configuration?\n\nThis lets the panel host/user/password be edited again. Re-lock when you\'re done.';
-  if (!confirm(msg)) return;
+  // Locking is low-risk — soft confirm() is fine.
+  if (wantLocked) {
+    if (!confirm('Lock the panel configuration?\n\nNo one (not even you) can change panel host/user/password or rotate the bridge secret without unlocking first. The bridge keeps running and members can still unlock the gate normally.')) return;
+    return doSetGateLock(true);
+  }
+  // Unlocking is high-risk: edits made here can break the on-site bridge.
+  // Use a typed-keyword confirmation pattern (same shape as GitHub's
+  // destructive-action prompts) so a fat-finger click can't unlock.
+  const proceed = await typedConfirm({
+    title: '⚠️  Unlock panel configuration',
+    bodyHtml: `
+      <p style="margin:0 0 12px"><b>Changing these settings will likely break the gate bridge</b> until the bridge's <code>.env</code> file on the on-site PC is updated to match.</p>
+      <p style="margin:0 0 12px;color:#7c2d12">If unlock attempts fail because of changes made here, restoring the bridge requires a remote-support session — a <b>$95 service fee</b> applies for changes that don't match the on-site install.</p>
+      <p style="margin:0 0 6px">Every change is audit-logged. To confirm you understand and want to proceed, type <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;font-weight:700">UNLOCK</code> exactly:</p>
+    `,
+    keyword: 'UNLOCK',
+    confirmLabel: 'Unlock for editing',
+    confirmStyle: 'background:#dc2626;color:#fff;border-color:#dc2626',
+    cancelLabel: 'Keep locked',
+  });
+  if (!proceed) return;
+  doSetGateLock(false);
+}
+
+async function doSetGateLock(wantLocked) {
   try {
     const r = await gateApi('set_config_lock', { locked: wantLocked });
     if (!r.ok) throw new Error(r.error || 'Failed');
@@ -707,6 +728,46 @@ async function setGateLock(wantLocked) {
     document.getElementById('gate-err').textContent = e.message;
     document.getElementById('gate-err').classList.add('show');
   }
+}
+
+// Generic typed-keyword confirmation modal. Resolves to true if the user
+// typed the keyword AND clicked confirm; false otherwise. Reusable for any
+// destructive action where confirm() is too weak.
+function typedConfirm({ title, bodyHtml, keyword, confirmLabel, cancelLabel, confirmStyle }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:90;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:18px;padding:24px;max-width:520px;width:100%;box-shadow:0 20px 50px -10px rgba(0,0,0,.3)">
+        <h2 style="margin:0 0 12px;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:20px">${title}</h2>
+        <div style="font-size:13.5px;line-height:1.55;color:var(--text)">${bodyHtml}</div>
+        <input id="tc-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="Type ${keyword} here"
+               style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font:600 15px 'Menlo','Consolas',monospace;letter-spacing:.05em;margin-top:6px">
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button id="tc-cancel" class="btn" style="background:#fff;border:1.5px solid var(--border);color:var(--text)">${cancelLabel || 'Cancel'}</button>
+          <button id="tc-ok" class="btn" disabled style="${confirmStyle || 'background:var(--blue);color:#fff'};opacity:.5;cursor:not-allowed;border:1.5px solid transparent">${confirmLabel || 'Confirm'}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#tc-input');
+    const ok = overlay.querySelector('#tc-ok');
+    const cancel = overlay.querySelector('#tc-cancel');
+    input.focus();
+    function close(result) { overlay.remove(); resolve(result); }
+    input.addEventListener('input', () => {
+      const matches = input.value === keyword;
+      ok.disabled = !matches;
+      ok.style.opacity = matches ? '1' : '.5';
+      ok.style.cursor = matches ? 'pointer' : 'not-allowed';
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !ok.disabled) close(true);
+      if (e.key === 'Escape') close(false);
+    });
+    ok.addEventListener('click', () => close(true));
+    cancel.addEventListener('click', () => close(false));
+  });
 }
 
 async function requestGateAddon() {

@@ -1186,31 +1186,38 @@ async function submitProfile() {
     </div>
 
     ${earlyBirdBanner}
+
+    <!-- Photos / Snapshots: high prominence. Members can upload (admin
+         approves before showing). Same approved set drives the public
+         landing page carousel — see club/index.html. -->
     <div class="card">
       <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        ${escapeHtml(household.family_name || 'Your household')}
-        ${dueText}
+        📸 Photos
+        <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Upload a photo</button>
       </h2>
-      <div class="meta-grid">
-        ${household.tier ? `<div class="cell"><div class="lbl">Tier</div><div class="val">${escapeHtml(household.tier)}</div></div>` : ''}
-        ${household.fob_number ? `<div class="cell"><div class="lbl">Fob #</div><div class="val">${escapeHtml(household.fob_number)}</div></div>` : ''}
-        ${household.address ? `<div class="cell"><div class="lbl">Address</div><div class="val">${escapeHtml(household.address)}${household.city || household.zip ? '<br><span style="font-weight:400;color:var(--muted)">' + escapeHtml([household.city, household.zip].filter(Boolean).join(', ')) + '</span>' : ''}</div></div>` : ''}
-        ${household.emergency_contact ? `<div class="cell"><div class="lbl">Emergency</div><div class="val">${escapeHtml(household.emergency_contact)}</div></div>` : ''}
-      </div>
-      <h3 style="margin-top:20px">Members</h3>
-      ${memberHtml}
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Snapshots from the club. Anyone can upload — admin approves before they show up here and on the public page.</p>
+      ${photosHtml}
     </div>
 
+    <!-- News (announcements) — board posts members should see -->
     <div class="card">
-      <h2>Coming up</h2>
+      <h2>📰 Latest news</h2>
+      ${postsHtml}
+    </div>
+
+    <!-- Coming up (next 3-5 events) — short list, scannable -->
+    <div class="card">
+      <h2>📅 Coming up</h2>
       ${eventsHtml}
     </div>
 
+    <!-- Full calendar grid -->
     <div class="card">
       <h2>Calendar</h2>
       <div id="member-calendar"></div>
     </div>
 
+    <!-- Activities: parties, programs, volunteer, passes, documents -->
     <div class="card" id="parties-card">
       <h2>Your party requests</h2>
       <div class="empty">Loading…</div>
@@ -1233,23 +1240,39 @@ async function submitProfile() {
 
     ${documentsHtml ? `
       <div class="card">
-        <h2>Documents</h2>
+        <h2>📎 Documents</h2>
         ${documentsHtml}
       </div>
     ` : ''}
 
-    <div class="card">
-      <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        📸 Snapshots
-        <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Upload</button>
-      </h2>
-      ${photosHtml}
+    <!-- Household info — moved to bottom + collapsed by default. Members
+         already know who's in their household; this is a reference card,
+         not the headline. Click the chevron to expand. -->
+    <div class="card" style="padding:0">
+      <details id="household-details" style="padding:0">
+        <summary style="list-style:none;padding:18px 22px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:10px">
+            <span class="hh-chev" style="display:inline-block;transition:transform .15s;font-size:12px;color:var(--muted)">▶</span>
+            <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
+          </span>
+          ${dueText}
+        </summary>
+        <div style="padding:0 22px 22px">
+          <div class="meta-grid">
+            ${household.tier ? `<div class="cell"><div class="lbl">Tier</div><div class="val">${escapeHtml(household.tier)}</div></div>` : ''}
+            ${household.fob_number ? `<div class="cell"><div class="lbl">Fob #</div><div class="val">${escapeHtml(household.fob_number)}</div></div>` : ''}
+            ${household.address ? `<div class="cell"><div class="lbl">Address</div><div class="val">${escapeHtml(household.address)}${household.city || household.zip ? '<br><span style="font-weight:400;color:var(--muted)">' + escapeHtml([household.city, household.zip].filter(Boolean).join(', ')) + '</span>' : ''}</div></div>` : ''}
+            ${household.emergency_contact ? `<div class="cell"><div class="lbl">Emergency</div><div class="val">${escapeHtml(household.emergency_contact)}</div></div>` : ''}
+          </div>
+          <h3 style="margin-top:20px">Members</h3>
+          ${memberHtml}
+        </div>
+      </details>
     </div>
-
-    <div class="card">
-      <h2>Latest news</h2>
-      ${postsHtml}
-    </div>
+    <style>
+      details[open] > summary .hh-chev { transform: rotate(90deg); }
+      details > summary::-webkit-details-marker { display: none; }
+    </style>
   `;
 
   // Render shared month-grid widget. Reuse the same fmtHourLabel logic the
