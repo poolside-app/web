@@ -728,8 +728,51 @@ async function rotateBridgeSecret() {
   try {
     const r = await gateApi('rotate_bridge_secret');
     if (!r.ok) throw new Error(r.error || 'Rotation failed');
-    prompt('New bridge secret (save this — it can\'t be recovered):', r.bridge_secret);
+    showBridgeCredsModal(r.bridge_id, r.bridge_secret);
   } catch (e) { alert(e.message); }
+}
+
+// Modal that shows BOTH bridge_id and bridge_secret with one-click copy
+// for each, plus the .env block ready to paste into the on-site bridge.
+// This replaces the prior prompt() dialog which only showed the secret
+// and was easy to dismiss without copying.
+function showBridgeCredsModal(bridgeId, bridgeSecret) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:80;padding:20px';
+  const escapeAttr = v => String(v).replace(/"/g, '&quot;');
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;padding:24px;max-width:560px;width:100%">
+      <h2 style="margin:0 0 6px;font-family:'Fraunces',Georgia,serif;color:var(--blue)">Bridge credentials</h2>
+      <p style="margin:6px 0 14px;color:var(--muted);font-size:13.5px;line-height:1.5">
+        Save these to the bridge's <code>.env</code> file on the on-site PC.
+        <b>The secret only displays here — once you close this dialog, you'd have to rotate again to see it.</b>
+      </p>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">BRIDGE_ID</label>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="bcm-id" value="${escapeAttr(bridgeId)}" readonly style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:13px 'Menlo','Consolas',monospace;background:#fbfaf4">
+        <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('bcm-id').value).then(() => this.textContent='Copied ✓')">Copy</button>
+      </div>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">BRIDGE_SECRET</label>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <input id="bcm-secret" value="${escapeAttr(bridgeSecret)}" readonly style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:13px 'Menlo','Consolas',monospace;background:#fbfaf4">
+        <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('bcm-secret').value).then(() => this.textContent='Copied ✓')">Copy</button>
+      </div>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">Or paste this entire block into <code>.env</code></label>
+      <textarea id="bcm-env" readonly rows="7" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font:12.5px 'Menlo','Consolas',monospace;background:#fbfaf4;resize:vertical">SUPABASE_URL=https://sdewylbddkcvidwosgxo.supabase.co
+BRIDGE_ID=${escapeAttr(bridgeId)}
+BRIDGE_SECRET=${escapeAttr(bridgeSecret)}
+POLL_SEC=1.5
+HEARTBEAT_SEC=30
+STALE_COMMAND_SEC=60</textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+        <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('bcm-env').value).then(() => this.textContent='Copied entire block ✓')">Copy whole block</button>
+        <button class="btn btn-primary" onclick="this.closest('div[style*=fixed]').remove()" style="background:var(--blue);color:#fff">Done</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  // Auto-select the secret on open so Cmd-C works immediately
+  setTimeout(() => document.getElementById('bcm-secret')?.select(), 100);
 }
 
 async function loadRecentUnlocks() {
