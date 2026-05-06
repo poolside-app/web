@@ -1019,6 +1019,30 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
             displayName: d.tenant.display_name,
           });
         }
+        // Apply page heading override + season/freeze gating.
+        const headingOverride = d.public_settings?.apply?.heading_override;
+        if (headingOverride) {
+          const h = document.getElementById('title');
+          if (h) h.textContent = headingOverride;
+          document.title = headingOverride + ' — Poolside';
+        }
+        const seasonOpen = d.public_settings?.season?.open !== false;
+        const frozen     = !!d.public_settings?.season?.memberships_frozen;
+        if (!seasonOpen || frozen) {
+          const formCard = document.getElementById('form');
+          if (formCard) {
+            const reason = !seasonOpen
+              ? (d.public_settings?.season?.closed_message || 'The pool is closed for the off-season — applications open back up next season.')
+              : 'Memberships are paused right now. The board will reopen applications soon — feel free to reach out in the meantime.';
+            formCard.innerHTML = `
+              <div style="text-align:center;padding:30px 16px">
+                <div style="font-size:42px;line-height:1;margin-bottom:10px">⏸️</div>
+                <h1 style="color:var(--blue)">Applications closed</h1>
+                <p class="lede" style="margin-top:10px">${reason.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</p>
+                <p style="margin-top:14px"><a href="/" style="color:var(--blue);font-weight:600">← Back to club home</a></p>
+              </div>`;
+          }
+        }
       }
     }
   } catch { /* keep generic */ }

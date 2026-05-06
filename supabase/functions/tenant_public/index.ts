@@ -106,6 +106,32 @@ Deno.serve(async (req) => {
         message:          (v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.message ?? null,
       },
     },
+    // Bishop-parity surfaces — driven by settings.value.* keys, surfaced
+    // here so the public + member home pages can render in one round-trip.
+    fundraiser: {
+      enabled:        !!(v.fundraiser as Record<string, unknown> | undefined)?.enabled,
+      title:          (v.fundraiser as Record<string, unknown> | undefined)?.title          ?? null,
+      raised_cents:   Number((v.fundraiser as Record<string, unknown> | undefined)?.raised_cents ?? 0),
+      goal_cents:     Number((v.fundraiser as Record<string, unknown> | undefined)?.goal_cents   ?? 0),
+      donate_message: (v.fundraiser as Record<string, unknown> | undefined)?.donate_message ?? null,
+    },
+    season: {
+      open:               (v.season as Record<string, unknown> | undefined)?.open !== false,  // default open
+      memberships_frozen: !!(v.season as Record<string, unknown> | undefined)?.memberships_frozen,
+      closed_message:     (v.season as Record<string, unknown> | undefined)?.closed_message ?? null,
+      start_date:         (v.season as Record<string, unknown> | undefined)?.start_date ?? null,
+      end_date:           (v.season as Record<string, unknown> | undefined)?.end_date   ?? null,
+    },
+    apply: {
+      heading_override: (v.apply as Record<string, unknown> | undefined)?.heading_override ?? null,
+    },
+    public: {
+      show_member_count: (v.public as Record<string, unknown> | undefined)?.show_member_count !== false,  // default on
+    },
+    sponsors_config: {
+      popup_enabled:   !!(v.sponsors_config as Record<string, unknown> | undefined)?.popup_enabled,
+      popup_frequency: ((v.sponsors_config as Record<string, unknown> | undefined)?.popup_frequency as string) || 'once_per_session',
+    },
   };
 
   // Public-visibility documents only — members see member-visibility ones via
@@ -177,6 +203,38 @@ Deno.serve(async (req) => {
   const rawTiers = (settings?.value as Record<string, unknown> | undefined)?.membership_tiers;
   const tiers = Array.isArray(rawTiers) ? rawTiers : [];
 
+  // Active sponsors — sorted by sort_order, name. Drives the home strip +
+  // the rotating popup on app load. Trims the field list so leaked rows
+  // don't expose admin notes etc.
+  const { data: sponsorsData } = await sb.from('sponsors')
+    .select('id, name, logo_url, link_url, description, tier, sort_order')
+    .eq('tenant_id', tenant.id)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .order('name',       { ascending: true });
+  const sponsors = sponsorsData ?? [];
+
+  // Member-count ticker — household + active-member totals across the tenant.
+  // Cheap aggregate; clients render "X households · Y members" next to the
+  // hero. Skipped if admin disabled it via settings.public.show_member_count.
+  let memberCount: { households: number; members: number } | null = null;
+  if (public_settings.public.show_member_count) {
+    const [{ count: hh }, { count: mm }] = await Promise.all([
+      sb.from('households').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant.id).eq('active', true),
+      sb.from('household_members').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant.id).eq('active', true),
+    ]);
+    memberCount = { households: hh ?? 0, members: mm ?? 0 };
+  }
+
   const { id: _id, ...publicTenant } = tenant;
-  return jsonResponse({ ok: true, tenant: publicTenant, public_settings, posts, events, photos, documents, programs, tiers });
+  return jsonResponse({
+    ok: true,
+    tenant: publicTenant,
+    public_settings,
+    posts, events, photos, documents, programs, tiers,
+    sponsors,
+    member_count: memberCount,
+  });
 });

@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sponsors — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  h3 { font-size: 15px; margin: 0 0 6px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:880px; width:100%; margin:0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:12px; flex-wrap:wrap; }
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; }
+  .btn:hover { background:var(--blue-2); }
+  .btn:disabled { opacity:.55; cursor:not-allowed; }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .btn-ghost:hover { background:var(--blue-l); }
+  .btn-danger { background:var(--red); color:#fff; }
+  .btn-sm { padding:6px 12px; font-size:12px; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; box-shadow:var(--shadow); margin-bottom:14px; }
+  .card.inactive { opacity:.55; background:var(--bg-2); }
+  .row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .sponsor-logo-tile { width:72px; height:72px; border-radius:14px; border:1px solid var(--border); background:var(--bg-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
+  .sponsor-logo-tile img { max-width:100%; max-height:100%; object-fit:contain; }
+  .grow { flex:1; min-width:200px; }
+  .meta { font-size:12px; color:var(--muted); margin-top:4px; }
+  .pill { display:inline-block; font:700 10px 'Inter'; letter-spacing:.04em; text-transform:uppercase; padding:2px 8px; border-radius:999px; }
+  .pill.basic   { background:#dbeafe; color:#1e40af; }
+  .pill.premium { background:#fef3c7; color:#92400e; }
+  .empty { padding:60px 22px; text-align:center; color:var(--muted); border:2px dashed var(--border); border-radius:var(--r-md); }
+
+  label { display:block; font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+  input[type=text], input[type=url], input[type=number], input[type=date], select, textarea {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-md);
+    font:14px/1.4 'Inter'; background:#fff; color:var(--text);
+  }
+  textarea { font-family:inherit; resize:vertical; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue); }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+  .scrim { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:32px 16px; z-index:50; }
+  .scrim.open { display:flex; }
+  .modal { background:#fff; border-radius:var(--r-lg); padding:26px; max-width:560px; width:100%; box-shadow:0 30px 60px -10px rgba(15,23,42,.35); }
+  .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px 'Inter'; opacity:0; transition:.22s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/club/admin/" class="logo"><span class="logo-dot"></span> Poolside Admin</a>
+  <div class="who"><span id="whoami">Loading…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/sponsors.html" class="on">Sponsors</a>
+  <a href="/club/admin/feedback.html">Feedback</a>
+  <a href="/club/admin/emails.html">Emails</a>
+  <a href="/club/admin/policies.html">Policies</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="toolbar">
+    <h1>Sponsors</h1>
+    <button class="btn" onclick="openCreate()">+ Add sponsor</button>
+  </div>
+
+  <div class="card">
+    <h2>App-load popup</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Show one of your sponsors as a friendly pop-up when members or visitors open the app. Rotates round-robin through all active sponsors so each gets exposure.</p>
+    <div class="row2">
+      <div>
+        <label>Popup is</label>
+        <select id="popup_enabled">
+          <option value="false">Off — just show the sponsor strip</option>
+          <option value="true">On — also show a rotating popup</option>
+        </select>
+      </div>
+      <div>
+        <label>Popup frequency</label>
+        <select id="popup_frequency">
+          <option value="every_load">Every app load</option>
+          <option value="once_per_session">Once per session (recommended)</option>
+          <option value="once_per_day">Once per day per visitor</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-ghost" style="margin-top:12px" onclick="savePopupConfig()">Save popup settings</button>
+  </div>
+
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<!-- Sponsor edit/create modal -->
+<div class="scrim" id="modal-scrim" onclick="if (event.target === this) closeModal()">
+  <div class="modal">
+    <h2 id="m-title">Add sponsor</h2>
+    <label>Business name *</label>
+    <input id="m-name" type="text" maxlength="120">
+
+    <label>Logo URL</label>
+    <input id="m-logo-url" type="url" placeholder="https://...">
+    <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Or upload below — square or wide PNG/JPG with transparent or white background works best.</p>
+    <input type="file" id="m-logo-file" accept="image/jpeg,image/png,image/webp,image/gif" style="margin-top:8px">
+    <p style="font-size:11px;color:var(--muted);margin-top:4px" id="m-logo-status"></p>
+
+    <label>Website / link</label>
+    <input id="m-link-url" type="url" placeholder="https://...">
+
+    <label>Description <span style="color:var(--muted);font-weight:500;font-size:11px">(shown in the popup; keep it short)</span></label>
+    <textarea id="m-description" rows="3" maxlength="500" placeholder="Family-owned diner, two blocks from the pool — show your member card for 10% off."></textarea>
+
+    <div class="row2">
+      <div>
+        <label>Tier</label>
+        <select id="m-tier">
+          <option value="basic">Basic</option>
+          <option value="premium">Premium</option>
+        </select>
+      </div>
+      <div>
+        <label>Sort order <span style="color:var(--muted);font-weight:500;font-size:11px">(lower = earlier)</span></label>
+        <input id="m-sort-order" type="number" value="0">
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>Paid through <span style="color:var(--muted);font-weight:500;font-size:11px">(optional reminder)</span></label>
+        <input id="m-paid-through" type="date">
+      </div>
+      <div>
+        <label>Active</label>
+        <select id="m-active">
+          <option value="true">Show on home pages</option>
+          <option value="false">Hide</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="m-delete" onclick="deleteSponsor()" style="display:none">Delete</button>
+      <button class="btn" id="m-save" onclick="saveSponsor()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved.</div>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const URL_LIST     = `${SUPABASE_URL}/functions/v1/sponsors_admin`;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const UPLOAD_URL   = `${SUPABASE_URL}/functions/v1/tenant_upload`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let SPONSORS = [];
+let LAST_SETTINGS = {};
+let EDITING_ID = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function logout() {
+  localStorage.removeItem('poolside_tenant_token');
+  localStorage.removeItem('poolside_tenant_user');
+  localStorage.removeItem('poolside_tenant_tenant');
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+function val(id) { return (document.getElementById(id)?.value ?? '').trim(); }
+function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v ?? ''; }
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = kind === 'err' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+async function call(url, action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${t}`},
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+async function loadMe() {
+  try {
+    const me = await call(ME_URL, 'me');
+    if (me.ok && me.user) document.getElementById('whoami').textContent = me.user.name || me.user.email || 'Admin';
+  } catch {}
+}
+
+async function loadSettings() {
+  try {
+    const s = await call(SETTINGS_URL, 'load');
+    if (s.ok) {
+      LAST_SETTINGS = s.value || {};
+      const cfg = LAST_SETTINGS.sponsors_config || {};
+      setVal('popup_enabled',   cfg.popup_enabled ? 'true' : 'false');
+      setVal('popup_frequency', cfg.popup_frequency || 'once_per_session');
+    }
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function savePopupConfig() {
+  try {
+    const value = {
+      ...LAST_SETTINGS,
+      sponsors_config: {
+        popup_enabled:   val('popup_enabled') === 'true',
+        popup_frequency: val('popup_frequency') || 'once_per_session',
+      },
+    };
+    const r = await call(SETTINGS_URL, 'save', { value });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    LAST_SETTINGS = value;
+    toast('Popup settings saved.');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadSponsors() {
+  try {
+    const r = await call(URL_LIST, 'list');
+    if (!r.ok) throw new Error(r.error || 'Load failed');
+    SPONSORS = r.sponsors || [];
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function render() {
+  const root = document.getElementById('list');
+  if (!SPONSORS.length) {
+    root.innerHTML = `<div class="empty">No sponsors yet. Tap <b>+ Add sponsor</b> to invite a local business.</div>`;
+    return;
+  }
+  root.innerHTML = SPONSORS.map(s => `
+    <div class="card ${s.active ? '' : 'inactive'}" onclick="openEdit('${escapeAttr(s.id)}')" style="cursor:pointer">
+      <div class="row">
+        <div class="sponsor-logo-tile">
+          ${s.logo_url ? `<img src="${escapeAttr(s.logo_url)}" alt="">` : `<span style="font:600 11px 'Inter';color:var(--muted)">No logo</span>`}
+        </div>
+        <div class="grow">
+          <h3>${escapeHtml(s.name)} <span class="pill ${s.tier}">${s.tier}</span>${s.active ? '' : ' <span class="pill" style="background:#e5e7eb;color:#475569">Hidden</span>'}</h3>
+          ${s.description ? `<div style="font-size:13px;color:var(--text);margin-top:4px">${escapeHtml(s.description)}</div>` : ''}
+          <div class="meta">
+            ${s.link_url ? `<a href="${escapeAttr(s.link_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(s.link_url.replace(/^https?:\/\//,''))}</a>` : '—'}
+            ${s.paid_through ? ` · Paid through ${escapeHtml(s.paid_through)}` : ''}
+            · Sort #${s.sort_order ?? 0}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openCreate() {
+  EDITING_ID = null;
+  document.getElementById('m-title').textContent = 'Add sponsor';
+  document.getElementById('m-delete').style.display = 'none';
+  setVal('m-name', ''); setVal('m-logo-url', ''); setVal('m-link-url', '');
+  setVal('m-description', ''); setVal('m-tier', 'basic'); setVal('m-sort-order', 0);
+  setVal('m-paid-through', ''); setVal('m-active', 'true');
+  document.getElementById('m-logo-file').value = '';
+  document.getElementById('m-logo-status').textContent = '';
+  document.getElementById('modal-scrim').classList.add('open');
+}
+
+function openEdit(id) {
+  const s = SPONSORS.find(x => x.id === id);
+  if (!s) return;
+  EDITING_ID = id;
+  document.getElementById('m-title').textContent = 'Edit sponsor';
+  document.getElementById('m-delete').style.display = '';
+  setVal('m-name', s.name); setVal('m-logo-url', s.logo_url);
+  setVal('m-link-url', s.link_url); setVal('m-description', s.description);
+  setVal('m-tier', s.tier || 'basic'); setVal('m-sort-order', s.sort_order ?? 0);
+  setVal('m-paid-through', s.paid_through || ''); setVal('m-active', s.active ? 'true' : 'false');
+  document.getElementById('m-logo-file').value = '';
+  document.getElementById('m-logo-status').textContent = '';
+  document.getElementById('modal-scrim').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-scrim').classList.remove('open'); }
+
+document.getElementById('m-logo-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const status = document.getElementById('m-logo-status');
+  if (file.size > 10 * 1024 * 1024) { status.textContent = 'File too large (max 10 MB).'; return; }
+  status.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] || '');
+      r.onerror = () => rej(new Error('Could not read file'));
+      r.readAsDataURL(file);
+    });
+    const t = token();
+    const res = await fetch(UPLOAD_URL, {
+      method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${t}`},
+      body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'Upload failed');
+    setVal('m-logo-url', d.url);
+    status.textContent = '✓ Uploaded.';
+  } catch (err) {
+    status.textContent = err.message || 'Upload failed';
+  }
+});
+
+async function saveSponsor() {
+  const sponsor = {
+    name:        val('m-name'),
+    logo_url:    val('m-logo-url') || null,
+    link_url:    val('m-link-url') || null,
+    description: val('m-description') || null,
+    tier:        val('m-tier') || 'basic',
+    sort_order:  parseInt(val('m-sort-order') || '0', 10) || 0,
+    paid_through: val('m-paid-through') || null,
+    active:      val('m-active') === 'true',
+  };
+  if (!sponsor.name) { toast('Name is required', 'err'); return; }
+  const btn = document.getElementById('m-save'); btn.disabled = true;
+  try {
+    const r = EDITING_ID
+      ? await call(URL_LIST, 'update', { id: EDITING_ID, patch: sponsor })
+      : await call(URL_LIST, 'create', { sponsor });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    closeModal();
+    toast('Sponsor saved.');
+    await loadSponsors();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteSponsor() {
+  if (!EDITING_ID) return;
+  if (!confirm('Permanently remove this sponsor?')) return;
+  try {
+    const r = await call(URL_LIST, 'delete', { id: EDITING_ID });
+    if (!r.ok) throw new Error(r.error || 'Delete failed');
+    closeModal();
+    toast('Sponsor removed.');
+    await loadSponsors();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  await Promise.all([loadMe(), loadSettings(), loadSponsors()]);
+})();
+</script>
+</body>
+</html>

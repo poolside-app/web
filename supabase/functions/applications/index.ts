@@ -561,6 +561,7 @@ Deno.serve(async (req) => {
   if (action === 'list') {
     const status = String(body.status ?? 'pending');
     const filter = String(body.filter ?? '');  // 'unpaid' | 'overdue' | ''
+    const year = body.year ? Number(body.year) : null;
     let q = sb.from('applications').select(FIELDS).eq('tenant_id', TID);
     if (status !== 'all') q = q.eq('status', status);
     if (filter === 'unpaid')  q = q.in('payment_status', ['unpaid', 'pending']);
@@ -569,9 +570,30 @@ Deno.serve(async (req) => {
       const tenDaysAgo = new Date(Date.now() - 10 * 86400_000).toISOString();
       q = q.eq('status', 'approved').in('payment_status', ['unpaid','pending']).lt('decided_at', tenDaysAgo);
     }
+    if (year && Number.isFinite(year)) {
+      // Year window in UTC — matches what list_years returns.
+      const start = new Date(Date.UTC(year,     0, 1)).toISOString();
+      const end   = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+      q = q.gte('created_at', start).lt('created_at', end);
+    }
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true, applications: data ?? [] });
+  }
+
+  if (action === 'list_years') {
+    // Distinct list of years (newest first) that have applications. Powers
+    // the year-filter chip row on the admin applications panel.
+    const { data, error } = await sb.from('applications')
+      .select('created_at').eq('tenant_id', TID)
+      .order('created_at', { ascending: false });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    const set = new Set<number>();
+    for (const r of (data ?? [])) {
+      const y = new Date(r.created_at as string).getUTCFullYear();
+      if (Number.isFinite(y)) set.add(y);
+    }
+    return jsonResponse({ ok: true, years: Array.from(set).sort((a,b) => b-a) });
   }
 
   if (action === 'approve') {

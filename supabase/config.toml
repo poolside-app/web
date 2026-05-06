@@ -190,3 +190,14 @@ verify_jwt = false
 # at /manifest.webmanifest via a Vercel rewrite that forwards the slug.
 [functions.tenant_manifest]
 verify_jwt = false
+
+# Anonymous feedback box. submit is public (no auth — anyone can report a
+# pool issue without identifying themselves); list/update_status verify a
+# tenant_admin token inside the function.
+[functions.feedback]
+verify_jwt = false
+
+# Tenant-admin sponsor CRUD. List for the public surface goes through
+# tenant_public to keep the home-page round-trip count low.
+[functions.sponsors_admin]
+verify_jwt = false

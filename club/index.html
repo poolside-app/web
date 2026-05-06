@@ -247,11 +247,129 @@
   <div class="cap" id="lb-cap"></div>
 </div>
 
+<!-- Donate modal — opened from the fundraiser card on the public landing.
+     Uses the tenant's Venmo handle + custom donate message. -->
+<div id="donate-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px;z-index:200" onclick="if (event.target === this) closeDonate()">
+  <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;padding:26px;text-align:center;box-shadow:0 30px 60px -10px rgba(15,23,42,.35)">
+    <h2 id="d-title" style="margin:0 0 8px;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:22px">Donate</h2>
+    <p id="d-msg" style="font-size:13.5px;color:var(--muted);margin:6px 0 14px;line-height:1.55;white-space:pre-wrap"></p>
+    <canvas id="d-qr" style="width:240px;height:240px;border-radius:14px;border:2px solid var(--border);background:#fff;padding:6px;margin:0 auto;display:block"></canvas>
+    <div id="d-handle" style="margin-top:10px;font-size:15px;font-weight:700;color:var(--blue)"></div>
+    <button class="btn" onclick="closeDonate()" style="margin-top:14px;background:transparent;color:var(--blue);border:1.5px solid var(--border);padding:8px 18px;border-radius:10px;cursor:pointer;font:600 13px Inter">Close</button>
+  </div>
+</div>
+
+<!-- Anonymous feedback modal — public visitors and members both. -->
+<div id="feedback-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:flex-start;justify-content:center;overflow-y:auto;padding:32px 16px;z-index:200" onclick="if (event.target === this) closeFeedback()">
+  <div style="background:#fff;border-radius:18px;max-width:520px;width:100%;padding:26px;box-shadow:0 30px 60px -10px rgba(15,23,42,.35)">
+    <h2 style="margin:0;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:22px">💬 Anonymous feedback</h2>
+    <p style="color:var(--muted);font-size:13.5px;margin:6px 0 14px;line-height:1.55">Tell the board about a pool issue or share a comment. We don't track who sent it.</p>
+    <label style="display:block;font:600 11px Inter;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px">Add a photo (optional)</label>
+    <input type="file" id="fb-photo" accept="image/jpeg,image/png,image/webp,image/gif">
+    <img id="fb-photo-preview" src="" style="display:none;margin-top:8px;max-width:100%;border-radius:10px;border:1px solid var(--border)">
+    <label style="display:block;font:600 11px Inter;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px">Your comment *</label>
+    <textarea id="fb-comment" rows="5" maxlength="2000" placeholder="What happened, what should the board know?" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px/1.5 Inter;resize:vertical"></textarea>
+    <p style="font-size:11px;color:var(--muted);margin:6px 0 0">🔒 Anonymous — your name and email are not collected.</p>
+    <div id="fb-err" style="display:none;margin-top:10px;padding:10px 12px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <button onclick="closeFeedback()" style="background:transparent;color:var(--blue);border:1.5px solid var(--border);padding:9px 18px;border-radius:10px;cursor:pointer;font:600 13px Inter">Cancel</button>
+      <button id="fb-submit" onclick="submitFeedback()" style="background:var(--blue);color:#fff;border:0;padding:10px 20px;border-radius:10px;cursor:pointer;font:600 13px Inter">Send</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="/js/sponsor-popup.js" defer></script>
+
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const PUBLIC_LOOKUP = `${SUPABASE_URL}/functions/v1/tenant_public`;
+
+// ── Donate modal (Venmo QR) ───────────────────────────────────────────
+function openDonate() {
+  const ps = window.PUBLIC_DATA && window.PUBLIC_DATA.public_settings || {};
+  const fund = ps.fundraiser || {};
+  const handle = ps.payments && ps.payments.venmo_handle;
+  document.getElementById('d-title').textContent = fund.title || 'Donate';
+  document.getElementById('d-msg').textContent = fund.donate_message
+    || `Thank you for supporting ${(window.PUBLIC_DATA && window.PUBLIC_DATA.tenant && window.PUBLIC_DATA.tenant.display_name) || 'the club'}!`;
+  document.getElementById('d-handle').textContent = handle ? '@' + handle : '';
+  if (handle && typeof qrcode !== 'undefined') {
+    const url = `https://venmo.com/${encodeURIComponent(handle)}`;
+    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+    const canvas = document.getElementById('d-qr');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.height = 240;
+    const cells = qr.getModuleCount(); const size = 240 / cells;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 240, 240);
+    ctx.fillStyle = '#0a3b5c';
+    for (let r = 0; r < cells; r++) for (let c = 0; c < cells; c++) {
+      if (qr.isDark(r, c)) ctx.fillRect(c * size, r * size, size, size);
+    }
+  }
+  document.getElementById('donate-scrim').style.display = 'flex';
+}
+function closeDonate() { document.getElementById('donate-scrim').style.display = 'none'; }
+
+// ── Anonymous feedback modal ──────────────────────────────────────────
+function openFeedback() {
+  document.getElementById('fb-comment').value = '';
+  document.getElementById('fb-photo').value = '';
+  document.getElementById('fb-photo-preview').style.display = 'none';
+  document.getElementById('fb-err').style.display = 'none';
+  document.getElementById('feedback-scrim').style.display = 'flex';
+}
+function closeFeedback() { document.getElementById('feedback-scrim').style.display = 'none'; }
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'fb-photo') {
+    const file = e.target.files && e.target.files[0];
+    const img = document.getElementById('fb-photo-preview');
+    if (file) {
+      const r = new FileReader();
+      r.onload = () => { img.src = r.result; img.style.display = 'block'; };
+      r.readAsDataURL(file);
+    } else { img.style.display = 'none'; }
+  }
+});
+async function submitFeedback() {
+  const errEl = document.getElementById('fb-err'); errEl.style.display = 'none';
+  const comment = document.getElementById('fb-comment').value.trim();
+  if (!comment) { errEl.textContent = 'Please add a comment.'; errEl.style.display = 'block'; return; }
+  const slug = (() => {
+    const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+    return m && m[1] && m[1] !== 'www' ? m[1].toLowerCase() : null;
+  })();
+  if (!slug) { errEl.textContent = 'Cannot submit from this URL.'; errEl.style.display = 'block'; return; }
+  const file = document.getElementById('fb-photo').files[0] || null;
+  let photo_content_type = null; let photo_base64 = null;
+  if (file) {
+    if (file.size > 8 * 1024 * 1024) { errEl.textContent = 'Photo too large (max 8 MB).'; errEl.style.display = 'block'; return; }
+    photo_content_type = file.type;
+    photo_base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] || '');
+      r.onerror = () => rej(new Error('Could not read photo'));
+      r.readAsDataURL(file);
+    });
+  }
+  const btn = document.getElementById('fb-submit'); btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/feedback`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'submit', slug, comment, photo_content_type, photo_base64 }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Submit failed');
+    closeFeedback();
+    alert('✓ Thanks — your feedback is on the way to the board.');
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -363,7 +481,11 @@ function fmtHourLabel(hhmm) {
   return m[1] === '00' ? `${h}${ap}` : `${h}:${m[1]}${ap}`;
 }
 
-function renderTenant(t, ps, posts, events, photos, documents, programs) {
+function renderTenant(t, ps, posts, events, photos, documents, programs, sponsors, memberCount) {
+  // Stash for donate modal + feedback submit so they can read public_settings
+  // without re-fetching.
+  window.PUBLIC_DATA = { tenant: t, public_settings: ps, sponsors: sponsors || [], member_count: memberCount || null };
+
   GALLERY = photos || [];
 
   // Apply tenant primary color across the page (override --blue + --blue-2).
@@ -426,7 +548,79 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
   if (opens && closes) stripCells.push(`<div class="stat"><div class="lbl">Today's hours</div><div class="val">${escapeHtml(opens)} – ${escapeHtml(closes)}</div></div>`);
   if (location)        stripCells.push(`<div class="stat"><div class="lbl">Where</div><div class="val">${escapeHtml(location)}</div></div>`);
 
+  // Season closed → hide "Apply for membership" CTA. Memberships frozen
+  // (open season but not accepting applications) → hide too.
+  const seasonOpen = ps?.season?.open !== false;
+  const allowApply = seasonOpen && !ps?.season?.memberships_frozen;
+
+  const seasonBanner = !seasonOpen ? `
+    <section style="padding:18px 22px 0;max-width:1120px;margin:0 auto">
+      <div style="background:linear-gradient(90deg,#fee2e2,#fecaca);border:1px solid #fca5a5;border-radius:14px;padding:14px 18px;display:flex;gap:10px;align-items:flex-start">
+        <div style="font-size:22px;line-height:1">🏝️</div>
+        <div>
+          <div style="font-weight:700;color:#7f1d1d;font-family:'Fraunces',Georgia,serif;font-size:17px">Closed for the season</div>
+          <div style="font-size:13px;color:#991b1b;margin-top:2px;line-height:1.5">${escapeHtml(ps?.season?.closed_message || 'Pool is closed for the off-season — see you next year!')}</div>
+        </div>
+      </div>
+    </section>` : '';
+
+  const sponsorStripHtml = (sponsors && sponsors.length) ? `
+    <section style="padding:14px 22px 0;max-width:1120px;margin:0 auto">
+      <div style="background:var(--bg-2);border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:12px;overflow-x:auto;scrollbar-width:none">
+        <span style="font:600 10px 'Inter';color:var(--muted);letter-spacing:.06em;text-transform:uppercase;flex-shrink:0;padding-right:8px;border-right:1px solid var(--border)">Sponsors</span>
+        ${sponsors.map(s => `
+          <a href="${s.link_url ? escapeAttr(s.link_url) : '#'}"
+             ${s.link_url ? 'target="_blank" rel="noopener"' : 'onclick="event.preventDefault()"'}
+             title="${escapeAttr(s.name)}"
+             style="flex-shrink:0;height:40px;padding:4px 8px;background:#fff;border:1px solid var(--border);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none">
+            ${s.logo_url
+              ? `<img src="${escapeAttr(s.logo_url)}" alt="${escapeAttr(s.name)}" style="max-height:32px;max-width:90px;object-fit:contain">`
+              : `<span style="font:600 12px 'Inter';color:var(--blue);padding:0 6px;white-space:nowrap">${escapeHtml(s.name)}</span>`}
+          </a>`).join('')}
+      </div>
+    </section>` : '';
+
+  const memberCountTicker = (memberCount && (memberCount.households || memberCount.members) && ps?.public?.show_member_count !== false)
+    ? `<div style="text-align:center;padding:12px 22px 0;font-size:13px;color:var(--muted)"><b style="color:var(--blue)">${memberCount.households}</b> households · <b style="color:var(--blue)">${memberCount.members}</b> members</div>`
+    : '';
+
+  const fund = ps?.fundraiser;
+  const fmtMoney = (c) => '$' + (c / 100).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const fundraiserSection = (fund && fund.enabled) ? (() => {
+    const goal = Math.max(0, fund.goal_cents || 0);
+    const raised = Math.max(0, fund.raised_cents || 0);
+    const pct = goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
+    const venmo = ps?.payments?.venmo_handle;
+    return `
+    <section style="padding:18px 22px 0;max-width:1120px;margin:0 auto">
+      <div class="card" style="text-align:center;padding:22px;background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)">
+        <div style="font:600 11px 'Inter';color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Fundraiser</div>
+        <h2 style="font-family:'Fraunces',Georgia,serif;font-size:22px;color:var(--blue);margin:0 0 14px">${escapeHtml(fund.title || 'Club Fund')}</h2>
+        <div style="position:relative;height:36px;background:var(--bg-2);border-radius:999px;overflow:hidden;margin-bottom:10px">
+          <div style="position:absolute;inset:0 ${100 - pct}% 0 0;background:linear-gradient(90deg,var(--sun),#fbbf24);transition:.5s"></div>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 14px 'Inter';color:var(--blue);text-shadow:0 1px 2px rgba(255,255,255,.6)">${pct}%</div>
+        </div>
+        <div style="font-size:14px;color:var(--muted);font-weight:600">Raised <b style="color:var(--blue)">${fmtMoney(raised)}</b> of <b style="color:var(--blue)">${fmtMoney(goal)}</b></div>
+        ${venmo ? `<button class="btn" style="margin-top:14px;background:var(--sun);color:var(--blue);font-weight:700;border:0;padding:11px 22px;border-radius:12px;cursor:pointer" onclick="openDonate()">💚 Donate via Venmo</button>` : ''}
+      </div>
+    </section>`;
+  })() : '';
+
+  const feedbackSection = `
+    <section style="padding:18px 22px 0;max-width:1120px;margin:0 auto">
+      <details class="card" style="padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)">
+        <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--blue)">💬 Anonymous feedback &amp; pool issues</span>
+          <span style="font-size:12px;color:var(--muted)">Tap to send</span>
+        </summary>
+        <p style="font-size:13.5px;color:var(--muted);margin:10px 0 0;line-height:1.5">Spotted a broken tile, dirty bathroom, or want to suggest something? Send a photo + comment to the board — anonymously.</p>
+        <button class="btn" style="margin-top:12px;background:var(--blue);color:#fff;border:0;padding:10px 18px;border-radius:10px;cursor:pointer" onclick="openFeedback()">Send feedback</button>
+      </details>
+    </section>`;
+
   document.getElementById('root').innerHTML = `
+    ${seasonBanner}
+    ${sponsorStripHtml}
     <section class="hero">
       <div class="hero-bg ${hasPhoto ? 'with-photo' : ''}" style="${bgStyle}"></div>
       ${statusPill}
@@ -437,11 +631,13 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
         ${location ? `<p class="location">📍 ${escapeHtml(location)}</p>` : ''}
         <div class="actions">
           <a class="btn" href="/m/login.html">Member sign in</a>
-          <a class="btn ghost" href="/apply.html">Apply for membership</a>
+          ${allowApply ? `<a class="btn ghost" href="/apply.html">Apply for membership</a>` : ''}
         </div>
       </div>
     </section>
+    ${memberCountTicker}
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
+    ${fundraiserSection}
     ${(photos && photos.length) ? `
       <section class="carousel-wrap" style="padding: 28px 22px 12px">
         <h2 style="max-width:1120px;margin:0 auto 14px;padding:0 4px">📸 Snapshots</h2>
@@ -539,6 +735,7 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
         `).join('')}
       </section>
     ` : ''}
+    ${feedbackSection}
   `;
 
   // Render the shared month-grid widget after the HTML is in place.
@@ -590,7 +787,16 @@ function renderTenant(t, ps, posts, events, photos, documents, programs) {
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
-    renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || [], data.photos || [], data.documents || [], data.programs || []);
+    renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || [], data.photos || [], data.documents || [], data.programs || [], data.sponsors || [], data.member_count || null);
+
+    // Sponsor popup — rotates through active sponsors per the tenant's
+    // configured frequency (every load / once per session / once per day).
+    if (window.SponsorPopup) {
+      window.SponsorPopup.maybeShow({
+        sponsors: data.sponsors || [],
+        config:   (data.public_settings && data.public_settings.sponsors_config) || {},
+      });
+    }
   } catch (e) {
     document.getElementById('root').innerHTML = `
       <div class="err">

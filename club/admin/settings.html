@@ -112,6 +112,8 @@
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Announcements</a>
   <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/sponsors.html">Sponsors</a>
+  <a href="/club/admin/feedback.html">Feedback</a>
   <a href="/club/admin/emails.html">Emails</a>
   <a href="/club/admin/policies.html">Policies</a>
   <a href="/club/admin/photos.html">Photos</a>
@@ -201,6 +203,64 @@
         <button type="button" class="btn-ghost btn" onclick="regenerateAndSaveIcons()" style="font-size:12px">Regenerate &amp; save icon now</button>
       </div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Season &amp; memberships</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Toggle the season open/closed banner and freeze new applications for the off-season. Photo uploads + member features stay available either way.</p>
+    <div class="row2">
+      <div>
+        <label>Season is</label>
+        <select id="season_open">
+          <option value="true">Open — show normal home page</option>
+          <option value="false">Closed for the off-season</option>
+        </select>
+      </div>
+      <div>
+        <label>Memberships are</label>
+        <select id="memberships_frozen">
+          <option value="false">Open — accept new applications</option>
+          <option value="true">Frozen — block new applications</option>
+        </select>
+      </div>
+    </div>
+    <label style="margin-top:12px">Closed-banner message <span style="color:var(--muted);font-weight:500;font-size:11px">(shown when the season is closed)</span></label>
+    <input type="text" id="season_closed_message" placeholder="See you next May! Pool is closed for the season.">
+    <div class="row2" style="margin-top:12px">
+      <div><label>Season start <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="date" id="season_start_date"></div>
+      <div><label>Season end <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="date" id="season_end_date"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Fundraiser thermometer</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Always-visible card on the public + member home with a progress bar and Donate button. Donations route to your Venmo handle (set under Payments).</p>
+    <label>Show the thermometer</label>
+    <select id="fundraiser_enabled">
+      <option value="false">Off</option>
+      <option value="true">On — show on home pages</option>
+    </select>
+    <div class="row2" style="margin-top:12px">
+      <div><label>Fund title</label><input type="text" id="fundraiser_title" placeholder="Resurfacing Fund"></div>
+      <div></div>
+    </div>
+    <div class="row2" style="margin-top:12px">
+      <div><label>Raised so far ($)</label><input type="number" min="0" step="1" id="fundraiser_raised" placeholder="0"></div>
+      <div><label>Goal ($)</label><input type="number" min="0" step="1" id="fundraiser_goal" placeholder="30000"></div>
+    </div>
+    <label style="margin-top:12px">Donate-modal message <span style="color:var(--muted);font-weight:500;font-size:11px">(shown above the Venmo QR)</span></label>
+    <textarea id="fundraiser_donate_message" rows="3" placeholder="Thanks for supporting the pool! Every dollar goes toward the resurfacing project."></textarea>
+  </div>
+
+  <div class="card">
+    <h2>Public page extras</h2>
+    <label>Member-count ticker</label>
+    <select id="show_member_count">
+      <option value="true">Show "X households · Y members" on home pages</option>
+      <option value="false">Hide</option>
+    </select>
+    <label style="margin-top:14px">Apply page heading override <span style="color:var(--muted);font-weight:500;font-size:11px">(replaces "Membership Application" — leave blank to keep default)</span></label>
+    <input type="text" id="apply_heading_override" placeholder="2026 Membership Application">
   </div>
 
   <div class="card">
@@ -625,6 +685,24 @@ function populate(s) {
   if (s.pool?.opens_at)  setVal('opens_at', s.pool.opens_at);
   if (s.pool?.closes_at) setVal('closes_at', s.pool.closes_at);
   if (s.pool?.fob_activation_day) setVal('fob_activation_day', s.pool.fob_activation_day);
+
+  // Season toggles + banner
+  setVal('season_open',           s.season?.open === false ? 'false' : 'true');
+  setVal('memberships_frozen',    s.season?.memberships_frozen ? 'true' : 'false');
+  setVal('season_closed_message', s.season?.closed_message);
+  setVal('season_start_date',     s.season?.start_date);
+  setVal('season_end_date',       s.season?.end_date);
+
+  // Fundraiser thermometer
+  setVal('fundraiser_enabled',         s.fundraiser?.enabled ? 'true' : 'false');
+  setVal('fundraiser_title',           s.fundraiser?.title);
+  setVal('fundraiser_raised',          (s.fundraiser?.raised_cents ?? 0) / 100);
+  setVal('fundraiser_goal',            (s.fundraiser?.goal_cents ?? 0) / 100);
+  setVal('fundraiser_donate_message',  s.fundraiser?.donate_message);
+
+  // Public extras
+  setVal('show_member_count',     s.public?.show_member_count === false ? 'false' : 'true');
+  setVal('apply_heading_override', s.apply?.heading_override);
   setChk('feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
   setChk('feat_parties',      s.features?.parties      ?? true);
   setChk('feat_volunteer',    s.features?.volunteer    ?? true);
@@ -667,6 +745,28 @@ function collect(prevSettings) {
       opens_at:           val('opens_at') || null,
       closes_at:          val('closes_at') || null,
       fob_activation_day: val('fob_activation_day') || null,
+    },
+    season: {
+      open:               val('season_open') !== 'false',
+      memberships_frozen: val('memberships_frozen') === 'true',
+      closed_message:     val('season_closed_message') || null,
+      start_date:         val('season_start_date') || null,
+      end_date:           val('season_end_date')   || null,
+    },
+    fundraiser: {
+      enabled:        val('fundraiser_enabled') === 'true',
+      title:          val('fundraiser_title') || null,
+      raised_cents:   Math.max(0, Math.round((Number(val('fundraiser_raised')) || 0) * 100)),
+      goal_cents:     Math.max(0, Math.round((Number(val('fundraiser_goal'))   || 0) * 100)),
+      donate_message: val('fundraiser_donate_message') || null,
+    },
+    public: {
+      ...(prevSettings?.public ?? {}),
+      show_member_count: val('show_member_count') !== 'false',
+    },
+    apply: {
+      ...(prevSettings?.apply ?? {}),
+      heading_override: val('apply_heading_override') || null,
     },
     // Payments (venmo_handle, paypal_link) live under Members → Payments now
     // and save through there; we omit the key entirely so server-side merge

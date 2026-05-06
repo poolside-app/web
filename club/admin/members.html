@@ -134,6 +134,8 @@
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Announcements</a>
   <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/sponsors.html">Sponsors</a>
+  <a href="/club/admin/feedback.html">Feedback</a>
   <a href="/club/admin/emails.html">Emails</a>
   <a href="/club/admin/policies.html">Policies</a>
   <a href="/club/admin/photos.html">Photos</a>
@@ -178,6 +180,9 @@
           <button class="on" data-filter="">Any payment</button>
           <button data-filter="unpaid">Unpaid</button>
           <button data-filter="overdue">Overdue 10d+</button>
+        </div>
+        <div class="filter-row" id="app-year-filter" style="border-left:1px solid var(--border);padding-left:14px">
+          <button class="on" data-year="">All years</button>
         </div>
       </div>
     </div>
@@ -727,6 +732,7 @@ function exportCsv() {
 const App = (() => {
   let STATUS = 'pending';
   let FILTER = '';
+  let YEAR   = null;     // null = "all years"
   let SELECTED = null;
   let CACHE = [];
 
@@ -778,12 +784,12 @@ const App = (() => {
 
   async function refresh() {
     try {
-      const data = await call(APPS_URL, 'list', { status: STATUS, filter: FILTER });
+      const data = await call(APPS_URL, 'list', { status: STATUS, filter: FILTER, year: YEAR });
       if (!data.ok) throw new Error(data.error || 'Failed to load');
       CACHE = data.applications || [];
       applySearch();
       // Update sub-tab badge with pending count (regardless of current filter)
-      const pendingData = STATUS === 'pending'
+      const pendingData = STATUS === 'pending' && !YEAR
         ? { applications: CACHE.filter(a => a.status === 'pending') }
         : await call(APPS_URL, 'list', { status: 'pending' });
       const pending = (pendingData.applications || []).length;
@@ -791,6 +797,28 @@ const App = (() => {
     } catch (e) {
       document.getElementById('app-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
     }
+  }
+
+  async function loadYearFilter() {
+    try {
+      const data = await call(APPS_URL, 'list_years');
+      if (!data.ok) return;
+      const years = data.years || [];
+      const wrap = document.getElementById('app-year-filter');
+      if (!wrap) return;
+      // "All years" + most recent 6 years.
+      wrap.innerHTML = `<button class="on" data-year="">All years</button>`
+        + years.slice(0, 6).map(y => `<button data-year="${y}">${y}</button>`).join('');
+      wrap.querySelectorAll('button').forEach(b => {
+        b.addEventListener('click', () => {
+          wrap.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+          b.classList.add('on');
+          const v = b.dataset.year || '';
+          YEAR = v ? Number(v) : null;
+          refresh();
+        });
+      });
+    } catch { /* non-fatal */ }
   }
 
   function openModal(id, rows) {
@@ -954,7 +982,10 @@ const App = (() => {
     });
   });
 
-  return { refresh, applySearch, openModal, closeM, approve, reject, verify, reminder };
+  // Populate year-filter chips on first paint of the applications panel.
+  loadYearFilter();
+
+  return { refresh, applySearch, openModal, closeM, approve, reject, verify, reminder, loadYearFilter };
 })();
 
 // ── Tiers namespace ────────────────────────────────────────────────────
