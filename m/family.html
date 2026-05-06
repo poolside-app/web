@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Family — Poolside</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" id="apple-touch-icon" href="">
+<meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
+<script src="/js/pwa.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js" defer></script>
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  h3 { font-size: 15px; margin: 0 0 6px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor: pointer; }
+  main { flex:1; padding:22px 16px 30px; max-width:760px; width:100%; margin:0 auto; }
+  .back { display:inline-flex; align-items:center; gap:6px; font:600 13px 'Inter'; color:var(--blue); text-decoration:none; padding:8px 0 16px; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .card.danger { border-color:#fecaca; background:#fef2f2; }
+  .card .card-eyebrow { font:700 11px 'Inter'; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+
+  label { display:block; font:600 11px 'Inter'; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+  input[type=text], input[type=tel], input[type=email], input[type=date], input[type=number], select, textarea {
+    width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:var(--r-md);
+    font:14px/1.4 'Inter'; background:#fff; color:var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue); }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width: 520px) { .row2 { grid-template-columns:1fr; } }
+
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; }
+  .btn:hover { background:var(--blue-2); }
+  .btn:disabled { opacity:.55; cursor:not-allowed; }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .btn-ghost:hover { background:var(--blue-l); }
+  .btn-danger { background:var(--red); color:#fff; }
+  .btn-sm { padding:7px 12px; font-size:12px; }
+
+  .member-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); }
+  .member-row:last-child { border-bottom:0; }
+  .member-row .name { font-weight:600; font-size:14px; color:var(--text); }
+  .member-row .meta { font-size:12px; color:var(--muted); margin-top:2px; }
+  .pill { display:inline-block; font:700 10px 'Inter'; letter-spacing:.04em; text-transform:uppercase; padding:2px 8px; border-radius:999px; background:var(--bg-2); color:var(--blue); margin-left:6px; }
+  .pill.primary { background:#fef3c7; color:#92400e; }
+  .empty { padding:40px 12px; text-align:center; color:var(--muted); }
+
+  .perr { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .perr.show { display:block; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px 'Inter'; opacity:0; transition:.22s; pointer-events:none; z-index:300; }
+  .toast.show { opacity:1; }
+
+  /* Scrims share the m/index.html stratification: above auto-popups. */
+  .scrim { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:200; display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:28px 16px; }
+  .scrim.open { display:flex; }
+  .pmodal { background:#fff; border-radius:var(--r-lg); padding:24px; width:100%; max-width:540px; box-shadow:0 20px 60px rgba(10,59,92,.18); }
+  .pmodal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+
+  @media (display-mode: standalone), (display-mode: minimal-ui) {
+    /* PWA — nothing special yet, but reserve the rule. */
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/m/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">…</span></a>
+  <div class="who"><span id="whoami">Loading…</span><a id="signout">Sign out</a></div>
+</header>
+
+<main>
+  <a href="/m/" class="back">← My club home</a>
+  <h1 style="margin-bottom:14px">My family</h1>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 0 22px;line-height:1.55" id="page-sub">Manage your household — add members, fix a phone number, transfer the primary contact role.</p>
+
+  <div id="root"><div class="card"><p style="color:var(--muted);font-size:14px;margin:0">Loading…</p></div></div>
+</main>
+
+<!-- ─── Add member modal (with policies + signature) ─── -->
+<div class="scrim" id="addmem-scrim" onclick="if (event.target === this) closeAddMember()">
+  <div class="pmodal" style="max-width:560px">
+    <h2 style="margin:0 0 4px">+ Add a household member</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px;line-height:1.5">
+      Each new member needs to accept the club's policies — adults sign for themselves; minors are signed for by you as the guardian.
+    </p>
+
+    <div id="addmem-step1">
+      <label>Full name *</label>
+      <input id="am-name" placeholder="Sam Smith" autocomplete="off">
+      <div class="row2">
+        <div>
+          <label>Date of birth *</label>
+          <input id="am-dob" type="date" oninput="onAddMemberDobChange()">
+        </div>
+        <div>
+          <label>Role *</label>
+          <select id="am-role">
+            <option value="adult">Adult (18+)</option>
+            <option value="teen">Teen (13–17)</option>
+            <option value="child">Child (under 13)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <label>Email <span style="color:var(--muted);font-weight:500;font-size:11px">(adults only — used for sign-in)</span></label>
+          <input id="am-email" type="email" placeholder="optional for minors">
+        </div>
+        <div>
+          <label>Phone <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+          <input id="am-phone" type="tel">
+        </div>
+      </div>
+      <div class="perr" id="am-err"></div>
+      <div class="pmodal-foot">
+        <button class="btn btn-ghost" onclick="closeAddMember()">Cancel</button>
+        <button class="btn" id="am-step1-next" onclick="addMemberStep2()">Next: policies →</button>
+      </div>
+    </div>
+
+    <div id="addmem-step2" style="display:none">
+      <p style="font-size:13px;color:var(--muted);margin:0 0 10px;line-height:1.5">
+        Tap each policy to read it. Approve all of them to unlock the signature.
+      </p>
+      <div id="am-policies" style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px"></div>
+      <div id="am-sig-locked" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;color:var(--muted);font-size:13px">
+        🔒 Approve all policies above first.
+      </div>
+      <div id="am-sig-section" style="display:none">
+        <label id="am-sig-label">Signature *</label>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px" id="am-sig-hint">Sign in the box below.</div>
+        <div style="border:1.5px solid var(--border);border-radius:10px;background:#fff;height:140px;position:relative">
+          <canvas id="am-sig-canvas" style="width:100%;height:100%;display:block;cursor:crosshair;touch-action:none"></canvas>
+          <button type="button" onclick="clearAddMemberSig()" style="position:absolute;top:6px;right:8px;background:transparent;border:0;color:var(--muted);font-size:12px;cursor:pointer">Clear</button>
+        </div>
+      </div>
+      <div class="perr" id="am-err2"></div>
+      <div class="pmodal-foot">
+        <button class="btn btn-ghost" onclick="addMemberBackToStep1()">← Back</button>
+        <button class="btn" id="am-submit" onclick="submitAddMember()" style="opacity:.5;cursor:not-allowed" disabled>Add member</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Policy detail overlay for add-member flow. Higher z-index than the
+     parent scrim so it stacks on top correctly. -->
+<div class="scrim" id="ampolicy-scrim" style="z-index:300" onclick="if (event.target === this) closeAddMemberPolicy()">
+  <div class="pmodal" style="max-width:560px">
+    <h2 id="ampolicy-title">Policy</h2>
+    <div id="ampolicy-body" style="margin:12px 0;padding:14px;background:var(--bg-2);border-radius:10px;font-size:13.5px;line-height:1.6;max-height:55vh;overflow-y:auto;white-space:pre-wrap;color:var(--text)"></div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closeAddMemberPolicy()">Cancel</button>
+      <button class="btn" onclick="acceptAddMemberPolicy()" style="background:var(--green)">✓ I Accept</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Edit member modal ─── -->
+<div class="scrim" id="editmem-scrim" onclick="if (event.target === this) closeEditMember()">
+  <div class="pmodal">
+    <h2 style="margin:0 0 4px" id="em-title">Edit member</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px">Update contact info or permissions for a household member.</p>
+    <input type="hidden" id="em-id">
+    <label>Name *</label>
+    <input id="em-name" type="text">
+    <div class="row2">
+      <div>
+        <label>Email</label>
+        <input id="em-email" type="email">
+      </div>
+      <div>
+        <label>Phone</label>
+        <input id="em-phone" type="tel">
+      </div>
+    </div>
+    <div class="row2" style="margin-top:6px">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 0">
+        <input type="checkbox" id="em-can-unlock"> <label for="em-can-unlock" style="margin:0;text-transform:none;letter-spacing:0;font:14px Inter;color:var(--text)">Can unlock the gate</label>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 0">
+        <input type="checkbox" id="em-can-parties"> <label for="em-can-parties" style="margin:0;text-transform:none;letter-spacing:0;font:14px Inter;color:var(--text)">Can book parties</label>
+      </div>
+    </div>
+    <div class="perr" id="em-err"></div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closeEditMember()">Cancel</button>
+      <button class="btn btn-danger" id="em-remove" onclick="removeMember()" style="display:none">Remove from household</button>
+      <button class="btn" onclick="saveMember()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Transfer primary modal ─── -->
+<div class="scrim" id="transfer-scrim" onclick="if (event.target === this) closeTransfer()">
+  <div class="pmodal">
+    <h2 style="margin:0;color:#7f1d1d">⚠ Transfer primary contact</h2>
+    <p style="color:var(--muted);font-size:13.5px;margin:8px 0 14px;line-height:1.55">
+      The new primary takes over household management — they'll be able to add/remove members, edit household info, and book parties. You'll keep your spot in the household but lose those abilities.
+    </p>
+    <label>Hand the primary role to</label>
+    <select id="tr-target"></select>
+    <div class="perr" id="tr-err"></div>
+    <p style="font-size:12px;color:var(--muted);margin:14px 0 0">Only active adults with a phone number on file can become primary.</p>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closeTransfer()">Cancel</button>
+      <button class="btn btn-danger" id="tr-go" onclick="confirmTransfer()">Transfer role</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved.</div>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUTH_URL    = `${SUPABASE_URL}/functions/v1/member_auth`;
+const PUBLIC_URL  = `${SUPABASE_URL}/functions/v1/tenant_public`;
+
+let ME = null;          // me-response (user, household, tenant)
+let IS_PRIMARY = false;
+
+function token() { return localStorage.getItem('poolside_member_token'); }
+function logout() {
+  localStorage.removeItem('poolside_member_token');
+  localStorage.removeItem('poolside_member_user');
+  localStorage.removeItem('poolside_member_tenant');
+  window.location.href = '/m/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["'<>&]/g, c => ({'"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+function getSlug() {
+  const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  return m && m[1] && m[1] !== 'www' ? m[1].toLowerCase() : null;
+}
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = kind === 'err' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200);
+}
+function formatPhone(e164) {
+  if (!e164) return '';
+  const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+}
+function formatPhoneInput(input) {
+  const digits = input.value.replace(/\D/g, '').slice(0, 10);
+  let out = digits;
+  if (digits.length > 6)      out = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  else if (digits.length > 3) out = `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+  else if (digits.length > 0) out = `(${digits}`;
+  input.value = out;
+}
+['am-phone','em-phone'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => formatPhoneInput(el));
+});
+
+async function callMember(action, extra = {}, pathOverride = null) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const url = pathOverride ? `${SUPABASE_URL}${pathOverride}` : AUTH_URL;
+  const res = await fetch(url, {
+    method:'POST',
+    headers:{ 'content-type':'application/json', 'authorization':`Bearer ${t}` },
+    body: JSON.stringify({ action, ...(extra || {}) }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+async function loadMe() {
+  const me = await callMember('me');
+  if (!me.ok) { logout(); throw new Error(me.error || 'Not signed in'); }
+  if (me.refreshed_token) { try { localStorage.setItem('poolside_member_token', me.refreshed_token); } catch (_) {} }
+  return me;
+}
+
+function syncBranding(me, publicData) {
+  document.title = `${me.tenant.display_name} — My Family`;
+  document.getElementById('whoami').textContent = me.user.name || me.user.email;
+  const brand = document.getElementById('brand-name');
+  if (brand) brand.textContent = me.tenant.display_name;
+  const primary = publicData?.public_settings?.branding?.primary_color;
+  if (primary && /^#[0-9a-f]{6}$/i.test(primary)) {
+    document.documentElement.style.setProperty('--blue', primary);
+    const hex = primary.slice(1);
+    const r = parseInt(hex.slice(0,2), 16);
+    const g = parseInt(hex.slice(2,4), 16);
+    const b = parseInt(hex.slice(4,6), 16);
+    const dim = (n) => Math.max(0, Math.round(n * 0.86)).toString(16).padStart(2, '0');
+    document.documentElement.style.setProperty('--blue-2', `#${dim(r)}${dim(g)}${dim(b)}`);
+  }
+  const logoUrl = publicData?.public_settings?.branding?.logo_url;
+  if (logoUrl) {
+    const link = document.getElementById('brand-link');
+    if (link) link.innerHTML = `<img src="${escapeAttr(logoUrl)}" alt="${escapeAttr(me.tenant.display_name)}" style="height:24px;width:24px;object-fit:cover;border-radius:6px"> <span id="brand-name">${escapeHtml(me.tenant.display_name)}</span>`;
+  }
+  if (window.Pwa) {
+    window.Pwa.setup({
+      branding: publicData?.public_settings?.branding || {},
+      displayName: me.tenant.display_name,
+    });
+  }
+}
+
+function render() {
+  const h = ME.household;
+  const members = (h.members || []);
+  const adults  = members.filter(m => m.role === 'adult' && m.active && m.phone_e164);
+  IS_PRIMARY = ME.user.role === 'primary';
+
+  const memberRows = members.map(m => {
+    const phoneTxt = m.phone_e164 ? formatPhone(m.phone_e164) : '';
+    const editable = IS_PRIMARY && m.id !== ME.user.id;
+    const youHint = m.id === ME.user.id ? ` <span style="color:var(--muted);font-weight:400;font-size:12px">(you)</span>` : '';
+    return `
+      <div class="member-row">
+        <div style="flex:1;min-width:0">
+          <div class="name">${escapeHtml(m.name)}${youHint}<span class="pill ${m.role === 'primary' ? 'primary' : ''}">${escapeHtml(m.role)}</span></div>
+          <div class="meta">${escapeHtml([phoneTxt, m.email].filter(Boolean).join(' · ') || '—')}</div>
+        </div>
+        ${IS_PRIMARY ? `<button class="btn btn-ghost btn-sm" onclick="openEditMember('${escapeAttr(m.id)}')">${editable ? 'Edit' : 'Edit me'}</button>` : ''}
+      </div>`;
+  }).join('');
+
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="card">
+      <div class="card-eyebrow">Household</div>
+      <h2 id="h-family-name-display" style="font-size:22px;font-family:'Fraunces',Georgia,serif;color:var(--blue);margin:0 0 4px">${escapeHtml(h.family_name || 'Your household')}</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">${members.filter(m => m.active).length} member${members.filter(m => m.active).length === 1 ? '' : 's'}${h.dues_paid_for_year ? ' · Dues paid' : ' · Dues unpaid'}</p>
+      ${IS_PRIMARY ? `
+      <label>Family name</label>
+      <input id="h-family-name" type="text" value="${escapeAttr(h.family_name || '')}">
+      <label>Address</label>
+      <input id="h-address" type="text" value="${escapeAttr(h.address || '')}" placeholder="123 Main St">
+      <div class="row2">
+        <div><label>City</label><input id="h-city" type="text" value="${escapeAttr(h.city || '')}"></div>
+        <div><label>ZIP</label><input id="h-zip" type="text" value="${escapeAttr(h.zip || '')}"></div>
+      </div>
+      <label>Emergency contact</label>
+      <input id="h-emergency" type="text" value="${escapeAttr(h.emergency_contact || '')}" placeholder="Name + phone of someone we can call in an emergency">
+      <div class="perr" id="h-err"></div>
+      <button class="btn" style="margin-top:12px" onclick="saveHousehold()">Save household info</button>
+      ` : `
+      <div style="font-size:13px;color:var(--muted);line-height:1.6">
+        ${h.address ? `<div><b style="color:var(--text)">Address:</b> ${escapeHtml([h.address, h.city, h.zip].filter(Boolean).join(', '))}</div>` : ''}
+        ${h.emergency_contact ? `<div style="margin-top:6px"><b style="color:var(--text)">Emergency contact:</b> ${escapeHtml(h.emergency_contact)}</div>` : ''}
+        <p style="margin-top:14px;font-style:italic">Only the primary contact (${escapeHtml(members.find(m => m.role === 'primary')?.name || '—')}) can edit household info.</p>
+      </div>`}
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">Members</h2>
+        ${IS_PRIMARY ? `<button class="btn" onclick="openAddMember()">+ Add a member</button>` : ''}
+      </div>
+      ${memberRows || '<div class="empty">No members on file yet.</div>'}
+      ${IS_PRIMARY && (h.member_cap || 8) ? `<p style="font-size:11px;color:var(--muted);margin-top:14px">Households can have up to 8 members.</p>` : ''}
+    </div>
+
+    ${IS_PRIMARY && adults.length ? `
+    <div class="card danger">
+      <div class="card-eyebrow" style="color:#7f1d1d">Danger zone</div>
+      <h2 style="color:#7f1d1d;margin:0 0 6px">Transfer primary contact</h2>
+      <p style="font-size:13px;color:#991b1b;line-height:1.55;margin:0 0 12px">Hand the household-management role to another adult in your family. They'll be able to add/remove members and update household info; you'll keep your membership but lose those controls.</p>
+      <button class="btn btn-danger" onclick="openTransfer()">Transfer primary role…</button>
+    </div>` : ''}
+  `;
+}
+
+async function saveHousehold() {
+  const errEl = document.getElementById('h-err');
+  errEl.classList.remove('show');
+  try {
+    const r = await callMember('update_household', {
+      family_name: document.getElementById('h-family-name').value.trim(),
+      address:     document.getElementById('h-address').value.trim(),
+      city:        document.getElementById('h-city').value.trim(),
+      zip:         document.getElementById('h-zip').value.trim(),
+      emergency_contact: document.getElementById('h-emergency').value.trim(),
+    });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    toast('Household info saved.');
+    // Reload so the heading + summary repaint with the new family name
+    ME = await loadMe();
+    render();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+
+// ── Add member modal ────────────────────────────────────────────────────
+let AM_POLICIES = [];
+let AM_ACCEPTED = {};
+let AM_CURRENT_POLICY = null;
+let AM_SIG_PAD = null;
+
+function onAddMemberDobChange() {
+  const dob = document.getElementById('am-dob').value;
+  if (!dob) return;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return;
+  const yrs = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+  let role = 'child';
+  if (yrs >= 18) role = 'adult';
+  else if (yrs >= 13) role = 'teen';
+  document.getElementById('am-role').value = role;
+}
+
+function openAddMember() {
+  document.getElementById('am-name').value = '';
+  document.getElementById('am-dob').value = '';
+  document.getElementById('am-role').value = 'adult';
+  document.getElementById('am-email').value = '';
+  document.getElementById('am-phone').value = '';
+  document.getElementById('am-err').classList.remove('show');
+  document.getElementById('am-err').textContent = '';
+  document.getElementById('addmem-step1').style.display = 'block';
+  document.getElementById('addmem-step2').style.display = 'none';
+  AM_ACCEPTED = {};
+  if (AM_SIG_PAD) { AM_SIG_PAD.off(); AM_SIG_PAD = null; }
+  document.getElementById('addmem-scrim').classList.add('open');
+}
+function closeAddMember() { document.getElementById('addmem-scrim').classList.remove('open'); }
+function addMemberBackToStep1() {
+  document.getElementById('addmem-step1').style.display = 'block';
+  document.getElementById('addmem-step2').style.display = 'none';
+}
+
+async function addMemberStep2() {
+  const errEl = document.getElementById('am-err');
+  errEl.classList.remove('show');
+  const name = document.getElementById('am-name').value.trim();
+  const dob = document.getElementById('am-dob').value;
+  const role = document.getElementById('am-role').value;
+  const email = document.getElementById('am-email').value.trim();
+  if (!name) { errEl.textContent = 'Name is required'; errEl.classList.add('show'); return; }
+  if (!dob)  { errEl.textContent = 'Date of birth is required'; errEl.classList.add('show'); return; }
+  if (role === 'adult' && !email) {
+    errEl.textContent = 'Adults need an email address (used for sign-in)';
+    errEl.classList.add('show'); return;
+  }
+  if (email && !email.includes('@')) {
+    errEl.textContent = 'That email doesn\'t look right';
+    errEl.classList.add('show'); return;
+  }
+
+  const slug = getSlug();
+  if (!AM_POLICIES.length && slug) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/policies`, {
+        method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ action: 'list_public', slug }),
+      });
+      const d = await r.json();
+      if (d.ok) AM_POLICIES = (d.policies || []).filter(p => p.required_for_apply);
+    } catch { /* keep empty */ }
+  }
+  AM_ACCEPTED = {};
+  AM_POLICIES.forEach(p => { AM_ACCEPTED[p.slug] = false; });
+
+  const isMinor = role === 'teen' || role === 'child';
+  const sigLabel = document.getElementById('am-sig-label');
+  const sigHint = document.getElementById('am-sig-hint');
+  if (isMinor) {
+    sigLabel.textContent = `Guardian signature * (you sign on behalf of ${name})`;
+    sigHint.textContent  = `As ${name}'s guardian, sign the box below to accept these policies on their behalf.`;
+  } else {
+    sigLabel.textContent = `${name}'s signature *`;
+    sigHint.textContent  = `Hand the phone to ${name} so they can sign for themselves.`;
+  }
+
+  const polBox = document.getElementById('am-policies');
+  if (!AM_POLICIES.length) {
+    polBox.innerHTML = '<div style="color:var(--muted);font-size:13px;font-style:italic">No policies on file — proceed to the signature.</div>';
+  } else {
+    polBox.innerHTML = AM_POLICIES.map((p, i) => `
+      <button type="button" id="am-pol-btn-${escapeAttr(p.slug)}" onclick="openAddMemberPolicy('${escapeAttr(p.slug)}')"
+              style="background:#fff;color:var(--blue);border:1.5px solid var(--border);padding:10px 14px;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>${i + 1}. ${escapeHtml(p.title)}</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:500">Tap to read →</span>
+      </button>
+    `).join('');
+  }
+  refreshAddMemberLockState();
+  document.getElementById('addmem-step1').style.display = 'none';
+  document.getElementById('addmem-step2').style.display = 'block';
+}
+
+function openAddMemberPolicy(slug) {
+  const p = AM_POLICIES.find(x => x.slug === slug);
+  if (!p) return;
+  AM_CURRENT_POLICY = slug;
+  document.getElementById('ampolicy-title').textContent = p.title;
+  document.getElementById('ampolicy-body').textContent = p.body || '(no policy text on file)';
+  document.getElementById('ampolicy-scrim').classList.add('open');
+}
+function closeAddMemberPolicy() {
+  document.getElementById('ampolicy-scrim').classList.remove('open');
+  AM_CURRENT_POLICY = null;
+}
+function acceptAddMemberPolicy() {
+  if (!AM_CURRENT_POLICY) { closeAddMemberPolicy(); return; }
+  AM_ACCEPTED[AM_CURRENT_POLICY] = true;
+  const btn = document.getElementById('am-pol-btn-' + AM_CURRENT_POLICY);
+  if (btn) {
+    btn.style.borderColor = 'var(--green)';
+    btn.style.background = '#f0fdf4';
+    if (!btn.dataset.accepted) {
+      btn.dataset.accepted = '1';
+      const span = btn.querySelector('span:first-child');
+      if (span) span.innerHTML = '✓ ' + span.innerHTML;
+      const hintSpan = btn.querySelector('span:last-child');
+      if (hintSpan) { hintSpan.textContent = 'Approved'; hintSpan.style.color = 'var(--green)'; }
+    }
+  }
+  closeAddMemberPolicy();
+  refreshAddMemberLockState();
+}
+function refreshAddMemberLockState() {
+  const allOk = AM_POLICIES.length === 0 || AM_POLICIES.every(p => AM_ACCEPTED[p.slug]);
+  document.getElementById('am-sig-locked').style.display = allOk ? 'none' : 'block';
+  document.getElementById('am-sig-section').style.display = allOk ? 'block' : 'none';
+  const submitBtn = document.getElementById('am-submit');
+  submitBtn.disabled = !allOk;
+  submitBtn.style.opacity = allOk ? '1' : '.5';
+  submitBtn.style.cursor  = allOk ? 'pointer' : 'not-allowed';
+  if (allOk) {
+    setTimeout(() => {
+      const c = document.getElementById('am-sig-canvas');
+      if (!c || typeof SignaturePad === 'undefined' || AM_SIG_PAD) return;
+      c.width  = c.offsetWidth  * (window.devicePixelRatio || 1);
+      c.height = c.offsetHeight * (window.devicePixelRatio || 1);
+      c.getContext('2d').scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+      AM_SIG_PAD = new SignaturePad(c, { backgroundColor: 'rgba(0,0,0,0)', penColor: '#0f172a' });
+    }, 30);
+  } else if (AM_SIG_PAD) {
+    AM_SIG_PAD.off();
+    AM_SIG_PAD = null;
+  }
+}
+function clearAddMemberSig() { if (AM_SIG_PAD) AM_SIG_PAD.clear(); }
+
+async function submitAddMember() {
+  const errEl = document.getElementById('am-err2');
+  errEl.classList.remove('show');
+  const name = document.getElementById('am-name').value.trim();
+  const dob = document.getElementById('am-dob').value;
+  const role = document.getElementById('am-role').value;
+  const email = document.getElementById('am-email').value.trim().toLowerCase();
+  const phone = document.getElementById('am-phone').value.trim();
+
+  const allAccepted = AM_POLICIES.length === 0 || AM_POLICIES.every(p => AM_ACCEPTED[p.slug]);
+  if (!allAccepted) { errEl.textContent = 'Please open and approve every policy first'; errEl.classList.add('show'); return; }
+  if (!AM_SIG_PAD || AM_SIG_PAD.isEmpty()) { errEl.textContent = 'A signature is required'; errEl.classList.add('show'); return; }
+
+  const signatureData = AM_SIG_PAD.toDataURL('image/png');
+  const isMinor = role === 'teen' || role === 'child';
+  const btn = document.getElementById('am-submit');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Adding…';
+  try {
+    const payload = { name, dob, role, email: email || null, phone: phone || null, policies_accepted: { ...AM_ACCEPTED } };
+    if (isMinor) payload.guardian_signature = signatureData;
+    else         payload.signature = signatureData;
+    const r = await callMember('add_household_member', payload);
+    if (!r.ok) throw new Error(r.error || 'Failed to add member');
+    closeAddMember();
+    toast(`✓ ${r.name} added${r.email_sent ? ' — confirmation PDF emailed' : ''}.`);
+    ME = await loadMe(); render();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+// ── Edit member modal ───────────────────────────────────────────────────
+function openEditMember(id) {
+  const m = (ME.household.members || []).find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('em-id').value         = m.id;
+  document.getElementById('em-title').textContent = m.id === ME.user.id ? 'Edit my info' : `Edit ${m.name}`;
+  document.getElementById('em-name').value       = m.name || '';
+  document.getElementById('em-email').value      = m.email || '';
+  document.getElementById('em-phone').value      = m.phone_e164 ? formatPhone(m.phone_e164) : '';
+  document.getElementById('em-can-unlock').checked  = !!m.can_unlock_gate;
+  document.getElementById('em-can-parties').checked = !!m.can_book_parties;
+  // Members can't remove themselves; primary can't be removed by self via this UI.
+  const canRemove = IS_PRIMARY && m.id !== ME.user.id && m.role !== 'primary';
+  document.getElementById('em-remove').style.display = canRemove ? '' : 'none';
+  document.getElementById('em-err').classList.remove('show');
+  document.getElementById('editmem-scrim').classList.add('open');
+}
+function closeEditMember() { document.getElementById('editmem-scrim').classList.remove('open'); }
+async function saveMember() {
+  const errEl = document.getElementById('em-err'); errEl.classList.remove('show');
+  const id = document.getElementById('em-id').value;
+  const name = document.getElementById('em-name').value.trim();
+  const email = document.getElementById('em-email').value.trim();
+  const phone = document.getElementById('em-phone').value.trim();
+  if (!name) { errEl.textContent = 'Name cannot be empty'; errEl.classList.add('show'); return; }
+  try {
+    const action = id === ME.user.id ? 'update_my_profile' : 'update_household_member';
+    const payload = { name, email: email || '', phone_e164: phone || '' };
+    if (id !== ME.user.id) {
+      payload.id = id;
+      payload.can_unlock_gate  = document.getElementById('em-can-unlock').checked;
+      payload.can_book_parties = document.getElementById('em-can-parties').checked;
+    }
+    const r = await callMember(action, payload);
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    closeEditMember();
+    toast('Saved.');
+    ME = await loadMe(); render();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+async function removeMember() {
+  const id = document.getElementById('em-id').value;
+  const m = (ME.household.members || []).find(x => x.id === id);
+  if (!m) return;
+  if (!confirm(`Remove ${m.name} from your household? They'll lose access to the app and gate. You can ask the board to re-add them later.`)) return;
+  try {
+    const r = await callMember('remove_household_member', { id });
+    if (!r.ok) throw new Error(r.error || 'Remove failed');
+    closeEditMember(); toast(`${m.name} removed.`);
+    ME = await loadMe(); render();
+  } catch (e) {
+    document.getElementById('em-err').textContent = e.message;
+    document.getElementById('em-err').classList.add('show');
+  }
+}
+
+// ── Transfer primary modal ──────────────────────────────────────────────
+function openTransfer() {
+  const eligible = (ME.household.members || []).filter(m =>
+    m.role === 'adult' && m.active && m.phone_e164 && m.id !== ME.user.id);
+  const sel = document.getElementById('tr-target');
+  sel.innerHTML = eligible.map(m => `<option value="${escapeAttr(m.id)}">${escapeHtml(m.name)}</option>`).join('');
+  document.getElementById('tr-err').classList.remove('show');
+  document.getElementById('transfer-scrim').classList.add('open');
+}
+function closeTransfer() { document.getElementById('transfer-scrim').classList.remove('open'); }
+async function confirmTransfer() {
+  const id = document.getElementById('tr-target').value;
+  if (!id) return;
+  const m = (ME.household.members || []).find(x => x.id === id);
+  if (!confirm(`Hand the primary role to ${m?.name}? You'll lose household-management abilities.`)) return;
+  try {
+    const r = await callMember('transfer_primary', { new_primary_id: id });
+    if (!r.ok) throw new Error(r.error || 'Transfer failed');
+    closeTransfer();
+    alert(`Done. ${m?.name} is now the primary contact.`);
+    window.location.reload();
+  } catch (e) {
+    document.getElementById('tr-err').textContent = e.message;
+    document.getElementById('tr-err').classList.add('show');
+  }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  let publicData = {};
+  try {
+    const slug = getSlug();
+    const [me, pub] = await Promise.all([
+      loadMe(),
+      slug ? fetch(PUBLIC_URL, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ slug }) }).then(r => r.ok ? r.json() : {}) : Promise.resolve({}),
+    ]);
+    ME = me;
+    publicData = pub.ok ? pub : {};
+    syncBranding(me, publicData);
+    render();
+  } catch (e) {
+    document.getElementById('root').innerHTML = `<div class="card"><h2>Error</h2><p>${escapeHtml(e.message)}</p></div>`;
+  }
+})();
+</script>
+</body>
+</html>

@@ -868,6 +868,93 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Member directory has been removed.' }, 410);
   }
 
+  // ── update_household ───────────────────────────────────────────────────
+  // Primary edits household-level info (family name, address, emergency
+  // contact). Permission/role management of individual members goes through
+  // update_household_member instead.
+  if (action === 'update_household') {
+    const r = await requirePrimary();
+    if ('error' in r && r.error) return jsonResponse({ ok: false, error: r.error }, r.code);
+    const b = body as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    if (b.family_name !== undefined) {
+      const v = String(b.family_name ?? '').trim();
+      if (!v) return jsonResponse({ ok: false, error: 'Family name cannot be empty' }, 400);
+      patch.family_name = v.slice(0, 120);
+    }
+    if (b.address !== undefined)  patch.address  = String(b.address ?? '').trim().slice(0, 200) || null;
+    if (b.city    !== undefined)  patch.city     = String(b.city    ?? '').trim().slice(0,  80) || null;
+    if (b.zip     !== undefined)  patch.zip      = String(b.zip     ?? '').trim().slice(0,  20) || null;
+    if (b.emergency_contact !== undefined) patch.emergency_contact = String(b.emergency_contact ?? '').trim().slice(0, 200) || null;
+    if (Object.keys(patch).length === 0) return jsonResponse({ ok: true, noop: true });
+    patch.updated_at = new Date().toISOString();
+    const { error } = await sb.from('households').update(patch).eq('id', payload.hid as string);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid as string,
+        kind: 'household.update', entity_type: 'household', entity_id: payload.hid,
+        summary: `Primary updated household info`,
+        actor_id: payload.sub as string, actor_kind: 'member',
+        metadata: patch,
+      });
+    } catch { /* best-effort */ }
+    return jsonResponse({ ok: true });
+  }
+
+  // ── transfer_primary ───────────────────────────────────────────────────
+  // Hand the primary-contact role to another active adult in the household.
+  // Old primary becomes a regular adult. The JWT doesn't carry role, so the
+  // user just has to refresh /m/ to pick up the new (reduced) permissions.
+  if (action === 'transfer_primary') {
+    const r = await requirePrimary();
+    if ('error' in r && r.error) return jsonResponse({ ok: false, error: r.error }, r.code);
+    const newId = String((body as Record<string, unknown>).new_primary_id ?? '');
+    if (!newId) return jsonResponse({ ok: false, error: 'new_primary_id required' }, 400);
+    if (newId === payload.sub) return jsonResponse({ ok: false, error: 'Pick someone other than yourself' }, 400);
+    const { data: target } = await sb.from('household_members')
+      .select('id, name, role, household_id, active, phone_e164')
+      .eq('id', newId).maybeSingle();
+    if (!target) return jsonResponse({ ok: false, error: 'Member not found' }, 404);
+    if (target.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Not in your household' }, 403);
+    if (!target.active) return jsonResponse({ ok: false, error: 'That member is inactive' }, 400);
+    if (target.role !== 'adult') return jsonResponse({ ok: false, error: 'Only adults can become primary' }, 400);
+    if (!target.phone_e164) return jsonResponse({ ok: false, error: 'New primary needs a phone number first' }, 400);
+
+    // Two-step swap: demote me, promote them. The DB doesn't enforce a
+    // single-primary-per-household constraint by default; if a partial
+    // failure left two primaries, an admin can fix it from the admin UI.
+    const now = new Date().toISOString();
+    const demote = await sb.from('household_members')
+      .update({ role: 'adult', updated_at: now }).eq('id', payload.sub as string);
+    if (demote.error) return jsonResponse({ ok: false, error: demote.error.message }, 500);
+    const promote = await sb.from('household_members')
+      .update({ role: 'primary', can_unlock_gate: true, can_book_parties: true, updated_at: now }).eq('id', newId);
+    if (promote.error) {
+      // Rollback the demotion best-effort.
+      await sb.from('household_members').update({ role: 'primary' }).eq('id', payload.sub as string);
+      return jsonResponse({ ok: false, error: promote.error.message }, 500);
+    }
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: payload.tid as string,
+        kind: 'household.transfer_primary', entity_type: 'household', entity_id: payload.hid,
+        summary: `Primary role transferred to ${target.name}`,
+        actor_id: payload.sub as string, actor_kind: 'member',
+        metadata: { old_primary: payload.sub, new_primary: newId },
+      });
+      await sb.from('admin_tasks').insert({
+        tenant_id: payload.tid as string,
+        target_scopes: ['membership'],
+        kind: 'household.transfer_primary',
+        summary: `Primary role transferred to ${target.name}`,
+        link_url: '/club/admin/households.html',
+        source_kind: 'household_member', source_id: newId,
+      });
+    } catch { /* best-effort */ }
+    return jsonResponse({ ok: true });
+  }
+
   if (action === 'logout') {
     return jsonResponse({ ok: true });
   }

@@ -274,100 +274,9 @@
   </div>
 </div>
 
-<!-- Add household member modal (primary-only). Multi-step:
-     1. Person info (name, DOB, role, email, phone)
-     2. Policies + signature
-     Auto-determines role from DOB, asks for self-sign on adults and a
-     guardian sign on minors. -->
-<div class="scrim" id="addmem-scrim" onclick="if (event.target === this) closeAddMember()">
-  <div class="pmodal" style="max-width:560px">
-    <h2 style="margin:0 0 4px">+ Add a household member</h2>
-    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px;line-height:1.5">
-      Add a family member to your household. Each new member needs to accept the club's policies — adults sign for themselves; minors are signed for by you as the guardian.
-    </p>
-
-    <!-- Step 1: their info -->
-    <div id="addmem-step1">
-      <label>Full name *</label>
-      <input id="am-name" placeholder="Sam Smith" autocomplete="off">
-
-      <div class="row2">
-        <div>
-          <label>Date of birth *</label>
-          <input id="am-dob" type="date" oninput="onAddMemberDobChange()">
-        </div>
-        <div>
-          <label>Role *</label>
-          <select id="am-role">
-            <option value="adult">Adult (18+)</option>
-            <option value="teen">Teen (13–17)</option>
-            <option value="child">Child (under 13)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row2">
-        <div>
-          <label>Email <span style="color:var(--muted);font-weight:500;font-size:11px">(adults only — used for sign-in)</span></label>
-          <input id="am-email" type="email" placeholder="optional for minors">
-        </div>
-        <div>
-          <label>Phone <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
-          <input id="am-phone" oninput="formatPhoneInput(this)">
-        </div>
-      </div>
-
-      <div class="perr" id="am-err"></div>
-      <div class="pmodal-foot">
-        <button class="btn btn-ghost" onclick="closeAddMember()">Cancel</button>
-        <button class="btn" id="am-step1-next" onclick="addMemberStep2()" style="background:var(--blue);color:#fff">Next: policies →</button>
-      </div>
-    </div>
-
-    <!-- Step 2: policies + signature -->
-    <div id="addmem-step2" style="display:none">
-      <p style="font-size:13px;color:var(--muted);margin:0 0 10px;line-height:1.5">
-        Tap each policy to read it. Approve all of them to unlock the signature.
-      </p>
-      <div id="am-policies" style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px"></div>
-
-      <div id="am-sig-locked" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;color:var(--muted);font-size:13px">
-        🔒 Approve all policies above first.
-      </div>
-
-      <div id="am-sig-section" style="display:none">
-        <label id="am-sig-label">Signature *</label>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px" id="am-sig-hint">
-          Sign in the box below.
-        </div>
-        <div style="border:1.5px solid var(--border);border-radius:10px;background:#fff;height:140px;position:relative">
-          <canvas id="am-sig-canvas" style="width:100%;height:100%;display:block;cursor:crosshair;touch-action:none"></canvas>
-          <button type="button" onclick="clearAddMemberSig()" style="position:absolute;top:6px;right:8px;background:transparent;border:0;color:var(--muted);font-size:12px;cursor:pointer">Clear</button>
-        </div>
-      </div>
-
-      <div class="perr" id="am-err2"></div>
-      <div class="pmodal-foot">
-        <button class="btn btn-ghost" onclick="addMemberBackToStep1()">← Back</button>
-        <button class="btn" id="am-submit" onclick="submitAddMember()" style="background:var(--blue);color:#fff;opacity:.5;cursor:not-allowed" disabled>Add member</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Policy detail overlay for the add-member flow. Sits on top of the
-     add-member modal at higher z-index. Mirrors apply.html's pattern:
-     read full body, tap "I Accept" to mark approved. -->
-<div class="scrim" id="ampolicy-scrim" style="z-index:300" onclick="if (event.target === this) closeAddMemberPolicy()">
-  <div class="pmodal" style="max-width:560px">
-    <h2 id="ampolicy-title">Policy</h2>
-    <div id="ampolicy-body" style="margin:12px 0;padding:14px;background:var(--bg-2);border-radius:10px;font-size:13.5px;line-height:1.6;max-height:55vh;overflow-y:auto;white-space:pre-wrap;color:var(--text)"></div>
-    <div class="pmodal-foot">
-      <button class="btn btn-ghost" onclick="closeAddMemberPolicy()">Cancel</button>
-      <button class="btn" onclick="acceptAddMemberPolicy()" style="background:var(--green);color:#fff">✓ I Accept</button>
-    </div>
-  </div>
-</div>
+<!-- Add-member, edit-member, transfer-primary, profile, household-info edit
+     all moved to /m/family.html — keeps this page focused on the home
+     dashboard and avoids modal-on-modal stacking weirdness here. -->
 
 <!-- Refer a friend modal -->
 <div class="scrim" id="refer-scrim" onclick="if (event.target === this) closeReferModal()">
@@ -1932,15 +1841,11 @@ async function submitProfile() {
   const heroActions = [];
   // Refer a friend gets the bright treatment — it's the growth lever.
   heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, get $100 off</button>`);
-  // Primary member can add new family members directly from /m/. Surface
-  // here in the hero (above-the-fold) AND inside the household card —
-  // collapsed-details visibility was too easy to miss.
-  if (user.role === 'primary') {
-    heroActions.push(`<button class="btn btn-ghost" onclick="openAddMember()">👥 Add a household member</button>`);
-  }
   if (user.can_book_parties) heroActions.push(`<button class="btn btn-ghost" onclick="openPartyModal()">🎉 Request a party</button>`);
-  heroActions.push(`<button class="btn btn-ghost" onclick="openProfileModal()">Edit my info</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openPhotoUpload()">📸 Upload a photo</button>`);
+  // "Edit my info" + "Add a household member" both moved to /m/family.html
+  // — the household card below is the link in. Hero stays focused on
+  // engagement actions, not chores.
 
   // Household members list (housemates)
   const members = (household.members || []);
@@ -2096,36 +2001,23 @@ async function submitProfile() {
       </div>
     ` : ''}
 
-    <!-- Household info — moved to bottom + collapsed by default. Members
-         already know who's in their household; this is a reference card,
-         not the headline. Click the chevron to expand. -->
-    <div class="card" style="padding:0">
-      <details id="household-details" style="padding:0">
-        <summary style="list-style:none;padding:18px 22px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <span style="display:flex;align-items:center;gap:10px">
-            <span class="hh-chev" style="display:inline-block;transition:transform .15s;font-size:12px;color:var(--muted)">▶</span>
-            <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
-          </span>
+    <!-- Household summary card. Drilldown for adding/removing members,
+         editing household info, and transferring the primary role lives
+         on /m/family.html — this card is just a glance. -->
+    <a href="/m/family.html" class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:inherit">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
           ${dueText}
-        </summary>
-        <div style="padding:0 22px 22px">
-          <div class="meta-grid">
-            ${household.tier ? `<div class="cell"><div class="lbl">Tier</div><div class="val">${escapeHtml(household.tier)}</div></div>` : ''}
-            ${household.fob_number ? `<div class="cell"><div class="lbl">Fob #</div><div class="val">${escapeHtml(household.fob_number)}</div></div>` : ''}
-            ${household.address ? `<div class="cell"><div class="lbl">Address</div><div class="val">${escapeHtml(household.address)}${household.city || household.zip ? '<br><span style="font-weight:400;color:var(--muted)">' + escapeHtml([household.city, household.zip].filter(Boolean).join(', ')) + '</span>' : ''}</div></div>` : ''}
-            ${household.emergency_contact ? `<div class="cell"><div class="lbl">Emergency</div><div class="val">${escapeHtml(household.emergency_contact)}</div></div>` : ''}
-          </div>
-          <h3 style="margin-top:20px">Members</h3>
-          ${memberHtml}
         </div>
-      </details>
-    </div>
+        <div style="font-size:12.5px;color:var(--muted)">
+          ${(household.members || []).filter(m => m.active).map(m => escapeHtml(m.name.split(' ')[0])).join(' · ') || 'No members on file'}
+        </div>
+      </div>
+      <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
+    </a>
 
     ${renderFeedbackCard()}
-    <style>
-      details[open] > summary .hh-chev { transform: rotate(90deg); }
-      details > summary::-webkit-details-marker { display: none; }
-    </style>
   `;
 
   // Render shared month-grid widget. Reuse the same fmtHourLabel logic the
