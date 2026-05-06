@@ -186,11 +186,18 @@ Deno.serve(async (req) => {
       const ap = String(a?.phone ?? '').trim();
       const apE = ap ? normalizePhoneE164(ap) : null;
       if (ap && !apE) return jsonResponse({ ok: false, error: `Invalid phone for ${nm}` }, 400);
+      // signature_url is the canonical field name (matches apply form's
+      // payload + the PDF renderer's type def). Older clients sent
+      // 'signature' — accept both for back-compat but store as signature_url.
+      const sigData = (typeof a?.signature_url === 'string' ? a.signature_url
+                     : typeof a?.signature === 'string' ? a.signature
+                     : null);
       adults_json.push({
         name: nm,
+        dob: a?.dob ? String(a.dob) : null,
         email: a?.email ? String(a.email).trim().toLowerCase() : null,
         phone: apE,
-        signature: typeof a?.signature === 'string' ? String(a.signature).slice(0, 200000) : null,
+        signature_url: sigData ? String(sigData).slice(0, 200000) : null,
       });
     }
     const children_json: Array<Record<string, unknown>> = [];
@@ -386,6 +393,55 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({ ok: true, application_id: data.id, payment_method });
+  }
+
+  // ── post_payment_signin — public, time-bounded ───────────────────────
+  // After Stripe Checkout redirects the applicant back to apply.html with
+  // ?paid=1&app_id=<uuid>, the success page calls this to get an instant
+  // magic-link URL so the new member can sign in WITHOUT waiting for the
+  // welcome email. Anti-abuse: only works while paid_at is within 10 min,
+  // and only if the app is approved (so we know there's a primary household
+  // member to sign in as). Otherwise: 410 with "wait for the welcome email".
+  if (action === 'post_payment_signin') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, status, payment_status, paid_at, primary_email, household_id')
+      .eq('id', id).maybeSingle();
+    if (!app)                                              return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.payment_status !== 'paid' && app.payment_status !== 'pending') {
+      return jsonResponse({ ok: false, error: 'Payment not complete yet — refresh in a moment' }, 409);
+    }
+    if (!app.paid_at)                                      return jsonResponse({ ok: false, error: 'Payment timestamp missing' }, 409);
+    const ageSec = (Date.now() - new Date(app.paid_at as string).getTime()) / 1000;
+    if (ageSec > 600) {
+      return jsonResponse({ ok: false, error: 'Sign-in window expired — use the link in your welcome email' }, 410);
+    }
+    if (app.status !== 'approved' || !app.household_id) {
+      // Auto-approve hasn't run yet — likely racing the Stripe webhook.
+      // Tell the client to retry.
+      return jsonResponse({ ok: false, retry: true, error: 'Almost ready — retry in a few seconds' }, 425);
+    }
+
+    // Find the primary household member (the email on the application is
+    // theirs by definition — the apply form's first adult).
+    const { data: primary } = await sb.from('household_members')
+      .select('id, name, email').eq('household_id', app.household_id).eq('role', 'primary').maybeSingle();
+    if (!primary) return jsonResponse({ ok: false, error: 'Primary member missing' }, 500);
+
+    // Issue a fresh single-use token (15 min expiry — same as member_auth.start)
+    const tok = randomToken();
+    const tokHash = await sha256Hex(tok);
+    const expIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    await sb.from('member_magic_links').insert({
+      tenant_id: app.tenant_id, member_id: primary.id,
+      token_hash: tokHash, expires_at: expIso,
+    });
+
+    const { data: tenant } = await sb.from('tenants').select('slug').eq('id', app.tenant_id).maybeSingle();
+    const verifyUrl = `https://${tenant?.slug}.poolsideapp.com/m/verify.html#token=${encodeURIComponent(tok)}`;
+
+    return jsonResponse({ ok: true, verify_url: verifyUrl, member_name: primary.name });
   }
 
   // ── claim_venmo_paid (member-side: "I paid via Venmo") ─────────────────

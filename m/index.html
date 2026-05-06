@@ -160,12 +160,23 @@
   }
   .pmodal label { display:block; font-weight:600; font-size:12px; margin: 12px 0 4px; }
   .pmodal input, .pmodal textarea {
-    width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter';
+    width: 100%; min-width: 0; padding: 10px 12px; font: 14px/1.4 'Inter';
     border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
     font-family: inherit;
   }
+  /* iOS Safari forces a min-width on type=date/datetime-local that ignores
+     width:100% on narrow viewports. Override with appearance:none so width
+     wins. min-height keeps the touch target ≥44px. */
+  .pmodal input[type="date"], .pmodal input[type="datetime-local"] {
+    -webkit-appearance: none; appearance: none; min-height: 44px;
+  }
   .pmodal textarea { resize: vertical; min-height: 80px; }
   .pmodal .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Phone viewports: stack two-column rows so datetime inputs don't run
+     off the right edge. Same fix shape as apply.html. */
+  @media (max-width: 520px) {
+    .pmodal .row2 { grid-template-columns: 1fr; gap: 8px; }
+  }
   .pmodal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
   .perr { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
   .perr.show { display:block; }

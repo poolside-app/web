@@ -32,8 +32,12 @@
   .lede { color: var(--muted); margin: 8px 0 22px; font-size: 14px; }
   label { display:block; font-weight:600; font-size: 12px; margin: 14px 0 4px; }
   label .opt { font-weight:500; color: var(--muted); text-transform: none; font-size: 11px; margin-left: 6px; }
-  input, textarea, select { width: 100%; padding: 11px 13px; font: 14px 'Inter', sans-serif; border:1.5px solid var(--border); border-radius: var(--r-md); background:#fff; }
+  input, textarea, select { width: 100%; min-width: 0; padding: 11px 13px; font: 14px 'Inter', sans-serif; border:1.5px solid var(--border); border-radius: var(--r-md); background:#fff; }
   input:focus, textarea:focus, select:focus { outline:0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  /* iOS Safari renders type="date" inputs with an intrinsic min-width based
+     on the displayed date string ("May 5, 2026") that ignores width:100%.
+     Force the native styling off so width:100% wins on narrow viewports. */
+  input[type="date"], input[type="datetime-local"] { -webkit-appearance: none; appearance: none; min-height: 44px; }
   .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   /* Phone viewports: stack DOB + Phone (and any other 1fr 1fr grid) so the
      native date picker + phone inputs don't get crushed below readable width. */
@@ -828,6 +832,59 @@ async function submitApplication() {
   } catch (e) { show(e.message); btn.disabled = false; btn.textContent = orig; }
 }
 
+// Renders the post-Stripe success card with a "Sign in now" button. Polls
+// /functions/v1/applications "post_payment_signin" because the auto-approve
+// step (which creates the household) might race the Stripe webhook —
+// retries up to 6 times over ~12 seconds before falling back to "watch
+// for the welcome email."
+async function renderPostPaymentSuccess(headline, lede, appId) {
+  const formEl = document.getElementById('form');
+  formEl.className = 'card ok';
+  formEl.innerHTML = `
+    <h1>${headline}</h1>
+    <p class="lede">${lede}</p>
+    <div id="signin-area" style="margin-top:18px">
+      <p style="font-size:13px;color:var(--muted)">Setting up your account…</p>
+    </div>`;
+
+  if (!appId) {
+    document.getElementById('signin-area').innerHTML =
+      '<p style="font-size:13px;color:var(--muted)">Watch for a welcome email with your sign-in link (usually arrives within a minute).</p>';
+    return;
+  }
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'post_payment_signin', id: appId }),
+      });
+      const data = await res.json();
+      if (data.ok && data.verify_url) {
+        document.getElementById('signin-area').innerHTML = `
+          <a href="${escapeAttr(data.verify_url)}"
+             style="display:inline-block;background:var(--blue);color:#fff;
+                    padding:14px 28px;border-radius:12px;font:700 16px 'Inter';
+                    text-decoration:none;box-shadow:0 6px 18px rgba(10,59,92,.18)">
+            Sign in to your member home →
+          </a>
+          <p style="margin-top:10px;font-size:12px;color:var(--muted)">
+            We've also emailed this link${data.member_name ? ' to ' + escapeHtml(data.member_name) : ''} for safekeeping.
+          </p>`;
+        return;
+      }
+      if (data.retry) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      // Other errors → show fallback
+      break;
+    } catch { /* fall through to fallback */ }
+  }
+  document.getElementById('signin-area').innerHTML = `
+    <p style="font-size:13px;color:var(--muted)">Your sign-in link is on its way to your inbox — should arrive within a minute. Check spam if you don't see it.</p>`;
+}
+
 (async () => {
   // If the user just came back from Stripe Checkout, show a success/cancel
   // banner instead of the empty form. Stripe redirected to ?paid=1 / ?paid=0
@@ -835,18 +892,34 @@ async function submitApplication() {
   const params = new URLSearchParams(window.location.search);
   if (params.has('paid')) {
     const paid = params.get('paid') === '1';
+    if (paid) {
+      const appId = params.get('app_id');
+      await renderPostPaymentSuccess(
+        '✓ Payment received!',
+        'Your dues are paid and your membership is being finalized.',
+        appId,
+      );
+      return;
+    }
     document.getElementById('form').className = 'card ok';
-    document.getElementById('form').innerHTML = paid
-      ? `<h1>✓ Payment received!</h1><p class="lede">Your dues are paid. The board will finalize your membership shortly — watch for a welcome email with your sign-in link.</p><p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`
-      : `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
+    document.getElementById('form').innerHTML =
+      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
     return;
   }
   if (params.has('plan_started')) {
     const ok = params.get('plan_started') === '1';
+    if (ok) {
+      const appId = params.get('app_id');
+      await renderPostPaymentSuccess(
+        '✓ You\'re in!',
+        'First installment paid. Your second installment auto-charges on the final due date — we\'ll email reminders before each charge.',
+        appId,
+      );
+      return;
+    }
     document.getElementById('form').className = 'card ok';
-    document.getElementById('form').innerHTML = ok
-      ? `<h1>✓ You're in!</h1><p class="lede">First installment paid, card saved. Your second installment will auto-charge on the final due date — we'll email you reminders before each charge. Watch for a welcome email with your sign-in link.</p><p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`
-      : `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
+    document.getElementById('form').innerHTML =
+      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
     return;
   }
 

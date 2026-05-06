@@ -140,7 +140,9 @@ Deno.serve(async (req) => {
       amountCents,
       productName: `${tenant.display_name} — Annual membership (${(tier?.label as string) || 'family'})`,
       description: `Application from ${app.family_name} (${app.primary_name})`,
-      successUrl: `${clubUrl}/apply.html?paid=1`,
+      // app_id in the success URL lets the success page issue a fresh
+      // magic-link sign-in token immediately (instead of "watch for email").
+      successUrl: `${clubUrl}/apply.html?paid=1&app_id=${app.id}`,
       cancelUrl: `${clubUrl}/apply.html?paid=0`,
       metadata: {
         kind: 'application',
@@ -233,7 +235,7 @@ Deno.serve(async (req) => {
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
-    params.append('success_url', `${clubUrl}/apply.html?plan_started=1`);
+    params.append('success_url', `${clubUrl}/apply.html?plan_started=1&app_id=${id}`);
     params.append('cancel_url',  `${clubUrl}/apply.html?plan_started=0`);
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]',
