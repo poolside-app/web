@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Application — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin:0 0 6px; } h3 { font-size: 15px; margin:0 0 6px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:24px 22px 30px; max-width:880px; width:100%; margin:0 auto; }
+
+  .subtabs { background:#fff; border:1px solid var(--border); border-radius:14px; padding:6px; display:flex; gap:4px; margin-bottom:18px; overflow-x:auto; }
+  .subtabs button { padding:9px 16px; border:0; background:transparent; color:var(--muted); border-radius:10px; font:600 13px 'Inter'; cursor:pointer; white-space:nowrap; }
+  .subtabs button.on { background:var(--blue); color:#fff; }
+  .panel { display:none; }
+  .panel.on { display:block; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:22px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .card.sub { padding:16px 18px; }
+  label { display:block; font:600 11px 'Inter'; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+  input[type=text], input[type=number], input[type=email], input[type=date], select, textarea {
+    width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:var(--r-md);
+    font:14px/1.4 'Inter'; background:#fff; color:var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue); }
+  textarea { resize:vertical; min-height:120px; font-family:inherit; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width: 520px) { .row2 { grid-template-columns:1fr; } }
+
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; }
+  .btn:hover { background:var(--blue-2); }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .btn-danger { background:var(--red); color:#fff; }
+  .btn-sm { padding:7px 12px; font-size:12px; }
+
+  .pol { background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:10px; }
+  .pol h3 { font-size:15px; }
+  .pol .meta { font-size:11px; color:var(--muted); margin-top:3px; }
+  .pol .body { font-size:13px; color:var(--text); margin-top:10px; line-height:1.5; white-space:pre-wrap; max-height:80px; overflow:hidden; position:relative; }
+  .pol .body::after { content:''; position:absolute; left:0; right:0; bottom:0; height:24px; background:linear-gradient(transparent,#fff); }
+  .pol.expanded .body { max-height:none; }
+  .pol.expanded .body::after { display:none; }
+  .pol-row { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; }
+  .pol .actions { flex-shrink:0; display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+  .reorder { display:flex; gap:4px; }
+  .reorder button { width:28px; height:28px; border-radius:6px; border:1.5px solid var(--border); background:#fff; color:var(--muted); cursor:pointer; font-weight:700; font-size:13px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font:700 10px 'Inter'; letter-spacing:.04em; text-transform:uppercase; }
+  .pill.req  { background:#fef3c7; color:#92400e; }
+  .pill.info { background:#e0e7ff; color:#3730a3; }
+  .pill.off  { background:#f3f4f6; color:#4b5563; }
+
+  .tier-row { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:10px; margin-bottom:12px; align-items:end; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  @media (max-width: 640px) { .tier-row { grid-template-columns:1fr 1fr auto; } }
+
+  .em-row { display:flex; justify-content:space-between; gap:14px; padding:14px 0; border-bottom:1px solid var(--border); align-items:center; }
+  .em-row:last-child { border-bottom:0; }
+  .em-row .em-meta { font-size:12px; color:var(--muted); margin-top:2px; }
+
+  .empty { padding:40px 12px; text-align:center; color:var(--muted); border:2px dashed var(--border); border-radius:var(--r-md); }
+  .err { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display:block; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px 'Inter'; opacity:0; transition:.22s; pointer-events:none; z-index:300; }
+  .toast.show { opacity:1; }
+
+  .scrim { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:32px 16px; z-index:200; }
+  .scrim.open { display:flex; }
+  .modal { background:#fff; border-radius:var(--r-lg); padding:26px; width:100%; max-width:680px; box-shadow:0 20px 60px rgba(10,59,92,.18); }
+  .modal-foot { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .modal-foot .left { margin-right:auto; }
+
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/club/admin/" class="logo"><span class="logo-dot"></span> Poolside Admin</a>
+  <div class="who"><span id="whoami">Loading…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/application.html" class="on">Application</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Announcements</a>
+  <a href="/club/admin/campaigns.html">Campaigns</a>
+  <a href="/club/admin/sponsors.html">Sponsors</a>
+  <a href="/club/admin/feedback.html">Feedback</a>
+  <a href="/club/admin/photos.html">Photos</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <h1 style="margin-bottom:6px">Membership application</h1>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 0 22px;line-height:1.55">One place to set up the apply form: heading, tiers, policies, and the emails the applicant gets back. Set it once before the season opens and don't think about it again.</p>
+
+  <div class="subtabs" id="subtabs">
+    <button class="on" data-panel="general">General</button>
+    <button data-panel="tiers">Tiers</button>
+    <button data-panel="policies">Policies</button>
+    <button data-panel="emails">Emails</button>
+  </div>
+
+  <!-- ── General panel ─────────────────────────────────────────────── -->
+  <section class="panel on" id="panel-general">
+    <div class="card">
+      <h2>Apply form basics</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Visible at <code>https://&lt;your-slug&gt;.poolsideapp.com/apply.html</code>.</p>
+      <label>Page heading <span style="color:var(--muted);font-weight:500;font-size:11px">(replaces "Apply for membership"; leave blank to keep default)</span></label>
+      <input type="text" id="g-heading" placeholder="2026 Membership Application">
+
+      <div class="row2" style="margin-top:14px">
+        <div>
+          <label>Season is</label>
+          <select id="g-season-open">
+            <option value="true">Open — accepting applications</option>
+            <option value="false">Closed for the off-season</option>
+          </select>
+        </div>
+        <div>
+          <label>Memberships are</label>
+          <select id="g-memberships-frozen">
+            <option value="false">Open — accept new applications</option>
+            <option value="true">Frozen — block new applications</option>
+          </select>
+        </div>
+      </div>
+      <label style="margin-top:12px">Closed-banner message <span style="color:var(--muted);font-weight:500;font-size:11px">(when season is closed)</span></label>
+      <input type="text" id="g-closed-msg" placeholder="See you next May!">
+
+      <div class="err" id="g-err"></div>
+      <button class="btn" id="g-save" style="margin-top:14px" onclick="saveGeneral()">Save</button>
+    </div>
+  </section>
+
+  <!-- ── Tiers panel ───────────────────────────────────────────────── -->
+  <section class="panel" id="panel-tiers">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="margin:0">Membership tiers</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="Tiers.add()">+ Add tier</button>
+          <button class="btn btn-sm" id="tiers-save" onclick="Tiers.save()">Save tiers</button>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Pricing rows the applicant picks from on the apply form. The slug is what's stored on the application — pick something stable.</p>
+      <div id="tiers-list"><div class="empty" style="padding:30px">Loading…</div></div>
+      <div class="err" id="tiers-err"></div>
+    </div>
+  </section>
+
+  <!-- ── Policies panel ────────────────────────────────────────────── -->
+  <section class="panel" id="panel-policies">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="margin:0">Policies &amp; waivers</h2>
+        <button class="btn btn-sm" onclick="Policies.openCreate()">+ Add policy</button>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Policies marked "Required" gate the apply form — applicants tap to read each, then accept. Their accepted text is frozen into the legal-evidence PDF.</p>
+      <div id="policies-list"><div class="empty" style="padding:30px">Loading…</div></div>
+    </div>
+  </section>
+
+  <!-- ── Emails panel ──────────────────────────────────────────────── -->
+  <section class="panel" id="panel-emails">
+    <div class="card">
+      <h2>Application emails</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Customize the emails applicants get at each step. Defaults are sane — only override when you want different copy or want to disable one.</p>
+      <div id="emails-list"><div class="empty" style="padding:30px">Loading…</div></div>
+    </div>
+  </section>
+</main>
+
+<!-- Policy edit modal -->
+<div class="scrim" id="pol-scrim" onclick="if (event.target === this) Policies.closeM()">
+  <div class="modal">
+    <h2 id="pol-modal-title">Edit policy</h2>
+    <label>Title *</label>
+    <input id="pol-title" type="text" maxlength="140" placeholder="e.g. Pool Rules">
+    <label>Body *</label>
+    <textarea id="pol-body" maxlength="20000" placeholder="The full text members will read and agree to."></textarea>
+    <div style="display:flex;gap:14px;align-items:center;margin-top:14px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px;margin:0;text-transform:none;letter-spacing:0;color:var(--text)">
+        <input id="pol-required" type="checkbox" style="width:auto;margin:0">
+        Required to apply (gates the signup form)
+      </label>
+    </div>
+    <div class="err" id="pol-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger left" id="pol-delete" style="display:none" onclick="Policies.del()">Archive</button>
+      <button class="btn btn-ghost" onclick="Policies.closeM()">Cancel</button>
+      <button class="btn" id="pol-save" onclick="Policies.save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Email template edit modal -->
+<div class="scrim" id="em-scrim" onclick="if (event.target === this) Emails.closeM()">
+  <div class="modal">
+    <h2 id="em-modal-title">Edit email</h2>
+    <p id="em-modal-desc" style="font-size:13px;color:var(--muted);margin:6px 0 14px"></p>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px;margin:0;text-transform:none;letter-spacing:0;color:var(--text)">
+        <input id="em-enabled" type="checkbox" checked style="width:auto;margin:0"> Send this email
+      </label>
+    </div>
+    <label>Subject</label>
+    <input id="em-subject" type="text">
+    <label>Body (HTML)</label>
+    <textarea id="em-body" style="min-height:260px;font-family:Menlo,Consolas,monospace;font-size:12px"></textarea>
+    <p id="em-vars" style="font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5"></p>
+    <div class="err" id="em-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost left" onclick="Emails.resetToDefault()">Reset to default</button>
+      <button class="btn btn-ghost" onclick="Emails.closeM()">Cancel</button>
+      <button class="btn" id="em-save" onclick="Emails.save()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved.</div>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const POLICIES_URL = `${SUPABASE_URL}/functions/v1/policies`;
+const EMAILS_URL   = `${SUPABASE_URL}/functions/v1/email_templates`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let LAST_SETTINGS = {};
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function val(id) { return (document.getElementById(id)?.value ?? '').trim(); }
+function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v ?? ''; }
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = kind === 'err' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+async function call(url, action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
+    method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${t}`},
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+// ── Sub-tab switcher ─────────────────────────────────────────────────────
+document.querySelectorAll('#subtabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#subtabs button').forEach(x => x.classList.remove('on'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+    b.classList.add('on');
+    const panel = document.getElementById('panel-' + b.dataset.panel);
+    if (panel) panel.classList.add('on');
+    if (b.dataset.panel === 'tiers'    && !Tiers.LOADED)    Tiers.refresh();
+    if (b.dataset.panel === 'policies' && !Policies.LOADED) Policies.refresh();
+    if (b.dataset.panel === 'emails'   && !Emails.LOADED)   Emails.refresh();
+    history.replaceState(null, '', '#' + b.dataset.panel);
+  });
+});
+
+// ── General panel ────────────────────────────────────────────────────────
+async function loadGeneral() {
+  try {
+    const data = await call(SETTINGS_URL, 'get');
+    if (!data.ok) throw new Error(data.error || 'Failed to load');
+    const s = data.settings || {};
+    LAST_SETTINGS = s;
+    setVal('g-heading', s.apply?.heading_override || '');
+    setVal('g-season-open',         s.season?.open === false ? 'false' : 'true');
+    setVal('g-memberships-frozen',  s.season?.memberships_frozen ? 'true' : 'false');
+    setVal('g-closed-msg', s.season?.closed_message || '');
+  } catch (e) {
+    document.getElementById('g-err').textContent = e.message;
+    document.getElementById('g-err').classList.add('show');
+  }
+}
+async function saveGeneral() {
+  const errEl = document.getElementById('g-err'); errEl.classList.remove('show');
+  const btn = document.getElementById('g-save'); btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const value = {
+      ...LAST_SETTINGS,
+      apply: { ...(LAST_SETTINGS.apply || {}), heading_override: val('g-heading') || null },
+      season: {
+        ...(LAST_SETTINGS.season || {}),
+        open: val('g-season-open') !== 'false',
+        memberships_frozen: val('g-memberships-frozen') === 'true',
+        closed_message: val('g-closed-msg') || null,
+      },
+    };
+    const r = await call(SETTINGS_URL, 'save', { value });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    LAST_SETTINGS = value;
+    toast('Saved.');
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+// ── Tiers panel ──────────────────────────────────────────────────────────
+const Tiers = (() => {
+  const DEFAULTS = [
+    { slug:'family', label:'Family', price_cents:60000, description:'All household members' },
+    { slug:'single', label:'Single', price_cents:35000, description:'One adult' },
+    { slug:'senior', label:'Senior', price_cents:25000, description:'65+' },
+  ];
+  let LOADED = false;
+  function paint(tiers) {
+    const list = document.getElementById('tiers-list');
+    const rows = (tiers && tiers.length) ? tiers : DEFAULTS;
+    list.innerHTML = rows.map((t, i) => `
+      <div class="tier-row" data-i="${i}">
+        <div><label>Label</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family"></div>
+        <div><label>Slug</label><input data-field="slug" value="${escapeHtml(t.slug || '')}" placeholder="family"></div>
+        <div><label>Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents/100).toFixed(2) : ''}"></div>
+        <button type="button" onclick="this.parentElement.remove()" title="Remove" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer">×</button>
+        <div style="grid-column:1/-1"><label>Description</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers"></div>
+      </div>`).join('');
+  }
+  function collect() {
+    const out = [];
+    document.querySelectorAll('#tiers-list .tier-row').forEach(row => {
+      const get = f => (row.querySelector(`[data-field="${f}"]`) || {}).value || '';
+      const label = get('label').trim(); if (!label) return;
+      const slug = (get('slug').trim() || label).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+      const price = parseFloat(get('price'));
+      out.push({ slug, label, price_cents: Number.isFinite(price) ? Math.round(price*100) : 0, description: get('description').trim() || null });
+    });
+    return out;
+  }
+  function add() { const t = collect(); t.push({ slug:'', label:'', price_cents:0, description:'' }); paint(t); }
+  async function refresh() {
+    try {
+      const data = await call(SETTINGS_URL, 'get');
+      if (!data.ok) throw new Error(data.error || 'Failed');
+      const tiers = Array.isArray(data.settings?.membership_tiers) ? data.settings.membership_tiers : null;
+      paint(tiers); LOADED = true;
+    } catch (e) {
+      document.getElementById('tiers-err').textContent = e.message;
+      document.getElementById('tiers-err').classList.add('show');
+    }
+  }
+  async function save() {
+    const btn = document.getElementById('tiers-save');
+    const errEl = document.getElementById('tiers-err'); errEl.classList.remove('show');
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+    try {
+      const tiers = collect();
+      const r = await call(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+      toast('Tiers saved.');
+    } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  }
+  return { add, save, refresh, get LOADED() { return LOADED; } };
+})();
+
+// ── Policies panel ───────────────────────────────────────────────────────
+const Policies = (() => {
+  let CACHE = []; let EDITING = null; let LOADED = false;
+  function render() {
+    const list = document.getElementById('policies-list');
+    if (!CACHE.length) { list.innerHTML = '<div class="empty">No policies yet. Tap <b>+ Add policy</b> to write your first one.</div>'; return; }
+    list.innerHTML = CACHE.map((p, i) => `
+      <div class="pol" data-id="${p.id}" data-idx="${i}">
+        <div class="pol-row">
+          <div style="flex:1;min-width:0">
+            <h3>${escapeHtml(p.title)} ${p.required_for_apply ? '<span class="pill req">Required</span>' : '<span class="pill info">Info only</span>'} ${p.active ? '' : '<span class="pill off">Archived</span>'}</h3>
+            <div class="meta">slug: <code>${escapeHtml(p.slug)}</code> · updated ${escapeHtml(new Date(p.updated_at).toLocaleDateString())}</div>
+            <div class="body" onclick="this.parentElement.parentElement.classList.toggle('expanded')">${escapeHtml(p.body)}</div>
+          </div>
+          <div class="actions">
+            <div class="reorder">
+              <button onclick="Policies.move(${i}, -1)" ${i === 0 ? 'disabled style="opacity:.4"' : ''}>↑</button>
+              <button onclick="Policies.move(${i}, 1)" ${i === CACHE.length - 1 ? 'disabled style="opacity:.4"' : ''}>↓</button>
+            </div>
+            <button class="btn btn-sm btn-ghost" onclick="Policies.openEdit('${p.id}')">Edit</button>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+  async function refresh() {
+    try {
+      const data = await call(POLICIES_URL, 'list');
+      if (!data.ok) throw new Error(data.error || 'Failed to load');
+      CACHE = data.policies || []; LOADED = true; render();
+    } catch (e) {
+      document.getElementById('policies-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  async function move(idx, delta) {
+    const target = idx + delta; if (target < 0 || target >= CACHE.length) return;
+    const order = CACHE.map(p => p.id); [order[idx], order[target]] = [order[target], order[idx]];
+    const r = await call(POLICIES_URL, 'reorder', { order });
+    if (!r.ok) { alert(r.error || 'Reorder failed'); return; }
+    await refresh();
+  }
+  function openCreate() {
+    EDITING = null;
+    document.getElementById('pol-modal-title').textContent = 'Add policy';
+    document.getElementById('pol-delete').style.display = 'none';
+    setVal('pol-title', ''); setVal('pol-body', '');
+    document.getElementById('pol-required').checked = true;
+    document.getElementById('pol-err').classList.remove('show');
+    document.getElementById('pol-scrim').classList.add('open');
+  }
+  function openEdit(id) {
+    const p = CACHE.find(x => x.id === id); if (!p) return;
+    EDITING = p;
+    document.getElementById('pol-modal-title').textContent = `Edit: ${p.title}`;
+    document.getElementById('pol-delete').style.display = p.active ? 'inline-block' : 'none';
+    setVal('pol-title', p.title || ''); setVal('pol-body', p.body || '');
+    document.getElementById('pol-required').checked = !!p.required_for_apply;
+    document.getElementById('pol-err').classList.remove('show');
+    document.getElementById('pol-scrim').classList.add('open');
+  }
+  function closeM() { document.getElementById('pol-scrim').classList.remove('open'); }
+  async function save() {
+    const errEl = document.getElementById('pol-err'); errEl.classList.remove('show');
+    const payload = {
+      title: val('pol-title'), body: val('pol-body'),
+      required_for_apply: document.getElementById('pol-required').checked,
+    };
+    if (!payload.title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
+    if (!payload.body)  { errEl.textContent = 'Body is required';  errEl.classList.add('show'); return; }
+    try {
+      const r = EDITING ? await call(POLICIES_URL, 'update', { id: EDITING.id, ...payload }) : await call(POLICIES_URL, 'create', payload);
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+      closeM(); await refresh(); toast('Policy saved.');
+    } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  }
+  async function del() {
+    if (!EDITING) return;
+    if (!confirm(`Archive "${EDITING.title}"? It'll stop appearing on the apply form.`)) return;
+    const r = await call(POLICIES_URL, 'delete', { id: EDITING.id });
+    if (!r.ok) {
+      document.getElementById('pol-err').textContent = r.error || 'Delete failed';
+      document.getElementById('pol-err').classList.add('show'); return;
+    }
+    closeM(); await refresh();
+  }
+  return { refresh, move, openCreate, openEdit, closeM, save, del, get LOADED() { return LOADED; } };
+})();
+
+// ── Emails panel ─────────────────────────────────────────────────────────
+const Emails = (() => {
+  let TEMPLATES = [];  // unified list from email_templates.list — each item carries .override
+  let EDITING = null; let LOADED = false;
+
+  // Only application-lifecycle keys live on this page; member-side emails
+  // (renewals, payment plans, party approve/deny) stay on Members.
+  const APP_KEYS = new Set([
+    'application_received_venmo', 'application_received_stripe',
+    'application_received_stripe_plan', 'application_received_other',
+    'application_approved_stripe_paid', 'application_approved_venmo_verified',
+    'application_approved_unpaid_venmo', 'application_approved_plan_first',
+    'application_approved_other', 'application_rejected',
+    'payment_verified_venmo',
+  ]);
+
+  function render() {
+    const list = document.getElementById('emails-list');
+    const rows = TEMPLATES.filter(t => APP_KEYS.has(t.key));
+    if (!rows.length) { list.innerHTML = '<div class="empty">No application emails on file.</div>'; return; }
+    list.innerHTML = rows.map(t => {
+      const ovr = t.override;
+      const isCustom = !!ovr;
+      const isOff = isCustom && ovr.enabled === false;
+      return `
+        <div class="em-row">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px;color:var(--text)">${escapeHtml(t.label)} ${isOff ? '<span class="pill off">Off</span>' : (isCustom ? '<span class="pill info">Custom</span>' : '<span class="pill" style="background:#dcfce7;color:#15803d">Default</span>')}</div>
+            <div class="em-meta">${escapeHtml(t.description)}</div>
+          </div>
+          <button class="btn btn-sm btn-ghost" onclick="Emails.openEdit('${escapeHtml(t.key)}')">Edit</button>
+        </div>`;
+    }).join('');
+  }
+  async function refresh() {
+    try {
+      const r = await call(EMAILS_URL, 'list');
+      if (!r.ok) throw new Error(r.error || 'Failed to load');
+      TEMPLATES = r.templates || [];
+      LOADED = true; render();
+    } catch (e) {
+      document.getElementById('emails-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  function openEdit(key) {
+    const t = TEMPLATES.find(x => x.key === key); if (!t) return;
+    EDITING = t;
+    const ovr = t.override || {};
+    document.getElementById('em-modal-title').textContent = t.label;
+    document.getElementById('em-modal-desc').textContent  = t.description;
+    document.getElementById('em-enabled').checked = ovr.enabled !== false;
+    setVal('em-subject', ovr.subject ?? t.default_subject);
+    setVal('em-body',    ovr.body_html ?? t.default_body_html);
+    document.getElementById('em-vars').textContent = `Variables you can use: ${(t.variables || []).map(v => '{{' + v + '}}').join(', ') || '(none)'}`;
+    document.getElementById('em-err').classList.remove('show');
+    document.getElementById('em-scrim').classList.add('open');
+  }
+  function closeM() { document.getElementById('em-scrim').classList.remove('open'); }
+  async function save() {
+    if (!EDITING) return;
+    const errEl = document.getElementById('em-err'); errEl.classList.remove('show');
+    try {
+      const r = await call(EMAILS_URL, 'save', {
+        key: EDITING.key,
+        subject:   val('em-subject'),
+        body_html: val('em-body'),
+        enabled:   document.getElementById('em-enabled').checked,
+      });
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+      closeM(); await refresh(); toast('Email saved.');
+    } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  }
+  async function resetToDefault() {
+    if (!EDITING) return;
+    if (!confirm(`Drop your custom version of "${EDITING.label}" and use the default copy?`)) return;
+    try {
+      const r = await call(EMAILS_URL, 'reset', { key: EDITING.key });
+      if (!r.ok) throw new Error(r.error || 'Reset failed');
+      closeM(); await refresh(); toast('Reset to default.');
+    } catch (e) {
+      document.getElementById('em-err').textContent = e.message;
+      document.getElementById('em-err').classList.add('show');
+    }
+  }
+  return { refresh, openEdit, closeM, save, resetToDefault, get LOADED() { return LOADED; } };
+})();
+
+// ── Boot ─────────────────────────────────────────────────────────────────
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const me = await fetch(ME_URL, {
+      method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`},
+      body: JSON.stringify({ action:'me' }),
+    }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email || 'Admin';
+    await loadGeneral();
+    // Honor #subtab anchor — used when other pages link in directly
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (hash && ['general','tiers','policies','emails'].includes(hash)) {
+      const btn = document.querySelector(`#subtabs button[data-panel="${hash}"]`);
+      if (btn) btn.click();
+    }
+  } catch (e) {
+    document.getElementById('panel-general').innerHTML = `<div class="card"><h2>Error</h2><p>${escapeHtml(e.message)}</p></div>`;
+  }
+})();
+</script>
+</body>
+</html>

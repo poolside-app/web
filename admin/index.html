@@ -208,6 +208,24 @@
       </div>
     </div>
 
+    <!-- Plan overrides — give a tenant a custom display label or a custom
+         cap without changing their plan slug (which drives billing). -->
+    <div style="margin-top:14px;padding:14px;background:var(--bg-2);border-radius:10px">
+      <div style="font-weight:600;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Overrides <span style="text-transform:none;font-weight:500;letter-spacing:0">— rare; for grandfathered or comped tenants</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-weight:600;font-size:13px;display:block;margin:0 0 6px">Custom plan label</label>
+          <input id="edit-plan-label-override" type="text" placeholder="e.g. Grandfathered" style="width:100%;padding:11px 14px;font:14px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+          <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Replaces "Free Forever" / "Pro" / etc. in admin + member UIs.</p>
+        </div>
+        <div>
+          <label style="font-weight:600;font-size:13px;display:block;margin:0 0 6px">Household cap override</label>
+          <input id="edit-cap-override" type="number" min="0" placeholder="leave blank = plan default" style="width:100%;padding:11px 14px;font:14px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px;background:#fff">
+          <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Use 999999 for "unlimited". Blank = honor the plan tier's default.</p>
+        </div>
+      </div>
+    </div>
+
     <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Custom domain <span style="font-weight:500;color:var(--muted);text-transform:none;font-size:11px">(Enterprise tier; e.g. <code>yourclub.com</code>)</span></label>
     <input id="edit-custom-domain" type="text" placeholder="leave blank if none" style="width:100%;padding:11px 14px;font:15px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px">
 
@@ -462,6 +480,8 @@
     document.getElementById('edit-status').value = t.status || 'trial';
     document.getElementById('edit-custom-domain').value = t.custom_domain || '';
     document.getElementById('edit-notes').value = t.notes || '';
+    document.getElementById('edit-plan-label-override').value = t.plan_label_override || '';
+    document.getElementById('edit-cap-override').value = (t.household_cap_override ?? '') === null ? '' : (t.household_cap_override ?? '');
     document.getElementById('edit-err').style.display = 'none';
     document.getElementById('edit-slug-host').textContent = `${t.slug}.poolsideapp.com`;
     document.getElementById('edit-admins-list').textContent = 'Loading…';
@@ -583,9 +603,12 @@
     const status        = document.getElementById('edit-status').value;
     const custom_domain = document.getElementById('edit-custom-domain').value.trim() || null;
     const notes         = document.getElementById('edit-notes').value.trim() || null;
+    const plan_label_override = document.getElementById('edit-plan-label-override').value.trim() || null;
+    const capRaw = document.getElementById('edit-cap-override').value.trim();
+    const household_cap_override = capRaw === '' ? null : Number(capRaw);
     btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
     try {
-      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes });
+      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes, plan_label_override, household_cap_override });
       closeEditModal();
       await loadTenants();
     } catch (e) {

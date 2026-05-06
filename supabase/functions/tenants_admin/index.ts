@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
   // ── list ───────────────────────────────────────────────────────────────
   if (action === 'list') {
     const { data, error } = await sb.from('tenants')
-      .select('id, slug, display_name, custom_domain, status, plan, trial_ends_at, stripe_customer_id, notes, created_at, updated_at')
+      .select('id, slug, display_name, custom_domain, status, plan, plan_label_override, household_cap_override, trial_ends_at, stripe_customer_id, notes, created_at, updated_at')
       .order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
@@ -216,6 +216,21 @@ Deno.serve(async (req) => {
     if (body.custom_domain !== undefined) patch.custom_domain = strOrNull(body.custom_domain);
     if (body.notes !== undefined)         patch.notes         = strOrNull(body.notes);
     if (body.trial_ends_at !== undefined) patch.trial_ends_at = body.trial_ends_at;
+    if (body.plan_label_override !== undefined) {
+      patch.plan_label_override = strOrNull(body.plan_label_override);
+    }
+    if (body.household_cap_override !== undefined) {
+      const v = body.household_cap_override;
+      if (v === null || v === '' || v === undefined) {
+        patch.household_cap_override = null;
+      } else {
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) {
+          return jsonResponse({ ok: false, error: 'household_cap_override must be a non-negative number or null' }, 400);
+        }
+        patch.household_cap_override = Math.trunc(n);
+      }
+    }
 
     if (Object.keys(patch).length === 0) {
       return jsonResponse({ ok: true, noop: true });
