@@ -69,6 +69,9 @@ function publicGatePanel(row: Record<string, unknown> | null): Record<string, un
     bridge_last_seen_at: row.bridge_last_seen_at,
     bridge_version: row.bridge_version,
     notes: row.notes,
+    config_locked: !!row.config_locked,
+    config_locked_at: row.config_locked_at ?? null,
+    config_locked_by: row.config_locked_by ?? null,
   };
 }
 
@@ -161,9 +164,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Only owners can change gate config' }, 403);
     }
     const { data: row } = await sb.from('gate_panels')
-      .select('id, status').eq('tenant_id', payload.tid).maybeSingle();
+      .select('id, status, config_locked').eq('tenant_id', payload.tid).maybeSingle();
     if (!row || row.status !== 'active') {
       return jsonResponse({ ok: false, error: 'Gate add-on is not active for this club' }, 400);
+    }
+    if (row.config_locked) {
+      return jsonResponse({ ok: false, error: 'Panel configuration is locked. Click 🔓 Unlock to edit.' }, 423);
     }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.panel_host !== undefined)            patch.panel_host = String(body.panel_host).trim() || null;
@@ -186,6 +192,13 @@ Deno.serve(async (req) => {
     if (!(await requireOwner(sb, payload as never))) {
       return jsonResponse({ ok: false, error: 'Only owners can rotate the bridge secret' }, 403);
     }
+    // Block when locked — rotating breaks the on-site bridge until someone
+    // updates the .env file. Same lock that protects panel host/creds applies.
+    const { data: lockCheck } = await sb.from('gate_panels')
+      .select('config_locked').eq('tenant_id', payload.tid).maybeSingle();
+    if (lockCheck?.config_locked) {
+      return jsonResponse({ ok: false, error: 'Panel configuration is locked. Click 🔓 Unlock first — rotating the secret would break the on-site bridge until the .env is updated.' }, 423);
+    }
     const secret = randomBridgeSecret();
     const hash = await sha256Hex(secret);
     const { data: row, error } = await sb.from('gate_panels')
@@ -204,6 +217,33 @@ Deno.serve(async (req) => {
       bridge_secret: secret,    // ONE-TIME plaintext
       message: 'Save this secret — it can\'t be recovered. Re-rotate if you lose it.',
     });
+  }
+
+  // set_config_lock — toggle the panel-config lock. When locked, panel host /
+  // user / password / bridge-secret rotation are all read-only; the test
+  // unlock + recent unlocks views still work, and the bridge keeps running.
+  // Only owners can toggle. Audit-logged.
+  if (action === 'set_config_lock') {
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can lock/unlock panel config' }, 403);
+    }
+    const wantLocked = !!body.locked;
+    const patch: Record<string, unknown> = {
+      config_locked: wantLocked,
+      config_locked_at: wantLocked ? new Date().toISOString() : null,
+      config_locked_by: wantLocked ? payload.sub : null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb.from('gate_panels').update(patch).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await sb.from('audit_log').insert({
+      tenant_id: payload.tid,
+      kind: wantLocked ? 'gate.config_locked' : 'gate.config_unlocked',
+      entity_type: 'gate_panel', entity_id: payload.tid,
+      summary: wantLocked ? 'Panel config locked' : 'Panel config unlocked',
+      actor_id: payload.sub, actor_kind: 'tenant_admin',
+    });
+    return jsonResponse({ ok: true, locked: wantLocked });
   }
 
   if (action === 'recent_unlocks') {

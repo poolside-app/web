@@ -644,30 +644,46 @@ function renderGateActive(panel, health) {
     never_seen:'⚪ Bridge never connected — once you plug it in, it phones home automatically',
   }[health.state] || 'Bridge state unknown';
 
-  document.getElementById('gate-h2').innerHTML = `🔐 Remote keyfob access · <span style="font-size:13px;font-weight:500;color:${healthColor}">${healthLabel}</span>`;
+  const locked = !!panel.config_locked;
+  const lockedAttrs = locked ? 'readonly tabindex="-1"' : '';
+  const lockedStyle = locked ? 'background:#f1f5f9;color:var(--muted);cursor:not-allowed;' : '';
+  const lockedBanner = locked ? `
+    <div style="margin:0 0 14px;padding:10px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;font-size:13px;color:#7c2d12">
+      🔒 <b>Panel configuration is locked.</b> Click Unlock below to edit.${panel.config_locked_at ? ' Locked ' + new Date(panel.config_locked_at).toLocaleString() + '.' : ''}
+    </div>
+  ` : '';
+
+  document.getElementById('gate-h2').innerHTML = `🔐 Remote keyfob access · <span style="font-size:13px;font-weight:500;color:${healthColor}">${healthLabel}</span>${locked ? ' · <span style="font-size:13px;font-weight:600;color:#7c2d12">🔒 Locked</span>' : ''}`;
 
   document.getElementById('gate-body').innerHTML = `
+    ${lockedBanner}
     <p style="margin:0 0 14px;color:var(--muted);font-size:13px">Members with paid dues see a <b>"Unlock gate"</b> button on their home page. Each tap is logged and audited.</p>
     <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:440px">
       <div>
         <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Panel IP / hostname</label>
-        <input id="gp-host" placeholder="192.168.1.50" value="${escapeHtml(panel.panel_host || '')}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+        <input id="gp-host" placeholder="192.168.1.50" value="${escapeHtml(panel.panel_host || '')}" ${lockedAttrs} style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;${lockedStyle}">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Admin user</label>
-          <input id="gp-user" placeholder="admin" value="${escapeHtml(panel.panel_admin_user || '')}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+          <input id="gp-user" placeholder="admin" value="${escapeHtml(panel.panel_admin_user || '')}" ${lockedAttrs} style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;${lockedStyle}">
         </div>
         <div>
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Admin password</label>
-          <input id="gp-pass" type="password" placeholder="${panel.panel_password_set ? '•••••••• (saved)' : 'panel admin password'}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+          <input id="gp-pass" type="password" placeholder="${panel.panel_password_set ? '•••••••• (saved)' : 'panel admin password'}" ${lockedAttrs} style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;${lockedStyle}">
         </div>
       </div>
     </div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-primary" onclick="saveGateConfig()" style="background:var(--blue);color:#fff">Save panel config</button>
-      <button class="btn" onclick="testGateUnlock()" ${!panel.panel_host ? 'disabled style="opacity:.5"' : ''}>Test unlock</button>
-      <button class="btn" onclick="rotateBridgeSecret()">Rotate bridge secret</button>
+      ${locked ? `
+        <button class="btn" onclick="setGateLock(false)" style="background:#fef3c7;color:#7c2d12;border-color:#fde68a">🔓 Unlock to edit</button>
+        <button class="btn" onclick="testGateUnlock()" ${!panel.panel_host ? 'disabled style="opacity:.5"' : ''}>Test unlock</button>
+      ` : `
+        <button class="btn btn-primary" onclick="saveGateConfig()" style="background:var(--blue);color:#fff">Save panel config</button>
+        <button class="btn" onclick="testGateUnlock()" ${!panel.panel_host ? 'disabled style="opacity:.5"' : ''}>Test unlock</button>
+        <button class="btn" onclick="rotateBridgeSecret()">Rotate bridge secret</button>
+        ${panel.panel_host ? `<button class="btn" onclick="setGateLock(true)" style="background:#fef3c7;color:#7c2d12;border-color:#fde68a">🔒 Lock these settings</button>` : ''}
+      `}
       <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:6px;align-self:center;display:none">✓ Saved</span>
     </div>
     <details style="margin-top:18px">
@@ -676,6 +692,21 @@ function renderGateActive(panel, health) {
     </details>
   `;
   loadRecentUnlocks();
+}
+
+async function setGateLock(wantLocked) {
+  const msg = wantLocked
+    ? 'Lock the panel configuration?\n\nNo one (not even you) can change panel host/user/password or rotate the bridge secret without unlocking first. The bridge keeps running and members can still unlock the gate normally.'
+    : 'Unlock the panel configuration?\n\nThis lets the panel host/user/password be edited again. Re-lock when you\'re done.';
+  if (!confirm(msg)) return;
+  try {
+    const r = await gateApi('set_config_lock', { locked: wantLocked });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    loadGate();
+  } catch (e) {
+    document.getElementById('gate-err').textContent = e.message;
+    document.getElementById('gate-err').classList.add('show');
+  }
 }
 
 async function requestGateAddon() {
