@@ -751,7 +751,31 @@ async function submitApplication() {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Submission failed');
+    if (!data.ok) {
+      // Duplicate-signup guard: friendlier UX than a generic error toast.
+      // Replace the form with a clear "you're already a member / pending"
+      // card with a sign-in link instead of just bouncing to a red banner.
+      if (data.code === 'already_member' || data.code === 'already_applied') {
+        const formEl = document.getElementById('form');
+        formEl.className = 'card ok';
+        const slug = getSlug();
+        const memberLogin = `/m/login.html`;
+        if (data.code === 'already_member') {
+          formEl.innerHTML = `
+            <h1 style="color:var(--blue)">You're already a member 👋</h1>
+            <p class="lede">${escapeHtml(data.error)}</p>
+            <div style="margin-top:18px"><a href="${memberLogin}" style="display:inline-block;background:var(--blue);color:#fff;padding:12px 24px;border-radius:10px;font-weight:600;text-decoration:none">Sign in to your member home →</a></div>
+            <p style="margin-top:16px;font-size:12px;color:var(--muted)">If you think this is a mistake, reply to your welcome email or contact a board member.</p>`;
+        } else {
+          formEl.innerHTML = `
+            <h1 style="color:var(--blue)">Application already submitted ⏳</h1>
+            <p class="lede">${escapeHtml(data.error)}</p>
+            <p style="margin-top:14px;font-size:13px;color:var(--muted)">If you don't see an email from the board within a few days, reach out — sometimes the welcome email lands in spam.</p>`;
+        }
+        return;
+      }
+      throw new Error(data.error || 'Submission failed');
+    }
     const appId = data.application_id;
     const venmoHandle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
     const method = (document.querySelector('input[name="payment_method"]:checked')?.value || '');

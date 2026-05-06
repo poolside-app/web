@@ -1527,6 +1527,12 @@ async function submitProfile() {
   const heroActions = [];
   // Refer a friend gets the bright treatment — it's the growth lever.
   heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, get $100 off</button>`);
+  // Primary member can add new family members directly from /m/. Surface
+  // here in the hero (above-the-fold) AND inside the household card —
+  // collapsed-details visibility was too easy to miss.
+  if (user.role === 'primary') {
+    heroActions.push(`<button class="btn btn-ghost" onclick="openAddMember()">👥 Add a household member</button>`);
+  }
   if (user.can_book_parties) heroActions.push(`<button class="btn btn-ghost" onclick="openPartyModal()">🎉 Request a party</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openProfileModal()">Edit my info</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openPhotoUpload()">📸 Upload a photo</button>`);

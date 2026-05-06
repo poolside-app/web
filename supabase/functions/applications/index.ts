@@ -155,6 +155,67 @@ Deno.serve(async (req) => {
     if (rawPhone && !phone) return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
     if (!email && !phone)   return jsonResponse({ ok: false, error: 'Provide an email or a phone (or both)' }, 400);
 
+    // Duplicate-signup guard: if this email or phone is already on file as
+    // an ACTIVE member of this tenant, OR has a pending application from a
+    // few days ago, don't create a new application. Common case: someone
+    // hits Submit twice, or a returning member forgets they're a member.
+    // Both checks scoped to active rows so a household that was deactivated
+    // for non-payment can re-apply.
+    if (email || phone) {
+      const memberMatchPromises: Promise<{ data: Array<{ id: string }> | null }>[] = [];
+      if (email) {
+        memberMatchPromises.push(
+          sb.from('household_members').select('id')
+            .eq('tenant_id', tenant.id).eq('active', true)
+            .ilike('email', email).limit(1) as never,
+        );
+      }
+      if (phone) {
+        memberMatchPromises.push(
+          sb.from('household_members').select('id')
+            .eq('tenant_id', tenant.id).eq('active', true)
+            .eq('phone_e164', phone).limit(1) as never,
+        );
+      }
+      const memberHits = (await Promise.all(memberMatchPromises))
+        .flatMap(r => r.data ?? []);
+      if (memberHits.length > 0) {
+        return jsonResponse({
+          ok: false,
+          error: `You already have a membership at ${tenant.display_name || 'this club'}. Sign in to your member home instead — visit /m/login.html and we'll text or email you a sign-in link.`,
+          code: 'already_member',
+        }, 409);
+      }
+
+      const appMatchPromises: Promise<{ data: Array<{ id: string; created_at: string }> | null }>[] = [];
+      if (email) {
+        appMatchPromises.push(
+          sb.from('applications').select('id, created_at')
+            .eq('tenant_id', tenant.id).eq('status', 'pending')
+            .ilike('primary_email', email).limit(1) as never,
+        );
+      }
+      if (phone) {
+        appMatchPromises.push(
+          sb.from('applications').select('id, created_at')
+            .eq('tenant_id', tenant.id).eq('status', 'pending')
+            .eq('primary_phone', phone).limit(1) as never,
+        );
+      }
+      const appHits = (await Promise.all(appMatchPromises))
+        .flatMap(r => r.data ?? []);
+      if (appHits.length > 0) {
+        const since = appHits[0].created_at
+          ? `from ${new Date(appHits[0].created_at).toLocaleDateString()}`
+          : 'on file';
+        return jsonResponse({
+          ok: false,
+          error: `You already submitted an application ${since}. The board will review it soon — watch for an email.`,
+          code: 'already_applied',
+        }, 409);
+      }
+    }
+
     const payment_method = strOrNull(body.payment_method);
     if (payment_method && !VALID_PAYMENT_METHODS.has(payment_method)) {
       return jsonResponse({ ok: false, error: 'Invalid payment method' }, 400);
