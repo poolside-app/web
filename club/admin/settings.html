@@ -295,6 +295,14 @@
       Manage admins &amp; roles →
     </a>
   </div>
+
+  <!-- Gate add-on card — stateful: shows different UI for "not requested",
+       "requested", and "active" states. Fetched + rendered by JS below. -->
+  <div class="card" id="gate-card" data-owner-only style="margin-top:18px;display:none">
+    <h2 id="gate-h2">🔐 Remote keyfob access</h2>
+    <div id="gate-body" style="font-size:13.5px;color:var(--text);line-height:1.55"></div>
+    <div class="err" id="gate-err"></div>
+  </div>
 </main>
 
 <div class="toast" id="toast">Saved.</div>
@@ -551,6 +559,195 @@ function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'
 // there. Removed all admin CRUD functions from this page so there's only
 // one source of truth.
 
+// ── Gate add-on card ────────────────────────────────────────────────────
+const GATE_URL = `${SUPABASE_URL}/functions/v1/gate_admin`;
+
+async function gateApi(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const r = await fetch(GATE_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  return r.json();
+}
+
+async function loadGate() {
+  let s;
+  try {
+    s = await gateApi('get_status');
+  } catch { return; }   // gate function not deployed → silently leave card hidden
+  if (!s.ok) return;
+  const card = document.getElementById('gate-card');
+  card.style.display = '';
+  const panel = s.panel;
+  const health = s.bridge_health || { state: 'unknown' };
+
+  if (!panel) {
+    renderGatePitch();
+  } else if (panel.status === 'requested' || panel.status === 'invoiced' || panel.status === 'shipping') {
+    renderGatePending(panel);
+  } else if (panel.status === 'active') {
+    renderGateActive(panel, health);
+  } else {
+    renderGatePitch();
+  }
+}
+
+function renderGatePitch() {
+  document.getElementById('gate-body').innerHTML = `
+    <p style="margin:0 0 12px">Let members open the front gate from their phone after they've paid their dues. Works with the gate panels we've tested on real hardware. Each member's button enables automatically the moment their dues clear.</p>
+    <ul style="margin:0 0 14px;padding-left:20px;line-height:1.7">
+      <li><b>$250 setup</b> — covers the on-site bridge hardware + first install</li>
+      <li><b>$25/month</b> — keeps the cloud connection live, panel-firmware updates included</li>
+      <li>Auto-shuts-off keyfob access for lapsed members; auto-restores when they pay</li>
+    </ul>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use?</label>
+    <select id="gate-panel-type" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;max-width:420px;background:#fff">
+      <option value="mengqi_hxc7000">MENGQI-CONTROL HXC-7000 TCP/IP keyfob — verified, ships in 5 days</option>
+      <option value="unknown">I don't know what panel I have — help me figure it out</option>
+      <option value="custom">Other / custom panel — talk to us</option>
+    </select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;max-width:420px">
+      <div>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Your name</label>
+        <input id="gate-contact-name" placeholder="Margaret Kowalski" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Email to invoice</label>
+        <input id="gate-contact-email" type="email" placeholder="margaret@example.com" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:10px 18px">Reserve my spot →</button>
+      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Reservation received — we'll be in touch within 1 business day</span>
+    </div>
+  `;
+}
+
+function renderGatePending(panel) {
+  const labels = { requested: 'Reservation received', invoiced: 'Invoice sent', shipping: 'Bridge shipping' };
+  document.getElementById('gate-body').innerHTML = `
+    <div style="padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+      <b style="color:var(--blue)">${labels[panel.status] || panel.status}</b>
+      <p style="margin:6px 0 0">We received your request on ${new Date(panel.requested_at).toLocaleDateString()}. The next step is on us — you'll get an email when your bridge ships, then this card will turn into the configuration form.</p>
+    </div>
+  `;
+}
+
+function renderGateActive(panel, health) {
+  const healthColor = { online:'#16a34a', stale:'#d97706', offline:'#dc2626', never_seen:'#94a3b8' }[health.state] || '#94a3b8';
+  const healthLabel = {
+    online:    `🟢 Bridge online (last seen ${health.last_seen_seconds_ago}s ago)`,
+    stale:     `🟡 Bridge stale (${health.last_seen_seconds_ago}s — possible network blip)`,
+    offline:   `🔴 Bridge offline (${health.last_seen_seconds_ago}s — power or network issue)`,
+    never_seen:'⚪ Bridge never connected — once you plug it in, it phones home automatically',
+  }[health.state] || 'Bridge state unknown';
+
+  document.getElementById('gate-h2').innerHTML = `🔐 Remote keyfob access · <span style="font-size:13px;font-weight:500;color:${healthColor}">${healthLabel}</span>`;
+
+  document.getElementById('gate-body').innerHTML = `
+    <p style="margin:0 0 14px;color:var(--muted);font-size:13px">Members with paid dues see a <b>"Unlock gate"</b> button on their home page. Each tap is logged and audited.</p>
+    <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:440px">
+      <div>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Panel IP / hostname</label>
+        <input id="gp-host" placeholder="192.168.1.50" value="${escapeHtml(panel.panel_host || '')}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Admin user</label>
+          <input id="gp-user" placeholder="admin" value="${escapeHtml(panel.panel_admin_user || '')}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Admin password</label>
+          <input id="gp-pass" type="password" placeholder="${panel.panel_password_set ? '•••••••• (saved)' : 'panel admin password'}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="saveGateConfig()" style="background:var(--blue);color:#fff">Save panel config</button>
+      <button class="btn" onclick="testGateUnlock()" ${!panel.panel_host ? 'disabled style="opacity:.5"' : ''}>Test unlock</button>
+      <button class="btn" onclick="rotateBridgeSecret()">Rotate bridge secret</button>
+      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:6px;align-self:center;display:none">✓ Saved</span>
+    </div>
+    <details style="margin-top:18px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600">Recent unlocks (last 25)</summary>
+      <div id="gate-unlocks-list" style="margin-top:10px;font-size:13px;color:var(--muted)">Loading…</div>
+    </details>
+  `;
+  loadRecentUnlocks();
+}
+
+async function requestGateAddon() {
+  const errEl = document.getElementById('gate-err');
+  errEl.classList.remove('show');
+  const panelType    = document.getElementById('gate-panel-type').value;
+  const contactName  = document.getElementById('gate-contact-name').value.trim();
+  const contactEmail = document.getElementById('gate-contact-email').value.trim();
+  if (!contactEmail || !contactEmail.includes('@')) { errEl.textContent = 'Please add an email so we can invoice you.'; errEl.classList.add('show'); return; }
+  try {
+    const r = await gateApi('request_addon', { panel_type: panelType, contact_name: contactName, contact_email: contactEmail });
+    if (!r.ok) throw new Error(r.error || 'Request failed');
+    document.getElementById('gate-saved').textContent = '✓ ' + (r.message || 'Reservation received');
+    document.getElementById('gate-saved').style.display = '';
+    setTimeout(() => loadGate(), 1200);
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+
+async function saveGateConfig() {
+  const errEl = document.getElementById('gate-err');
+  errEl.classList.remove('show');
+  const host = document.getElementById('gp-host').value.trim();
+  const user = document.getElementById('gp-user').value.trim();
+  const pass = document.getElementById('gp-pass').value;
+  if (!host) { errEl.textContent = 'Panel IP / hostname is required.'; errEl.classList.add('show'); return; }
+  try {
+    const body = { panel_host: host, panel_admin_user: user };
+    if (pass) body.panel_admin_password = pass;     // only update if user typed a new one
+    const r = await gateApi('update_config', body);
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    document.getElementById('gate-saved').textContent = '✓ Saved';
+    document.getElementById('gate-saved').style.display = '';
+    setTimeout(() => { document.getElementById('gate-saved').style.display = 'none'; loadGate(); }, 1500);
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+
+async function testGateUnlock() {
+  const errEl = document.getElementById('gate-err');
+  errEl.classList.remove('show');
+  try {
+    const r = await gateApi('test_unlock');
+    if (!r.ok) throw new Error(r.error || 'Test failed');
+    alert('Test unlock queued. The bridge will pick it up within ~2 seconds. Watch the Recent unlocks list to see the result.');
+    setTimeout(() => loadRecentUnlocks(), 2500);
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+
+async function rotateBridgeSecret() {
+  if (!confirm('Rotate the bridge secret?\n\nThe currently-installed Pi bridge will stop working until you update its config file with the new secret. Only do this if you have access to the Pi.')) return;
+  try {
+    const r = await gateApi('rotate_bridge_secret');
+    if (!r.ok) throw new Error(r.error || 'Rotation failed');
+    prompt('New bridge secret (save this — it can\'t be recovered):', r.bridge_secret);
+  } catch (e) { alert(e.message); }
+}
+
+async function loadRecentUnlocks() {
+  try {
+    const r = await gateApi('recent_unlocks', { limit: 25 });
+    const box = document.getElementById('gate-unlocks-list');
+    if (!box) return;
+    if (!r.ok || !r.unlocks?.length) { box.textContent = 'No unlocks yet.'; return; }
+    box.innerHTML = r.unlocks.map(u => {
+      const when = new Date(u.requested_at).toLocaleString();
+      const who = u.is_test ? '(admin test)' : (u.member_name || '?');
+      const status = u.status === 'done' ? '✓' : u.status === 'failed' ? '✗' : u.status === 'timeout' ? '⏱' : '…';
+      const detail = u.result_code ? ` · ${u.result_code}` : '';
+      return `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:12.5px"><b>${status}</b> ${escapeHtml(when)} — ${escapeHtml(who)}${detail}</div>`;
+    }).join('');
+  } catch { /* ignore */ }
+}
+
 (async () => {
   if (!token()) { logout(); return; }
   try {
@@ -568,6 +765,7 @@ function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'
     LAST_SETTINGS = data.settings || {};
     populate(LAST_SETTINGS);
   } catch (e) { showErr(e.message); }
+  loadGate();
 })();
 </script>
 </body>

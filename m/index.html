@@ -362,13 +362,15 @@ document.addEventListener('keydown', (e) => {
 
 let ME_USER = null;
 
-async function callMember(action, extra = {}) {
+async function callMember(action, extra = {}, pathOverride = null) {
   const t = token();
   if (!t) { logout(); throw new Error('Not signed in'); }
-  const res = await fetch(AUTH_URL, {
+  const url = pathOverride ? `${SUPABASE_URL}${pathOverride}` : AUTH_URL;
+  const body = { action, ...(extra || {}) };
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
-    body: JSON.stringify({ action, ...extra }),
+    body: JSON.stringify(body),
   });
   if (res.status === 401) { logout(); throw new Error('Session expired'); }
   return res.json();
@@ -817,6 +819,116 @@ async function redeemPass(packId) {
 //  the admin Households page. The DB column household_members.directory_visible
 //  is kept but unread, in case we re-enable later.)
 
+// ── Remote keyfob (gate unlock) ─────────────────────────────────────────
+// Checks eligibility on load + after dues changes. Shows nothing if the
+// tenant doesn't have the gate add-on. Otherwise: big "Unlock gate" button
+// that's enabled-and-bright when the member is paid/active, or disabled-with-
+// reason when they aren't. Tapping queues an unlock + polls for the result.
+async function loadGateCard() {
+  try {
+    const r = await callMember('check', null, '/functions/v1/unlock_gate');
+    if (!r.ok) return;
+    const card = document.getElementById('gate-card');
+    if (!card) return;
+    if (!r.tenant_active) {
+      // Club doesn't have the add-on — hide entirely. Members shouldn't
+      // see a marketing pitch here; that's the admin's call.
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    if (r.can_unlock) {
+      renderGateEnabled();
+    } else {
+      renderGateDisabled(r.reason);
+    }
+  } catch { /* gate function not deployed → silently leave hidden */ }
+}
+
+function renderGateEnabled() {
+  document.getElementById('gate-card-body').innerHTML = `
+    <button id="gate-unlock-btn" type="button"
+            style="width:100%;max-width:360px;padding:18px 22px;border-radius:14px;border:0;
+                   background:#f59e0b;color:#0a3b5c;font:700 18px 'Inter',sans-serif;
+                   cursor:pointer;box-shadow:0 6px 18px rgba(245,158,11,.4);
+                   letter-spacing:.01em">
+      🚪 &nbsp;Unlock the gate
+    </button>
+    <div id="gate-unlock-status" style="margin-top:14px;font-size:13px;color:rgba(255,255,255,.85);min-height:18px"></div>
+  `;
+  document.getElementById('gate-unlock-btn').addEventListener('click', tapUnlock);
+}
+
+function renderGateDisabled(reason) {
+  const messages = {
+    member_inactive:        { line1: 'Your membership isn\'t active', line2: 'Reach out to the board to reactivate.' },
+    member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'Ask the board to enable keyfob access for you.' },
+    household_inactive:     { line1: 'Your household isn\'t active', line2: 'Reach out to the board.' },
+    dues_unpaid:            { line1: 'Pay your dues to unlock the gate', line2: 'Once your dues clear, the unlock button enables automatically.' },
+  };
+  const m = messages[reason] || { line1: 'Gate access not available', line2: 'Talk to the board for help.' };
+  document.getElementById('gate-card-body').innerHTML = `
+    <div style="font:600 16px 'Fraunces',Georgia,serif;color:#fff">🔒 ${escapeHtml(m.line1)}</div>
+    <div style="margin-top:6px;font-size:13px;color:rgba(255,255,255,.8);line-height:1.5">${escapeHtml(m.line2)}</div>
+  `;
+}
+
+let unlockInFlight = false;
+async function tapUnlock() {
+  if (unlockInFlight) return;
+  unlockInFlight = true;
+  const btn = document.getElementById('gate-unlock-btn');
+  const status = document.getElementById('gate-unlock-status');
+  if (btn) { btn.disabled = true; btn.textContent = '🔓 Opening…'; btn.style.cursor = 'wait'; }
+  if (status) status.textContent = '';
+  try {
+    const r = await callMember('tap', null, '/functions/v1/unlock_gate');
+    if (!r.ok) {
+      if (status) status.textContent = r.error || 'Couldn\'t open the gate.';
+      resetUnlockBtn();
+      return;
+    }
+    pollUnlock(r.unlock_id, 0);
+  } catch (e) {
+    if (status) status.textContent = 'Network error — try again.';
+    resetUnlockBtn();
+  }
+}
+
+async function pollUnlock(id, attempt) {
+  const status = document.getElementById('gate-unlock-status');
+  if (attempt > 16) {
+    // ~8 seconds total → bridge offline / panel didn't respond
+    if (status) status.textContent = '⚠ Gate didn\'t respond — try again or call the front desk.';
+    resetUnlockBtn();
+    return;
+  }
+  try {
+    const r = await callMember('status', { id }, '/functions/v1/unlock_gate');
+    if (r.ok) {
+      if (r.status === 'done' && r.result_code === 'ok') {
+        if (status) status.textContent = '✓ Gate opened!';
+        const btn = document.getElementById('gate-unlock-btn');
+        if (btn) { btn.textContent = '✓ Gate opened'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; }
+        setTimeout(resetUnlockBtn, 4000);
+        return;
+      }
+      if (r.status === 'failed' || r.status === 'timeout') {
+        if (status) status.textContent = '⚠ ' + (r.result_detail || 'Gate didn\'t respond.') + ' Try again or call the front desk.';
+        resetUnlockBtn();
+        return;
+      }
+    }
+  } catch { /* keep polling */ }
+  setTimeout(() => pollUnlock(id, attempt + 1), 500);
+}
+
+function resetUnlockBtn() {
+  unlockInFlight = false;
+  const btn = document.getElementById('gate-unlock-btn');
+  if (btn) { btn.disabled = false; btn.textContent = '🚪  Unlock the gate'; btn.style.cursor = 'pointer'; btn.style.background = '#f59e0b'; btn.style.color = '#0a3b5c'; }
+}
+
 // ── Campaign pop-up ─────────────────────────────────────────────────────
 async function showCampaignPopup() {
   try {
@@ -1067,6 +1179,12 @@ async function submitProfile() {
       <div class="actions">${heroActions.join('')}</div>
     </div>
 
+    <!-- Gate-unlock card. Hidden by default; loadGateCard() flips it visible
+         + enables/disables the button based on tenant + member eligibility. -->
+    <div class="card" id="gate-card" style="display:none;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff;text-align:center;padding:24px 22px">
+      <div id="gate-card-body"></div>
+    </div>
+
     ${earlyBirdBanner}
     <div class="card">
       <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -1180,6 +1298,7 @@ async function submitProfile() {
   refreshPrograms();
   refreshVolunteer();
   refreshGuestPasses();
+  loadGateCard();
   showCampaignPopup();
 
   if (user.can_book_parties) {

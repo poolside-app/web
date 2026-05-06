@@ -164,3 +164,18 @@ verify_jwt = false
 # Auth verified inside via shared verifyTenantAdmin.
 [functions.help_track]
 verify_jwt = false
+
+# Gate add-on — keyfob-panel integration. Three functions:
+#   gate_admin: tenant + provider config (auth verified inside).
+#   unlock_gate: member's "tap to unlock" + status poll (member JWT inside).
+#   gate_bridge: Pi polling protocol — auths via X-Bridge-Id + X-Bridge-Secret
+#     headers (no JWT — the bridge can't refresh on its own, the secret IS
+#     the credential). MUST opt out of the Supabase gateway's JWT check.
+[functions.gate_admin]
+verify_jwt = false
+
+[functions.unlock_gate]
+verify_jwt = false
+
+[functions.gate_bridge]
+verify_jwt = false
