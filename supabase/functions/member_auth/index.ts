@@ -458,6 +458,126 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── add_household_member ───────────────────────────────────────────────
+  // The primary household member can add additional family members from /m/
+  // without going back through the full apply flow. The new member still
+  // needs legal-evidence: accepted policies + a signature (theirs if adult,
+  // the guardian-primary's if minor). Cap respected (8/household via DB
+  // trigger fn_household_member_cap).
+  if (action === 'add_household_member') {
+    const me = await sb.from('household_members')
+      .select('id, role, household_id, tenant_id, name, active')
+      .eq('id', payload.sub).maybeSingle();
+    if (!me.data || !me.data.active) {
+      return jsonResponse({ ok: false, error: 'Member not active' }, 403);
+    }
+    if (me.data.role !== 'primary') {
+      return jsonResponse({ ok: false, error: 'Only the primary member can add household members' }, 403);
+    }
+
+    const b = body as Record<string, unknown>;
+    const name = String(b.name ?? '').trim();
+    const dob = b.dob ? String(b.dob).slice(0, 10) : null;
+    const role = String(b.role ?? 'adult').toLowerCase();
+    const email = b.email ? String(b.email).trim().toLowerCase() : null;
+    const phoneRaw = b.phone ? String(b.phone).trim() : '';
+    const policiesAccepted = (b.policies_accepted && typeof b.policies_accepted === 'object')
+      ? b.policies_accepted as Record<string, boolean>
+      : {};
+    const signature = b.signature ? String(b.signature).slice(0, 200000) : null;
+    const guardianSignature = b.guardian_signature ? String(b.guardian_signature).slice(0, 200000) : null;
+
+    if (!name) return jsonResponse({ ok: false, error: 'Name is required' }, 400);
+    if (!['adult', 'teen', 'child'].includes(role)) {
+      return jsonResponse({ ok: false, error: 'Role must be adult, teen, or child' }, 400);
+    }
+    if (email && (!email.includes('@') || email.length > 200)) {
+      return jsonResponse({ ok: false, error: 'Invalid email' }, 400);
+    }
+    let phone: string | null = null;
+    if (phoneRaw) {
+      const digits = phoneRaw.replace(/[^\d+]/g, '');
+      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone = digits;
+      else if (/^\d{10}$/.test(digits)) phone = '+1' + digits;
+      else if (/^1\d{10}$/.test(digits)) phone = '+' + digits;
+      else return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
+    }
+
+    // Verify all required policies are accepted
+    const { data: required } = await sb.from('policies')
+      .select('slug, title')
+      .eq('tenant_id', me.data.tenant_id)
+      .eq('active', true).eq('required_for_apply', true);
+    const missing = (required ?? []).filter(p => !policiesAccepted[p.slug as string]);
+    if (missing.length) {
+      return jsonResponse({
+        ok: false,
+        error: `Please accept all policies: ${missing.map(p => p.title).join(', ')}`,
+      }, 400);
+    }
+
+    // Signature requirement: adults sign for themselves, minors require
+    // a guardian signature from the logged-in primary.
+    if (role === 'adult' && !signature) {
+      return jsonResponse({ ok: false, error: 'Adult members must sign for themselves' }, 400);
+    }
+    if ((role === 'teen' || role === 'child') && !guardianSignature) {
+      return jsonResponse({ ok: false, error: 'A guardian signature is required for minors' }, 400);
+    }
+
+    // Insert the new member. The DB trigger fn_household_member_cap
+    // throws at #9, so we let it raise and translate the error.
+    const now = new Date().toISOString();
+    const insertPayload: Record<string, unknown> = {
+      tenant_id: me.data.tenant_id,
+      household_id: me.data.household_id,
+      name,
+      role,
+      email,
+      phone_e164: phone,
+      can_unlock_gate: role === 'adult' || role === 'teen',
+      can_book_parties: false,
+      active: true,
+      confirmed_at: now,
+      policies_accepted: policiesAccepted,
+      policies_accepted_at: now,
+      signature_url: role === 'adult' ? signature : null,
+      guardian_signature_url: (role === 'teen' || role === 'child') ? guardianSignature : null,
+      added_by_member_id: payload.sub,
+      added_via: 'member_add',
+    };
+    const { data: created, error } = await sb.from('household_members')
+      .insert(insertPayload).select('id, name, role').single();
+    if (error) {
+      const friendly = String(error.message).includes('member_cap')
+        ? 'Your household is at the maximum size. Ask the board if you need to make changes.'
+        : error.message;
+      return jsonResponse({ ok: false, error: friendly }, 400);
+    }
+
+    // Audit log + admin task so the board sees it.
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: me.data.tenant_id,
+        kind: 'household_member.member_added',
+        entity_type: 'household_member', entity_id: created.id,
+        summary: `${me.data.name} added ${name} (${role}) to their household`,
+        actor_id: payload.sub, actor_kind: 'member',
+        metadata: { household_id: me.data.household_id, role },
+      });
+      await sb.from('admin_tasks').insert({
+        tenant_id: me.data.tenant_id,
+        target_scopes: ['applications'],
+        kind: 'household_member.member_added',
+        summary: `New household member added: ${name} (${role}) — by ${me.data.name}`,
+        link_url: '/club/admin/households.html',
+        source_kind: 'household_member', source_id: created.id,
+      });
+    } catch { /* best-effort */ }
+
+    return jsonResponse({ ok: true, member_id: created.id, name: created.name, role: created.role });
+  }
+
   // ── update_my_profile ──────────────────────────────────────────────────
   // Members can edit their own name/email/phone. Other fields (role,
   // permissions, household_id) stay admin-controlled.

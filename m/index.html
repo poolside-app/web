@@ -6,6 +6,8 @@
 <title>My Club — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/js/calendar.css">
+<!-- Signature capture for "add household member" modal (only loaded for primary members) -->
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js" defer></script>
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -246,6 +248,80 @@
     <div class="pmodal-foot">
       <button class="btn btn-ghost" onclick="closePartyModal()">Cancel</button>
       <button class="btn" id="p-submit" onclick="submitParty()" style="background:var(--blue);color:#fff">Send request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add household member modal (primary-only). Multi-step:
+     1. Person info (name, DOB, role, email, phone)
+     2. Policies + signature
+     Auto-determines role from DOB, asks for self-sign on adults and a
+     guardian sign on minors. -->
+<div class="scrim" id="addmem-scrim" onclick="if (event.target === this) closeAddMember()">
+  <div class="pmodal" style="max-width:560px">
+    <h2 style="margin:0 0 4px">+ Add a household member</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px;line-height:1.5">
+      Add a family member to your household. Each new member needs to accept the club's policies — adults sign for themselves; minors are signed for by you as the guardian.
+    </p>
+
+    <!-- Step 1: their info -->
+    <div id="addmem-step1">
+      <label>Full name *</label>
+      <input id="am-name" placeholder="Sam Smith" autocomplete="off">
+
+      <div class="row2">
+        <div>
+          <label>Date of birth *</label>
+          <input id="am-dob" type="date" oninput="onAddMemberDobChange()">
+        </div>
+        <div>
+          <label>Role *</label>
+          <select id="am-role">
+            <option value="adult">Adult (18+)</option>
+            <option value="teen">Teen (13–17)</option>
+            <option value="child">Child (under 13)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>Email <span style="color:var(--muted);font-weight:500;font-size:11px">(adults only — used for sign-in)</span></label>
+          <input id="am-email" type="email" placeholder="optional for minors">
+        </div>
+        <div>
+          <label>Phone <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+          <input id="am-phone" oninput="formatPhoneInput(this)">
+        </div>
+      </div>
+
+      <div class="perr" id="am-err"></div>
+      <div class="pmodal-foot">
+        <button class="btn btn-ghost" onclick="closeAddMember()">Cancel</button>
+        <button class="btn" id="am-step1-next" onclick="addMemberStep2()" style="background:var(--blue);color:#fff">Next: policies →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: policies + signature -->
+    <div id="addmem-step2" style="display:none">
+      <div id="am-policies" style="margin-bottom:14px"></div>
+
+      <div id="am-sig-section">
+        <label id="am-sig-label">Signature *</label>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px" id="am-sig-hint">
+          Sign in the box below.
+        </div>
+        <div style="border:1.5px solid var(--border);border-radius:10px;background:#fff;height:140px;position:relative">
+          <canvas id="am-sig-canvas" style="width:100%;height:100%;display:block;cursor:crosshair;touch-action:none"></canvas>
+          <button type="button" onclick="clearAddMemberSig()" style="position:absolute;top:6px;right:8px;background:transparent;border:0;color:var(--muted);font-size:12px;cursor:pointer">Clear</button>
+        </div>
+      </div>
+
+      <div class="perr" id="am-err2"></div>
+      <div class="pmodal-foot">
+        <button class="btn btn-ghost" onclick="addMemberBackToStep1()">← Back</button>
+        <button class="btn" id="am-submit" onclick="submitAddMember()" style="background:var(--blue);color:#fff">Add member</button>
+      </div>
     </div>
   </div>
 </div>
@@ -897,6 +973,173 @@ async function redeemPass(packId) {
 //  the admin Households page. The DB column household_members.directory_visible
 //  is kept but unread, in case we re-enable later.)
 
+// ── Add a household member ─────────────────────────────────────────────
+let AM_POLICIES = [];
+let AM_SIG_PAD = null;
+
+function openAddMember() {
+  // Reset form
+  document.getElementById('am-name').value = '';
+  document.getElementById('am-dob').value = '';
+  document.getElementById('am-role').value = 'adult';
+  document.getElementById('am-email').value = '';
+  document.getElementById('am-phone').value = '';
+  document.getElementById('am-err').classList.remove('show');
+  document.getElementById('am-err').textContent = '';
+  document.getElementById('addmem-step1').style.display = 'block';
+  document.getElementById('addmem-step2').style.display = 'none';
+  document.getElementById('addmem-scrim').classList.add('open');
+}
+function closeAddMember() { document.getElementById('addmem-scrim').classList.remove('open'); }
+function addMemberBackToStep1() {
+  document.getElementById('addmem-step1').style.display = 'block';
+  document.getElementById('addmem-step2').style.display = 'none';
+}
+
+// Auto-derive role from DOB so admin-controlled categories (adult/teen/child)
+// stay consistent. User can override via the dropdown.
+function onAddMemberDobChange() {
+  const dob = document.getElementById('am-dob').value;
+  if (!dob) return;
+  const yrs = (Date.now() - new Date(dob).getTime()) / (365.25 * 86400_000);
+  let role = 'child';
+  if (yrs >= 18) role = 'adult';
+  else if (yrs >= 13) role = 'teen';
+  document.getElementById('am-role').value = role;
+}
+
+async function addMemberStep2() {
+  const errEl = document.getElementById('am-err');
+  errEl.classList.remove('show');
+  const name = document.getElementById('am-name').value.trim();
+  const dob = document.getElementById('am-dob').value;
+  const role = document.getElementById('am-role').value;
+  const email = document.getElementById('am-email').value.trim();
+  if (!name) { errEl.textContent = 'Name is required'; errEl.classList.add('show'); return; }
+  if (!dob)  { errEl.textContent = 'Date of birth is required'; errEl.classList.add('show'); return; }
+  if (role === 'adult' && !email) {
+    errEl.textContent = 'Adults need an email address (used for sign-in)';
+    errEl.classList.add('show');
+    return;
+  }
+  if (email && !email.includes('@')) {
+    errEl.textContent = 'That email doesn\'t look right';
+    errEl.classList.add('show');
+    return;
+  }
+
+  // Load policies if we haven't already this session
+  const slug = getSlug();
+  if (!AM_POLICIES.length && slug) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/policies`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'list_public', slug }),
+      });
+      const d = await r.json();
+      if (d.ok) AM_POLICIES = (d.policies || []).filter(p => p.required_for_apply);
+    } catch { /* keep empty */ }
+  }
+
+  // Render policies + per-person signature ask
+  const isMinor = role === 'teen' || role === 'child';
+  const sigLabel = document.getElementById('am-sig-label');
+  const sigHint = document.getElementById('am-sig-hint');
+  if (isMinor) {
+    sigLabel.textContent = `Guardian signature * (you sign on behalf of ${escapeHtml(name)})`;
+    sigHint.textContent = `As ${escapeHtml(name)}'s guardian, sign the box below to accept these policies on their behalf.`;
+  } else {
+    sigLabel.textContent = `${escapeHtml(name)}'s signature *`;
+    sigHint.textContent = `Hand the phone to ${escapeHtml(name)} so they can sign for themselves.`;
+  }
+
+  const polBox = document.getElementById('am-policies');
+  if (!AM_POLICIES.length) {
+    polBox.innerHTML = '<div style="color:var(--muted);font-size:13px;font-style:italic">No policies on file — your club\'s board hasn\'t set any yet. Skip to signature.</div>';
+  } else {
+    polBox.innerHTML = AM_POLICIES.map((p, i) => `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-weight:600;color:var(--blue);margin-bottom:4px">${escapeHtml(p.title)}</div>
+        <div style="font-size:12.5px;color:var(--muted);max-height:100px;overflow-y:auto;padding:6px;background:var(--bg-2);border-radius:6px;line-height:1.5;white-space:pre-wrap">${escapeHtml(p.body || '(no policy text)')}</div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;font-size:13px;font-weight:500">
+          <input type="checkbox" data-policy-slug="${escapeHtml(p.slug)}" style="width:auto;margin:0">
+          I accept this policy${isMinor ? ' on behalf of ' + escapeHtml(name) : ''}
+        </label>
+      </div>
+    `).join('');
+  }
+
+  // Set up the signature pad. requires the lib to have loaded.
+  document.getElementById('addmem-step1').style.display = 'none';
+  document.getElementById('addmem-step2').style.display = 'block';
+  setTimeout(() => {
+    const c = document.getElementById('am-sig-canvas');
+    if (!c || typeof SignaturePad === 'undefined') return;
+    // Resize canvas to its CSS pixel size for sharp signatures
+    c.width = c.offsetWidth * (window.devicePixelRatio || 1);
+    c.height = c.offsetHeight * (window.devicePixelRatio || 1);
+    c.getContext('2d').scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    if (AM_SIG_PAD) AM_SIG_PAD.off();
+    AM_SIG_PAD = new SignaturePad(c, { backgroundColor: 'rgba(0,0,0,0)', penColor: '#0f172a' });
+  }, 50);
+}
+
+function clearAddMemberSig() { if (AM_SIG_PAD) AM_SIG_PAD.clear(); }
+
+async function submitAddMember() {
+  const errEl = document.getElementById('am-err2');
+  errEl.classList.remove('show');
+
+  const name = document.getElementById('am-name').value.trim();
+  const dob = document.getElementById('am-dob').value;
+  const role = document.getElementById('am-role').value;
+  const email = document.getElementById('am-email').value.trim().toLowerCase();
+  const phone = document.getElementById('am-phone').value.trim();
+
+  // Verify all displayed policies are checked
+  const checks = document.querySelectorAll('#am-policies input[type=checkbox]');
+  const policiesAccepted = {};
+  let allChecked = true;
+  checks.forEach(cb => {
+    policiesAccepted[cb.dataset.policySlug] = cb.checked;
+    if (!cb.checked) allChecked = false;
+  });
+  if (!allChecked) {
+    errEl.textContent = 'Please accept all policies before continuing';
+    errEl.classList.add('show');
+    return;
+  }
+
+  if (!AM_SIG_PAD || AM_SIG_PAD.isEmpty()) {
+    errEl.textContent = 'A signature is required';
+    errEl.classList.add('show');
+    return;
+  }
+  const signatureData = AM_SIG_PAD.toDataURL('image/png');
+  const isMinor = role === 'teen' || role === 'child';
+
+  const btn = document.getElementById('am-submit');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Adding…';
+  try {
+    const payload = {
+      name, dob, role, email: email || null, phone: phone || null,
+      policies_accepted: policiesAccepted,
+    };
+    if (isMinor) payload.guardian_signature = signatureData;
+    else         payload.signature = signatureData;
+
+    const r = await callMember('add_household_member', payload);
+    if (!r.ok) throw new Error(r.error || 'Failed to add member');
+    closeAddMember();
+    // Refresh the dashboard so the new member appears in the household list
+    window.location.reload();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 // ── Refer a friend ─────────────────────────────────────────────────────
 let REFER_DATA = null;
 async function openReferModal() {
@@ -1451,7 +1694,10 @@ async function submitProfile() {
             ${household.address ? `<div class="cell"><div class="lbl">Address</div><div class="val">${escapeHtml(household.address)}${household.city || household.zip ? '<br><span style="font-weight:400;color:var(--muted)">' + escapeHtml([household.city, household.zip].filter(Boolean).join(', ')) + '</span>' : ''}</div></div>` : ''}
             ${household.emergency_contact ? `<div class="cell"><div class="lbl">Emergency</div><div class="val">${escapeHtml(household.emergency_contact)}</div></div>` : ''}
           </div>
-          <h3 style="margin-top:20px">Members</h3>
+          <h3 style="margin-top:20px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            Members
+            ${user.role === 'primary' ? `<button class="btn btn-ghost" onclick="openAddMember()" style="font-size:12px;padding:6px 12px">+ Add a household member</button>` : ''}
+          </h3>
           ${memberHtml}
         </div>
       </details>
