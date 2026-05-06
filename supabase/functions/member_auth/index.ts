@@ -575,7 +575,126 @@ Deno.serve(async (req) => {
       });
     } catch { /* best-effort */ }
 
-    return jsonResponse({ ok: true, member_id: created.id, name: created.name, role: created.role });
+    // ── Render legal-evidence PDF, email primary with attachment, sync to Drive ──
+    // Same render() bytes are reused for both the email attachment AND the
+    // Drive upload — single source of truth so the household's copy and the
+    // club's archive are bit-for-bit identical.
+    let pdfBytes: Uint8Array | null = null;
+    let emailSent = false;
+    let emailError: string | null = null;
+    try {
+      const [{ data: tenant }, { data: household }, { data: policiesAll }] = await Promise.all([
+        sb.from('tenants').select('id, slug, display_name')
+          .eq('id', me.data.tenant_id).maybeSingle(),
+        sb.from('households').select('id, family_name')
+          .eq('id', me.data.household_id).maybeSingle(),
+        sb.from('policies')
+          .select('slug, title, body, sort_order')
+          .eq('tenant_id', me.data.tenant_id)
+          .eq('active', true).eq('required_for_apply', true)
+          .order('sort_order', { ascending: true }),
+      ]);
+
+      if (tenant && household) {
+        const { renderAddedMemberPdf } = await import('../_shared/household_member_pdf.ts');
+        const addedAt = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+        pdfBytes = await renderAddedMemberPdf({
+          member_id: created.id,
+          tenant_display_name: tenant.display_name,
+          added_at: addedAt,
+          family_name: household.family_name as string,
+          primary_name: me.data.name,
+          member_name: name,
+          member_role: role as 'adult' | 'teen' | 'child',
+          member_dob: dob,
+          member_email: email,
+          member_phone: phone,
+          policies: (policiesAll ?? []).map(p => ({
+            slug: p.slug as string,
+            title: p.title as string,
+            body: (p.body as string) ?? '',
+            sort_order: (p.sort_order as number) ?? 0,
+            accepted: !!policiesAccepted[p.slug as string],
+          })),
+          signature_data_url: role === 'adult' ? signature : null,
+          guardian_signature_data_url: (role === 'teen' || role === 'child') ? guardianSignature : null,
+        });
+
+        // Email primary with PDF attached (registry-backed, admin can override).
+        const { data: primary } = await sb.from('household_members')
+          .select('email').eq('id', payload.sub as string).maybeSingle();
+        const recipient = (primary?.email as string | null) ?? null;
+        if (recipient && pdfBytes) {
+          const { renderAndSend } = await import('../_shared/email_template.ts');
+          const { bytesToBase64 } = await import('../_shared/send_email.ts');
+          const safeFamily = (household.family_name as string).replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const r = await renderAndSend(sb, {
+            tenantId: me.data.tenant_id,
+            templateKey: 'household_member_added',
+            to: recipient,
+            variables: {
+              tenant_name: tenant.display_name,
+              family_name: household.family_name as string,
+              primary_name: me.data.name,
+              member_name: name,
+              member_role: role,
+              club_url: `https://${tenant.slug}.poolsideapp.com`,
+            },
+            attachments: [{
+              filename: `${safeFamily}-member-${dateStr}.pdf`,
+              content: bytesToBase64(pdfBytes),
+              contentType: 'application/pdf',
+            }],
+          });
+          emailSent = !!r.sent;
+          if (!r.sent) emailError = r.error || (r.suppressed ? 'suppressed' : null);
+        }
+
+        // Drive upload — best-effort. Lands in the same club folder as
+        // applications, but in a "Household additions" subfolder by year so
+        // the apply-roster spreadsheet stays clean.
+        const GOOGLE_ID  = Deno.env.get('GOOGLE_CLIENT_ID');
+        const GOOGLE_SEC = Deno.env.get('GOOGLE_CLIENT_SECRET');
+        if (GOOGLE_ID && GOOGLE_SEC && pdfBytes) {
+          try {
+            const { loadGrant, getAccessToken, ensureFolder, uploadPdf, updateGrantCache } =
+              await import('../_shared/google_drive.ts');
+            const grant = await loadGrant(sb, me.data.tenant_id);
+            if (grant) {
+              const accessToken = await getAccessToken(grant.refresh_token, GOOGLE_ID, GOOGLE_SEC);
+              const rootId = await ensureFolder(accessToken, 'Poolside Archive', 'root', grant.root_folder_id);
+              const clubId = await ensureFolder(accessToken, tenant.display_name || tenant.slug, rootId, grant.club_folder_id);
+              const year = String(new Date().getUTCFullYear());
+              const additionsParent = await ensureFolder(accessToken, 'Household additions', clubId, null);
+              const yearFolder = await ensureFolder(accessToken, year, additionsParent, null);
+              const safeFamily = (household.family_name as string).replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
+              const safeMember = name.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
+              const dateStr = new Date().toISOString().slice(0, 10);
+              const filename = `${safeFamily}-${safeMember}-${dateStr}-${created.id.slice(0, 8)}.pdf`;
+              await uploadPdf(accessToken, yearFolder, filename, pdfBytes);
+              // Persist any new top-level cache fields we may have minted.
+              if (rootId !== grant.root_folder_id || clubId !== grant.club_folder_id) {
+                await updateGrantCache(sb, me.data.tenant_id, {
+                  root_folder_id: rootId, club_folder_id: clubId,
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Drive upload (added member) failed (non-fatal):', (e as Error).message);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('add_household_member post-insert (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({
+      ok: true,
+      member_id: created.id, name: created.name, role: created.role,
+      email_sent: emailSent,
+      email_error: emailError,
+    });
   }
 
   // ── update_my_profile ──────────────────────────────────────────────────
@@ -634,65 +753,6 @@ Deno.serve(async (req) => {
     if (me.role !== 'primary') return { error: 'Only the primary contact can manage household members', code: 403 };
     if (me.household_id !== payload.hid) return { error: 'Household mismatch', code: 403 };
     return { me };
-  }
-
-  if (action === 'add_household_member') {
-    const r = await requirePrimary();
-    if ('error' in r && r.error) return jsonResponse({ ok: false, error: r.error }, r.code);
-
-    const b = body as Record<string, unknown>;
-    const name = String(b.name ?? '').trim();
-    const role = String(b.role ?? '').trim();
-    if (!name) return jsonResponse({ ok: false, error: 'Name required' }, 400);
-    if (!['adult','teen','child'].includes(role)) {
-      return jsonResponse({ ok: false, error: 'Role must be adult, teen, or child' }, 400);
-    }
-
-    const phoneRaw = String(b.phone_e164 ?? '').trim();
-    let phone: string | null = null;
-    if (phoneRaw) {
-      const digits = phoneRaw.replace(/[^\d+]/g, '');
-      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone = digits;
-      else if (/^\d{10}$/.test(digits)) phone = '+1' + digits;
-      else if (/^1\d{10}$/.test(digits)) phone = '+' + digits;
-      else return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
-    } else if (role !== 'child') {
-      return jsonResponse({ ok: false, error: 'Phone required for adults and teens' }, 400);
-    }
-    if (phone) {
-      const { data: clash } = await sb.from('household_members')
-        .select('id').eq('tenant_id', payload.tid as string).eq('phone_e164', phone)
-        .eq('active', true).maybeSingle();
-      if (clash) return jsonResponse({ ok: false, error: 'Phone number already in use' }, 409);
-    }
-
-    const { data: ins, error } = await sb.from('household_members').insert({
-      tenant_id: payload.tid as string,
-      household_id: payload.hid as string,
-      name, phone_e164: phone,
-      email: typeof b.email === 'string' && b.email ? String(b.email).trim().toLowerCase() : null,
-      role,
-      can_unlock_gate: b.can_unlock_gate !== false,
-      can_book_parties: b.can_book_parties === true,
-      active: true,
-      confirmed_at: new Date().toISOString(),
-      added_by: payload.sub as string,
-    }).select('id').single();
-    if (error) {
-      const msg = /household_member_cap/.test(error.message)
-        ? 'Household is at its 8-person limit' : error.message;
-      return jsonResponse({ ok: false, error: msg }, 400);
-    }
-    // Audit log
-    try {
-      await sb.from('audit_log').insert({
-        tenant_id: payload.tid as string,
-        kind: 'household_member.add', entity_type: 'household_member', entity_id: ins.id,
-        summary: `Primary added ${name} to their household`,
-        actor_id: payload.sub as string, actor_kind: 'member',
-      });
-    } catch { /* ignore */ }
-    return jsonResponse({ ok: true, member_id: ins.id });
   }
 
   if (action === 'remove_household_member') {

@@ -281,6 +281,26 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       </p>
     `),
   },
+  // ─── Household roster ────────────────────────────────────────────────
+  {
+    key: 'household_member_added',
+    label: 'Household member added',
+    description: 'Sent to the household primary when they add another family member from the member home page. Attaches the legal-evidence PDF (accepted policies + signature).',
+    audience: 'member',
+    variables: ['tenant_name', 'family_name', 'primary_name', 'member_name', 'member_role', 'club_url'],
+    default_subject: 'New household member added — {{tenant_name}}',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Household updated</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — you added <b>{{member_name}}</b> ({{member_role}}) to the {{family_name}} household at <b>{{tenant_name}}</b>.</p>
+      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy is attached</b> — it includes the verbatim text of every policy {{member_name}} (or you, as guardian) accepted plus the signature on file. Please keep it for your records.
+      </div>
+      <p style="margin:24px 0">
+        <a href="{{club_url}}/m" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Open my member home</a>
+      </p>
+      <p style="margin:0;color:#94a3b8;font-size:12px">If you didn't make this change, please reply to this email so the board can investigate.</p>
+    `),
+  },
   {
     key: 'plan_installment_failed',
     label: 'Installment failed (card declined)',
