@@ -2013,8 +2013,9 @@ async function submitProfile() {
     `).join('')
     : '<div class="empty">No announcements yet.</div>';
 
-  ${renderSponsorStrip(publicData.sponsors || [])}
-  ${renderSeasonClosedBanner(publicData.public_settings?.season)}
+  document.getElementById('main').innerHTML = `
+    ${renderSponsorStrip(publicData.sponsors || [])}
+    ${renderSeasonClosedBanner(publicData.public_settings?.season)}
     <div class="hero-card">
       <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
       <p class="sub">Welcome back to ${escapeHtml(tenant.display_name)}.</p>
