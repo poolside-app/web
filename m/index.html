@@ -17,8 +17,7 @@
 <script src="/js/sponsor-popup.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/js/calendar.css">
-<!-- Signature capture for "add household member" modal (only loaded for primary members) -->
-<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js" defer></script>
+<!-- Signature capture moved to /m/family.html where the add-member flow now lives. -->
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
@@ -364,19 +363,71 @@
   </div>
 </div>
 
-<!-- Donate modal — opened from the fundraiser card. Pulls Venmo handle +
-     custom donate message from public_settings. -->
+<!-- Donate modal — opened from the fundraiser card. Stripe (card) when
+     the club has Connect set up; Venmo QR fallback when they don't. -->
 <div class="scrim" id="donate-scrim" onclick="if (event.target === this) closeDonate()">
-  <div class="pmodal" style="max-width:420px;text-align:center">
-    <h2 id="d-title" style="margin:0 0 8px;font-family:'Fraunces',Georgia,serif;color:var(--blue)">Donate</h2>
-    <p id="d-msg" style="font-size:13.5px;color:var(--muted);margin:6px 0 14px;line-height:1.55;white-space:pre-wrap"></p>
-    <canvas id="d-qr" style="width:240px;height:240px;border-radius:14px;border:2px solid var(--border);background:#fff;padding:6px;margin:0 auto"></canvas>
-    <div id="d-handle" style="margin-top:10px;font-size:15px;font-weight:700;color:var(--blue)"></div>
-    <div class="pmodal-foot" style="justify-content:center">
+  <div class="pmodal" style="max-width:480px">
+    <h2 id="d-title" style="margin:0 0 6px;font-family:'Fraunces',Georgia,serif;color:var(--blue);text-align:center">Donate</h2>
+    <p id="d-msg" style="font-size:13.5px;color:var(--muted);margin:4px 0 14px;line-height:1.55;text-align:center;white-space:pre-wrap"></p>
+
+    <!-- Amount picker — presets + custom input. -->
+    <label>Amount</label>
+    <div id="d-presets" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+      <button type="button" class="d-preset" data-amt="2500"  onclick="setDonateAmount(2500)">$25</button>
+      <button type="button" class="d-preset" data-amt="5000"  onclick="setDonateAmount(5000)">$50</button>
+      <button type="button" class="d-preset" data-amt="10000" onclick="setDonateAmount(10000)">$100</button>
+      <button type="button" class="d-preset" data-amt="25000" onclick="setDonateAmount(25000)">$250</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px;font-weight:700;color:var(--blue)">$</span>
+      <input id="d-amount" type="number" min="1" step="1" placeholder="Other amount" oninput="onDonateAmountInput()" style="font:600 17px Inter">
+    </div>
+
+    <!-- Donor identity (all optional). -->
+    <div class="row2" style="margin-top:10px">
+      <div>
+        <label>Your name <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+        <input id="d-donor-name" type="text" maxlength="120">
+      </div>
+      <div>
+        <label>Email <span style="color:var(--muted);font-weight:500;font-size:11px">(for receipt)</span></label>
+        <input id="d-donor-email" type="email" maxlength="200">
+      </div>
+    </div>
+    <label style="margin-top:10px">Message <span style="color:var(--muted);font-weight:500;font-size:11px">(optional, public)</span></label>
+    <input id="d-message" type="text" maxlength="200" placeholder="e.g. Go pool!">
+
+    <!-- Public toggle — defaults checked. -->
+    <label style="display:flex;align-items:center;gap:8px;font:500 13px Inter;color:var(--text);text-transform:none;letter-spacing:0;margin-top:12px;cursor:pointer">
+      <input id="d-public" type="checkbox" checked style="width:auto;margin:0">
+      Show my donation on the club home page
+    </label>
+
+    <!-- Action row: Stripe primary when available, Venmo as alt. -->
+    <div id="d-stripe-section" style="margin-top:14px;display:none">
+      <button class="btn" id="d-stripe-btn" onclick="startDonateStripe()" style="background:var(--blue);color:#fff;width:100%;font:600 14px Inter;padding:12px">💳 Donate $<span id="d-stripe-amt">25</span> by card</button>
+    </div>
+    <div id="d-venmo-section" style="margin-top:10px;text-align:center;display:none">
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600;margin-top:4px">Or send via Venmo →</summary>
+        <p id="d-venmo-msg" style="font-size:12.5px;color:var(--muted);margin:10px 0 8px;line-height:1.5">Send your gift to the handle below — the board adds it to the thermometer when it lands.</p>
+        <canvas id="d-qr" style="width:200px;height:200px;border-radius:14px;border:2px solid var(--border);background:#fff;padding:6px;margin:0 auto;display:block"></canvas>
+        <div id="d-handle" style="margin-top:8px;font-size:14px;font-weight:700;color:var(--blue);text-align:center"></div>
+      </details>
+    </div>
+
+    <div class="perr" id="d-err"></div>
+    <div class="pmodal-foot">
       <button class="btn btn-ghost" onclick="closeDonate()">Close</button>
     </div>
   </div>
 </div>
+
+<style>
+  .d-preset { padding:9px 6px; border:1.5px solid var(--border); background:#fff; border-radius:10px; font:600 13px Inter; cursor:pointer; color:var(--text); }
+  .d-preset.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .d-preset:hover { border-color:var(--blue); }
+</style>
 
 <!-- Anonymous feedback modal — opened from the feedback card on the home. -->
 <div class="scrim" id="feedback-scrim" onclick="if (event.target === this) closeFeedback()">
@@ -974,224 +1025,9 @@ async function redeemPass(packId) {
 //  the admin Households page. The DB column household_members.directory_visible
 //  is kept but unread, in case we re-enable later.)
 
-// ── Add a household member ─────────────────────────────────────────────
-let AM_POLICIES = [];        // policies fetched once, list_public
-let AM_ACCEPTED = {};        // slug -> true once "I Accept" tapped
-let AM_CURRENT_POLICY = null; // slug of policy currently open in detail modal
-let AM_SIG_PAD = null;
-
-function openAddMember() {
-  // Reset form
-  document.getElementById('am-name').value = '';
-  document.getElementById('am-dob').value = '';
-  document.getElementById('am-role').value = 'adult';
-  document.getElementById('am-email').value = '';
-  document.getElementById('am-phone').value = '';
-  document.getElementById('am-err').classList.remove('show');
-  document.getElementById('am-err').textContent = '';
-  document.getElementById('addmem-step1').style.display = 'block';
-  document.getElementById('addmem-step2').style.display = 'none';
-  AM_ACCEPTED = {};
-  document.getElementById('addmem-scrim').classList.add('open');
-}
-function closeAddMember() { document.getElementById('addmem-scrim').classList.remove('open'); }
-function addMemberBackToStep1() {
-  document.getElementById('addmem-step1').style.display = 'block';
-  document.getElementById('addmem-step2').style.display = 'none';
-}
-
-// Auto-derive role from DOB so admin-controlled categories (adult/teen/child)
-// stay consistent. User can override via the dropdown.
-function onAddMemberDobChange() {
-  const dob = document.getElementById('am-dob').value;
-  if (!dob) return;
-  const yrs = (Date.now() - new Date(dob).getTime()) / (365.25 * 86400_000);
-  let role = 'child';
-  if (yrs >= 18) role = 'adult';
-  else if (yrs >= 13) role = 'teen';
-  document.getElementById('am-role').value = role;
-}
-
-async function addMemberStep2() {
-  const errEl = document.getElementById('am-err');
-  errEl.classList.remove('show');
-  const name = document.getElementById('am-name').value.trim();
-  const dob = document.getElementById('am-dob').value;
-  const role = document.getElementById('am-role').value;
-  const email = document.getElementById('am-email').value.trim();
-  if (!name) { errEl.textContent = 'Name is required'; errEl.classList.add('show'); return; }
-  if (!dob)  { errEl.textContent = 'Date of birth is required'; errEl.classList.add('show'); return; }
-  if (role === 'adult' && !email) {
-    errEl.textContent = 'Adults need an email address (used for sign-in)';
-    errEl.classList.add('show');
-    return;
-  }
-  if (email && !email.includes('@')) {
-    errEl.textContent = 'That email doesn\'t look right';
-    errEl.classList.add('show');
-    return;
-  }
-
-  // Load policies if we haven't already this session
-  const slug = getSlug();
-  if (!AM_POLICIES.length && slug) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/functions/v1/policies`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'list_public', slug }),
-      });
-      const d = await r.json();
-      if (d.ok) AM_POLICIES = (d.policies || []).filter(p => p.required_for_apply);
-    } catch { /* keep empty */ }
-  }
-
-  // Reset accepted state every time we enter step 2 fresh
-  AM_ACCEPTED = {};
-  AM_POLICIES.forEach(p => { AM_ACCEPTED[p.slug] = false; });
-
-  // Render numbered policy buttons — same pattern as apply.html. Each
-  // button opens a detail overlay where the user can read the body and
-  // tap "I Accept". Once accepted, the button gets a ✓ and turns green.
-  const isMinor = role === 'teen' || role === 'child';
-  const sigLabel = document.getElementById('am-sig-label');
-  const sigHint = document.getElementById('am-sig-hint');
-  if (isMinor) {
-    sigLabel.textContent = `Guardian signature * (you sign on behalf of ${escapeHtml(name)})`;
-    sigHint.textContent = `As ${escapeHtml(name)}'s guardian, sign the box below to accept these policies on their behalf.`;
-  } else {
-    sigLabel.textContent = `${escapeHtml(name)}'s signature *`;
-    sigHint.textContent = `Hand the phone to ${escapeHtml(name)} so they can sign for themselves.`;
-  }
-
-  const polBox = document.getElementById('am-policies');
-  if (!AM_POLICIES.length) {
-    polBox.innerHTML = '<div style="color:var(--muted);font-size:13px;font-style:italic">No policies on file — proceed to the signature.</div>';
-  } else {
-    polBox.innerHTML = AM_POLICIES.map((p, i) => `
-      <button type="button" id="am-pol-btn-${escapeAttr(p.slug)}" onclick="openAddMemberPolicy('${escapeAttr(p.slug)}')"
-              style="background:#fff;color:var(--blue);border:1.5px solid var(--border);padding:10px 14px;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer;width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <span>${i + 1}. ${escapeHtml(p.title)}</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:500">Tap to read →</span>
-      </button>
-    `).join('');
-  }
-  refreshAddMemberLockState();
-
-  // Show step 2 + lazy-init signature pad
-  document.getElementById('addmem-step1').style.display = 'none';
-  document.getElementById('addmem-step2').style.display = 'block';
-}
-
-function escapeAttr(s) { return String(s ?? '').replace(/["'<>&]/g, c => ({'"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
-
-function openAddMemberPolicy(slug) {
-  const p = AM_POLICIES.find(x => x.slug === slug);
-  if (!p) return;
-  AM_CURRENT_POLICY = slug;
-  document.getElementById('ampolicy-title').textContent = p.title;
-  document.getElementById('ampolicy-body').textContent = p.body || '(no policy text on file)';
-  document.getElementById('ampolicy-scrim').classList.add('open');
-}
-function closeAddMemberPolicy() {
-  document.getElementById('ampolicy-scrim').classList.remove('open');
-  AM_CURRENT_POLICY = null;
-}
-function acceptAddMemberPolicy() {
-  if (!AM_CURRENT_POLICY) { closeAddMemberPolicy(); return; }
-  AM_ACCEPTED[AM_CURRENT_POLICY] = true;
-  const btn = document.getElementById('am-pol-btn-' + AM_CURRENT_POLICY);
-  if (btn) {
-    btn.style.borderColor = 'var(--green)';
-    btn.style.background = '#f0fdf4';
-    if (!btn.dataset.accepted) {
-      btn.dataset.accepted = '1';
-      const span = btn.querySelector('span:first-child');
-      if (span) span.innerHTML = '✓ ' + span.innerHTML;
-      const hintSpan = btn.querySelector('span:last-child');
-      if (hintSpan) { hintSpan.textContent = 'Approved'; hintSpan.style.color = 'var(--green)'; }
-    }
-  }
-  closeAddMemberPolicy();
-  refreshAddMemberLockState();
-}
-
-// Show the signature canvas + enable Add button only when every policy
-// has been approved. While locked, show the explainer and grey out submit.
-function refreshAddMemberLockState() {
-  const allOk = AM_POLICIES.length === 0 || AM_POLICIES.every(p => AM_ACCEPTED[p.slug]);
-  document.getElementById('am-sig-locked').style.display = allOk ? 'none' : 'block';
-  document.getElementById('am-sig-section').style.display = allOk ? 'block' : 'none';
-  const submitBtn = document.getElementById('am-submit');
-  submitBtn.disabled = !allOk;
-  submitBtn.style.opacity = allOk ? '1' : '.5';
-  submitBtn.style.cursor = allOk ? 'pointer' : 'not-allowed';
-  if (allOk) {
-    // Lazy-init the signature pad once the canvas is visible (otherwise
-    // its offsetWidth resolves to 0 and the strokes go to weird coords).
-    setTimeout(() => {
-      const c = document.getElementById('am-sig-canvas');
-      if (!c || typeof SignaturePad === 'undefined' || AM_SIG_PAD) return;
-      c.width = c.offsetWidth * (window.devicePixelRatio || 1);
-      c.height = c.offsetHeight * (window.devicePixelRatio || 1);
-      c.getContext('2d').scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-      AM_SIG_PAD = new SignaturePad(c, { backgroundColor: 'rgba(0,0,0,0)', penColor: '#0f172a' });
-    }, 30);
-  } else if (AM_SIG_PAD) {
-    AM_SIG_PAD.off();
-    AM_SIG_PAD = null;
-  }
-}
-
-function clearAddMemberSig() { if (AM_SIG_PAD) AM_SIG_PAD.clear(); }
-
-async function submitAddMember() {
-  const errEl = document.getElementById('am-err2');
-  errEl.classList.remove('show');
-
-  const name = document.getElementById('am-name').value.trim();
-  const dob = document.getElementById('am-dob').value;
-  const role = document.getElementById('am-role').value;
-  const email = document.getElementById('am-email').value.trim().toLowerCase();
-  const phone = document.getElementById('am-phone').value.trim();
-
-  // Source-of-truth for accepted is the AM_ACCEPTED map (set when each
-  // policy's "I Accept" was tapped).
-  const allAccepted = AM_POLICIES.length === 0 || AM_POLICIES.every(p => AM_ACCEPTED[p.slug]);
-  if (!allAccepted) {
-    errEl.textContent = 'Please open and approve every policy first';
-    errEl.classList.add('show');
-    return;
-  }
-
-  if (!AM_SIG_PAD || AM_SIG_PAD.isEmpty()) {
-    errEl.textContent = 'A signature is required';
-    errEl.classList.add('show');
-    return;
-  }
-  const signatureData = AM_SIG_PAD.toDataURL('image/png');
-  const isMinor = role === 'teen' || role === 'child';
-
-  const btn = document.getElementById('am-submit');
-  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Adding…';
-  try {
-    const payload = {
-      name, dob, role, email: email || null, phone: phone || null,
-      policies_accepted: { ...AM_ACCEPTED },
-    };
-    if (isMinor) payload.guardian_signature = signatureData;
-    else         payload.signature = signatureData;
-
-    const r = await callMember('add_household_member', payload);
-    if (!r.ok) throw new Error(r.error || 'Failed to add member');
-    closeAddMember();
-    alert(`✓ ${r.name} added to your household. ${r.email_sent ? 'A confirmation PDF has been emailed to your household.' : ''}`);
-    window.location.reload();
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.classList.add('show');
-    btn.disabled = false; btn.textContent = orig;
-  }
-}
+// Add-a-household-member moved to /m/family.html. The legacy in-page
+// modal + JS is gone — the household-card link in the hero is now the
+// only entry point.
 
 // ── Refer a friend ─────────────────────────────────────────────────────
 let REFER_DATA = null;
@@ -1433,15 +1269,19 @@ function renderMemberCountTicker(count, pubCfg) {
   </div>`;
 }
 
-function renderFundraiserCard(fund, payments) {
+function renderFundraiserCard(fund, payments, tenant) {
   if (!fund || !fund.enabled) return '';
   const goal = Math.max(0, fund.goal_cents || 0);
   const raised = Math.max(0, fund.raised_cents || 0);
   const pct = goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
   const fmtMoney = (c) => '$' + (c / 100).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const venmo = payments && payments.venmo_handle;
+  const stripe = tenant && tenant.stripe_charges_enabled;
+  // Show Donate button when EITHER card or Venmo is set up. Both is fine —
+  // the modal exposes both options inside.
+  const canDonate = !!(stripe || venmo);
   return `
-    <div class="card" style="text-align:center">
+    <div class="card" style="text-align:center" id="fundraiser-card-host">
       <div style="font:600 11px 'Inter';color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Fundraiser</div>
       <h3 style="font-family:'Fraunces',Georgia,serif;font-size:20px;color:var(--blue);margin:0 0 14px">${escapeHtml(fund.title || 'Club Fund')}</h3>
       <div style="position:relative;height:32px;background:var(--bg-2);border-radius:999px;overflow:hidden;margin-bottom:10px">
@@ -1449,10 +1289,59 @@ function renderFundraiserCard(fund, payments) {
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 13px 'Inter';color:var(--blue);text-shadow:0 1px 2px rgba(255,255,255,.6)">${pct}%</div>
       </div>
       <div style="font-size:13.5px;color:var(--muted);font-weight:600">Raised <b style="color:var(--blue)">${fmtMoney(raised)}</b> of <b style="color:var(--blue)">${fmtMoney(goal)}</b></div>
-      ${venmo
-        ? `<button class="btn" style="margin-top:14px;background:var(--sun);color:var(--blue);font-weight:700" onclick="openDonate()">💚 Donate via Venmo</button>`
+      <div id="d-donor-count" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      ${canDonate
+        ? `<button class="btn" style="margin-top:14px;background:var(--sun);color:var(--blue);font-weight:700" onclick="openDonate()">💚 Donate</button>`
         : ''}
+      <div id="donations-leaderboard"></div>
     </div>`;
+}
+
+// Fetch + render the recent supporters list under the fundraiser card.
+// Defers the network round-trip until after first paint so it doesn't
+// block the home dashboard.
+async function loadDonationsLeaderboard() {
+  const host = document.getElementById('donations-leaderboard');
+  if (!host) return;
+  const slug = getSlug(); if (!slug) return;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/donations`, {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({ action: 'list_public', slug, limit: 5 }),
+    });
+    const d = await r.json();
+    if (!d.ok) return;
+    const fmtMoney = (c) => '$' + (c / 100).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const fmtAgo = (iso) => {
+      const s = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (s < 60)     return 'just now';
+      if (s < 3600)   return `${Math.floor(s/60)}m ago`;
+      if (s < 86400)  return `${Math.floor(s/3600)}h ago`;
+      if (s < 604800) return `${Math.floor(s/86400)}d ago`;
+      return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+    };
+    const recent = d.recent || [];
+    const totals = d.totals || { count: 0 };
+    const countEl = document.getElementById('d-donor-count');
+    if (countEl && totals.count > 0) {
+      countEl.textContent = `${totals.count} ${totals.count === 1 ? 'donation' : 'donations'}`;
+    }
+    if (!recent.length) { host.innerHTML = ''; return; }
+    host.innerHTML = `
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;text-align:left">
+        <div style="font:600 11px 'Inter';color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;text-align:center">Recent supporters 💚</div>
+        ${recent.map(d => `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:13.5px;color:var(--text)">${escapeHtml(d.donor_name || 'Anonymous')}</div>
+              ${d.message ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;font-style:italic">"${escapeHtml(d.message)}"</div>` : ''}
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(fmtAgo(d.created_at))}</div>
+            </div>
+            <div style="font:700 14px 'Inter';color:var(--sun);flex-shrink:0">${fmtMoney(d.amount_cents)}</div>
+          </div>
+        `).join('')}
+      </div>`;
+  } catch { /* leaderboard is best-effort */ }
 }
 
 function renderFeedbackCard() {
@@ -1471,30 +1360,97 @@ function renderFeedbackCard() {
     </div>`;
 }
 
-// ── Donate modal (Venmo QR) ──────────────────────────────────────────────
+// ── Donate modal (Stripe + Venmo QR) ─────────────────────────────────
+let DONATE_AMOUNT = 5000;  // cents — defaults to $50
+function setDonateAmount(cents) {
+  DONATE_AMOUNT = cents;
+  document.getElementById('d-amount').value = (cents / 100).toFixed(0);
+  document.querySelectorAll('.d-preset').forEach(b => {
+    b.classList.toggle('on', Number(b.dataset.amt) === cents);
+  });
+  document.getElementById('d-stripe-amt').textContent = (cents / 100).toFixed(0);
+}
+function onDonateAmountInput() {
+  const v = parseFloat(document.getElementById('d-amount').value) || 0;
+  DONATE_AMOUNT = Math.round(v * 100);
+  document.querySelectorAll('.d-preset').forEach(b => {
+    b.classList.toggle('on', Number(b.dataset.amt) === DONATE_AMOUNT);
+  });
+  document.getElementById('d-stripe-amt').textContent = v ? v.toFixed(0) : '0';
+}
 function openDonate() {
-  const fund = (window.PUBLIC_DATA && window.PUBLIC_DATA.public_settings && window.PUBLIC_DATA.public_settings.fundraiser) || {};
+  const tenant   = (window.PUBLIC_DATA && window.PUBLIC_DATA.tenant) || {};
+  const fund     = (window.PUBLIC_DATA && window.PUBLIC_DATA.public_settings && window.PUBLIC_DATA.public_settings.fundraiser) || {};
   const payments = (window.PUBLIC_DATA && window.PUBLIC_DATA.public_settings && window.PUBLIC_DATA.public_settings.payments) || {};
   document.getElementById('d-title').textContent = fund.title || 'Donate';
-  document.getElementById('d-msg').textContent   = fund.donate_message || `Thank you for supporting ${PUBLIC_DATA?.tenant?.display_name || 'the club'}!`;
+  document.getElementById('d-msg').textContent   = fund.donate_message || `Thank you for supporting ${tenant.display_name || 'the club'}!`;
+
+  // Reset form to default $50.
+  setDonateAmount(5000);
+  document.getElementById('d-donor-name').value = '';
+  document.getElementById('d-donor-email').value = '';
+  document.getElementById('d-message').value = '';
+  document.getElementById('d-public').checked = true;
+  document.getElementById('d-err').classList.remove('show');
+
+  // Stripe button only when the club has Connect set up.
+  const stripeOn = !!tenant.stripe_charges_enabled;
+  document.getElementById('d-stripe-section').style.display = stripeOn ? 'block' : 'none';
+
+  // Venmo section appears whenever a handle is configured.
   const handle = payments.venmo_handle;
-  document.getElementById('d-handle').textContent = handle ? '@' + handle : '';
-  if (handle && typeof qrcode !== 'undefined') {
-    const url = `https://venmo.com/${encodeURIComponent(handle)}`;
-    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
-    const canvas = document.getElementById('d-qr');
-    const ctx = canvas.getContext('2d');
-    canvas.width = canvas.height = 240;
-    const cells = qr.getModuleCount(); const size = 240 / cells;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 240, 240);
-    ctx.fillStyle = '#0a3b5c';
-    for (let r = 0; r < cells; r++) for (let c = 0; c < cells; c++) {
-      if (qr.isDark(r, c)) ctx.fillRect(c * size, r * size, size, size);
+  const vSection = document.getElementById('d-venmo-section');
+  if (handle) {
+    vSection.style.display = '';
+    document.getElementById('d-handle').textContent = '@' + handle;
+    if (typeof qrcode !== 'undefined') {
+      const url = `https://venmo.com/${encodeURIComponent(handle)}`;
+      const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+      const canvas = document.getElementById('d-qr');
+      const ctx = canvas.getContext('2d');
+      canvas.width = canvas.height = 200;
+      const cells = qr.getModuleCount(); const size = 200 / cells;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 200, 200);
+      ctx.fillStyle = '#0a3b5c';
+      for (let r = 0; r < cells; r++) for (let c = 0; c < cells; c++) {
+        if (qr.isDark(r, c)) ctx.fillRect(c * size, r * size, size, size);
+      }
     }
+  } else {
+    vSection.style.display = 'none';
   }
   document.getElementById('donate-scrim').classList.add('open');
 }
 function closeDonate() { document.getElementById('donate-scrim').classList.remove('open'); }
+
+async function startDonateStripe() {
+  const errEl = document.getElementById('d-err'); errEl.classList.remove('show');
+  if (DONATE_AMOUNT < 100) { errEl.textContent = 'Minimum donation is $1.'; errEl.classList.add('show'); return; }
+  const slug = getSlug();
+  if (!slug) { errEl.textContent = 'Cannot donate from this URL.'; errEl.classList.add('show'); return; }
+  const btn = document.getElementById('d-stripe-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Opening checkout…';
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/donations`, {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({
+        action: 'start_checkout', slug,
+        amount_cents: DONATE_AMOUNT,
+        donor_name:  document.getElementById('d-donor-name').value.trim(),
+        donor_email: document.getElementById('d-donor-email').value.trim(),
+        message:     document.getElementById('d-message').value.trim(),
+        is_public:    document.getElementById('d-public').checked,
+        is_anonymous: false,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Checkout failed');
+    window.location.href = d.url;
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
 
 // ── Anonymous feedback modal ─────────────────────────────────────────────
 function openFeedback() {
@@ -1967,7 +1923,7 @@ async function submitProfile() {
          non-standalone. -->
     <div id="install-card-host"></div>
 
-    ${renderFundraiserCard(publicData.public_settings?.fundraiser, publicData.public_settings?.payments)}
+    ${renderFundraiserCard(publicData.public_settings?.fundraiser, publicData.public_settings?.payments, publicData.tenant)}
 
     <!-- Gate-unlock card. Hidden by default; loadGateCard() flips it visible
          + enables/disables the button based on tenant + member eligibility. -->
@@ -2134,9 +2090,16 @@ async function submitProfile() {
   refreshGuestPasses();
   loadGateCard();
   showCampaignPopup();
+  loadDonationsLeaderboard();
   // Populate the "Add to Home Screen" instruction card now that its host
   // div exists in the DOM (it lives inside the main innerHTML block above).
   renderInstallCard();
+  // If we just came back from a successful Stripe donation, give a quick
+  // thank-you and clear the URL flag.
+  if (new URLSearchParams(window.location.search).get('donated') === '1') {
+    setTimeout(() => alert('💚 Thank you for your donation! It may take a moment to show up on the thermometer — refresh in a few seconds.'), 250);
+    history.replaceState(null, '', window.location.pathname);
+  }
 
   if (user.can_book_parties) {
     refreshParties();

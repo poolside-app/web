@@ -33,6 +33,10 @@
     { key: 'volunteer',    label: 'Volunteer',    href: '/club/admin/volunteer.html',            scope: 'volunteer'    },
     { key: 'passes',       label: 'Passes',       href: '/club/admin/guest-passes.html',         scope: 'passes'       },
     { key: 'documents',    label: 'Documents',    href: '/club/admin/documents.html',            scope: 'documents'    },
+    // Fundraiser donations — stripe-paid land here automatically; admin
+    // records Venmo/cash/check by hand. Thermometer recomputes on every
+    // insert/update/delete.
+    { key: 'donations',    label: 'Donations',    href: '/club/admin/donations.html',            scope: 'payments'     },
     // Member-lifecycle email templates (renewals, plan installments, party
     // approve/deny). Application-lifecycle templates live on the
     // Application top-tab. emails.html honors ?audience=member to filter.
@@ -54,6 +58,7 @@
     if (path.endsWith('/volunteer.html'))    return 'volunteer';
     if (path.endsWith('/guest-passes.html')) return 'passes';
     if (path.endsWith('/documents.html'))    return 'documents';
+    if (path.endsWith('/donations.html'))    return 'donations';
     if (path.endsWith('/emails.html'))       return 'emails';
     return null;
   }

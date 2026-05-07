@@ -303,6 +303,49 @@ Deno.serve(async (req) => {
         .eq('id', md.pack_id).eq('tenant_id', tenantId);
     }
 
+    // Fundraiser donations — donations.start_checkout sets metadata.kind
+    // = 'donation'. The checkout-completion event lands the donor row
+    // here as 'verified', then we recompute the fundraiser thermometer
+    // total so the bar moves immediately.
+    if (kind === 'donation' && tenantId) {
+      const sessionId = String(session.id || '');
+      const paymentIntent = (session.payment_intent as string) || null;
+      const amountTotal = Number(session.amount_total) || 0;  // already in cents
+      const isPublic    = md.is_public    !== 'false';
+      const isAnonymous = md.is_anonymous === 'true';
+      try {
+        // ON CONFLICT on stripe_session_id: a webhook re-fire for the same
+        // session is a no-op; original row stays intact.
+        await sb.from('donations').upsert({
+          tenant_id: tenantId,
+          amount_cents: amountTotal,
+          donor_name:  md.donor_name  || null,
+          donor_email: md.donor_email || null,
+          message:     md.message     || null,
+          method: 'stripe',
+          is_public: isPublic, is_anonymous: isAnonymous,
+          status: 'verified',
+          stripe_session_id: sessionId,
+          stripe_payment_intent: paymentIntent,
+          verified_at: new Date().toISOString(),
+        }, { onConflict: 'stripe_session_id' });
+
+        // Recompute fundraiser.raised_cents from sum of verified rows.
+        const { data: rows } = await sb.from('donations')
+          .select('amount_cents').eq('tenant_id', tenantId).eq('status', 'verified');
+        const total = (rows ?? []).reduce((acc, r) => acc + (r.amount_cents as number), 0);
+        const { data: settingsRow } = await sb.from('settings')
+          .select('value').eq('tenant_id', tenantId).maybeSingle();
+        const v = (settingsRow?.value as Record<string, unknown> | null) ?? {};
+        const fund = (v.fundraiser as Record<string, unknown> | undefined) ?? {};
+        await sb.from('settings').update({
+          value: { ...v, fundraiser: { ...fund, raised_cents: total } },
+        }).eq('tenant_id', tenantId);
+      } catch (e) {
+        console.error('donation webhook insert failed:', (e as Error).message);
+      }
+    }
+
     return new Response('ok', { status: 200 });
   }
 

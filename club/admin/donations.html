@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Donations — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter', system-ui, sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size:26px; } h2 { font-size:18px; margin-bottom:12px; } h3 { font-size:15px; margin:0 0 6px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:24px 22px 30px; max-width:880px; width:100%; margin:0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; gap:10px; flex-wrap:wrap; }
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px Inter; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; }
+  .btn:hover { background:var(--blue-2); }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .btn-danger { background:var(--red); color:#fff; }
+  .btn-sm { padding:6px 12px; font-size:12px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; box-shadow:var(--shadow); margin-bottom:14px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+  .stat { padding:14px 16px; background:var(--bg-2); border-radius:var(--r-md); }
+  .stat .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
+  .stat .val { font:700 22px 'Fraunces', serif; color:var(--blue); margin-top:4px; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th { text-align:left; padding:10px; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; border-bottom:1px solid var(--border); }
+  td { padding:12px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:hover td { background:var(--bg-2); }
+  .pill { display:inline-block; font:700 10px Inter; letter-spacing:.04em; text-transform:uppercase; padding:2px 8px; border-radius:999px; }
+  .pill.verified { background:#dcfce7; color:#15803d; }
+  .pill.pending  { background:#fef3c7; color:#92400e; }
+  .pill.refunded { background:#fee2e2; color:#7f1d1d; }
+  .pill.method   { background:var(--bg-2); color:var(--blue); }
+  .empty { padding:50px 20px; text-align:center; color:var(--muted); border:2px dashed var(--border); border-radius:var(--r-md); }
+  label { display:block; font:600 11px Inter; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+  input[type=text], input[type=email], input[type=number], select, textarea {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-md); font:14px Inter; background:#fff;
+  }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .scrim { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:32px 16px; z-index:200; }
+  .scrim.open { display:flex; }
+  .modal { background:#fff; border-radius:var(--r-lg); padding:26px; width:100%; max-width:520px; box-shadow:0 20px 60px rgba(10,59,92,.18); }
+  .modal-foot { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .err { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
+  .err.show { display:block; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px Inter; opacity:0; transition:.22s; pointer-events:none; z-index:300; }
+  .toast.show { opacity:1; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/club/admin/" class="logo"><span class="logo-dot"></span> Poolside Admin</a>
+  <div class="who"><span id="whoami">Loading…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/application.html">Application</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+<div id="members-subtabs"></div>
+<script src="/js/members-subtabs.js"></script>
+
+<main>
+  <div class="toolbar">
+    <h1>Donations</h1>
+    <button class="btn" onclick="openAddManual()">+ Record manual donation</button>
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.55">Stripe-paid donations land here automatically. For Venmo, cash, or checks, use <b>+ Record manual donation</b> — the thermometer recomputes whenever you add or edit one.</p>
+
+  <div class="stats" id="stats">
+    <div class="stat"><div class="lbl">Total raised</div><div class="val" id="s-raised">…</div></div>
+    <div class="stat"><div class="lbl">This month</div><div class="val" id="s-month">…</div></div>
+    <div class="stat"><div class="lbl">Donations</div><div class="val" id="s-count">…</div></div>
+    <div class="stat"><div class="lbl">Avg gift</div><div class="val" id="s-avg">…</div></div>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+</main>
+
+<!-- Add manual / edit modal -->
+<div class="scrim" id="d-scrim" onclick="if (event.target === this) closeModal()">
+  <div class="modal">
+    <h2 id="d-title">Record a donation</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 10px">Use this when someone gave via Venmo, cash, or check. Stripe donations come in automatically through the webhook — no need to enter those by hand.</p>
+    <input type="hidden" id="d-id">
+    <div class="row2">
+      <div>
+        <label>Amount ($)</label>
+        <input id="d-amount" type="number" min="1" step="0.01" placeholder="50">
+      </div>
+      <div>
+        <label>Payment method</label>
+        <select id="d-method">
+          <option value="venmo">Venmo</option>
+          <option value="cash">Cash</option>
+          <option value="check">Check</option>
+          <option value="paypal">PayPal</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2" style="margin-top:6px">
+      <div>
+        <label>Donor name <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
+        <input id="d-donor-name" type="text" maxlength="120">
+      </div>
+      <div>
+        <label>Donor email <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
+        <input id="d-donor-email" type="email" maxlength="200">
+      </div>
+    </div>
+    <label>Message <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional, public)</span></label>
+    <input id="d-message" type="text" maxlength="500">
+    <div class="row2" style="margin-top:10px">
+      <label style="display:flex;align-items:center;gap:8px;font:500 13px Inter;color:var(--text);text-transform:none;letter-spacing:0;cursor:pointer;margin:0">
+        <input id="d-public" type="checkbox" checked style="width:auto;margin:0">
+        Show on public leaderboard
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font:500 13px Inter;color:var(--text);text-transform:none;letter-spacing:0;cursor:pointer;margin:0">
+        <input id="d-anon" type="checkbox" style="width:auto;margin:0">
+        Show as "Anonymous"
+      </label>
+    </div>
+    <div id="d-status-row" style="margin-top:10px;display:none">
+      <label>Status</label>
+      <select id="d-status">
+        <option value="verified">Verified</option>
+        <option value="pending">Pending</option>
+        <option value="refunded">Refunded</option>
+      </select>
+    </div>
+    <div class="err" id="d-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" id="d-delete-btn" style="display:none;margin-right:auto" onclick="deleteRow()">Delete</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="saveRow()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved.</div>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const URL_BASE     = `${SUPABASE_URL}/functions/v1/donations`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let CACHE = []; let EDITING = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href='/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+function val(id) { return (document.getElementById(id)?.value ?? '').trim(); }
+function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v ?? ''; }
+function fmt(c) { return '$' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = kind === 'err' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200);
+}
+async function call(action, extra={}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(URL_BASE, {
+    method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${t}`},
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+async function loadMe() {
+  try {
+    const r = await fetch(ME_URL, {
+      method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`},
+      body: JSON.stringify({ action:'me' }),
+    });
+    const me = await r.json();
+    if (me.ok && me.user) document.getElementById('whoami').textContent = me.user.display_name || me.user.email || 'Admin';
+    if (me.ok && window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
+  } catch {}
+}
+
+function renderStats() {
+  const verified = CACHE.filter(d => d.status === 'verified');
+  const total = verified.reduce((a,d) => a + d.amount_cents, 0);
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const month = verified.filter(d => new Date(d.created_at) >= monthStart).reduce((a,d) => a + d.amount_cents, 0);
+  const avg = verified.length ? Math.round(total / verified.length) : 0;
+  document.getElementById('s-raised').textContent = fmt(total);
+  document.getElementById('s-month').textContent  = fmt(month);
+  document.getElementById('s-count').textContent  = String(verified.length);
+  document.getElementById('s-avg').textContent    = verified.length ? fmt(avg) : '—';
+}
+
+function render() {
+  const list = document.getElementById('list');
+  if (!CACHE.length) { list.innerHTML = '<div class="empty">No donations yet.</div>'; return; }
+  list.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>When</th><th>Donor</th><th>Amount</th><th>Method</th><th>Status</th><th>Visibility</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${CACHE.map(d => `
+          <tr>
+            <td>${escapeHtml(new Date(d.created_at).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }))}</td>
+            <td>
+              <div style="font-weight:600">${d.is_anonymous ? '<i style="color:var(--muted)">Anonymous</i>' : escapeHtml(d.donor_name || '—')}</div>
+              ${d.donor_email ? `<div style="font-size:11px;color:var(--muted)">${escapeHtml(d.donor_email)}</div>` : ''}
+              ${d.message ? `<div style="font-size:12px;color:var(--text);font-style:italic;margin-top:3px">"${escapeHtml(d.message)}"</div>` : ''}
+            </td>
+            <td style="font-weight:700;color:var(--blue);white-space:nowrap">${fmt(d.amount_cents)}</td>
+            <td><span class="pill method">${escapeHtml(d.method)}</span></td>
+            <td><span class="pill ${escapeHtml(d.status)}">${escapeHtml(d.status)}</span></td>
+            <td>${d.is_public ? '<span style="color:var(--green)">Public</span>' : '<span style="color:var(--muted)">Hidden</span>'}</td>
+            <td><button class="btn btn-sm btn-ghost" onclick="openEdit('${escapeAttr(d.id)}')">Edit</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function refresh() {
+  try {
+    const r = await call('list');
+    if (!r.ok) throw new Error(r.error || 'Load failed');
+    CACHE = r.donations || [];
+    renderStats(); render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function openAddManual() {
+  EDITING = null;
+  document.getElementById('d-title').textContent = 'Record a donation';
+  document.getElementById('d-delete-btn').style.display = 'none';
+  document.getElementById('d-status-row').style.display = 'none';
+  setVal('d-amount', ''); setVal('d-method', 'venmo'); setVal('d-donor-name', '');
+  setVal('d-donor-email', ''); setVal('d-message', '');
+  document.getElementById('d-public').checked = true;
+  document.getElementById('d-anon').checked = false;
+  document.getElementById('d-err').classList.remove('show');
+  document.getElementById('d-scrim').classList.add('open');
+}
+function openEdit(id) {
+  const d = CACHE.find(x => x.id === id); if (!d) return;
+  EDITING = d;
+  document.getElementById('d-title').textContent = 'Edit donation';
+  document.getElementById('d-delete-btn').style.display = '';
+  document.getElementById('d-status-row').style.display = '';
+  setVal('d-amount', (d.amount_cents / 100).toFixed(2));
+  setVal('d-method', d.method);
+  setVal('d-donor-name', d.donor_name || '');
+  setVal('d-donor-email', d.donor_email || '');
+  setVal('d-message', d.message || '');
+  setVal('d-status', d.status);
+  document.getElementById('d-public').checked = !!d.is_public;
+  document.getElementById('d-anon').checked = !!d.is_anonymous;
+  document.getElementById('d-err').classList.remove('show');
+  document.getElementById('d-scrim').classList.add('open');
+}
+function closeModal() { document.getElementById('d-scrim').classList.remove('open'); }
+
+async function saveRow() {
+  const errEl = document.getElementById('d-err'); errEl.classList.remove('show');
+  const amount = parseFloat(val('d-amount')) || 0;
+  if (amount < 1) { errEl.textContent = 'Amount must be $1 or more.'; errEl.classList.add('show'); return; }
+  const payload = {
+    amount_cents: Math.round(amount * 100),
+    method:      val('d-method'),
+    donor_name:  val('d-donor-name'),
+    donor_email: val('d-donor-email'),
+    message:     val('d-message'),
+    is_public:    document.getElementById('d-public').checked,
+    is_anonymous: document.getElementById('d-anon').checked,
+  };
+  try {
+    if (EDITING) {
+      const patch = { ...payload, status: val('d-status') };
+      const r = await call('update', { id: EDITING.id, patch });
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+    } else {
+      const r = await call('add_manual', payload);
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+    }
+    closeModal(); toast('Saved.'); await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+async function deleteRow() {
+  if (!EDITING) return;
+  if (!confirm(`Delete this ${fmt(EDITING.amount_cents)} donation? The thermometer will recompute.`)) return;
+  try {
+    const r = await call('delete', { id: EDITING.id });
+    if (!r.ok) throw new Error(r.error || 'Delete failed');
+    closeModal(); toast('Deleted.'); await refresh();
+  } catch (e) {
+    document.getElementById('d-err').textContent = e.message;
+    document.getElementById('d-err').classList.add('show');
+  }
+}
+
+(async () => {
+  if (!token()) { logout(); return; }
+  await Promise.all([loadMe(), refresh()]);
+})();
+</script>
+</body>
+</html>

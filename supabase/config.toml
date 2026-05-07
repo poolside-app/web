@@ -201,3 +201,9 @@ verify_jwt = false
 # tenant_public to keep the home-page round-trip count low.
 [functions.sponsors_admin]
 verify_jwt = false
+
+# Fundraiser donations — public start_checkout for Stripe-paid donations,
+# public list_public for the home leaderboard, admin actions for manual
+# Venmo/cash entries. Auth verified inside.
+[functions.donations]
+verify_jwt = false

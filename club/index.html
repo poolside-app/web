@@ -247,15 +247,67 @@
   <div class="cap" id="lb-cap"></div>
 </div>
 
-<!-- Donate modal — opened from the fundraiser card on the public landing.
-     Uses the tenant's Venmo handle + custom donate message. -->
-<div id="donate-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px;z-index:220" onclick="if (event.target === this) closeDonate()">
-  <div style="background:#fff;border-radius:18px;max-width:420px;width:100%;padding:26px;text-align:center;box-shadow:0 30px 60px -10px rgba(15,23,42,.35)">
-    <h2 id="d-title" style="margin:0 0 8px;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:22px">Donate</h2>
-    <p id="d-msg" style="font-size:13.5px;color:var(--muted);margin:6px 0 14px;line-height:1.55;white-space:pre-wrap"></p>
-    <canvas id="d-qr" style="width:240px;height:240px;border-radius:14px;border:2px solid var(--border);background:#fff;padding:6px;margin:0 auto;display:block"></canvas>
-    <div id="d-handle" style="margin-top:10px;font-size:15px;font-weight:700;color:var(--blue)"></div>
-    <button class="btn" onclick="closeDonate()" style="margin-top:14px;background:transparent;color:var(--blue);border:1.5px solid var(--border);padding:8px 18px;border-radius:10px;cursor:pointer;font:600 13px Inter">Close</button>
+<!-- Donate modal — Stripe + Venmo. Stripe primary when Connect is up;
+     Venmo always available when the handle is set. -->
+<style>
+  .d-preset { padding:9px 6px; border:1.5px solid var(--border); background:#fff; border-radius:10px; font:600 13px Inter; cursor:pointer; color:var(--text); }
+  .d-preset.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .d-preset:hover { border-color:var(--blue); }
+  #donate-scrim label { display:block; font:600 11px Inter; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; }
+  #donate-scrim input[type=text],
+  #donate-scrim input[type=email],
+  #donate-scrim input[type=number] { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; font:14px Inter; background:#fff; }
+</style>
+<div id="donate-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:flex-start;justify-content:center;overflow-y:auto;padding:32px 16px;z-index:220" onclick="if (event.target === this) closeDonate()">
+  <div style="background:#fff;border-radius:18px;max-width:480px;width:100%;padding:26px;box-shadow:0 30px 60px -10px rgba(15,23,42,.35)">
+    <h2 id="d-title" style="margin:0 0 6px;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:22px;text-align:center">Donate</h2>
+    <p id="d-msg" style="font-size:13.5px;color:var(--muted);margin:4px 0 14px;line-height:1.55;text-align:center;white-space:pre-wrap"></p>
+
+    <label>Amount</label>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+      <button type="button" class="d-preset" data-amt="2500"  onclick="setDonateAmount(2500)">$25</button>
+      <button type="button" class="d-preset" data-amt="5000"  onclick="setDonateAmount(5000)">$50</button>
+      <button type="button" class="d-preset" data-amt="10000" onclick="setDonateAmount(10000)">$100</button>
+      <button type="button" class="d-preset" data-amt="25000" onclick="setDonateAmount(25000)">$250</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px;font-weight:700;color:var(--blue)">$</span>
+      <input id="d-amount" type="number" min="1" step="1" placeholder="Other amount" oninput="onDonateAmountInput()" style="font:600 17px Inter">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+      <div>
+        <label>Your name <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
+        <input id="d-donor-name" type="text" maxlength="120">
+      </div>
+      <div>
+        <label>Email <span style="text-transform:none;letter-spacing:0;font-weight:500">(for receipt)</span></label>
+        <input id="d-donor-email" type="email" maxlength="200">
+      </div>
+    </div>
+    <label>Message <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional, public)</span></label>
+    <input id="d-message" type="text" maxlength="200" placeholder="e.g. Go pool!">
+    <label style="display:flex;align-items:center;gap:8px;font:500 13px Inter;color:var(--text);text-transform:none;letter-spacing:0;margin-top:12px;cursor:pointer">
+      <input id="d-public" type="checkbox" checked style="width:auto;margin:0">
+      Show my donation on the home page
+    </label>
+
+    <div id="d-stripe-section" style="margin-top:14px;display:none">
+      <button class="btn" id="d-stripe-btn" onclick="startDonateStripe()" style="background:var(--blue);color:#fff;width:100%;font:600 14px Inter;padding:12px;border:0;border-radius:10px;cursor:pointer">💳 Donate $<span id="d-stripe-amt">25</span> by card</button>
+    </div>
+    <div id="d-venmo-section" style="margin-top:10px;text-align:center;display:none">
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600;margin-top:4px">Or send via Venmo →</summary>
+        <p style="font-size:12.5px;color:var(--muted);margin:10px 0 8px;line-height:1.5">Send your gift to the handle below — the board adds it to the thermometer when it lands.</p>
+        <canvas id="d-qr" style="width:200px;height:200px;border-radius:14px;border:2px solid var(--border);background:#fff;padding:6px;margin:0 auto;display:block"></canvas>
+        <div id="d-handle" style="margin-top:8px;font-size:14px;font-weight:700;color:var(--blue);text-align:center"></div>
+      </details>
+    </div>
+
+    <div id="d-err" style="display:none;margin-top:10px;padding:10px 12px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <button onclick="closeDonate()" style="background:transparent;color:var(--blue);border:1.5px solid var(--border);padding:9px 18px;border-radius:10px;cursor:pointer;font:600 13px Inter">Close</button>
+    </div>
   </div>
 </div>
 
@@ -287,31 +339,138 @@
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const PUBLIC_LOOKUP = `${SUPABASE_URL}/functions/v1/tenant_public`;
 
-// ── Donate modal (Venmo QR) ───────────────────────────────────────────
+// ── Donate modal (Stripe + Venmo) ─────────────────────────────────────
+let DONATE_AMOUNT = 5000;
+function setDonateAmount(cents) {
+  DONATE_AMOUNT = cents;
+  document.getElementById('d-amount').value = (cents / 100).toFixed(0);
+  document.querySelectorAll('.d-preset').forEach(b => {
+    b.classList.toggle('on', Number(b.dataset.amt) === cents);
+  });
+  document.getElementById('d-stripe-amt').textContent = (cents / 100).toFixed(0);
+}
+function onDonateAmountInput() {
+  const v = parseFloat(document.getElementById('d-amount').value) || 0;
+  DONATE_AMOUNT = Math.round(v * 100);
+  document.querySelectorAll('.d-preset').forEach(b => {
+    b.classList.toggle('on', Number(b.dataset.amt) === DONATE_AMOUNT);
+  });
+  document.getElementById('d-stripe-amt').textContent = v ? v.toFixed(0) : '0';
+}
 function openDonate() {
-  const ps = window.PUBLIC_DATA && window.PUBLIC_DATA.public_settings || {};
-  const fund = ps.fundraiser || {};
-  const handle = ps.payments && ps.payments.venmo_handle;
+  const tenant   = (window.PUBLIC_DATA && window.PUBLIC_DATA.tenant) || {};
+  const ps       = (window.PUBLIC_DATA && window.PUBLIC_DATA.public_settings) || {};
+  const fund     = ps.fundraiser || {};
+  const handle   = ps.payments && ps.payments.venmo_handle;
   document.getElementById('d-title').textContent = fund.title || 'Donate';
-  document.getElementById('d-msg').textContent = fund.donate_message
-    || `Thank you for supporting ${(window.PUBLIC_DATA && window.PUBLIC_DATA.tenant && window.PUBLIC_DATA.tenant.display_name) || 'the club'}!`;
-  document.getElementById('d-handle').textContent = handle ? '@' + handle : '';
-  if (handle && typeof qrcode !== 'undefined') {
-    const url = `https://venmo.com/${encodeURIComponent(handle)}`;
-    const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
-    const canvas = document.getElementById('d-qr');
-    const ctx = canvas.getContext('2d');
-    canvas.width = canvas.height = 240;
-    const cells = qr.getModuleCount(); const size = 240 / cells;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 240, 240);
-    ctx.fillStyle = '#0a3b5c';
-    for (let r = 0; r < cells; r++) for (let c = 0; c < cells; c++) {
-      if (qr.isDark(r, c)) ctx.fillRect(c * size, r * size, size, size);
+  document.getElementById('d-msg').textContent   = fund.donate_message || `Thank you for supporting ${tenant.display_name || 'the club'}!`;
+  setDonateAmount(5000);
+  document.getElementById('d-donor-name').value = '';
+  document.getElementById('d-donor-email').value = '';
+  document.getElementById('d-message').value = '';
+  document.getElementById('d-public').checked = true;
+  document.getElementById('d-err').style.display = 'none';
+
+  document.getElementById('d-stripe-section').style.display = tenant.stripe_charges_enabled ? 'block' : 'none';
+
+  const vSection = document.getElementById('d-venmo-section');
+  if (handle) {
+    vSection.style.display = '';
+    document.getElementById('d-handle').textContent = '@' + handle;
+    if (typeof qrcode !== 'undefined') {
+      const url = `https://venmo.com/${encodeURIComponent(handle)}`;
+      const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+      const canvas = document.getElementById('d-qr');
+      const ctx = canvas.getContext('2d');
+      canvas.width = canvas.height = 200;
+      const cells = qr.getModuleCount(); const size = 200 / cells;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 200, 200);
+      ctx.fillStyle = '#0a3b5c';
+      for (let r = 0; r < cells; r++) for (let c = 0; c < cells; c++) {
+        if (qr.isDark(r, c)) ctx.fillRect(c * size, r * size, size, size);
+      }
     }
+  } else {
+    vSection.style.display = 'none';
   }
   document.getElementById('donate-scrim').style.display = 'flex';
 }
 function closeDonate() { document.getElementById('donate-scrim').style.display = 'none'; }
+// Public-side leaderboard — recent supporters under the fundraiser card.
+async function loadDonationsLeaderboard(slug) {
+  const host = document.getElementById('donations-leaderboard');
+  if (!host) return;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/donations`, {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({ action: 'list_public', slug, limit: 5 }),
+    });
+    const d = await r.json();
+    if (!d.ok) return;
+    const fmt = (c) => '$' + (c / 100).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const fmtAgo = (iso) => {
+      const s = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (s < 60)     return 'just now';
+      if (s < 3600)   return `${Math.floor(s/60)}m ago`;
+      if (s < 86400)  return `${Math.floor(s/3600)}h ago`;
+      if (s < 604800) return `${Math.floor(s/86400)}d ago`;
+      return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+    };
+    const recent = d.recent || [];
+    const totals = d.totals || { count: 0 };
+    const countEl = document.getElementById('d-donor-count');
+    if (countEl && totals.count > 0) {
+      countEl.textContent = `${totals.count} ${totals.count === 1 ? 'donation' : 'donations'}`;
+    }
+    if (!recent.length) { host.innerHTML = ''; return; }
+    host.innerHTML = `
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;text-align:left">
+        <div style="font:600 11px 'Inter';color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;text-align:center">Recent supporters 💚</div>
+        ${recent.map(d => `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:13.5px;color:var(--text)">${escapeHtml(d.donor_name || 'Anonymous')}</div>
+              ${d.message ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;font-style:italic">"${escapeHtml(d.message)}"</div>` : ''}
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(fmtAgo(d.created_at))}</div>
+            </div>
+            <div style="font:700 14px 'Inter';color:var(--sun);flex-shrink:0">${fmt(d.amount_cents)}</div>
+          </div>
+        `).join('')}
+      </div>`;
+  } catch { /* leaderboard is best-effort */ }
+}
+
+async function startDonateStripe() {
+  const errEl = document.getElementById('d-err'); errEl.style.display = 'none';
+  if (DONATE_AMOUNT < 100) { errEl.textContent = 'Minimum donation is $1.'; errEl.style.display = 'block'; return; }
+  const slug = (() => {
+    const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+    return m && m[1] && m[1] !== 'www' ? m[1].toLowerCase() : null;
+  })();
+  if (!slug) { errEl.textContent = 'Cannot donate from this URL.'; errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('d-stripe-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Opening checkout…';
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/donations`, {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({
+        action: 'start_checkout', slug,
+        amount_cents: DONATE_AMOUNT,
+        donor_name:  document.getElementById('d-donor-name').value.trim(),
+        donor_email: document.getElementById('d-donor-email').value.trim(),
+        message:     document.getElementById('d-message').value.trim(),
+        is_public:    document.getElementById('d-public').checked,
+        is_anonymous: false,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Checkout failed');
+    window.location.href = d.url;
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
 
 // ── Anonymous feedback modal ──────────────────────────────────────────
 function openFeedback() {
@@ -603,6 +762,8 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
     const raised = Math.max(0, fund.raised_cents || 0);
     const pct = goal > 0 ? Math.min(100, Math.round((raised / goal) * 100)) : 0;
     const venmo = ps?.payments?.venmo_handle;
+    const stripe = !!t.stripe_charges_enabled;
+    const canDonate = !!(stripe || venmo);
     return `
     <section style="padding:18px 22px 0;max-width:1120px;margin:0 auto">
       <div class="card" style="text-align:center;padding:22px;background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)">
@@ -613,7 +774,9 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 14px 'Inter';color:var(--blue);text-shadow:0 1px 2px rgba(255,255,255,.6)">${pct}%</div>
         </div>
         <div style="font-size:14px;color:var(--muted);font-weight:600">Raised <b style="color:var(--blue)">${fmtMoney(raised)}</b> of <b style="color:var(--blue)">${fmtMoney(goal)}</b></div>
-        ${venmo ? `<button class="btn" style="margin-top:14px;background:var(--sun);color:var(--blue);font-weight:700;border:0;padding:11px 22px;border-radius:12px;cursor:pointer" onclick="openDonate()">💚 Donate via Venmo</button>` : ''}
+        <div id="d-donor-count" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        ${canDonate ? `<button class="btn" style="margin-top:14px;background:var(--sun);color:var(--blue);font-weight:700;border:0;padding:11px 22px;border-radius:12px;cursor:pointer" onclick="openDonate()">💚 Donate</button>` : ''}
+        <div id="donations-leaderboard"></div>
       </div>
     </section>`;
   })() : '';
@@ -854,6 +1017,13 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
         sponsors: data.sponsors || [],
         config:   (data.public_settings && data.public_settings.sponsors_config) || {},
       });
+    }
+    // Recent supporters list under the fundraiser card. Best-effort.
+    loadDonationsLeaderboard(slug);
+    // Stripe donation success bounce-back.
+    if (new URLSearchParams(window.location.search).get('donated') === '1') {
+      setTimeout(() => alert('💚 Thank you for your donation! It may take a moment to show up on the thermometer — refresh in a few seconds.'), 250);
+      history.replaceState(null, '', window.location.pathname);
     }
   } catch (e) {
     document.getElementById('root').innerHTML = `
