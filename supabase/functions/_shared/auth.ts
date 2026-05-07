@@ -68,6 +68,42 @@ export async function verifyTenantAdmin(req: Request): Promise<AdminPayload | nu
   } catch { return null; }
 }
 
+// For provider-side surfaces that also do cross-tenant work, accept EITHER
+// a tenant_admin token (with is_super) OR a provider token. Returns an
+// AdminPayload synthesized from the provider's claims so downstream
+// requireSuper/requireOwner gates pass naturally — provider sessions are
+// effectively super-admins for any function that opts in to this helper.
+//
+// Use case: gate_admin's super_list / super_set_status actions live on
+// the provider admin (/admin/gate-integrations.html), but the function
+// was originally tenant-side only. Calling sites for these cross-tenant
+// actions should swap verifyTenantAdmin → verifyTenantAdminOrProvider.
+export async function verifyTenantAdminOrProvider(req: Request): Promise<AdminPayload | null> {
+  if (!JWT_SECRET) return null;
+  const hdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+  const tok = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
+  if (!tok) return null;
+  try {
+    const key = await getKey();
+    const p = await verify(tok, key) as Record<string, unknown>;
+    if (p.kind === 'tenant_admin' && p.sub && p.tid) {
+      return p as unknown as AdminPayload;
+    }
+    if (p.kind === 'provider' && p.sub) {
+      // Synthesize a tenant-admin-shaped payload. synthetic:true makes
+      // resolveRole short-circuit to full access — provider admins
+      // already passed their own auth on /admin/login.html.
+      return {
+        sub: String(p.sub), kind: 'tenant_admin',
+        tid: '',  // no tenant scope; super actions don't need one
+        is_super: true,
+        synthetic: true,
+      } as AdminPayload;
+    }
+    return null;
+  } catch { return null; }
+}
+
 // Resolve the caller's effective role + scopes. JWT first; falls back to DB
 // if the token predates the role/scope claims (graceful upgrade for old
 // sessions). DB is also authoritative on `active` — a deactivated admin's

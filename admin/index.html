@@ -171,6 +171,61 @@
         <b style="color:var(--blue)">1 verified template</b> · <b style="color:var(--amber)">2 requests awaiting review</b> · <b style="color:var(--green)">$50/mo MRR · $1,000 lifetime setup fees</b>
       </p>
     </div>
+
+    <!-- Anchor target for the Billing nav link. Subscription-billing for
+         Poolside itself (charging tenants for their plan) isn't built
+         yet — show what's in flight rather than a dead fragment. -->
+    <div class="card" id="billing">
+      <div class="card-head">
+        <h2>💳 Billing <span style="background:#dbeafe;color:#1e3a8a;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.06em;margin-left:8px;vertical-align:middle">IN PROGRESS</span></h2>
+      </div>
+      <p style="color:var(--muted);font-size:14px;margin-top:0;line-height:1.6">
+        Subscription billing for Poolside itself isn't wired yet — every tenant runs free until this lands. The plan model already exists (Free / Starter / Pro / Enterprise with per-tier household caps), but the Stripe-subscription side hasn't been built.
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-top:14px">
+        <div style="padding:14px 16px;background:var(--bg-2);border-radius:10px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Default plan</div>
+          <div style="font:600 17px 'Fraunces',serif;color:var(--blue);margin-top:4px">Free Forever (≤20 households)</div>
+        </div>
+        <div style="padding:14px 16px;background:var(--bg-2);border-radius:10px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Manual override</div>
+          <div style="font:600 13px Inter;color:var(--blue);margin-top:6px;line-height:1.5">Open any tenant → "Overrides" → set custom plan label + cap. Bishop is grandfathered this way.</div>
+        </div>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0;line-height:1.5">
+        <b>Next milestones:</b> Stripe subscription product + checkout flow per plan; usage-overage tracking (SMS caps, transaction fees); invoicing surface in this dashboard.
+      </p>
+    </div>
+
+    <!-- Support is a placeholder until live chat / ticketing exists.
+         Until then, point the user at the email + status surfaces that
+         already work. -->
+    <div class="card" id="support">
+      <div class="card-head"><h2>💬 Support</h2></div>
+      <p style="color:var(--muted);font-size:14px;margin-top:0;line-height:1.6">
+        Tenant clubs reach you (the platform owner) here — and you can lean on the same surfaces you've already built when something goes wrong.
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-top:14px">
+        <a href="mailto:doug.frevele@gmail.com" style="display:block;padding:14px 16px;background:var(--bg-2);border-radius:10px;text-decoration:none;color:var(--text)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Inbound email</div>
+          <div style="font:600 15px 'Fraunces',serif;color:var(--blue);margin-top:6px">doug.frevele@gmail.com</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Currently the only channel — point clubs here.</div>
+        </a>
+        <a href="cockpit.html" style="display:block;padding:14px 16px;background:var(--bg-2);border-radius:10px;text-decoration:none;color:var(--text)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Test cockpit</div>
+          <div style="font:600 15px 'Fraunces',serif;color:var(--blue);margin-top:6px">Smoke-test any tenant</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">End-to-end pipeline from create → ingest → verify.</div>
+        </a>
+        <a href="analytics.html" style="display:block;padding:14px 16px;background:var(--bg-2);border-radius:10px;text-decoration:none;color:var(--text)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Analytics</div>
+          <div style="font:600 15px 'Fraunces',serif;color:var(--blue);margin-top:6px">See per-tenant usage</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Diagnose which clubs are hot or cold.</div>
+        </a>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:14px 0 0;line-height:1.5">
+        <b>Roadmap:</b> in-app live chat (Intercom or similar), ticket queue with SLA tracking per plan tier, public status page at <code>status.poolsideapp.com</code>.
+      </p>
+    </div>
   </main>
 </div>
 

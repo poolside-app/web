@@ -23,7 +23,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { verifyTenantAdmin, requireOwner, requireSuper } from '../_shared/auth.ts';
+import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -92,14 +92,18 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
 
-  const payload = await verifyTenantAdmin(req);
-  if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
-
+  // Peek at the action so we know whether to accept provider tokens. The
+  // super_* family lives on /admin/gate-integrations.html (provider side),
+  // everything else is tenant-side.
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
-
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
+
+  const payload = action.startsWith('super_')
+    ? await verifyTenantAdminOrProvider(req)
+    : await verifyTenantAdmin(req);
+  if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
   // ── Tenant-side actions ──────────────────────────────────────────────
 
