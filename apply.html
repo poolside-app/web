@@ -1126,13 +1126,22 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
               }
             }
           }
-          // Friendly heads-up so the admin understands why fields are filled
+          // Friendly heads-up so the admin understands why fields are filled.
+          // Dismissable with × — sessionStorage flag prevents it from
+          // re-appearing on refresh (e.g., user dismissed once, scrolled
+          // away, came back — they shouldn't see it again).
+          const dismissed = sessionStorage.getItem('apply_prefill_dismissed') === '1';
           const titleEl = document.getElementById('title');
-          if (titleEl) {
+          if (titleEl && !dismissed) {
             const note = document.createElement('div');
-            note.style.cssText = 'background:#f0f6fb;border:1px solid #cfe1f0;color:#0a3b5c;padding:10px 14px;border-radius:8px;font-size:13px;margin:10px 0 0';
-            note.innerHTML = '👋 We pre-filled your info from your admin account. Edit anything that needs to change.';
+            note.id = 'prefill-notice';
+            note.style.cssText = 'background:#f0f6fb;border:1px solid #cfe1f0;color:#0a3b5c;padding:10px 38px 10px 14px;border-radius:8px;font-size:13px;margin:10px 0 0;position:relative';
+            note.innerHTML = '👋 We pre-filled your info from your admin account. Edit anything that needs to change.<button type="button" aria-label="Dismiss" id="prefill-close" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:0;color:#0a3b5c;font-size:20px;line-height:1;cursor:pointer;padding:4px 8px">×</button>';
             titleEl.parentNode.insertBefore(note, titleEl.nextSibling);
+            document.getElementById('prefill-close').addEventListener('click', () => {
+              sessionStorage.setItem('apply_prefill_dismissed', '1');
+              note.remove();
+            });
           }
         }
       }

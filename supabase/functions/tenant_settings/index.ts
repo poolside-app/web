@@ -17,6 +17,11 @@
 //
 //   { action: 'mark_wizard_complete' }
 //     → { ok }   // shorthand for save with setup_wizard_complete=true
+//
+//   { action: 'setup_status' }
+//     → { ok, percent, done, total, items: [{ id, label, done, fix_url, fix_label, optional }] }
+//     Checklist for the persistent "Club not fully set up" banner +
+//     the /club/admin/setup.html step-by-step page.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -136,6 +141,128 @@ Deno.serve(async (req) => {
       await sb.from('settings').insert({ tenant_id: payload.tid, value });
     }
     return jsonResponse({ ok: true });
+  }
+
+  // ── setup_status ───────────────────────────────────────────────────────
+  // Returns the onboarding checklist for the banner + setup page. Read-only
+  // so any tenant_admin can fetch (no requireOwner gate). Items are the
+  // bare minimum to launch — not the exhaustive ops health (admin_health
+  // covers that).
+  if (action === 'setup_status') {
+    const [tenantRes, settingsRes, policyRes, ownerRes] = await Promise.all([
+      sb.from('tenants').select('display_name, slug, stripe_account_id, stripe_charges_enabled')
+        .eq('id', payload.tid).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
+      sb.from('policies').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', payload.tid).eq('active', true),
+      sb.from('admin_users').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', payload.tid).eq('active', true),
+    ]);
+
+    const tenant = (tenantRes.data || {}) as Record<string, unknown>;
+    const sv = ((settingsRes.data?.value as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+    const branding = (sv.branding as Record<string, unknown> | undefined) ?? {};
+    const hero = (sv.hero as Record<string, unknown> | undefined) ?? {};
+    const pool = (sv.pool as Record<string, unknown> | undefined) ?? {};
+    const club = (sv.club as Record<string, unknown> | undefined) ?? {};
+    const payments = (sv.payments as Record<string, unknown> | undefined) ?? {};
+    const tiers = (sv.membership_tiers as Array<unknown> | undefined) ?? [];
+    const policyCount = policyRes.count ?? 0;
+    const adminCount = ownerRes.count ?? 0;
+
+    const stripeConnected = !!(tenant.stripe_account_id && tenant.stripe_charges_enabled);
+    const venmoSet = !!(payments.venmo_handle && String(payments.venmo_handle).trim());
+
+    const items = [
+      {
+        id: 'wizard',
+        label: 'Run the setup wizard',
+        done: !!sv.setup_wizard_complete,
+        fix_url: '/club/wizard.html',
+        fix_label: 'Open wizard',
+        why: 'Sets your club name, hero text, hours, and basic features in one shot.',
+      },
+      {
+        id: 'logo',
+        label: 'Upload your club logo',
+        done: !!(branding.logo_url || branding.logo),
+        fix_url: '/club/admin/settings.html',
+        fix_label: 'Upload logo',
+        why: 'Replaces the placeholder dot in your header and emails.',
+      },
+      {
+        id: 'hero',
+        label: 'Write your home-page headline',
+        done: !!(hero.headline && String(hero.headline).trim()),
+        fix_url: '/club/wizard.html',
+        fix_label: 'Edit headline',
+        why: 'The big line at the top of your public site.',
+      },
+      {
+        id: 'location',
+        label: 'Set your pool location and hours',
+        done: !!((club.location || (pool.lat && pool.lng)) && pool.opens_at && pool.closes_at),
+        fix_url: '/club/wizard.html',
+        fix_label: 'Set location',
+        why: 'Powers the weather ticker and stops gate unlocks outside hours.',
+      },
+      {
+        id: 'tiers',
+        label: 'Set up at least one membership tier',
+        done: tiers.length > 0,
+        fix_url: '/club/admin/billing.html',
+        fix_label: 'Add a tier',
+        why: 'Without tiers, your apply form is broken.',
+      },
+      {
+        id: 'policies',
+        label: 'Add policies (waiver, rules)',
+        done: policyCount > 0,
+        fix_url: '/club/admin/policies.html',
+        fix_label: 'Edit policies',
+        why: 'Liability protection — applicants must agree before submitting.',
+      },
+      {
+        id: 'payment',
+        label: 'Connect a payment method',
+        done: stripeConnected || venmoSet,
+        fix_url: '/club/admin/payments.html',
+        fix_label: stripeConnected ? 'Add Venmo too' : 'Set up payments',
+        why: 'Stripe (cards) or Venmo — pick at least one so members can pay.',
+      },
+      {
+        id: 'stripe',
+        label: 'Connect Stripe (accept credit cards)',
+        done: stripeConnected,
+        fix_url: '/club/admin/payments.html',
+        fix_label: 'Connect Stripe',
+        why: 'Cards = auto-pay, payment plans, no chasing members. ~3% fee.',
+        optional: true,
+      },
+      {
+        id: 'admins',
+        label: 'Invite a backup admin',
+        done: adminCount >= 2,
+        fix_url: '/club/admin/admins.html',
+        fix_label: 'Invite admin',
+        why: 'If you lose access, no one else can manage the club.',
+        optional: true,
+      },
+    ];
+
+    const required = items.filter(i => !i.optional);
+    const doneCount = required.filter(i => i.done).length;
+    const total = required.length;
+    const percent = Math.round((doneCount / total) * 100);
+
+    return jsonResponse({
+      ok: true,
+      percent,
+      done: doneCount,
+      total,
+      complete: doneCount === total,
+      items,
+    });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Finish setup — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#475569;
+    --border:#e5e7eb;
+    --green:#16a34a; --green-l:#dcfce7;
+    --yellow:#d97706; --yellow-l:#fef3c7;
+    --red:#dc2626; --red-l:#fee2e2;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 18px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width: 760px; width:100%; margin:0 auto; }
+
+  .hero {
+    background: linear-gradient(135deg, var(--blue-l), #fff);
+    border-radius: var(--r-lg); padding: 26px 24px; margin-bottom: 22px;
+    box-shadow: var(--shadow);
+  }
+  .hero h1 { color: var(--blue); margin-bottom: 4px; }
+  .hero .lede { color: var(--muted); font-size: 14.5px; margin: 0 0 16px; }
+  .progress-row { display:flex; align-items:center; gap:14px; }
+  .progress-bar { flex:1; height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden; }
+  .progress-fill { height:100%; background:linear-gradient(90deg, var(--blue), var(--blue-2)); border-radius:999px; transition: width .3s ease; }
+  .progress-pct { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 22px; color: var(--blue); white-space: nowrap; }
+
+  .item {
+    background:#fff; border:1px solid var(--border); border-radius:var(--r-lg);
+    padding:18px 20px; margin-bottom:12px; display:flex; gap:16px; align-items:flex-start;
+    box-shadow: var(--shadow); transition: border-color .12s, transform .1s;
+  }
+  .item.done { background: var(--green-l); border-color: #86efac; }
+  .item.optional { border-style: dashed; }
+  .check {
+    width:32px; height:32px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; font-weight:700; flex-shrink:0; margin-top:2px;
+    border: 2px solid var(--border); background:#fff; color: var(--muted);
+  }
+  .item.done .check { background: var(--green); border-color: var(--green); color:#fff; }
+
+  .item-body { flex:1; min-width:0; }
+  .item-label { font-weight: 700; font-size: 15.5px; color: var(--text); margin-bottom: 2px; }
+  .item.done .item-label { color: #14532d; }
+  .item-why { color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .item.done .item-why { color: #166534; }
+  .item-tag {
+    display:inline-block; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    padding:2px 8px; border-radius:999px; margin-left:8px; vertical-align:middle;
+    background: var(--bg-2); color: var(--muted);
+  }
+  .item.optional .item-tag { background:#f1f5f9; color:#64748b; }
+
+  .fix-btn {
+    padding: 9px 16px; border-radius: 10px; font: 700 12.5px 'Inter';
+    text-transform: uppercase; letter-spacing: .04em; text-decoration: none;
+    background: var(--blue); color: #fff; white-space: nowrap; flex-shrink: 0;
+    margin-top: 4px; border: 0; cursor: pointer; align-self: center;
+  }
+  .fix-btn:hover { background: var(--blue-2); }
+  .item.done .fix-btn {
+    background: transparent; color: #16a34a; border: 1.5px solid #86efac;
+  }
+
+  .all-done {
+    text-align:center; padding: 50px 22px;
+    background: linear-gradient(135deg, var(--green-l), #fff);
+    border-radius: var(--r-lg); border: 2px solid #86efac;
+    margin-bottom: 22px;
+  }
+  .all-done .big { font-size: 56px; margin-bottom: 6px; }
+  .all-done h2 { color: #14532d; margin-bottom: 8px; font-size: 26px; }
+  .all-done p { color: #166534; font-size: 15px; max-width: 480px; margin: 0 auto 18px; }
+  .all-done a {
+    display: inline-block; padding: 12px 26px;
+    background: var(--blue); color: #fff; border-radius: 10px;
+    text-decoration: none; font-weight: 700; font-size: 14px;
+  }
+
+  .skeleton { background:#f1f5f9; border-radius:6px; height:60px; margin-bottom:12px; animation: shimmer 1.4s infinite; background-size:200% 100%; background-image:linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  footer { padding: 22px; text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); background: #fff; margin-top: 48px; }
+
+  @media (max-width: 600px) {
+    .item { flex-direction: column; gap: 10px; }
+    .fix-btn { align-self: flex-start; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout" tabindex="0" role="button">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/application.html">Application</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+
+<main>
+  <div class="hero">
+    <h1>Finish setting up your club</h1>
+    <p class="lede">Knock these out and your club is open for business — members can apply, you can collect dues, and the gate (if you have one) is ready.</p>
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="pf" style="width:0%"></div></div>
+      <div class="progress-pct"><span id="pct">0</span>%</div>
+    </div>
+    <p style="margin: 12px 0 0; font-size: 13px; color: var(--muted)" id="status-line">Loading…</p>
+  </div>
+
+  <div id="items">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script src="/js/admin-flags.js"></script>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const AUTH_URL     = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function load() {
+  const t = token();
+  if (!t) { logout(); return; }
+
+  // Identity + brand paint
+  try {
+    const r = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'me' }),
+    });
+    const d = await r.json();
+    if (!d.ok) { logout(); return; }
+    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply(d.tenant.features || {}, d.user, d.tenant, d.usage);
+  } catch (_) { /* keep going */ }
+
+  // Setup status
+  let data;
+  try {
+    const r = await fetch(SETTINGS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'setup_status' }),
+    });
+    data = await r.json();
+  } catch (e) {
+    document.getElementById('items').innerHTML = `<div class="item"><div class="item-body">Couldn't load setup status: ${escapeHtml(e.message)}</div></div>`;
+    return;
+  }
+  if (!data.ok) {
+    document.getElementById('items').innerHTML = `<div class="item"><div class="item-body">${escapeHtml(data.error || 'Failed to load')}</div></div>`;
+    return;
+  }
+
+  document.getElementById('pct').textContent = data.percent;
+  document.getElementById('pf').style.width = data.percent + '%';
+  const remaining = (data.total || 0) - (data.done || 0);
+  document.getElementById('status-line').textContent = data.complete
+    ? `All ${data.total} required items checked off — your club is fully set up.`
+    : `${data.done} of ${data.total} required items done · ${remaining} to go.`;
+
+  const host = document.getElementById('items');
+
+  if (data.complete && (data.items || []).every(i => i.done)) {
+    host.innerHTML = `
+      <div class="all-done">
+        <div class="big">🎉</div>
+        <h2>You're all set!</h2>
+        <p>Every checklist item is checked off. Your club is ready — members can apply, pay, and use everything you've turned on.</p>
+        <a href="/club/admin/">Back to dashboard</a>
+      </div>
+    `;
+    return;
+  }
+
+  // Sort: incomplete first, then by required-vs-optional, then by original order.
+  const items = (data.items || []).slice().sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    if (!!a.optional !== !!b.optional) return a.optional ? 1 : -1;
+    return 0;
+  });
+
+  host.innerHTML = items.map(i => `
+    <div class="item ${i.done ? 'done' : ''} ${i.optional ? 'optional' : ''}">
+      <div class="check">${i.done ? '✓' : ''}</div>
+      <div class="item-body">
+        <div class="item-label">
+          ${escapeHtml(i.label)}
+          ${i.optional ? '<span class="item-tag">Optional</span>' : ''}
+        </div>
+        <div class="item-why">${escapeHtml(i.why || '')}</div>
+      </div>
+      <a class="fix-btn" href="${escapeHtml(i.fix_url)}">${escapeHtml(i.done ? 'Edit' : (i.fix_label || 'Set up'))} →</a>
+    </div>
+  `).join('');
+}
+
+load();
+// Re-fetch when the tab becomes visible again so progress updates after
+// the user fixes something in another tab and comes back to this one.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>

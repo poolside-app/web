@@ -130,21 +130,13 @@
         <label>Club name</label>
         <input type="text" id="f-display_name" placeholder="Bishop Estates Cabana Club">
 
-        <label>Location <span class="opt">(shown under hero)</span></label>
-        <input type="text" id="f-location" placeholder="Concord, California">
+        <label style="margin-top:14px">Default zip code <span class="opt">(used to auto-fill applicants' addresses)</span></label>
+        <input type="text" id="f-default_zip" placeholder="94521">
+        <!-- Default city + display location are derived from the pool city/state in step 4 -->
+        <input type="hidden" id="f-default_city">
+        <input type="hidden" id="f-location">
 
-        <div class="row2" style="margin-top: 10px">
-          <div>
-            <label>Default city</label>
-            <input type="text" id="f-default_city" placeholder="Concord">
-          </div>
-          <div>
-            <label>Default zip</label>
-            <input type="text" id="f-default_zip" placeholder="94521">
-          </div>
-        </div>
-
-        <label>Swim team name <span class="opt">(if you have one)</span></label>
+        <label style="margin-top:14px">Swim team name <span class="opt">(if you have one)</span></label>
         <input type="text" id="f-swim_team_name">
       </div>
 
@@ -152,16 +144,27 @@
       <div class="step" data-step="2" style="display:none">
         <div class="step-icon">🪪</div>
         <h2 class="step-title">Front-page intro</h2>
-        <p class="step-tag">Three lines at the top of your home page. Leave a line blank to hide it.</p>
+        <p class="step-tag">Three lines that show up at the top of your public site. Here's where each one lands:</p>
 
-        <label>Eyebrow <span class="opt">(small uppercase line)</span></label>
-        <input type="text" id="f-hero_eyebrow" placeholder="Summer 2026">
+        <!-- Visual mockup of where each line shows up -->
+        <div style="background:linear-gradient(135deg, #134b73, #0a3b5c); border-radius:14px; padding:24px 18px; margin: 4px 0 18px; text-align:center; color:#fff; position:relative">
+          <div id="mock-eyebrow" style="font-size:10px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:rgba(255,255,255,.75); margin-bottom:8px">SUMMER 2026</div>
+          <div id="mock-headline" style="font-family:'Fraunces',Georgia,serif; font-size:24px; font-weight:600; line-height:1.15; margin-bottom:8px">A neighborhood pool.</div>
+          <div id="mock-tagline" style="font-size:12px; color:rgba(255,255,255,.85); line-height:1.4">Family memberships from $600/yr · Memorial Day → Labor Day</div>
+          <div style="position:absolute; top:6px; right:10px; font-size:9px; color:rgba(255,255,255,.55); font-weight:600; letter-spacing:.06em; text-transform:uppercase">↑ this is what your home page looks like</div>
+        </div>
 
-        <label>Headline <span class="opt">(the big serif line)</span></label>
-        <input type="text" id="f-hero_headline" placeholder="A neighborhood pool.">
+        <label>Top line <span class="opt">— small uppercase text above the headline. Often a season or year.</span></label>
+        <input type="text" id="f-hero_eyebrow" placeholder="Summer 2026" oninput="syncHeroMock()">
+        <p class="help">Examples: <i>Summer 2026</i> · <i>Est. 1968</i> · <i>Welcome back</i></p>
 
-        <label>Tagline <span class="opt">(one freeform line)</span></label>
-        <input type="text" id="f-hero_tagline" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
+        <label style="margin-top:14px">Headline <span class="opt">— the big bold line. Keep it short and warm.</span></label>
+        <input type="text" id="f-hero_headline" placeholder="A neighborhood pool." oninput="syncHeroMock()">
+        <p class="help">Examples: <i>A neighborhood pool.</i> · <i>Your summer home.</i> · <i>The Bishop Estates Cabana Club</i></p>
+
+        <label style="margin-top:14px">Subtitle <span class="opt">— one line under the headline. Membership pitch + season dates work well.</span></label>
+        <input type="text" id="f-hero_tagline" placeholder="Family memberships from $600/yr · Memorial Day → Labor Day" oninput="syncHeroMock()">
+        <p class="help">Leave any line blank to hide it.</p>
       </div>
 
       <!-- Step 3 — Background photo (upload or URL) -->
@@ -187,19 +190,28 @@
       <div class="step" data-step="4" style="display:none">
         <div class="step-icon">📍</div>
         <h2 class="step-title">Pool location &amp; hours</h2>
-        <p class="step-tag">Powers the weather ticker and gates the unlock button outside open hours.</p>
+        <p class="step-tag">We use this for the weather ticker and to keep the gate locked outside open hours.</p>
 
-        <div class="row2">
+        <label>City <span class="opt">(e.g. Concord)</span></label>
+        <input type="text" id="f-city" placeholder="Concord" oninput="onLocationChange()">
+
+        <div class="row2" style="margin-top:10px">
           <div>
-            <label>Latitude</label>
-            <input type="number" id="f-lat" placeholder="37.978900" step="0.000001">
+            <label>State / region</label>
+            <input type="text" id="f-state" placeholder="California" oninput="onLocationChange()">
           </div>
           <div>
-            <label>Longitude</label>
-            <input type="number" id="f-lng" placeholder="-121.969300" step="0.000001">
+            <label>Country <span class="opt">(optional)</span></label>
+            <input type="text" id="f-country" placeholder="USA" oninput="onLocationChange()">
           </div>
         </div>
-        <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:13px;padding:8px 14px;font-weight:500" onclick="useMyLocation()">📍 Use my location</button>
+
+        <button type="button" class="btn btn-ghost" style="margin-top:10px;font-size:13px;padding:8px 14px;font-weight:500" onclick="useMyLocation()">📍 Use my current location</button>
+        <p class="help" id="geo-status" style="margin-top:6px">We'll auto-fill GPS coordinates from the city/state above.</p>
+
+        <!-- Hidden — auto-populated from city/state geocoding or "Use my location". -->
+        <input type="hidden" id="f-lat">
+        <input type="hidden" id="f-lng">
 
         <div class="row2" style="margin-top:14px">
           <div>
@@ -350,11 +362,20 @@ function setVal(id, v) { const el = document.getElementById(id); if (el && v !==
 function setChk(id, v) { const el = document.getElementById(id); if (el) el.checked = !!v; }
 
 function collect() {
+  // Build the human-readable location from city + state + country (whichever
+  // are filled in). Used by the public site, emails, and the apply form.
+  const city = val('f-city');
+  const state = val('f-state');
+  const country = val('f-country');
+  const locationStr = [city, state, country].filter(Boolean).join(', ');
   return {
     setup_wizard_complete: false,
     club: {
-      location:        val('f-location') || null,
-      default_city:    val('f-default_city') || null,
+      location:        locationStr || null,
+      city:            city || null,
+      state:           state || null,
+      country:         country || null,
+      default_city:    val('f-default_city') || city || null,
       default_zip:     val('f-default_zip') || null,
       swim_team_name:  val('f-swim_team_name') || null,
     },
@@ -398,6 +419,24 @@ function populate(s) {
   setVal('f-hero_tagline',  s.hero?.tagline);
   setVal('f-background_photo_url', s.branding?.background_photo_url);
   syncBgPreview();
+  syncHeroMock();
+
+  // City / state / country: either freshly-stored fields (post v2 wizard)
+  // OR split from a legacy "Concord, California" location string.
+  let city = s.club?.city || '';
+  let state = s.club?.state || '';
+  let country = s.club?.country || '';
+  if (!city && !state && s.club?.location) {
+    const parts = String(s.club.location).split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length === 1) city = parts[0];
+    else if (parts.length === 2) { city = parts[0]; state = parts[1]; }
+    else if (parts.length >= 3)  { city = parts[0]; state = parts[1]; country = parts.slice(2).join(', '); }
+  }
+  if (!city && s.club?.default_city) city = s.club.default_city;
+  setVal('f-city', city);
+  setVal('f-state', state);
+  setVal('f-country', country);
+
   setVal('f-lat',  s.pool?.lat);
   setVal('f-lng',  s.pool?.lng);
   if (s.pool?.opens_at)  setVal('f-opens_at',  s.pool.opens_at);
@@ -420,6 +459,69 @@ function toggleFobDay() {
   const on = !!document.getElementById('f-feat_keyfobs')?.checked;
   const row = document.getElementById('fob-day-row');
   if (row) row.style.display = on ? 'block' : 'none';
+}
+
+// Live-update the hero mockup as the user types each line. Default text
+// shows when a field is empty so the mockup never goes blank.
+function syncHeroMock() {
+  const eb = val('f-hero_eyebrow');
+  const hd = val('f-hero_headline');
+  const tg = val('f-hero_tagline');
+  const eEl = document.getElementById('mock-eyebrow');
+  const hEl = document.getElementById('mock-headline');
+  const tEl = document.getElementById('mock-tagline');
+  if (eEl) {
+    eEl.textContent = eb || 'SUMMER 2026';
+    eEl.style.opacity = eb ? '1' : '.5';
+  }
+  if (hEl) {
+    hEl.textContent = hd || 'A neighborhood pool.';
+    hEl.style.opacity = hd ? '1' : '.5';
+  }
+  if (tEl) {
+    tEl.textContent = tg || 'Family memberships from $600/yr · Memorial Day → Labor Day';
+    tEl.style.opacity = tg ? '1' : '.5';
+  }
+}
+
+// Debounced geocoder: when the user finishes typing city/state, hit
+// OpenStreetMap Nominatim to look up lat/lng. Fails silently — coords
+// stay blank, weather ticker just won't show.
+let _geoTimer = null;
+function onLocationChange() {
+  if (_geoTimer) clearTimeout(_geoTimer);
+  const status = document.getElementById('geo-status');
+  if (status) status.textContent = 'Looking up coordinates…';
+  _geoTimer = setTimeout(geocodeNow, 700);
+}
+async function geocodeNow() {
+  const city = val('f-city');
+  const state = val('f-state');
+  const country = val('f-country');
+  const status = document.getElementById('geo-status');
+  if (!city && !state) {
+    if (status) status.textContent = 'We\'ll auto-fill GPS coordinates from the city/state above.';
+    return;
+  }
+  const q = [city, state, country].filter(Boolean).join(', ');
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url, { headers: { 'accept-language': 'en' } });
+    const arr = await res.json();
+    if (Array.isArray(arr) && arr.length > 0) {
+      const lat = Number(arr[0].lat);
+      const lng = Number(arr[0].lon);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        setVal('f-lat', lat.toFixed(6));
+        setVal('f-lng', lng.toFixed(6));
+        if (status) status.textContent = `✓ Coordinates set: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        return;
+      }
+    }
+    if (status) status.textContent = 'Couldn\'t find that location — try adding the state, or click "Use my current location" below.';
+  } catch (_) {
+    if (status) status.textContent = 'Couldn\'t reach the geocoder. You can skip — coordinates are only used for the weather ticker.';
+  }
 }
 
 function syncBgPreview() {
@@ -554,13 +656,37 @@ async function finish() {
 })();
 
 function useMyLocation() {
-  if (!navigator.geolocation) return showErr('Geolocation not supported by this browser');
+  const status = document.getElementById('geo-status');
+  if (!navigator.geolocation) {
+    if (status) status.textContent = 'Geolocation not supported by this browser. Try the city/state fields above.';
+    return;
+  }
+  if (status) status.textContent = 'Getting your location…';
   navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      setVal('f-lat', pos.coords.latitude.toFixed(6));
-      setVal('f-lng', pos.coords.longitude.toFixed(6));
+    async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      setVal('f-lat', lat.toFixed(6));
+      setVal('f-lng', lng.toFixed(6));
+      // Reverse-geocode to populate city/state too so the form looks complete.
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, {
+          headers: { 'accept-language': 'en' },
+        });
+        const data = await res.json();
+        const a = data?.address || {};
+        const city = a.city || a.town || a.village || a.hamlet || a.suburb || '';
+        const state = a.state || a.region || '';
+        const country = a.country || '';
+        if (city)    setVal('f-city',    city);
+        if (state)   setVal('f-state',   state);
+        if (country) setVal('f-country', country);
+      } catch (_) { /* coords are still useful even without place name */ }
+      if (status) status.textContent = `✓ Coordinates set: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     },
-    (err) => showErr('Could not get location: ' + err.message),
+    (err) => {
+      if (status) status.textContent = 'Could not get location: ' + err.message + '. Try typing a city/state above.';
+    },
   );
 }
 </script>

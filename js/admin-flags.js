@@ -157,10 +157,69 @@
     header.parentNode.insertBefore(ticker, header.nextSibling);
   }
 
+  // ── Setup-status banner — persistent "Club setup is X% complete" strip
+  // shown on every admin page until all required items are checked off.
+  // Hidden on the wizard + setup checklist itself (don't nag while the
+  // user is actively fixing things). Hidden on login pages too.
+  async function paintSetupBanner(token) {
+    if (!token) return;
+    const path = window.location.pathname || '';
+    if (path.includes('/club/admin/setup.html')) return;
+    if (path.includes('/club/wizard.html'))      return;
+    if (path.includes('/login.html'))            return;
+    if (document.getElementById('setup-banner')) return;  // already painted
+
+    let data;
+    try {
+      const res = await fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_settings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'setup_status' }),
+      });
+      data = await res.json();
+    } catch (_) { return; }
+    if (!data || !data.ok || data.complete) return;
+
+    const pct = Math.max(0, Math.min(100, Number(data.percent) || 0));
+    const remaining = (data.total || 0) - (data.done || 0);
+    const banner = document.createElement('div');
+    banner.id = 'setup-banner';
+    banner.style.cssText = `
+      display:flex; align-items:center; gap:14px; padding:10px 18px;
+      background:linear-gradient(90deg, #fef3c7, #fde68a);
+      color:#78350f; font-size:13.5px; font-weight:600;
+      border-bottom:1px solid #fbbf24;
+    `;
+    banner.innerHTML = `
+      <span style="font-size:18px">⚠️</span>
+      <div style="flex:1; min-width:0">
+        <div>Club setup is <b>${pct}% complete</b> — ${remaining} item${remaining === 1 ? '' : 's'} left before members can apply and pay.</div>
+        <div style="height:5px; background:rgba(120,53,15,.15); border-radius:999px; overflow:hidden; margin-top:6px; max-width:340px">
+          <div style="width:${pct}%; height:100%; background:#92400e"></div>
+        </div>
+      </div>
+      <a href="/club/admin/setup.html" style="padding:8px 16px; background:#0a3b5c; color:#fff; text-decoration:none; font-weight:700; font-size:12px; letter-spacing:.04em; text-transform:uppercase; border-radius:8px; white-space:nowrap; flex-shrink:0">Finish setup →</a>
+    `;
+    // Insert above usage-ticker if present, else after header.
+    const header = document.querySelector('header');
+    if (!header) return;
+    const ticker = document.getElementById('usage-ticker');
+    if (ticker) {
+      ticker.parentNode.insertBefore(banner, ticker);
+    } else {
+      header.parentNode.insertBefore(banner, header.nextSibling);
+    }
+  }
+
   function apply(features, user, tenant, usage) {
     features = features || {};
     if (tenant) brandHeader(tenant);
     if (usage) paintUsageTicker(usage);
+    // Fire-and-forget: banner paints async; don't block page render.
+    try {
+      const tok = localStorage.getItem('poolside_tenant_token');
+      if (tok) paintSetupBanner(tok);
+    } catch (_) { /* defensive */ }
 
     // Layer 1: feature flags (hide entire features tenants didn't enable)
     for (const [flag, selector] of Object.entries(FEATURE_NAV)) {
@@ -204,5 +263,5 @@
     }
   }
 
-  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker };
+  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker, paintSetupBanner };
 })();
