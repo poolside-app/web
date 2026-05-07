@@ -473,9 +473,12 @@ const Emails = (() => {
 
   // Only application-lifecycle keys live on this page; member-side emails
   // (renewals, payment plans, party approve/deny) stay on Members.
+  // The Stripe-path "received" templates were removed — Stripe applicants
+  // get one combined email after payment clears, not a pre-payment
+  // "we got your form" duplicate.
   const APP_KEYS = new Set([
-    'application_received_venmo', 'application_received_stripe',
-    'application_received_stripe_plan', 'application_received_other',
+    'application_received_venmo',
+    'application_received_other',
     'application_approved_stripe_paid', 'application_approved_venmo_verified',
     'application_approved_unpaid_venmo', 'application_approved_plan_first',
     'application_approved_other', 'application_rejected',

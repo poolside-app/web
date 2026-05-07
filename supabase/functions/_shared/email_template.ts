@@ -67,55 +67,12 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
     `),
   },
-  {
-    key: 'application_received_stripe',
-    label: 'Application received — Stripe single payment',
-    description: 'Sent on submit when applicant chose Stripe full-pay. Note: by the time this arrives, the applicant should be in Stripe checkout.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'family_name', 'tier_label', 'tier_price', 'num_adults', 'num_kids', 'club_url'],
-    default_subject: 'We got your application — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">📋 We got your application</h2>
-      <p style="margin:0 0 8px;color:#475569;line-height:1.55">Hi {{primary_name}} — thanks for applying to <b>{{tenant_name}}</b>. Your application is logged with the board.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
-        <div style="font-weight:700;color:#0a3b5c;margin-bottom:6px">What we received</div>
-        <div><b>Family:</b> {{family_name}}</div>
-        <div><b>Primary:</b> {{primary_name}}</div>
-        <div><b>Tier:</b> {{tier_label}} ({{tier_price}})</div>
-        <div><b>Adults:</b> {{num_adults}} · <b>Children:</b> {{num_kids}}</div>
-      </div>
-      <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: complete your card payment</h3>
-      <p style="margin:0 0 12px">If you didn't already complete Stripe checkout, return to your application tab and click <b>Pay with card</b>. The moment your payment goes through, your membership is approved automatically and we'll email you a sign-in link.</p>
-      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
-    `),
-  },
-  {
-    key: 'application_received_stripe_plan',
-    label: 'Application received — Stripe payment plan',
-    description: 'Sent on submit when applicant chose 2-installment Stripe payment plan.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'family_name', 'tier_label', 'tier_price', 'first_amount', 'second_amount', 'final_due_date', 'num_adults', 'num_kids', 'club_url'],
-    default_subject: 'We got your application — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">📋 We got your application</h2>
-      <p style="margin:0 0 8px;color:#475569;line-height:1.55">Hi {{primary_name}} — thanks for applying to <b>{{tenant_name}}</b>. Your application is logged with the board.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
-        <div style="font-weight:700;color:#0a3b5c;margin-bottom:6px">What we received</div>
-        <div><b>Family:</b> {{family_name}}</div>
-        <div><b>Tier:</b> {{tier_label}} ({{tier_price}})</div>
-        <div><b>Adults:</b> {{num_adults}} · <b>Children:</b> {{num_kids}}</div>
-      </div>
-      <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: complete your first installment</h3>
-      <p style="margin:0 0 12px">If you didn't already complete Stripe checkout, return to your application tab and click <b>Start payment plan</b>. We'll charge <b>{{first_amount}}</b> now and auto-charge <b>{{second_amount}}</b> on <b>{{final_due_date}}</b>. Your membership activates as soon as the first payment goes through.</p>
-      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
-    `),
-  },
+  // The Stripe-path "application received" templates were removed —
+  // payment + welcome are bundled into one email now (see
+  // application_approved_stripe_paid / application_approved_plan_first
+  // below). The submit handler skips a "received" send for Stripe paths
+  // entirely, so unpaid carts get cleaned up automatically by cron rather
+  // than producing a confusing duplicate email.
   {
     key: 'application_received_other',
     label: 'Application received — payment TBD',

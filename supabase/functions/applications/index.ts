@@ -115,6 +115,68 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '');
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+  // ── cron_cleanup_abandoned ───────────────────────────────────────────
+  // Scheduled by pg_cron every 30 min via Vault-stored CRON_SECRET. Hard-
+  // deletes Stripe-path applications that submitted but never paid within
+  // the abandonment window (60 min default). The applicant chose Stripe
+  // so the form was never the legal record — payment is. No payment, no
+  // legal record needed; the row is just clutter the admin shouldn't see
+  // in their pipeline.
+  //
+  // Venmo + decide-later flows are deliberately excluded — those expect
+  // a human follow-up step over days/weeks, not minutes.
+  if (action === 'cron_cleanup_abandoned') {
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const got = req.headers.get('x-cron-secret');
+    if (!cronSecret || got !== cronSecret) {
+      return jsonResponse({ ok: false, error: 'Forbidden' }, 403);
+    }
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: abandoned } = await sb.from('applications')
+      .select('id, tenant_id, family_name, primary_email, payment_method, created_at')
+      .in('payment_method', ['stripe', 'stripe_plan'])
+      .eq('payment_status', 'unpaid')
+      .eq('status', 'pending')
+      .lt('created_at', cutoff)
+      .limit(500);
+
+    let deleted = 0;
+    for (const a of (abandoned ?? [])) {
+      try {
+        await sb.from('audit_log').insert({
+          tenant_id: a.tenant_id,
+          kind: 'application.auto_abandoned',
+          entity_type: 'application', entity_id: a.id,
+          summary: `Abandoned at Stripe checkout — auto-deleted (${a.family_name || 'unknown'} · submitted ${a.created_at})`,
+          actor_kind: 'system',
+          metadata: {
+            payment_method: a.payment_method,
+            primary_email: a.primary_email,
+          },
+        });
+        // Drop the open admin task (queue would otherwise show a ghost row).
+        await sb.from('admin_tasks').delete()
+          .eq('tenant_id', a.tenant_id)
+          .eq('source_kind', 'application')
+          .eq('source_id', a.id)
+          .eq('kind', 'application.submitted');
+        // Drop any application_actions rows referencing this application.
+        await sb.from('application_actions').delete().eq('application_id', a.id);
+        // Hard-delete the application row.
+        const { error: delErr } = await sb.from('applications')
+          .delete().eq('id', a.id);
+        if (delErr) {
+          console.error('cleanup delete failed for', a.id, delErr.message);
+          continue;
+        }
+        deleted++;
+      } catch (e) {
+        console.error('cleanup error for', a.id, (e as Error).message);
+      }
+    }
+    return jsonResponse({ ok: true, deleted, scanned: (abandoned ?? []).length });
+  }
+
   // ── submit (no auth — anyone with the form can apply) ─────────────────
   if (action === 'submit') {
     const slug = String(body.slug ?? '').trim().toLowerCase();
