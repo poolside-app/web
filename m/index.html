@@ -1428,15 +1428,19 @@ function renderFundraiserCard(fund, payments) {
 }
 
 function renderFeedbackCard() {
+  // Single-tap card. Was a <details> expand-then-button two-step which read
+  // misleadingly as "Tap to send" — tapping just expanded it, didn't send
+  // anything. Now the whole card is the button: tap → modal → fill → send.
   return `
-    <details class="card" style="padding:14px 16px;margin-top:14px">
-      <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <span style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:var(--blue)">💬 Anonymous feedback &amp; pool issues</span>
-        <span style="font-size:12px;color:var(--muted)">Tap to send</span>
-      </summary>
-      <p style="font-size:13px;color:var(--muted);margin:10px 0 0;line-height:1.5">Spotted a broken tile, dirty bathroom, or just want to suggest something? Send a photo + comment to the board — anonymously.</p>
-      <button class="btn" style="margin-top:12px;background:var(--blue);color:#fff" onclick="openFeedback()">Send feedback</button>
-    </details>`;
+    <div role="button" tabindex="0" class="card" style="padding:16px;margin-top:14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .15s"
+         onclick="openFeedback()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openFeedback();}"
+         onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:var(--blue)">💬 Send anonymous feedback</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5">Broken tile? Dirty bathroom? A suggestion? Add a photo and a note — we don't track who sent it.</div>
+      </div>
+      <span style="color:var(--blue);font-weight:700;flex-shrink:0;font-size:18px;line-height:1">→</span>
+    </div>`;
 }
 
 // ── Donate modal (Venmo QR) ──────────────────────────────────────────────
