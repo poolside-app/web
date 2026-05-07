@@ -69,8 +69,8 @@
   .pill.info { background:#e0e7ff; color:#3730a3; }
   .pill.off  { background:#f3f4f6; color:#4b5563; }
 
-  .tier-row { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:10px; margin-bottom:12px; align-items:end; padding-bottom:12px; border-bottom:1px solid var(--border); }
-  @media (max-width: 640px) { .tier-row { grid-template-columns:1fr 1fr auto; } }
+  .tier-row { display:grid; grid-template-columns:2fr 1fr auto; gap:10px; margin-bottom:12px; align-items:end; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  @media (max-width: 520px) { .tier-row { grid-template-columns:1fr 1fr auto; } }
 
   .em-row { display:flex; justify-content:space-between; gap:14px; padding:14px 0; border-bottom:1px solid var(--border); align-items:center; }
   .em-row:last-child { border-bottom:0; }
@@ -222,7 +222,7 @@
     </div>
     <label>Subject</label>
     <input id="em-subject" type="text">
-    <label>Body (HTML)</label>
+    <label>Email content <span style="color:var(--muted);font-weight:500;font-size:11px">(supports HTML — bold with &lt;b&gt;, links with &lt;a href="..."&gt;, line breaks with &lt;br&gt;)</span></label>
     <textarea id="em-body" style="min-height:260px;font-family:Menlo,Consolas,monospace;font-size:12px"></textarea>
     <p id="em-vars" style="font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5"></p>
     <div class="err" id="em-err"></div>
@@ -334,11 +334,11 @@ const Tiers = (() => {
     const rows = (tiers && tiers.length) ? tiers : DEFAULTS;
     list.innerHTML = rows.map((t, i) => `
       <div class="tier-row" data-i="${i}">
-        <div><label>Label</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family"></div>
-        <div><label>Slug</label><input data-field="slug" value="${escapeHtml(t.slug || '')}" placeholder="family"></div>
+        <div><label>Name shown to applicants</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family"></div>
         <div><label>Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents/100).toFixed(2) : ''}"></div>
         <button type="button" onclick="this.parentElement.remove()" title="Remove" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer">×</button>
-        <div style="grid-column:1/-1"><label>Description</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers"></div>
+        <div style="grid-column:1/-1"><label>Description (optional)</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers"></div>
+        <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
       </div>`).join('');
   }
   function collect() {
@@ -390,7 +390,7 @@ const Policies = (() => {
         <div class="pol-row">
           <div style="flex:1;min-width:0">
             <h3>${escapeHtml(p.title)} ${p.required_for_apply ? '<span class="pill req">Required</span>' : '<span class="pill info">Info only</span>'} ${p.active ? '' : '<span class="pill off">Archived</span>'}</h3>
-            <div class="meta">slug: <code>${escapeHtml(p.slug)}</code> · updated ${escapeHtml(new Date(p.updated_at).toLocaleDateString())}</div>
+            <div class="meta">Updated ${escapeHtml(new Date(p.updated_at).toLocaleDateString())}</div>
             <div class="body" onclick="this.parentElement.parentElement.classList.toggle('expanded')">${escapeHtml(p.body)}</div>
           </div>
           <div class="actions">

@@ -219,8 +219,8 @@
     </div>
 
     <div class="card" style="padding:18px;margin-bottom:14px">
-      <h2 style="margin-bottom:6px">Audience</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Who should get the blast? The count updates as you toggle.</p>
+      <h2 style="margin-bottom:6px">Who gets this</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Pick the group to send to — the count updates as you toggle.</p>
       <div class="filter-row" id="ren-audience" style="margin-bottom:14px">
         <button class="on" data-audience="lapsed">Lapsed (unpaid this year)</button>
         <button data-audience="last_season">Last season's members</button>
@@ -998,12 +998,12 @@ const Tiers = (() => {
     if (!list) return;
     const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
     list.innerHTML = rows.map((t, i) => `
-      <div class="tier-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)" data-i="${i}">
-        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Label</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
-        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Slug <span style="color:var(--muted);font-weight:400">(lowercase)</span></label><input data-field="slug" value="${escapeHtml(t.slug || '')}" placeholder="family" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+      <div class="tier-row" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)" data-i="${i}">
+        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Name shown to applicants</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
         <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
         <button type="button" onclick="this.parentElement.remove()" title="Remove tier" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">×</button>
         <div style="grid-column:1/-1"><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Description (optional)</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
       </div>
     `).join('');
   }
@@ -1232,7 +1232,7 @@ const Renewals = (() => {
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="background:var(--bg-2)">
             <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">When</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Audience</th>
+            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Sent to</th>
             <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Channels</th>
             <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Email</th>
             <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">SMS</th>

@@ -138,17 +138,17 @@
 
     <hr style="margin:18px 0;border:0;border-top:1px solid var(--border)">
 
-    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:0 0 8px">Approval (optional overrides)</h3>
-    <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Leave blank to keep what the member proposed.</p>
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:0 0 8px">Approve with changes (optional)</h3>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Leave blank to approve exactly what the member requested. Fill in to swap a different time or spot.</p>
     <div class="row2">
-      <div><label>Override start</label><input type="datetime-local" id="ov-starts_at"></div>
-      <div><label>Override end</label><input type="datetime-local" id="ov-ends_at"></div>
+      <div><label>New start time</label><input type="datetime-local" id="ov-starts_at"></div>
+      <div><label>New end time</label><input type="datetime-local" id="ov-ends_at"></div>
     </div>
-    <label>Override location</label>
+    <label>New location</label>
     <input id="ov-location" placeholder="The clubhouse / Side lawn / etc.">
 
-    <label>Admin note <span style="color:var(--muted);font-weight:500;font-size:11px">(visible to the member)</span></label>
-    <input id="m-admin_notes" placeholder="Optional note attached to the decision">
+    <label>Note to the member <span style="color:var(--muted);font-weight:500;font-size:11px">(they'll see this)</span></label>
+    <input id="m-admin_notes" placeholder="Optional — explain any changes or add party reminders">
 
     <div class="err" id="m-err"></div>
     <div class="modal-foot">

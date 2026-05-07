@@ -147,7 +147,7 @@ function render() {
       <div class="pol-row">
         <div style="flex:1;min-width:0">
           <h3>${escapeHtml(p.title)} ${p.required_for_apply ? '<span class="pill req">Required</span>' : '<span class="pill info">Info only</span>'} ${p.active ? '' : '<span class="pill off">Archived</span>'}</h3>
-          <div class="meta">slug: <code>${escapeHtml(p.slug)}</code> · updated ${escapeHtml(new Date(p.updated_at).toLocaleDateString())}</div>
+          <div class="meta">Updated ${escapeHtml(new Date(p.updated_at).toLocaleDateString())}</div>
           <div class="body" onclick="this.parentElement.parentElement.classList.toggle('expanded')">${escapeHtml(p.body)}</div>
         </div>
         <div class="actions">
