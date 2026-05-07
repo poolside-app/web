@@ -97,6 +97,7 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/admin-push.js" defer></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
@@ -250,6 +251,21 @@ document.getElementById('signout').addEventListener('click', logout);
       <div class="placeholder">Loading…</div>
     </div>
 
+    <!-- Phone alerts opt-in. Only renders for browsers that support Web Push
+         and only when the admin hasn't already enabled it. Hidden once the
+         admin enables, dismisses, or runs in an unsupported browser. -->
+    <div class="card" id="push-card" style="display:none; background:linear-gradient(135deg, #fff7ed, #fef3c7); border-color:#fde68a">
+      <h2 style="display:flex;align-items:center;gap:8px">📲 Get a buzz on your phone when something needs you</h2>
+      <p style="font-size:13.5px;color:#78350f;line-height:1.5;margin:6px 0 14px">Install this site on your phone (Add to Home Screen), then turn on alerts here. We'll notify the membership coordinator the moment a Venmo payment is claimed, a new application comes in, or a party is requested. <b>No alerts for routine stuff</b> — only things that need a board member to act.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="push-on-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn on phone alerts</button>
+        <button id="push-test-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Send test notification</button>
+        <button id="push-off-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:#7f1d1d;border:1.5px solid #fecaca;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn off</button>
+        <button id="push-dismiss-btn" type="button" style="margin-left:auto;padding:10px 14px;background:transparent;color:#92400e;border:0;font:500 13px Inter,sans-serif;cursor:pointer">Not now</button>
+      </div>
+      <p id="push-status" style="font-size:12px;color:#92400e;margin:10px 0 0;min-height:14px"></p>
+    </div>
+
     <div class="card" id="tasks-card" style="display:none">
       <h2>Your tasks</h2>
       <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to your role. First admin to handle one closes it for everyone.</p>
@@ -400,6 +416,83 @@ document.getElementById('signout').addEventListener('click', logout);
         </div>`;
     }).join('');
   } catch { /* non-critical */ }
+
+  // Phone-alerts opt-in card. Only paint if AdminPush is loaded (defer) AND
+  // browser supports it AND admin hasn't dismissed/enabled. State machine:
+  //   permission=default + not subscribed → "Turn on" CTA
+  //   permission=granted + subscribed → "Test" / "Turn off"
+  //   permission=denied → hide CTA (browser block, can't request again)
+  //   user dismissed via localStorage flag → hide entirely until they reset.
+  try {
+    if (window.AdminPush) {
+      const dismissed = localStorage.getItem('poolside_push_dismissed') === '1';
+      const card = document.getElementById('push-card');
+      const stat = await window.AdminPush.status();
+      if (!stat.supported || stat.permission === 'denied') {
+        // Hide silently — nothing the user can do here from this UI.
+      } else if (dismissed && !stat.subscribed) {
+        // User said "not now" before — respect that.
+      } else {
+        card.style.display = 'block';
+        const onBtn = document.getElementById('push-on-btn');
+        const offBtn = document.getElementById('push-off-btn');
+        const testBtn = document.getElementById('push-test-btn');
+        const dismissBtn = document.getElementById('push-dismiss-btn');
+        const stEl = document.getElementById('push-status');
+        function paint(s) {
+          if (s.subscribed) {
+            onBtn.style.display = 'none';
+            offBtn.style.display = 'inline-block';
+            testBtn.style.display = 'inline-block';
+            dismissBtn.style.display = 'none';
+            stEl.textContent = '✓ Phone alerts are on.';
+            stEl.style.color = '#15803d';
+          } else {
+            onBtn.style.display = 'inline-block';
+            offBtn.style.display = 'none';
+            testBtn.style.display = 'none';
+            dismissBtn.style.display = 'inline-block';
+            stEl.textContent = '';
+          }
+        }
+        paint(stat);
+        onBtn.addEventListener('click', async () => {
+          stEl.textContent = 'Asking your browser for permission…';
+          stEl.style.color = '#92400e';
+          const r = await window.AdminPush.subscribe();
+          if (r.ok) {
+            paint(await window.AdminPush.status());
+          } else {
+            stEl.textContent = r.error || 'Couldn\'t enable alerts.';
+            stEl.style.color = '#7f1d1d';
+          }
+        });
+        offBtn.addEventListener('click', async () => {
+          await window.AdminPush.unsubscribe();
+          paint(await window.AdminPush.status());
+        });
+        testBtn.addEventListener('click', async () => {
+          stEl.textContent = 'Sending test notification…';
+          stEl.style.color = '#92400e';
+          const r = await window.AdminPush.test();
+          if (r.ok && r.sent > 0) {
+            stEl.textContent = `✓ Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}. Check your phone.`;
+            stEl.style.color = '#15803d';
+          } else if (r.no_subscribers) {
+            stEl.textContent = 'No active subscriptions on file. Try Turn off + Turn on again.';
+            stEl.style.color = '#7f1d1d';
+          } else {
+            stEl.textContent = r.error || 'Test failed.';
+            stEl.style.color = '#7f1d1d';
+          }
+        });
+        dismissBtn.addEventListener('click', () => {
+          localStorage.setItem('poolside_push_dismissed', '1');
+          card.style.display = 'none';
+        });
+      }
+    }
+  } catch (_) { /* never break the dashboard */ }
 })();
 
 async function completeTask(id) {

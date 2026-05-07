@@ -373,16 +373,24 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
       `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
-    // Enqueue an admin task — both membership chair and treasurer
-    // (treasurer cares because the app declares a payment method).
+    // Enqueue an admin task + fire a phone-push to subscribed admins
+    // with the 'applications' scope (or owner-role).
     try {
-      await sb.from('admin_tasks').insert({
+      const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+      const isVenmo = payment_method === 'venmo';
+      await enqueueAdminTask(sb, {
         tenant_id: tenant.id,
         target_scopes: ['applications'],
         kind: 'application.submitted',
         summary: `New application: ${family_name} (${primary_name})`,
         link_url: '/club/admin/members.html#applications',
         source_kind: 'application', source_id: data.id,
+        push_title: isVenmo
+          ? `🟢 New application + Venmo payment to verify`
+          : `📨 New application from ${family_name}`,
+        push_body: isVenmo
+          ? `${primary_name} applied and chose Venmo. Open Venmo to verify their payment, then approve.`
+          : `${primary_name} just applied. Tap to review.`,
       });
     } catch { /* best-effort — never fails submission */ }
 
@@ -595,14 +603,19 @@ Deno.serve(async (req) => {
       .eq('source_id', app.id).eq('kind', 'venmo.claim')
       .is('completed_at', null).is('dismissed_at', null).maybeSingle();
     if (existing) return jsonResponse({ ok: true, deduped: true });
-    await sb.from('admin_tasks').insert({
-      tenant_id: app.tenant_id,
-      target_scopes: ['payments', 'applications'],
-      kind: 'venmo.claim',
-      summary: `${app.family_name}: ${app.primary_name} reports paid via Venmo — verify`,
-      link_url: '/club/admin/payments.html',
-      source_kind: 'application', source_id: app.id,
-    });
+    {
+      const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+      await enqueueAdminTask(sb, {
+        tenant_id: app.tenant_id,
+        target_scopes: ['payments', 'applications'],
+        kind: 'venmo.claim',
+        summary: `${app.family_name}: ${app.primary_name} reports paid via Venmo — verify`,
+        link_url: '/club/admin/members.html#applications',
+        source_kind: 'application', source_id: app.id,
+        push_title: `💵 Venmo payment to verify: ${app.family_name}`,
+        push_body: `${app.primary_name} says they paid. Open Venmo, confirm the amount, then approve their membership.`,
+      });
+    }
     await audit(sb, app.tenant_id, null, 'public', 'application.venmo_claim', app.id,
       `${app.family_name} claimed Venmo payment`);
     return jsonResponse({ ok: true });
@@ -671,6 +684,33 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
 
+    // Combined "verify Venmo + approve" path: when admin checks the Venmo
+    // app and confirms the payment landed, they pass verify_venmo_payment=
+    // true. We mark the application paid BEFORE creating the household so
+    // the welcome email logic below picks the application_approved_venmo_
+    // verified template (one email, "you're 100% active") instead of the
+    // application_approved_unpaid_venmo template ("approved, now send
+    // dues"). The user gets exactly one email.
+    const verifyVenmo = !!body.verify_venmo_payment;
+    if (verifyVenmo) {
+      const verified_by_pre = payload.synthetic ? null : payload.sub;
+      const now = new Date().toISOString();
+      await sb.from('applications').update({
+        payment_method: 'venmo',
+        payment_status: 'paid',
+        paid_at: now,
+        verified_at: now,
+        verified_by: verified_by_pre,
+      }).eq('id', id).eq('tenant_id', TID);
+      // Per-application audit
+      await sb.from('application_actions').insert({
+        application_id: id, tenant_id: TID,
+        kind: 'venmo_verified',
+        body: strOrNull(body.venmo_note) ?? 'Verified at approval',
+        actor_id: verified_by_pre,
+      });
+    }
+
     const { data: app } = await sb.from('applications').select(FIELDS)
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
@@ -704,18 +744,22 @@ Deno.serve(async (req) => {
     const paid_until_year = ovr.paid_until_year !== undefined && ovr.paid_until_year !== ''
       ? Math.trunc(Number(ovr.paid_until_year) || 0) : null;
 
-    // Create household
-    const { data: hh, error: hhErr } = await sb.from('households').insert({
+    // Create household. If we just verified the Venmo payment in this same
+    // call, mark the household's dues paid for the current year so the
+    // gate / member portal treat them as fully active immediately.
+    const hhInsert: Record<string, unknown> = {
       tenant_id: TID,
       family_name: app.family_name,
       tier,
       fob_number,
-      paid_until_year,
+      paid_until_year: verifyVenmo ? new Date().getFullYear() : paid_until_year,
       address: app.address,
       city: app.city,
       zip: app.zip,
       active: true,
-    }).select('id').single();
+    };
+    if (verifyVenmo) hhInsert.dues_paid_for_year = true;
+    const { data: hh, error: hhErr } = await sb.from('households').insert(hhInsert).select('id').single();
     if (hhErr || !hh) return jsonResponse({ ok: false, error: hhErr?.message || 'Could not create household' }, 500);
 
     // Create primary contact
@@ -902,10 +946,12 @@ Deno.serve(async (req) => {
       `Approved ${app.family_name}; household + ${1 + createdExtraMembers} member${createdExtraMembers === 0 ? '' : 's'} created`);
 
     // Close the "review application" task that was opened on submit.
+    // When this is a combined verify+approve, also close any open
+    // venmo.claim task so the dashboard doesn't show a stale row.
     await sb.from('admin_tasks')
       .update({ completed_at: new Date().toISOString(), completed_by: decided_by })
       .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id)
-      .eq('kind', 'application.submitted')
+      .in('kind', ['application.submitted', 'venmo.claim'])
       .is('completed_at', null);
 
     // Auto-link: if the approved primary's email matches an active admin on

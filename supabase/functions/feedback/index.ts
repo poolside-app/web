@@ -125,15 +125,18 @@ Deno.serve(async (req) => {
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
-    // Open an admin task so the queue surfaces this
+    // Open an admin task + ping subscribed admins.
     try {
-      await sb.from('admin_tasks').insert({
+      const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+      await enqueueAdminTask(sb, {
         tenant_id: tenant.id,
         target_scopes: ['operations'],
         kind: 'feedback.submitted',
         summary: `Anonymous feedback: "${comment.slice(0, 60)}${comment.length > 60 ? '…' : ''}"`,
         link_url: '/club/admin/feedback.html',
         source_kind: 'feedback', source_id: row.id,
+        push_title: `📬 New anonymous feedback`,
+        push_body: comment.slice(0, 120) + (comment.length > 120 ? '…' : ''),
       });
     } catch { /* best-effort */ }
 

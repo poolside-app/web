@@ -392,12 +392,27 @@
     </div>
     <label>Admin note <span style="color:var(--muted);font-weight:500;font-size:11px">(visible on the application record)</span></label>
     <input id="am-admin_notes">
+
+    <!-- Venmo verification helper. Only shown for pending Venmo applicants.
+         Tells the admin what to look for in the Venmo app + provides the
+         single combined "Verify + Approve" button so it's not two trips. -->
+    <div id="am-venmo-helper" style="display:none; margin-top:14px; padding:14px 16px; background:linear-gradient(135deg,#f0f9ff,#e0f2fe); border:1.5px solid #7dd3fc; border-radius:12px">
+      <div style="font-weight:700; color:#075985; font-size:14px; margin-bottom:6px">💵 They paid via Venmo — verify it before approving</div>
+      <ol style="margin:6px 0 10px; padding-left:20px; font-size:13px; color:#075985; line-height:1.6">
+        <li>Open Venmo on your phone or <a id="am-venmo-link" href="#" target="_blank" rel="noopener" style="color:#075985;font-weight:600;text-decoration:underline">go to your business profile</a>.</li>
+        <li>Look for a payment from <b id="am-venmo-from">the applicant</b> matching <b id="am-venmo-amount">the tier amount</b>.</li>
+        <li>If it's there, click "Verify + Approve" below — this approves the application AND records the Venmo payment in one step.</li>
+      </ol>
+      <p style="font-size:12px; color:#0c4a6e; margin:0">Not there yet? Use "📧 Send reminder" instead — we'll nudge them with the Venmo handle and amount.</p>
+    </div>
+
     <div class="err" id="am-err"></div>
     <div class="modal-foot" style="flex-wrap:wrap">
       <button class="btn btn-ghost" id="am-remind" style="display:none" onclick="App.reminder()">📧 Send reminder</button>
       <button class="btn btn-ghost" onclick="App.closeM()">Close</button>
       <button class="btn btn-danger" id="am-reject" onclick="App.reject()">Reject</button>
-      <button class="btn btn-success" id="am-approve" onclick="App.approve()">Approve & create household →</button>
+      <button class="btn btn-success" id="am-approve" onclick="App.approve()">Approve &amp; create household →</button>
+      <button class="btn btn-success" id="am-approve-venmo" style="display:none; background:#0284c7" onclick="App.approveAndVerifyVenmo()">✓ Verify Venmo + Approve →</button>
       <button class="btn btn-success" id="am-verify" style="display:none" onclick="App.verify()">✓ Verify Venmo payment</button>
     </div>
   </div>
@@ -880,10 +895,48 @@ const App = (() => {
     document.getElementById('am-paid_until_year').value = new Date().getFullYear();
     document.getElementById('am-admin_notes').value = a.admin_notes || '';
     document.getElementById('am-err').classList.remove('show');
-    document.getElementById('am-approve').style.display = a.status === 'pending' ? 'inline-block' : 'none';
-    document.getElementById('am-reject').style.display  = a.status === 'pending' ? 'inline-block' : 'none';
+    // Show/hide buttons + Venmo helper. The combined "Verify Venmo + Approve"
+    // button replaces the plain "Approve" button when the applicant chose
+    // Venmo and hasn't paid yet (the most common case). Plain Approve still
+    // shows as a fallback in case the admin wants to approve without
+    // verifying — but it's de-emphasized so the natural flow is the
+    // combined one.
+    const isPending = a.status === 'pending';
+    const isVenmoUnpaid = a.payment_method === 'venmo' && a.payment_status !== 'paid';
+
+    document.getElementById('am-reject').style.display = isPending ? 'inline-block' : 'none';
+    document.getElementById('am-approve').style.display = (isPending && !isVenmoUnpaid) ? 'inline-block' : 'none';
+    document.getElementById('am-approve-venmo').style.display = (isPending && isVenmoUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
-    document.getElementById('am-remind').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
+    document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid') || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
+
+    // Venmo helper visibility + content
+    const helper = document.getElementById('am-venmo-helper');
+    if (isPending && isVenmoUnpaid) {
+      helper.style.display = 'block';
+      // The applicant's full name (more useful than family for matching in Venmo)
+      document.getElementById('am-venmo-from').textContent = a.primary_name || a.family_name;
+      // Tier price for the amount cue. Look up the tier in TENANT_TIERS if loaded.
+      let priceLabel = 'their tier amount';
+      try {
+        const tier = (window.__APP_TIERS__ || []).find(t => t.slug === a.tier_slug);
+        if (tier && tier.price_cents) {
+          priceLabel = '$' + (Number(tier.price_cents) / 100).toFixed(0);
+        }
+      } catch (_) { /* fall back to generic copy */ }
+      document.getElementById('am-venmo-amount').textContent = priceLabel;
+      // Deep-link to the club's Venmo profile if a handle is set in settings.
+      const venmoHandle = (window.__APP_VENMO_HANDLE__ || '').trim();
+      const venmoLink = document.getElementById('am-venmo-link');
+      if (venmoHandle) {
+        venmoLink.href = `https://venmo.com/u/${encodeURIComponent(venmoHandle)}`;
+      } else {
+        venmoLink.href = 'https://venmo.com/account/sign-in';
+      }
+    } else {
+      helper.style.display = 'none';
+    }
+
     document.getElementById('app-scrim').classList.add('open');
   }
   function closeM() { document.getElementById('app-scrim').classList.remove('open'); }
@@ -926,6 +979,41 @@ const App = (() => {
       closeM();
       await refresh();
     } catch (e) { showErr('am-err', e.message); }
+  }
+
+  // Combined "verify Venmo + approve" — board's primary path for Venmo
+  // applicants. Replaces the two-step approve-then-verify flow with a
+  // single action that creates the household, marks the payment verified,
+  // closes both admin tasks (application.submitted + venmo.claim), and
+  // sends the "membership active" welcome email in one shot.
+  async function approveAndVerifyVenmo() {
+    if (!SELECTED) return;
+    const errEl = document.getElementById('am-err'); errEl.classList.remove('show');
+    const fam = SELECTED.family_name || 'this family';
+    if (!confirm(`Confirm you saw the Venmo payment from ${SELECTED.primary_name} land in your account?\n\nThis will:\n• Approve the application\n• Mark the Venmo payment verified\n• Create their household\n• Email them their welcome + sign-in link`)) return;
+    try {
+      const data = await call(APPS_URL, 'approve', {
+        id: SELECTED.id,
+        verify_venmo_payment: true,
+        venmo_note: document.getElementById('am-admin_notes').value.trim() || 'Verified by admin',
+        override: {
+          tier: document.getElementById('am-tier').value,
+          fob_number: document.getElementById('am-fob_number').value.trim() || null,
+          paid_until_year: document.getElementById('am-paid_until_year').value || null,
+        },
+        admin_notes: document.getElementById('am-admin_notes').value.trim() || null,
+      });
+      if (!data.ok) throw new Error(data.error || 'Combined verify+approve failed');
+      if (data.partial_failures && data.partial_failures.length) {
+        const list = data.partial_failures.map(e => `  • ${e.name}: ${e.error}`).join('\n');
+        alert(`Verified Venmo + approved — but ${data.partial_failures.length} household member${data.partial_failures.length === 1 ? '' : 's'} couldn't be added:\n\n${list}\n\nReview the household to add them manually.`);
+      } else {
+        alert(`✓ ${fam} family is now an active member. We sent them a welcome email with their sign-in link.`);
+      }
+      closeM();
+      await refresh();
+      await Households.refresh();
+    } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
   }
   async function verify() {
     if (!SELECTED) return;
@@ -978,7 +1066,7 @@ const App = (() => {
   // Populate year-filter chips on first paint of the applications panel.
   loadYearFilter();
 
-  return { refresh, applySearch, openModal, closeM, approve, reject, verify, reminder, loadYearFilter };
+  return { refresh, applySearch, openModal, closeM, approve, approveAndVerifyVenmo, reject, verify, reminder, loadYearFilter };
 })();
 
 // ── Tiers namespace ────────────────────────────────────────────────────
@@ -1319,10 +1407,16 @@ const Renewals = (() => {
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   } catch (e) { logout(); return; }
-  // Pre-fill new-household City/Zip from the wizard's defaults
+  // Pre-fill new-household City/Zip from the wizard's defaults +
+  // populate the globals the application-review modal uses for the
+  // Venmo helper (tier price, club Venmo handle).
   try {
     const s = await call(SETTINGS_URL, 'get');
-    if (s.ok) Households.setDefaults(s.settings?.club?.default_city || '', s.settings?.club?.default_zip || '');
+    if (s.ok) {
+      Households.setDefaults(s.settings?.club?.default_city || '', s.settings?.club?.default_zip || '');
+      window.__APP_TIERS__ = Array.isArray(s.settings?.membership_tiers) ? s.settings.membership_tiers : [];
+      window.__APP_VENMO_HANDLE__ = s.settings?.payments?.venmo_handle || '';
+    }
   } catch { /* defaults stay blank */ }
 
   // Honor hash deep-links (e.g. clicking a task notification or a sub-tab link)

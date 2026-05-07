@@ -141,14 +141,17 @@ async function sendReminderEmail(args: {
 }
 
 async function sendLapseAdminAlert(sb: SupabaseClient, tenantId: string, plan: Record<string, unknown>): Promise<void> {
-  // 1. Open admin task
-  await sb.from('admin_tasks').insert({
+  // 1. Open admin task + push to subscribed admins.
+  const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+  await enqueueAdminTask(sb, {
     tenant_id: tenantId,
     target_scopes: ['payments', 'membership'],
     kind: 'plan.lapsed',
     summary: `${plan.family_name}: payment plan lapsed — contact household and reactivate`,
     link_url: '/club/admin/payments.html',
     source_kind: 'payment_plan', source_id: plan.id as string,
+    push_title: `🚨 Payment plan lapsed: ${plan.family_name}`,
+    push_body: `Card retries exhausted. Their keyfobs auto-deactivated. Contact the household to reactivate.`,
   });
   // 2. Email admin owners (best-effort)
   if (!RESEND_API_KEY) return;

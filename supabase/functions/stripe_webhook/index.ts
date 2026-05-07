@@ -367,14 +367,19 @@ Deno.serve(async (req) => {
           payment_status: fullRefund ? 'refunded' : 'partial_refund',
           refunded_at: new Date().toISOString(),
         }).eq('id', app.id);
-        await sb.from('admin_tasks').insert({
-          tenant_id: app.tenant_id,
-          target_scopes: ['payments'],
-          kind: 'application.refund',
-          summary: `[REVIEW] Stripe refund: ${app.family_name} — $${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'}`,
-          link_url: '/club/admin/members.html#applications',
-          source_kind: 'application', source_id: app.id,
-        });
+        {
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: app.tenant_id,
+            target_scopes: ['payments'],
+            kind: 'application.refund',
+            summary: `[REVIEW] Stripe refund: ${app.family_name} — $${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'}`,
+            link_url: '/club/admin/members.html#applications',
+            source_kind: 'application', source_id: app.id,
+            push_title: `↩️ Stripe refund: ${app.family_name}`,
+            push_body: `$${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' fully refunded' : ' partial refund'}. Membership may need to be deactivated.`,
+          });
+        }
         await sb.from('audit_log').insert({
           tenant_id: app.tenant_id,
           kind: 'application.payment_refunded',
@@ -413,14 +418,19 @@ Deno.serve(async (req) => {
           payment_status: 'disputed',
           disputed_at: new Date().toISOString(),
         }).eq('id', app.id);
-        await sb.from('admin_tasks').insert({
-          tenant_id: app.tenant_id,
-          target_scopes: ['payments'],
-          kind: 'application.dispute',
-          summary: `[URGENT] Chargeback: ${app.family_name} — $${(amount / 100).toFixed(2)} (${reason})`,
-          link_url: '/club/admin/members.html#applications',
-          source_kind: 'application', source_id: app.id,
-        });
+        {
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: app.tenant_id,
+            target_scopes: ['payments'],
+            kind: 'application.dispute',
+            summary: `[URGENT] Chargeback: ${app.family_name} — $${(amount / 100).toFixed(2)} (${reason})`,
+            link_url: '/club/admin/members.html#applications',
+            source_kind: 'application', source_id: app.id,
+            push_title: `🚨 Chargeback: ${app.family_name}`,
+            push_body: `$${(amount / 100).toFixed(2)} disputed (${reason}). Stripe is holding the funds — respond ASAP.`,
+          });
+        }
         await sb.from('audit_log').insert({
           tenant_id: app.tenant_id,
           kind: 'application.payment_disputed',

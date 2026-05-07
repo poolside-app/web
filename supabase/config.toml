@@ -207,3 +207,9 @@ verify_jwt = false
 # Venmo/cash entries. Auth verified inside.
 [functions.donations]
 verify_jwt = false
+
+# Web Push for admin PWA notifications. subscribe/unsubscribe verify a
+# tenant_admin token inside; send_scoped is server-to-server with the
+# x-poolside-internal=SERVICE_ROLE header.
+[functions.push_admin]
+verify_jwt = false
