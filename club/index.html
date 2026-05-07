@@ -643,17 +643,19 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
       <section class="carousel-wrap" style="padding: 28px 22px 12px">
         <h2 style="max-width:1120px;margin:0 auto 14px;padding:0 4px">📸 Snapshots</h2>
         <div class="carousel" id="photo-carousel"
-             style="position:relative;max-width:1120px;margin:0 auto;border-radius:18px;overflow:hidden;background:var(--bg-2);box-shadow:var(--shadow);aspect-ratio:16/9">
+             style="position:relative;max-width:1120px;margin:0 auto;border-radius:18px;overflow:hidden;background:var(--bg-2);box-shadow:var(--shadow);aspect-ratio:16/9;touch-action:pan-y">
           ${photos.map((p, i) => `
             <div class="cslide" data-i="${i}"
-                 style="position:absolute;inset:0;opacity:${i === 0 ? 1 : 0};transition:opacity .8s ease;background:#000;display:flex;align-items:center;justify-content:center">
-              <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.caption || '')}" loading="${i === 0 ? 'eager' : 'lazy'}" style="max-width:100%;max-height:100%;object-fit:contain;display:block">
-              ${p.caption ? `<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 18px;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;font-size:14px;font-weight:600">${escapeHtml(p.caption)}</div>` : ''}
+                 style="position:absolute;inset:0;opacity:${i === 0 ? 1 : 0};transition:opacity .6s ease;background:#000;display:flex;align-items:center;justify-content:center;cursor:zoom-in">
+              <img src="${escapeAttr(p.url)}" alt="${escapeAttr(p.caption || '')}" loading="${i === 0 ? 'eager' : 'lazy'}" style="max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:none">
+              ${p.caption ? `<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 18px;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;font-size:14px;font-weight:600;pointer-events:none">${escapeHtml(p.caption)}</div>` : ''}
             </div>
           `).join('')}
           ${photos.length > 1 ? `
-          <div class="cdots" style="position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:6px;z-index:2">
-            ${photos.map((_, i) => `<button class="cdot" data-i="${i}" style="width:9px;height:9px;border-radius:50%;border:0;cursor:pointer;background:${i === 0 ? '#fff' : 'rgba(255,255,255,.45)'};padding:0"></button>`).join('')}
+          <button class="cnav cprev" aria-label="Previous photo" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">‹</button>
+          <button class="cnav cnext" aria-label="Next photo" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">›</button>
+          <div class="cdots" style="position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:6px;z-index:3">
+            ${photos.map((_, i) => `<button class="cdot" data-i="${i}" aria-label="Photo ${i + 1}" style="width:9px;height:9px;border-radius:50%;border:0;cursor:pointer;background:${i === 0 ? '#fff' : 'rgba(255,255,255,.45)'};padding:0"></button>`).join('')}
           </div>` : ''}
         </div>
       </section>
@@ -752,11 +754,13 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
   }
 
   // Snapshots auto-scroll carousel — fades between slides every 5 seconds,
-  // pauses on hover, dots click to jump. Single-slide case just renders static.
+  // pauses on hover, click anywhere to open the lightbox, swipe on mobile.
   const carousel = document.getElementById('photo-carousel');
   if (carousel) {
     const slides = carousel.querySelectorAll('.cslide');
     const dots   = carousel.querySelectorAll('.cdot');
+    const prev   = carousel.querySelector('.cprev');
+    const next   = carousel.querySelector('.cnext');
     let idx = 0;
     let timer = null;
     function go(n) {
@@ -769,11 +773,52 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
       if (slides.length > 1) timer = setInterval(() => go(idx + 1), 5000);
     }
     function stop() { if (timer) clearInterval(timer); timer = null; }
-    dots.forEach(d => d.addEventListener('click', () => { go(Number(d.dataset.i)); start(); }));
-    carousel.addEventListener('mouseenter', stop);
-    carousel.addEventListener('mouseleave', start);
+
+    carousel.addEventListener('click', (e) => {
+      if (e.target.closest('.cnav') || e.target.closest('.cdot')) return;
+      openLightbox(idx);
+    });
+    if (prev) prev.addEventListener('click', (e) => { e.stopPropagation(); go(idx - 1); start(); });
+    if (next) next.addEventListener('click', (e) => { e.stopPropagation(); go(idx + 1); start(); });
+    dots.forEach(d => d.addEventListener('click', (e) => { e.stopPropagation(); go(Number(d.dataset.i)); start(); }));
+
+    // Touch swipe — horizontal drag > 40px advances/rewinds.
+    let touchStartX = null, touchStartY = null;
+    carousel.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    carousel.addEventListener('touchend', (e) => {
+      if (touchStartX == null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+        go(dx > 0 ? idx - 1 : idx + 1); start();
+      }
+      touchStartX = touchStartY = null;
+    }, { passive: true });
+
+    if (slides.length > 1) {
+      carousel.addEventListener('mouseenter', stop);
+      carousel.addEventListener('mouseleave', start);
+    }
     start();
   }
+  // Touch swipe on the lightbox itself once it's open — drag through
+  // photos in the fullscreen view.
+  (function attachLightboxSwipe() {
+    const lb = document.getElementById('lightbox');
+    if (!lb || lb.dataset.swipeWired) return;
+    lb.dataset.swipeWired = '1';
+    let sx = null, sy = null;
+    lb.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+    lb.addEventListener('touchend', (e) => {
+      if (sx == null) return;
+      const dx = e.changedTouches[0].clientX - sx;
+      const dy = e.changedTouches[0].clientY - sy;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) lbStep(dx > 0 ? -1 : +1);
+      sx = sy = null;
+    }, { passive: true });
+  })();
 }
 
 (async () => {
