@@ -186,66 +186,99 @@
     </div>
 
     <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
-    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">App icon <span style="color:var(--muted);font-weight:500;font-size:12px">— shown when members "Add to Home Screen"</span></h3>
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;line-height:1.55">This is the little square that lands on a member's phone home screen when they install your club. Pick what works — most clubs are happy with the auto-generated version.</p>
+    <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 6px">App icon</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;line-height:1.55">This is the little square that lands on a member's phone home screen when they install your club. Most clubs are happy with the auto-generated version — but you can fully customize below.</p>
 
-    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
-      <!-- Live previews — square (Android default) + circle (some Androids
-           and the popup) so admins see both shapes at once. -->
-      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px">
-        <canvas id="icon-preview" width="192" height="192" style="width:104px;height:104px;border-radius:22px;border:1px solid var(--border);background:var(--bg-2)"></canvas>
-        <div style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Square</div>
-      </div>
-      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px">
-        <canvas id="icon-preview-circle" width="192" height="192" style="width:104px;height:104px;border-radius:50%;border:1px solid var(--border);background:var(--bg-2)"></canvas>
-        <div style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Circle</div>
+    <style>
+      .icon-builder { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+      .icon-preview-stack { display:flex; flex-direction:column; align-items:center; gap:14px; flex-shrink:0; }
+      .icon-preview-big {
+        width:144px; height:144px; border-radius:32px; border:1px solid var(--border);
+        background:var(--bg-2); display:block; box-shadow:0 6px 20px rgba(10,59,92,.10);
+      }
+      .icon-preview-mini { width:48px; height:48px; border-radius:50%; border:1px solid var(--border); background:var(--bg-2); }
+      .icon-preview-mini-label { font-size:11px; color:var(--muted); text-align:center; line-height:1.35; }
+      .icon-controls { flex:1; min-width:260px; display:flex; flex-direction:column; gap:14px; }
+      .seg {
+        display:grid; grid-template-columns:repeat(4, 1fr); gap:4px;
+        background:var(--bg-2); border-radius:10px; padding:4px;
+      }
+      .seg button {
+        padding:9px 6px; border:0; background:transparent; border-radius:8px;
+        font:600 12px 'Inter',sans-serif; color:var(--muted); cursor:pointer;
+        text-align:center; transition:.15s;
+      }
+      .seg button:hover { color:var(--text); }
+      .seg button.on { background:#fff; color:var(--blue); box-shadow:0 1px 3px rgba(15,23,42,.08); }
+      .seg .ic { display:block; font-size:18px; line-height:1; margin-bottom:3px; }
+
+      .icon-color-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .icon-color-pair label { margin:0 0 4px; font-size:11px; }
+      .icon-color-pair input[type=color] { width:100%; height:38px; padding:2px; border-radius:8px; cursor:pointer; }
+      .icon-mode-hint { font-size:12px; color:var(--muted); padding:10px 12px; background:var(--bg-2); border-radius:8px; line-height:1.5; }
+      .icon-mode-hint a { font-weight:600; }
+      .icon-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-top:6px; border-top:1px solid var(--border); margin-top:4px; }
+      .icon-actions .icon-status { font-size:12px; color:var(--muted); flex:1; min-width:140px; }
+    </style>
+
+    <div class="icon-builder">
+      <div class="icon-preview-stack">
+        <canvas id="icon-preview" width="192" height="192" class="icon-preview-big"></canvas>
+        <div style="display:flex;align-items:center;gap:8px">
+          <canvas id="icon-preview-circle" width="192" height="192" class="icon-preview-mini"></canvas>
+          <div class="icon-preview-mini-label">↖ How<br>some Androids<br>show it</div>
+        </div>
       </div>
 
-      <div style="flex:1;min-width:240px">
-        <label style="margin-top:0">Source</label>
-        <div style="display:grid;gap:6px;margin-top:2px">
-          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
-            <input type="radio" name="icon_mode" value="logo" onchange="onIconModeChange()"> Use my uploaded logo
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
-            <input type="radio" name="icon_mode" value="initials" onchange="onIconModeChange()"> Use my club's initials
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
-            <input type="radio" name="icon_mode" value="text" onchange="onIconModeChange()"> Custom text or emoji
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
-            <input type="radio" name="icon_mode" value="upload" onchange="onIconModeChange()"> Upload my own square image
-          </label>
+      <div class="icon-controls">
+        <div class="seg" id="icon-seg" role="tablist" aria-label="Icon source">
+          <button type="button" data-mode="logo"     onclick="setIconMode('logo')"><span class="ic">🖼️</span>Logo</button>
+          <button type="button" data-mode="initials" onclick="setIconMode('initials')"><span class="ic">🔤</span>Initials</button>
+          <button type="button" data-mode="text"     onclick="setIconMode('text')"><span class="ic">✏️</span>Text</button>
+          <button type="button" data-mode="upload"   onclick="setIconMode('upload')"><span class="ic">📤</span>Upload</button>
         </div>
 
-        <div id="icon-text-row" style="display:none;margin-top:12px">
-          <label>What to show</label>
+        <!-- Mode-specific controls. Only the panel for the active mode is
+             visible. Background color is shared across logo/initials/text. -->
+        <div id="icon-panel-logo" data-icon-panel>
+          <div class="icon-mode-hint" id="icon-logo-hint">Using your uploaded logo. Set the brand color above to change the background.</div>
+        </div>
+
+        <div id="icon-panel-initials" data-icon-panel style="display:none">
+          <div class="icon-mode-hint">Showing your club's initials in white on your brand color.</div>
+        </div>
+
+        <div id="icon-panel-text" data-icon-panel style="display:none">
+          <label style="margin:0 0 4px">Text or emoji</label>
           <input type="text" id="icon_text" maxlength="4" placeholder="BE or 🏊" style="font:600 18px Inter;letter-spacing:.04em" oninput="paintIconPreview()">
-          <p style="font-size:11px;color:var(--muted);margin:4px 0 0">1–4 characters. Try initials, a single letter, or an emoji.</p>
-        </div>
-
-        <div id="icon-color-row" style="margin-top:12px">
-          <div class="row2">
+          <p style="font-size:11px;color:var(--muted);margin:4px 0 0">1–4 characters. Try a single letter, your initials, or an emoji.</p>
+          <div class="icon-color-pair" style="margin-top:12px">
             <div>
-              <label>Background color</label>
-              <input type="color" id="icon_bg_color" value="#0a3b5c" style="width:100%;height:40px;padding:2px;cursor:pointer" oninput="paintIconPreview()">
+              <label>Background</label>
+              <input type="color" id="icon_bg_color" value="#0a3b5c" oninput="paintIconPreview()">
             </div>
-            <div id="icon-fg-color-wrap">
+            <div>
               <label>Text color</label>
-              <input type="color" id="icon_fg_color" value="#ffffff" style="width:100%;height:40px;padding:2px;cursor:pointer" oninput="paintIconPreview()">
+              <input type="color" id="icon_fg_color" value="#ffffff" oninput="paintIconPreview()">
             </div>
           </div>
-          <button type="button" class="btn-ghost btn" style="margin-top:8px;font-size:12px" onclick="resetIconColors()">Match my brand color</button>
+          <button type="button" class="btn-ghost btn btn-sm" style="margin-top:10px;font-size:12px;padding:6px 12px" onclick="resetIconColors()">Use my brand color</button>
         </div>
 
-        <div id="icon-upload-row" style="display:none;margin-top:12px">
-          <label>Upload icon (PNG or JPG, square works best)</label>
+        <div id="icon-panel-upload" data-icon-panel style="display:none">
+          <label style="margin:0 0 4px">Upload your own icon</label>
           <input type="file" id="icon_upload_file" accept="image/png,image/jpeg,image/webp" onchange="uploadCustomIcon(this)">
-          <p id="icon-upload-status" style="font-size:11px;color:var(--muted);margin:4px 0 0">A square image works best — we'll center it on a colored background otherwise.</p>
+          <p id="icon-upload-status" style="font-size:11px;color:var(--muted);margin:4px 0 0">PNG, JPG, or WebP. Square works best — non-square images get center-cropped to square.</p>
         </div>
 
-        <div id="icon-status" style="font-size:12px;color:var(--muted);margin-top:14px">Live preview — saves when you click Save below.</div>
-        <button type="button" class="btn-ghost btn" onclick="regenerateAndSaveIcons()" style="font-size:12px;margin-top:6px">Save app icon now</button>
+        <!-- Hidden second bg-color input for non-text modes so the same
+             input id is referenced by drawIconAt. Synced from primary_color. -->
+        <input type="hidden" id="icon_bg_color_alt" value="#0a3b5c">
+
+        <div class="icon-actions">
+          <span class="icon-status" id="icon-status">Changes preview live — click below to apply.</span>
+          <button type="button" class="btn" onclick="regenerateAndSaveIcons()" style="font-size:13px">Save app icon</button>
+        </div>
       </div>
     </div>
   </div>
@@ -511,9 +544,29 @@ let UPLOAD_BITMAP = null;        // cached <img> for an uploaded custom icon
 let UPLOAD_URL_RENDERED = '';
 
 function currentIconMode() {
-  const r = document.querySelector('input[name="icon_mode"]:checked');
-  return r ? r.value : 'logo';
+  const on = document.querySelector('#icon-seg button.on');
+  return on ? on.dataset.mode : 'logo';
 }
+function setIconMode(mode) {
+  document.querySelectorAll('#icon-seg button').forEach(b => {
+    b.classList.toggle('on', b.dataset.mode === mode);
+  });
+  document.querySelectorAll('[data-icon-panel]').forEach(p => { p.style.display = 'none'; });
+  const panel = document.getElementById('icon-panel-' + mode);
+  if (panel) panel.style.display = '';
+  // Logo mode hint depends on whether a logo is actually uploaded.
+  if (mode === 'logo') {
+    const hint = document.getElementById('icon-logo-hint');
+    if (hint) {
+      hint.innerHTML = val('logo_url')
+        ? `Using your uploaded logo. Background color comes from your <b>brand color</b> above. <button type="button" class="btn-ghost btn btn-sm" style="margin-left:6px;font-size:11px;padding:4px 10px" onclick="window.scrollTo({top:0,behavior:'smooth'})">Change logo</button>`
+        : `<b>No logo uploaded yet.</b> Upload one in the Logo section above, then come back here. Or pick "Initials" / "Text" / "Upload" instead.`;
+    }
+  }
+  paintIconPreview();
+}
+// Legacy alias — older code path triggers this name.
+function onIconModeChange() { setIconMode(currentIconMode()); }
 function fingerprintIconInputs() {
   return [
     currentIconMode(),
@@ -849,13 +902,10 @@ function populate(s) {
   // already does, so existing tenants don't see a sudden change.
   const savedMode = s.branding?.icon_mode
     || (s.branding?.logo_url ? 'logo' : 'initials');
-  const radio = document.querySelector(`input[name="icon_mode"][value="${savedMode}"]`)
-    || document.querySelector(`input[name="icon_mode"][value="logo"]`);
-  if (radio) radio.checked = true;
   setVal('icon_text',     s.branding?.icon_text || '');
   setVal('icon_bg_color', s.branding?.icon_bg_color || s.branding?.primary_color || '#0a3b5c');
   setVal('icon_fg_color', s.branding?.icon_fg_color || '#ffffff');
-  onIconModeChange();   // toggles the right rows visible
+  setIconMode(savedMode);
 
   syncBgPreview();
   syncLogoPreview();
