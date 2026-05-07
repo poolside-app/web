@@ -1115,13 +1115,17 @@ async function loadGate() {
 
 function renderGatePitch() {
   document.getElementById('gate-body').innerHTML = `
-    <p style="margin:0 0 12px">Let members open the front gate from their phone after they've paid their dues. Works with the gate panels we've tested on real hardware. Each member's button enables automatically the moment their dues clear.</p>
-    <ul style="margin:0 0 14px;padding-left:20px;line-height:1.7">
-      <li><b>$250 setup</b> — covers the on-site bridge hardware + first install</li>
-      <li><b>$25/month</b> — keeps the cloud connection live, panel-firmware updates included</li>
-      <li>Auto-shuts-off keyfob access for lapsed members; auto-restores when they pay</li>
-    </ul>
-    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use?</label>
+    <p style="margin:0 0 10px">Let members open the front gate from their phone after they've paid their dues. Each member's button enables automatically the moment their dues clear; auto-shuts-off when they lapse.</p>
+    <div style="margin:14px 0;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.6">
+      <b style="color:var(--blue)">How it works:</b>
+      <ol style="margin:6px 0 0;padding-left:20px">
+        <li>You send the request below.</li>
+        <li>We reach out within 1 business day to coordinate — what gate panel you have, how to test it, when to ship the bridge.</li>
+        <li>We invoice you ($250 setup + $25/mo) and ship a small Pi bridge that sits on your club's network.</li>
+        <li>Once payment clears + bridge is installed + on-site test passes, we activate the integration. Members start seeing the unlock button on their phone the moment we flip the switch.</li>
+      </ol>
+    </div>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use? (we'll figure out compatibility together)</label>
     <select id="gate-panel-type" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;max-width:420px;background:#fff">
       <option value="mengqi_hxc7000">MENGQI-CONTROL HXC-7000 TCP/IP keyfob — verified, ships in 5 days</option>
       <option value="unknown">I don't know what panel I have — help me figure it out</option>
@@ -1138,18 +1142,29 @@ function renderGatePitch() {
       </div>
     </div>
     <div style="margin-top:14px">
-      <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:10px 18px">Reserve my spot →</button>
-      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Reservation received — we'll be in touch within 1 business day</span>
+      <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:12px 22px;font-size:14px">🚪 Send request — we'll be in touch →</button>
+      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Request received — we'll email you within 1 business day to coordinate.</span>
     </div>
+    <p style="margin:14px 0 0;font-size:12px;color:var(--muted)">No payment is collected here — we'll only invoice you after we've talked through compatibility and you've said yes.</p>
   `;
 }
 
 function renderGatePending(panel) {
-  const labels = { requested: 'Reservation received', invoiced: 'Invoice sent', shipping: 'Bridge shipping' };
+  const labels = {
+    requested: '📨 Request received — we\'re reaching out',
+    invoiced:  '💸 Invoice sent — paid? we\'ll ship the bridge next',
+    shipping:  '📦 Bridge shipping to your club',
+  };
+  const subs = {
+    requested: 'A real human (Doug) will email you within 1 business day to coordinate. Watch your inbox.',
+    invoiced:  'Once you pay the invoice, we ship the Pi bridge ($25/mo cloud connection starts after install).',
+    shipping:  'Bridge is on its way. When it arrives, plug it into your club\'s network — it phones home automatically.',
+  };
   document.getElementById('gate-body').innerHTML = `
-    <div style="padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+    <div style="padding:14px 16px;background:var(--blue-l);border-radius:10px;font-size:13px;line-height:1.55">
       <b style="color:var(--blue)">${labels[panel.status] || panel.status}</b>
-      <p style="margin:6px 0 0">We received your request on ${new Date(panel.requested_at).toLocaleDateString()}. The next step is on us — you'll get an email when your bridge ships, then this card will turn into the configuration form.</p>
+      <p style="margin:8px 0 0">Requested on ${new Date(panel.requested_at).toLocaleDateString()}. ${subs[panel.status] || ''}</p>
+      <p style="margin:10px 0 0;font-size:12px;color:var(--muted)">Need to add details or change something? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
     </div>
   `;
 }
