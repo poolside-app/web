@@ -1372,14 +1372,27 @@ async function installAndroid() {
 // They no-op cleanly when the tenant hasn't configured the underlying data.
 function renderSponsorStrip(sponsors) {
   if (!sponsors || !sponsors.length) return '';
-  const items = sponsors.map(s => `
-    <a class="sp-tile" href="${s.link_url ? escapeAttr(s.link_url) : '#'}"
-       ${s.link_url ? 'target="_blank" rel="noopener"' : 'onclick="event.preventDefault()"'}
+  // Defensive: if a sponsor was saved with a bare hostname like
+  // "google.com" before the backend started auto-prefixing https://,
+  // treat it as https:// here so the link doesn't 404 against the
+  // tenant's own subdomain.
+  const safeUrl = (u) => {
+    const s = String(u || '').trim(); if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s))         return 'https:' + s;
+    return 'https://' + s;
+  };
+  const items = sponsors.map(s => {
+    const href = safeUrl(s.link_url);
+    return `
+    <a class="sp-tile" href="${href ? escapeAttr(href) : '#'}"
+       ${href ? 'target="_blank" rel="noopener"' : 'onclick="event.preventDefault()"'}
        title="${escapeAttr(s.name)}">
       ${s.logo_url
-        ? `<img src="${escapeAttr(s.logo_url)}" alt="${escapeAttr(s.name)}">`
+        ? `<img src="${escapeAttr(safeUrl(s.logo_url))}" alt="${escapeAttr(s.name)}">`
         : `<span class="sp-name">${escapeHtml(s.name)}</span>`}
-    </a>`).join('');
+    </a>`;
+  }).join('');
   return `
     <style>
       .sponsor-strip { background:var(--bg-2); border-radius:14px; padding:10px 12px; margin-bottom:14px;

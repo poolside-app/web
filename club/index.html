@@ -564,19 +564,31 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
       </div>
     </section>` : '';
 
+  // Defensive: bare hostnames ("google.com") resolve as relative URLs and
+  // 404 against the tenant subdomain. Backend now auto-prefixes https://
+  // on save; this catches rows saved before that fix landed.
+  const safeSponsorUrl = (u) => {
+    const s = String(u || '').trim(); if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s))         return 'https:' + s;
+    return 'https://' + s;
+  };
   const sponsorStripHtml = (sponsors && sponsors.length) ? `
     <section style="padding:14px 22px 0;max-width:1120px;margin:0 auto">
       <div style="background:var(--bg-2);border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:12px;overflow-x:auto;scrollbar-width:none">
         <span style="font:600 10px 'Inter';color:var(--muted);letter-spacing:.06em;text-transform:uppercase;flex-shrink:0;padding-right:8px;border-right:1px solid var(--border)">Sponsors</span>
-        ${sponsors.map(s => `
-          <a href="${s.link_url ? escapeAttr(s.link_url) : '#'}"
-             ${s.link_url ? 'target="_blank" rel="noopener"' : 'onclick="event.preventDefault()"'}
+        ${sponsors.map(s => {
+          const href = safeSponsorUrl(s.link_url);
+          return `
+          <a href="${href ? escapeAttr(href) : '#'}"
+             ${href ? 'target="_blank" rel="noopener"' : 'onclick="event.preventDefault()"'}
              title="${escapeAttr(s.name)}"
              style="flex-shrink:0;height:40px;padding:4px 8px;background:#fff;border:1px solid var(--border);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none">
             ${s.logo_url
-              ? `<img src="${escapeAttr(s.logo_url)}" alt="${escapeAttr(s.name)}" style="max-height:32px;max-width:90px;object-fit:contain">`
+              ? `<img src="${escapeAttr(safeSponsorUrl(s.logo_url))}" alt="${escapeAttr(s.name)}" style="max-height:32px;max-width:90px;object-fit:contain">`
               : `<span style="font:600 12px 'Inter';color:var(--blue);padding:0 6px;white-space:nowrap">${escapeHtml(s.name)}</span>`}
-          </a>`).join('')}
+          </a>`;
+        }).join('')}
       </div>
     </section>` : '';
 

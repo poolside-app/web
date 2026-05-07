@@ -45,10 +45,21 @@ async function verifyTenantAdmin(token: string): Promise<AdminPayload | null> {
   } catch { return null; }
 }
 
+// Browsers treat a bare hostname like "google.com" as a relative path,
+// which 404s on the tenant's subdomain. Auto-prefix https:// when saving
+// so admins don't have to think about it.
+function normalizeUrl(s: string): string {
+  const trimmed = s.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^\/\//.test(trimmed))         return 'https:' + trimmed;
+  return 'https://' + trimmed;
+}
+
 function sanitizeSponsor(input: Record<string, unknown>): Record<string, unknown> {
   const name        = String(input.name ?? '').trim();
-  const logo_url    = (input.logo_url    ? String(input.logo_url).trim() : null) || null;
-  const link_url    = (input.link_url    ? String(input.link_url).trim() : null) || null;
+  const logo_url    = (input.logo_url    ? normalizeUrl(String(input.logo_url)) : null) || null;
+  const link_url    = (input.link_url    ? normalizeUrl(String(input.link_url)) : null) || null;
   const description = (input.description ? String(input.description).trim().slice(0, 2000) : null) || null;
   const tier        = String(input.tier ?? 'basic') === 'premium' ? 'premium' : 'basic';
   const paid_through = (input.paid_through && String(input.paid_through).match(/^\d{4}-\d{2}-\d{2}$/))

@@ -19,6 +19,16 @@
 
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
+  // Defensive: a bare hostname like "google.com" without a protocol
+  // resolves as a relative URL → 404. Auto-prefix https://. Backend
+  // normalizes new saves; this catches rows saved before that landed.
+  function safeUrl(u) {
+    const s = String(u || '').trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s))         return 'https:' + s;
+    return 'https://' + s;
+  }
 
   function shouldShow(freq) {
     if (freq === 'every_load') return true;
@@ -119,7 +129,7 @@
       });
       document.body.appendChild(scrim);
     }
-    const linkUrl = sponsor.link_url ? escapeAttr(sponsor.link_url) : '';
+    const linkUrl = sponsor.link_url ? escapeAttr(safeUrl(sponsor.link_url)) : '';
     scrim.innerHTML = `
       <div id="sponsor-popup" ${linkUrl ? `onclick="window.open('${linkUrl}','_blank','noopener')"` : ''}>
         <button type="button" class="close-x" aria-label="Close" onclick="event.stopPropagation();window.SponsorPopup.close()">×</button>
