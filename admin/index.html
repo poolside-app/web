@@ -266,8 +266,9 @@
     <div id="edit-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
 
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-      <div style="display:flex;gap:10px">
-        <button type="button" onclick="confirmDeleteTenant()" style="padding:11px 16px;background:#fff;color:var(--red);border:1.5px solid #fecaca;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer">🗑 Delete</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="button" onclick="confirmDeleteTenant()" style="padding:11px 16px;background:#fff;color:var(--red);border:1.5px solid #fecaca;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer" title="Mark churned (reversible)">🗑 Mark churned</button>
+        <button type="button" onclick="confirmHardDeleteTenant()" style="padding:11px 16px;background:#fff;color:#fff;background:var(--red);border:0;border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer" title="PERMANENT — wipes the tenant + all data">💥 Delete forever</button>
         <button type="button" onclick="impersonateTenant()" style="padding:11px 16px;background:#fff;color:var(--blue);border:1.5px solid var(--border);border-radius:10px;font:600 13px 'Inter',sans-serif;cursor:pointer">🔑 Sign in as this tenant</button>
       </div>
       <div style="display:flex;gap:10px">
@@ -635,6 +636,57 @@
       await loadTenants();
     } catch (e) {
       alert('Delete failed: ' + e.message);
+    }
+  };
+
+  // Hard delete — wipes the tenant + every cascading row + frees the
+  // Vercel subdomain. Two-step confirmation: a confirm() dialog AND
+  // typing the slug. Last line of defense before destruction.
+  window.confirmHardDeleteTenant = async function() {
+    const id = document.getElementById('edit-id').value;
+    const t = tenantsCache.find(x => x.id === id);
+    if (!t) return;
+    const step1 = confirm(
+      `💥 PERMANENTLY DELETE "${t.display_name}"?\n\n` +
+      `This wipes:\n` +
+      `  • The tenant row\n` +
+      `  • All households + members\n` +
+      `  • All applications + signed waivers\n` +
+      `  • All sponsors, photos, posts, audit log\n` +
+      `  • All tenant admins (they lose access)\n` +
+      `  • Frees the ${t.slug}.poolsideapp.com subdomain\n\n` +
+      `This is NOT REVERSIBLE. Continue?`
+    );
+    if (!step1) return;
+    const typed = prompt(
+      `To confirm, type the tenant slug: ${t.slug}`
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== t.slug) {
+      alert(`Slug didn't match — destruction cancelled. (Expected: ${t.slug})`);
+      return;
+    }
+    try {
+      const r = await callTenantsAdmin('hard_delete', { id, confirm_slug: t.slug });
+      if (!r.ok) throw new Error(r.error || 'Hard delete failed');
+      const d = r.deleted || {};
+      const summary = [
+        `${d.households ?? 0} households`,
+        `${d.household_members ?? 0} members`,
+        `${d.applications ?? 0} applications`,
+        `${d.sponsors ?? 0} sponsors`,
+        `${d.photos ?? 0} photos`,
+        `${d.admin_users ?? 0} admin user(s)`,
+      ].join(' · ');
+      alert(
+        `✓ ${t.display_name} destroyed.\n\n` +
+        `Deleted: ${summary}\n` +
+        (r.vercel_subdomain_released ? `Subdomain ${t.slug}.poolsideapp.com freed up.` : `Subdomain release: ${r.vercel_warning || 'manual cleanup may be needed'}`)
+      );
+      closeEditModal();
+      await loadTenants();
+    } catch (e) {
+      alert('Hard delete failed: ' + e.message);
     }
   };
 

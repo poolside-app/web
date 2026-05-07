@@ -95,6 +95,30 @@ async function addVercelSubdomain(slug: string): Promise<{ ok: boolean; error?: 
   }
 }
 
+// Inverse of addVercelSubdomain — used by hard_delete so a destroyed tenant
+// frees its subdomain back up for re-signup. Best-effort; if Vercel
+// hiccups, the DB row is still gone.
+async function removeVercelSubdomain(slug: string): Promise<{ ok: boolean; error?: string }> {
+  const token     = Deno.env.get('VERCEL_API_TOKEN');
+  const projectId = Deno.env.get('VERCEL_PROJECT_ID');
+  if (!token || !projectId) {
+    return { ok: false, error: 'VERCEL_API_TOKEN or VERCEL_PROJECT_ID not set' };
+  }
+  const domain = `${slug}.poolsideapp.com`;
+  try {
+    const res = await fetch(`https://api.vercel.com/v10/projects/${projectId}/domains/${encodeURIComponent(domain)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 404) return { ok: true };  // already gone — fine
+    const txt = await res.text();
+    return { ok: false, error: `Vercel ${res.status}: ${txt.slice(0, 200)}` };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -582,6 +606,70 @@ Deno.serve(async (req) => {
       .update({ status: 'churned' }).eq('id', id);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true });
+  }
+
+  // ── hard_delete ─────────────────────────────────────────────────────
+  // Wipes the tenant + everything that cascades from it (households,
+  // members, applications, sponsors, photos, audit log, settings, all
+  // FK-cascaded tables). Frees the slug for re-signup. Provider-only,
+  // requires explicit `confirm_slug` matching the current slug to
+  // prevent fat-finger destruction.
+  //
+  // Returns { ok, deleted: { households, members, applications,
+  // sponsors, ...} } so the caller can confirm what got nuked.
+  if (action === 'hard_delete') {
+    const id = String(body.id ?? '');
+    const confirmSlug = String(body.confirm_slug ?? '').trim().toLowerCase();
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    if (!confirmSlug) return jsonResponse({ ok: false, error: 'confirm_slug required' }, 400);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name').eq('id', id).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+    if (tenant.slug !== confirmSlug) {
+      return jsonResponse({ ok: false, error: `confirm_slug doesn't match — expected "${tenant.slug}"` }, 400);
+    }
+
+    // Pre-count what we're about to drop so the response carries an
+    // honest receipt of what was destroyed. Best-effort — if a count
+    // fails we just leave it null in the receipt.
+    async function safeCount(table: string): Promise<number | null> {
+      try {
+        const { count } = await sb.from(table).select('id', { count: 'exact', head: true }).eq('tenant_id', id);
+        return count ?? 0;
+      } catch { return null; }
+    }
+    const counts = {
+      households:        await safeCount('households'),
+      household_members: await safeCount('household_members'),
+      applications:      await safeCount('applications'),
+      sponsors:          await safeCount('sponsors'),
+      photos:            await safeCount('photos'),
+      events:            await safeCount('events'),
+      posts:             await safeCount('posts'),
+      feedback:          await safeCount('feedback_submissions'),
+      admin_users:       await safeCount('admin_users'),
+    };
+
+    // Free up the Vercel subdomain so re-signup with the same slug
+    // doesn't hit a "domain already attached to project" 409.
+    const vercel = await removeVercelSubdomain(tenant.slug);
+
+    // The actual deletion. FK cascades handle everything that points
+    // at tenants(id).
+    const { error } = await sb.from('tenants').delete().eq('id', id);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    return jsonResponse({
+      ok: true,
+      deleted: {
+        slug: tenant.slug,
+        display_name: tenant.display_name,
+        ...counts,
+      },
+      vercel_subdomain_released: vercel.ok,
+      vercel_warning: vercel.ok ? null : vercel.error,
+    });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
