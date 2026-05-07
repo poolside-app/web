@@ -231,13 +231,24 @@
         <h2 class="step-title">Payments &amp; optional features</h2>
         <p class="step-tag">How members pay you, plus toggles for the optional services you offer.</p>
 
+        <!-- Stripe callout — Stripe Connect requires a redirect to Stripe's
+             own onboarding form (bank info, ID verify, etc.) which is too
+             much to embed mid-wizard. Setup checklist after the wizard
+             links straight to /club/admin/payments.html where the user
+             can kick off Connect onboarding. -->
+        <div style="background:linear-gradient(135deg, #f0f6fb, #e6eef5); border:1.5px solid #cfe1f0; border-radius:12px; padding:14px 16px; margin-bottom:16px">
+          <div style="font-weight:700; font-size:14px; color:var(--blue); margin-bottom:4px">💳 Accept credit cards (Stripe)</div>
+          <div style="font-size:12.5px; color:var(--muted); line-height:1.5">Auto-pay dues, card-saved renewals, payment plans, no chasing members. Costs ~3% per transaction.<br><b>You'll set this up after the wizard</b> — it requires bank info and takes ~3 minutes through Stripe's hosted onboarding.</div>
+        </div>
+
         <label>Venmo handle <span class="opt">(without @)</span></label>
         <div class="pill-input">
           <span class="at">@</span>
           <input type="text" id="f-venmo_handle" placeholder="yourclub">
         </div>
+        <p class="help">Free for you and members. Manual reconciliation — you mark payments as received.</p>
 
-        <label style="margin-top:14px">PayPal link</label>
+        <label style="margin-top:14px">PayPal link <span class="opt">(optional)</span></label>
         <input type="text" id="f-paypal_link" placeholder="https://paypal.me/yourclub">
 
         <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--border)">
@@ -308,12 +319,40 @@
       <div class="step" data-step="6" style="display:none">
         <div class="done-card">
           <div class="done-icon">✓</div>
-          <h2 class="step-title" style="text-align:center">You're live!</h2>
+          <h2 class="step-title" style="text-align:center">Wizard done — a few things left</h2>
           <p class="step-tag" id="done-sub" style="text-align:center"></p>
         </div>
         <div class="summary" id="summary"></div>
+
+        <!-- Admin-as-member question. Defaults to "yes" since most pool-club
+             founders ARE board members who use the pool. Replaces the
+             post-wizard "founder banner" that nagged users until dismissed. -->
+        <div style="background:#f0f6fb;border:1px solid #cfe1f0;border-radius:14px;padding:16px 18px;margin-top:18px">
+          <div style="font-weight:700;color:#0a3b5c;margin-bottom:8px;font-size:14.5px">One quick question — are you using the pool too?</div>
+          <div style="font-size:12.5px;color:#475569;line-height:1.5;margin-bottom:12px">Most pool clubs are run by people who are also members. If your family swims here, we'll set you up as a household so you're on the gate list.</div>
+          <label class="feature" style="margin:6px 0">
+            <input type="radio" name="admin_is_member" value="yes" id="adm-mem-yes" checked>
+            <div>
+              <div class="ftitle">Yes — set up my family as a member household</div>
+              <div class="fsub">After the wizard, we'll open the apply form with your name + email pre-filled.</div>
+            </div>
+          </label>
+          <label class="feature" style="margin:6px 0">
+            <input type="radio" name="admin_is_member" value="no" id="adm-mem-no">
+            <div>
+              <div class="ftitle">No — I just run the club admin</div>
+              <div class="fsub">Bookkeeper, gate manager, board secretary, etc. — not a swimmer.</div>
+            </div>
+          </label>
+        </div>
+
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:14px;padding:16px 18px;margin-top:14px;text-align:left">
+          <div style="font-weight:700;color:#78350f;margin-bottom:6px;font-size:14.5px">⚠️ Your club isn't open for business yet</div>
+          <div style="font-size:13px;color:#78350f;line-height:1.5">Membership tiers, policies, and a payment method still need to be set up before applicants can submit and pay. We'll walk you through them next.</div>
+        </div>
+
         <p class="help" style="margin-top:18px;line-height:1.5;text-align:center">
-          You can re-run this wizard any time from <b>Settings → Setup Wizard</b> in your admin.
+          You can re-run this wizard any time from <b>Settings → Setup Wizard</b>.
         </p>
       </div>
     </div>
@@ -586,8 +625,8 @@ function show(n) {
   const nb = document.getElementById('nextBtn');
   nb.disabled = false;
   if (n === TOTAL) {
-    nb.textContent = '🎉 Open my admin →';
-    nb.onclick = () => { window.location.href = '/club/admin/'; };
+    nb.textContent = '🎯 Continue setup →';
+    nb.onclick = onWizardDoneNext;
   } else if (n === TOTAL - 1) {
     nb.textContent = 'Finish setup →';
     nb.onclick = finish;
@@ -598,6 +637,31 @@ function show(n) {
 }
 function next() { if (step < TOTAL) { step++; show(step); } }
 function prev() { if (step > 1) { step--; show(step); } }
+
+// On the final wizard step the admin picks "I'm also a member" or "I'm
+// just an admin." Yes → open the apply form (prefilled), then send to
+// the setup checklist. No → dismiss the founder banner permanently and
+// go straight to the setup checklist.
+async function onWizardDoneNext() {
+  const isMember = document.getElementById('adm-mem-yes')?.checked;
+  if (!isMember) {
+    try { await fetch(`${SUPABASE_URL}/functions/v1/tenant_admin_auth`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'dismiss_member_apply' }),
+    }); } catch (_) { /* harmless if it fails */ }
+    window.location.href = '/club/admin/setup.html';
+    return;
+  }
+  // Yes: open apply form on the public subdomain in a new tab so they can
+  // fill it out, then take this tab to the checklist so the admin can
+  // continue setup in parallel.
+  const slug = TENANT?.slug;
+  if (slug) {
+    window.open(`https://${slug}.poolsideapp.com/apply.html?prefill=admin`, '_blank', 'noopener');
+  }
+  window.location.href = '/club/admin/setup.html';
+}
 
 function showErr(msg) {
   const e = document.getElementById('errBox');

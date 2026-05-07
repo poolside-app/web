@@ -224,20 +224,19 @@ Deno.serve(async (req) => {
       },
       {
         id: 'payment',
-        label: 'Connect a payment method',
+        label: stripeConnected
+          ? 'Payment method connected'
+          : (venmoSet ? 'Add Stripe so members can pay by card' : 'Connect a payment method'),
         done: stripeConnected || venmoSet,
         fix_url: '/club/admin/payments.html',
-        fix_label: stripeConnected ? 'Add Venmo too' : 'Set up payments',
-        why: 'Stripe (cards) or Venmo — pick at least one so members can pay.',
-      },
-      {
-        id: 'stripe',
-        label: 'Connect Stripe (accept credit cards)',
-        done: stripeConnected,
-        fix_url: '/club/admin/payments.html',
-        fix_label: 'Connect Stripe',
-        why: 'Cards = auto-pay, payment plans, no chasing members. ~3% fee.',
-        optional: true,
+        fix_label: stripeConnected
+          ? 'Manage payments'
+          : (venmoSet ? 'Connect Stripe' : 'Set up payments'),
+        why: stripeConnected
+          ? 'Stripe is connected — members can pay with cards.'
+          : (venmoSet
+              ? 'Venmo is set, but adding Stripe means cards/auto-pay work too. Most clubs use both.'
+              : 'Pick at least one — Stripe (cards, ~3% fee) or Venmo (free, manual). Most clubs offer both.'),
       },
       {
         id: 'admins',
