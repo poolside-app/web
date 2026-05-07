@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Poolside — Run your pool club, not your spreadsheets.</title>
-<meta name="description" content="Memberships, dues, gate access, donations with auto-thermometer, party booking, sponsors, anonymous feedback, photo gallery — everything your neighborhood pool club needs in one app.">
+<meta name="description" content="The one app a volunteer board can run a neighborhood pool club from — memberships, gate access, donations, parties. Try a real working club, then sign up free.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,13 +17,11 @@
     --sun: #f59e0b; --sun-l: #fff7ea;
     --bg: #fefdfb; --bg-2: #f7f3eb;
     --text: #0f172a; --muted: #64748b;
-    --border: #e5e7eb; --green: #16a34a; --red: #dc2626;
+    --border: #e5e7eb; --green: #16a34a;
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
     --shadow-lg: 0 8px 32px rgba(10,59,92,.10), 0 24px 64px rgba(10,59,92,.06);
-    --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-xl: 28px;
-    --max: 1120px;
+    --r-md: 12px; --r-lg: 18px; --max: 1100px;
   }
-
   *, *::before, *::after { box-sizing: border-box; }
   html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
   body {
@@ -34,20 +32,17 @@
   a { color: var(--blue); text-decoration: none; }
   a:hover { text-decoration: underline; }
   img { max-width: 100%; display: block; }
-  h1, h2, h3, h4 {
-    font-family: 'Fraunces', Georgia, serif;
-    font-weight: 600; letter-spacing: -.015em; margin: 0 0 .4em;
-  }
-  h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1.05; }
-  h2 { font-size: clamp(28px, 4vw, 44px); line-height: 1.1; }
-  h3 { font-size: clamp(20px, 2.4vw, 24px); line-height: 1.2; }
+  h1, h2, h3, h4 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; letter-spacing: -.015em; margin: 0 0 .4em; }
+  h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.05; }
+  h2 { font-size: clamp(26px, 3.6vw, 38px); line-height: 1.15; }
+  h3 { font-size: clamp(18px, 2vw, 21px); line-height: 1.25; }
 
   .container { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
   .eyebrow {
     display: inline-block; font: 700 11px/1 'Inter', sans-serif;
     letter-spacing: .14em; text-transform: uppercase;
     color: var(--blue); background: var(--blue-l);
-    border-radius: 999px; padding: 6px 12px; margin-bottom: 18px;
+    border-radius: 999px; padding: 6px 12px; margin-bottom: 16px;
   }
   .muted { color: var(--muted); }
 
@@ -69,7 +64,7 @@
   /* Header */
   header.top {
     position: sticky; top: 0; z-index: 50;
-    background: rgba(254, 253, 251, .85); backdrop-filter: saturate(160%) blur(12px);
+    background: rgba(254, 253, 251, .9); backdrop-filter: saturate(160%) blur(12px);
     -webkit-backdrop-filter: saturate(160%) blur(12px);
     border-bottom: 1px solid var(--border);
   }
@@ -91,92 +86,88 @@
 
   /* Hero */
   section.hero {
-    padding: 64px 0 80px;
+    padding: 64px 0 72px;
     background: radial-gradient(ellipse at top right, var(--sun-l) 0%, transparent 65%),
                 radial-gradient(ellipse at bottom left, var(--blue-l) 0%, transparent 60%),
                 var(--bg);
   }
   .hero h1 strong { color: var(--blue); }
-  .hero-lede { font-size: clamp(17px, 2vw, 21px); color: var(--muted); max-width: 580px; margin: 18px 0 30px; line-height: 1.55; }
+  .hero-lede { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 580px; margin: 18px 0 28px; line-height: 1.55; }
   .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; }
-  .hero-meta { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 22px; align-items: center; font-size: 13.5px; color: var(--muted); }
-  .hero-meta b { color: var(--blue); }
-  .hero-meta .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--border); }
+  .hero-meta { margin-top: 26px; font-size: 13.5px; color: var(--muted); max-width: 560px; line-height: 1.6; }
+  .hero-meta a { color: var(--blue); font-weight: 600; }
 
-  /* Three-pillar value strip */
-  section.pillars { padding: 56px 0; background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .pillar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
-  @media (max-width: 760px) { .pillar-grid { grid-template-columns: 1fr; } }
-  .pillar { padding: 26px; background: #fff; border-radius: var(--r-lg); border: 1px solid var(--border); box-shadow: var(--shadow); }
-  .pillar .ic { font-size: 32px; line-height: 1; margin-bottom: 12px; }
-  .pillar h3 { margin-bottom: 8px; }
-  .pillar p { color: var(--muted); margin: 0; font-size: 15px; line-height: 1.6; }
-
-  /* Sections (general) */
-  section { padding: 80px 0; }
-  .section-head { max-width: 720px; margin: 0 auto 48px; text-align: center; }
-  .section-head .eyebrow { margin-bottom: 14px; }
+  /* Section base */
+  section { padding: 72px 0; }
+  .section-head { max-width: 700px; margin: 0 auto 40px; text-align: center; }
+  .section-head .eyebrow { margin-bottom: 12px; }
   .section-head p { color: var(--muted); font-size: 17px; margin: 12px 0 0; }
 
-  /* Feature clusters */
-  .feat-cluster { margin-bottom: 48px; }
-  .feat-cluster:last-child { margin-bottom: 0; }
-  .feat-cluster-title {
-    display: flex; align-items: baseline; gap: 12px; margin: 0 0 22px;
-    font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 600; color: var(--blue);
+  /* Show-don't-tell strip */
+  section.show {
+    background: var(--blue);
+    color: #fff;
+    padding: 56px 0;
   }
-  .feat-cluster-title .num {
-    font-size: 14px; font-weight: 700; color: var(--sun);
-    letter-spacing: .12em; text-transform: uppercase;
-  }
-  .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  section.show h2 { color: #fff; font-size: clamp(22px, 3vw, 30px); margin: 0 0 14px; }
+  section.show p { color: rgba(255,255,255,.85); font-size: 16px; margin: 0 0 24px; max-width: 640px; line-height: 1.6; }
+  section.show .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  section.show .row .btn { box-shadow: none; }
+  section.show .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.4); }
+  section.show .btn-ghost:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.7); }
+
+  /* Features */
+  .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   @media (max-width: 880px) { .feat-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 540px) { .feat-grid { grid-template-columns: 1fr; } }
   .feat {
     padding: 22px 22px 24px; background: #fff; border: 1px solid var(--border);
     border-radius: var(--r-lg); box-shadow: var(--shadow);
-    transition: border-color .15s, transform .15s;
   }
-  .feat:hover { border-color: var(--blue); transform: translateY(-2px); }
   .feat-icon { font-size: 26px; line-height: 1; margin-bottom: 10px; }
   .feat h3 { font-size: 17px; line-height: 1.3; margin-bottom: 6px; }
   .feat p { color: var(--muted); margin: 0; font-size: 14px; line-height: 1.55; }
 
-  /* How it works */
+  /* How */
   section#how { background: var(--bg-2); }
-  .how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; max-width: 980px; margin: 0 auto; }
+  .how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 980px; margin: 0 auto; }
   @media (max-width: 760px) { .how-grid { grid-template-columns: 1fr; } }
-  .step { padding: 28px 24px; background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+  .step { padding: 26px 22px; background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
   .step-num {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 38px; height: 38px; border-radius: 50%; background: var(--blue); color: #fff;
-    font: 700 17px 'Inter'; margin-bottom: 14px;
+    width: 36px; height: 36px; border-radius: 50%; background: var(--blue); color: #fff;
+    font: 700 16px 'Inter'; margin-bottom: 14px;
   }
-  .step h3 { margin-bottom: 8px; font-size: 19px; }
-  .step p { color: var(--muted); margin: 0; line-height: 1.6; }
+  .step h3 { margin-bottom: 8px; font-size: 18px; }
+  .step p { color: var(--muted); margin: 0; line-height: 1.6; font-size: 14.5px; }
   .step code { background: var(--bg-2); padding: 2px 6px; border-radius: 6px; font-size: 13px; color: var(--blue); }
 
-  /* Recently shipped */
-  section.shipped { background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%); }
-  .ship-list { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 760px; margin: 0 auto; }
-  .ship-item {
-    display: flex; gap: 16px; padding: 16px 20px; background: #fff;
-    border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow);
+  /* Referral */
+  section.refer {
+    background: linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%);
+    color: #fff;
   }
-  .ship-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
-  .ship-body { flex: 1; min-width: 0; }
-  .ship-body h4 { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: var(--blue); margin: 0 0 4px; }
-  .ship-body p { font-size: 14px; color: var(--muted); margin: 0; line-height: 1.55; }
+  section.refer .container { max-width: 760px; }
+  section.refer .eyebrow { background: rgba(255,255,255,.15); color: #fff; }
+  section.refer h2 { color: #fff; }
+  section.refer p { color: rgba(255,255,255,.92); font-size: 17px; line-height: 1.6; margin: 0 0 14px; }
+  .refer-card {
+    background: #fff; color: var(--text); border-radius: var(--r-lg); padding: 26px 28px;
+    margin: 28px auto 0; box-shadow: var(--shadow-lg);
+  }
+  .refer-card h3 { color: var(--blue); margin: 0 0 8px; font-size: 22px; }
+  .refer-card .reward { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 600; color: var(--sun); margin: 6px 0 4px; }
+  .refer-card p { color: var(--text); font-size: 15px; line-height: 1.6; margin: 0 0 14px; }
+  .refer-card .small { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
 
   /* Pricing */
-  section.pricing { background: var(--bg); }
-  .price-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 1120px; margin: 0 auto; }
+  .price-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 1100px; margin: 0 auto; }
   @media (max-width: 980px) { .price-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 540px) { .price-grid { grid-template-columns: 1fr; } }
   .price {
-    position: relative; padding: 26px 22px 24px;
+    position: relative; padding: 24px 22px;
     background: #fff; border: 1.5px solid var(--border);
-    border-radius: var(--r-lg); display: flex; flex-direction: column;
+    border-radius: var(--r-lg); display: flex; flex-direction: column; text-align: center;
   }
   .price.featured { border-color: var(--blue); border-width: 2px; box-shadow: var(--shadow-lg); }
   .price-badge {
@@ -186,17 +177,18 @@
     padding: 5px 12px; border-radius: 999px;
   }
   .price-tier { font: 600 13px 'Inter'; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
-  .price-amt { font-family: 'Fraunces', serif; font-weight: 600; color: var(--blue); margin: 6px 0 4px; }
+  .price-amt { font-family: 'Fraunces', serif; font-weight: 600; color: var(--blue); margin: 8px 0 6px; }
   .price-amt .num { font-size: 38px; }
   .price-amt .per { font-size: 14px; color: var(--muted); margin-left: 4px; }
-  .price ul { list-style: none; padding: 0; margin: 16px 0 18px; flex: 1; font-size: 13.5px; line-height: 1.6; }
-  .price ul li { padding: 5px 0; border-bottom: 1px solid var(--border); }
-  .price ul li:last-child { border-bottom: 0; }
-  .price ul li b { color: var(--text); }
+  .price .cap { font-size: 14px; color: var(--text); font-weight: 600; margin: 8px 0 18px; padding: 8px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
   .price .btn { width: 100%; }
-  .price-note { font-size: 12px; color: var(--muted); text-align: center; margin: 6px 0 0; }
+  .price-note {
+    max-width: 700px; margin: 24px auto 0; padding: 14px 18px;
+    background: var(--bg-2); border-radius: var(--r-md);
+    font-size: 13.5px; color: var(--text); text-align: center; line-height: 1.55;
+  }
   .fee-table {
-    margin: 28px auto 0; max-width: 720px; padding: 22px 26px;
+    margin: 32px auto 0; max-width: 720px; padding: 22px 26px;
     background: var(--blue-l); border-radius: 16px;
   }
   .fee-table h4 { font-family: 'Fraunces', serif; font-size: 18px; color: var(--blue); margin: 0 0 8px; }
@@ -205,15 +197,6 @@
   .fee-table td { padding: 5px 12px; }
   .fee-table .amt { color: var(--blue); font-weight: 700; }
   .fee-table .free { color: var(--green); font-weight: 700; }
-
-  /* Built-by line */
-  section.proof { background: #fff; padding: 56px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .proof-card {
-    max-width: 720px; margin: 0 auto; padding: 32px 36px; text-align: center;
-    background: var(--bg-2); border-radius: var(--r-lg);
-  }
-  .proof-card blockquote { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 22px; color: var(--blue); line-height: 1.45; margin: 0 0 14px; }
-  .proof-card cite { font-style: normal; font-size: 13.5px; color: var(--muted); }
 
   /* FAQ */
   .faq-grid { max-width: 800px; margin: 0 auto; }
@@ -230,13 +213,11 @@
   .faq[open] summary::after { transform: rotate(180deg); color: var(--blue); }
   .faq p { padding: 0 22px 18px; margin: 0; font-size: 15px; line-height: 1.65; color: var(--text); }
 
-  /* Final CTA */
-  section.cta-strip { background: var(--blue); color: #fff; text-align: center; }
-  section.cta-strip h2 { color: #fff; }
-  section.cta-strip p { color: rgba(255,255,255,.85); font-size: 17px; max-width: 520px; margin: 14px auto 28px; }
-
-  /* Footer */
-  footer { padding: 40px 0 60px; border-top: 1px solid var(--border); background: #fff; font-size: 14px; color: var(--muted); }
+  /* CTA + footer */
+  section.cta-strip { background: var(--bg-2); text-align: center; padding: 72px 0; }
+  section.cta-strip h2 { margin: 0 0 12px; }
+  section.cta-strip p { color: var(--muted); font-size: 16px; max-width: 520px; margin: 0 auto 28px; }
+  footer { padding: 36px 0 56px; border-top: 1px solid var(--border); background: #fff; font-size: 14px; color: var(--muted); }
   footer .row { display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; }
   footer .links { display: flex; gap: 22px; flex-wrap: wrap; }
   footer .links a { color: var(--muted); }
@@ -249,10 +230,10 @@
   <div class="container row">
     <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
     <nav class="top-nav">
-      <a href="#features">Features</a>
-      <a href="#how">How it works</a>
+      <a href="#features">What's inside</a>
+      <a href="#refer">Refer a club</a>
       <a href="#pricing">Pricing</a>
-      <a href="/pricing.html">Why this price</a>
+      <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener">See it live</a>
       <a href="/signup.html" class="btn btn-sm">Start free →</a>
     </nav>
   </div>
@@ -263,40 +244,25 @@
   <div class="container">
     <span class="eyebrow">For volunteer-run neighborhood pool clubs</span>
     <h1>Run your pool club, <strong>not your spreadsheets.</strong></h1>
-    <p class="hero-lede">Memberships, dues, gate access, donations with an auto-tracking thermometer, party booking, sponsors, photo gallery, anonymous feedback — everything you'd otherwise stitch together from six tools, in one app the board can actually use.</p>
+    <p class="hero-lede">The one app a volunteer board can run a neighborhood pool club from. Memberships, dues, gate access, party booking, donations, photo gallery, anonymous feedback — in one place a board member can actually use.</p>
     <div class="hero-cta">
-      <a href="/signup.html" class="btn btn-sun">Start free → <span style="opacity:.7">it's $0 for ≤20 households</span></a>
-      <a href="#features" class="btn btn-ghost">See what's inside</a>
+      <a href="/signup.html" class="btn btn-sun">Start free → <span style="opacity:.7">$0 for ≤20 households</span></a>
+      <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener" class="btn btn-ghost">See a real club →</a>
     </div>
-    <div class="hero-meta">
-      <span><b>No app store.</b> Members tap "Add to Home Screen" once.</span>
-      <span class="dot"></span>
-      <span><b>14-day trial</b> on paid tiers, no card.</span>
-      <span class="dot"></span>
-      <span><b>Built and used</b> by Bishop Estates Cabana Club.</span>
-    </div>
+    <p class="hero-meta">
+      Built and used by <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener">Bishop Estates Cabana Club</a>. Want a 15-minute walkthrough? <a href="mailto:doug.frevele@gmail.com?subject=Poolside%20demo">Email Doug</a> — he'll show you everything from the board side.
+    </p>
   </div>
 </section>
 
-<!-- ─────────── THREE PILLARS ─────────── -->
-<section class="pillars">
+<!-- ─────────── SHOW DON'T TELL ─────────── -->
+<section class="show">
   <div class="container">
-    <div class="pillar-grid">
-      <div class="pillar">
-        <div class="ic">🏊</div>
-        <h3>Members get a real app</h3>
-        <p>Tap to install on the home screen with your club's icon. Sign in once, stay signed in for years. Unlock the gate, RSVP for parties, donate, refer a friend — all from one place.</p>
-      </div>
-      <div class="pillar">
-        <div class="ic">🪑</div>
-        <h3>Boards save 200+ hours a year</h3>
-        <p>Apply form configures itself once a year and runs unattended. Stripe payments auto-approve memberships. The thermometer auto-tracks donations. Everything mirrors to your Google Drive.</p>
-      </div>
-      <div class="pillar">
-        <div class="ic">💸</div>
-        <h3>Money flows, doesn't pile up</h3>
-        <p>Members pay dues by card or Venmo, donate by card or Venmo, sign up for swim lessons by card. Stripe deposits into your bank. We take a tiny slice; nothing on donations, ever.</p>
-      </div>
+    <h2>The fastest way to know if it fits: open a real club.</h2>
+    <p>Bishop Estates Cabana Club runs on Poolside. The public landing, the apply form, the photo carousel, the donation thermometer — everything you'd ship at your own club. Open it on your phone, tap "Add to Home Screen," and see what a member's experience would feel like.</p>
+    <div class="row">
+      <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener" class="btn btn-sun">Open the live club →</a>
+      <a href="mailto:doug.frevele@gmail.com?subject=Poolside%20demo" class="btn btn-ghost">Or get a 15-min walkthrough</a>
     </div>
   </div>
 </section>
@@ -306,133 +272,69 @@
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">Everything in one place</span>
-      <h2>Built for the way pool clubs actually run.</h2>
-      <p>If your board is volunteer, you don't have time for six different tools. Poolside replaces all of them.</p>
+      <h2>What's actually inside.</h2>
+      <p>Plain English. No "modules" or "add-ons" you have to upgrade for. Every feature works on every plan — tiers only differ on how many households fit.</p>
     </div>
-
-    <!-- Cluster 1: For members -->
-    <div class="feat-cluster">
-      <div class="feat-cluster-title"><span class="num">For members</span></div>
-      <div class="feat-grid">
-        <div class="feat">
-          <div class="feat-icon">📲</div>
-          <h3>Install on home screen</h3>
-          <p>Progressive web app. Members tap "Add to Home Screen" and your club lives next to Maps and Photos with your custom icon. No App Store gatekeepers.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🔐</div>
-          <h3>Stay logged in forever</h3>
-          <p>Sign in once with email or phone — magic link arrives in under a minute. Every visit rolls the session forward, so members never get locked out mid-summer.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🚪</div>
-          <h3>Tap to unlock the gate</h3>
-          <p>Paid add-on for clubs with a compatible keyfob panel. Member taps a button, the gate opens, full audit log on your end. We've certified MENGQI HXC-7000 — others go through case-by-case review.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">👨‍👩‍👧</div>
-          <h3>Family management page</h3>
-          <p>Primary contact adds household members from their phone — name, role, signed waiver, signature pad and all. PDF emailed and archived. Transfer the primary role when needed.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">💌</div>
-          <h3>Refer-a-friend, $100 off</h3>
-          <p>One-tap share link. When the new family joins and pays, the referrer picks: $100 off next year's dues OR a Venmo refund this year. Admin reviews + approves.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">📸</div>
-          <h3>Photos with swipe + lightbox</h3>
-          <p>Auto-rotating gallery on the home screen. Tap any photo to enlarge, swipe through fullscreen, click prev/next arrows. Members upload; admin approves before they appear.</p>
-        </div>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-icon">📲</div>
+        <h3>Members install on home screen</h3>
+        <p>Progressive web app. Members tap "Add to Home Screen" once and your club lives next to Maps and Photos with your custom icon.</p>
       </div>
-    </div>
-
-    <!-- Cluster 2: For the board -->
-    <div class="feat-cluster">
-      <div class="feat-cluster-title"><span class="num">For the board</span></div>
-      <div class="feat-grid">
-        <div class="feat">
-          <div class="feat-icon">📋</div>
-          <h3>Application editor</h3>
-          <p>One screen sets up the apply form for the season — heading, tiers, policies, application emails, season open/closed toggle. Set it once, don't touch it again.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">📨</div>
-          <h3>Application pipeline</h3>
-          <p>Stripe-paid applications auto-approve. Venmo flows through a "Verify Payment" button. Reject sends a polite email with your custom note. Cleans up abandoned carts after 60 minutes.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🌡️</div>
-          <h3>Fundraiser thermometer</h3>
-          <p>Always-visible card on the home page. Donations bump it automatically — Stripe-paid in real-time, Venmo when the admin records it. GoFundMe-style "Recent supporters" list below.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🤝</div>
-          <h3>Sponsor program</h3>
-          <p>Sell sponsorship slots: logos rotate in a strip on the home page, plus an optional pop-up that cycles through your sponsors on app open. Configure frequency per club.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">💬</div>
-          <h3>Anonymous feedback</h3>
-          <p>One-tap card on the home page. Members report a broken tile, a dirty bathroom, a complaint — with a photo, no name attached. Lands in your admin queue for triage.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">📅</div>
-          <h3>Native calendar + parties</h3>
-          <p>Events the board posts AND member-requested parties, in one calendar with iCal feed. Members subscribe in their own calendar app. Party requests need one click to approve.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">📣</div>
-          <h3>Announcements + campaigns</h3>
-          <p>Pinned posts on the home page; pop-up campaigns for big events or drives. Targeting: members only, public visitors, or both. Everyone sees what they need to.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🪪</div>
-          <h3>Signed-waiver PDFs</h3>
-          <p>Every application generates a real-text legal-evidence PDF — full policy text, signature image, timestamp. Stored forever, retrievable instantly, mirrored to your Drive.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">📊</div>
-          <h3>Audit log + impact metrics</h3>
-          <p>Every approval, gate unlock, payment, refund — humanized in plain English ("Application approved", "Gate unlocked"). Plus an Impact page showing hours saved vs. manual.</p>
-        </div>
+      <div class="feat">
+        <div class="feat-icon">🔐</div>
+        <h3>Sign-in by email or phone</h3>
+        <p>Magic-link by email or SMS. Once a member signs in, they stay signed in — sessions roll forward on every visit so no one's locked out mid-summer.</p>
       </div>
-    </div>
-
-    <!-- Cluster 3: Money + ops -->
-    <div class="feat-cluster">
-      <div class="feat-cluster-title"><span class="num">Money &amp; operations</span></div>
-      <div class="feat-grid">
-        <div class="feat">
-          <div class="feat-icon">💳</div>
-          <h3>Stripe Connect, your account</h3>
-          <p>Members pay dues, programs, parties, donations by card. Funds go straight to your bank — we never hold the money. We take a small platform slice (0% on donations).</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">💸</div>
-          <h3>Or use Venmo / PayPal</h3>
-          <p>Bring your own. The right buttons appear on the apply form, donation modal, and program signup pages. Admin marks payments verified as money lands.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🗓️</div>
-          <h3>Two-installment dues</h3>
-          <p>Offer applicants a payment plan: half by season open, half by July 1. Auto-charges the saved card. Failed-card dunning + reactivation flow built in.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">⏰</div>
-          <h3>Renewal blasts + early bird</h3>
-          <p>One-click email + SMS to last season's members when the new season opens. Optional early-bird discount window with a deadline you set.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">☁️</div>
-          <h3>Mirrored to your Drive</h3>
-          <p>Every signed application becomes a PDF in <em>your</em> Drive folder. Master roster as a Google Sheet. One-way sync — deleting in Poolside never deletes from Drive.</p>
-        </div>
-        <div class="feat">
-          <div class="feat-icon">🛠️</div>
-          <h3>Admin nav for grandmas</h3>
-          <p>Seven top-level tabs, plain-English labels. No "slugs" or "endpoints" anywhere a board member would see. Help articles substitute your real club name and URL automatically.</p>
-        </div>
+      <div class="feat">
+        <div class="feat-icon">📋</div>
+        <h3>Application editor + pipeline</h3>
+        <p>One screen to set up the apply form: heading, tiers, policies, emails, season toggle. New applicants land in a pipeline; Stripe-paid auto-approve.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">👨‍👩‍👧</div>
+        <h3>Households + family page</h3>
+        <p>Track families, not just individuals. Primary contact adds household members from their phone, signs waivers, transfers the role when needed.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">💳</div>
+        <h3>Stripe + Venmo + check, side-by-side</h3>
+        <p>Members pay dues, programs, parties, donations by card or Venmo, or pay by check. Stripe deposits go to your bank — we never hold the money.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🌡️</div>
+        <h3>Fundraiser thermometer</h3>
+        <p>Always-visible card on the home page with progress bar + Donate button. Stripe donations auto-bump the bar in real-time. Recent supporters list under it.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🤝</div>
+        <h3>Sponsor program</h3>
+        <p>Sell sponsor slots — logos rotate in a strip on the home page, and an optional pop-up cycles through them on app open.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">💬</div>
+        <h3>Anonymous feedback</h3>
+        <p>One-tap card on every home page. Members report a broken tile, a dirty bathroom, a complaint — with a photo, no name attached.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🚪</div>
+        <h3>Tap-to-unlock gate <span style="font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0">(paid add-on)</span></h3>
+        <p>For clubs with a compatible keyfob panel. Members unlock from their phone with a full audit log on your end. MENGQI HXC-7000 verified; others case-by-case.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📸</div>
+        <h3>Photo gallery</h3>
+        <p>Members upload pool photos, admin approves before they appear. Auto-rotating home-page carousel with tap-to-enlarge lightbox + swipe.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🎉</div>
+        <h3>Parties + native calendar</h3>
+        <p>Members request parties online; you approve with a click. Public calendar with iCal subscribe so everyone's calendar app stays in sync.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">☁️</div>
+        <h3>Mirrored to your Drive</h3>
+        <p>Every signed application becomes a PDF in <em>your</em> Google Drive folder. Master roster as a Sheet. One-way — deleting in Poolside never deletes from Drive.</p>
       </div>
     </div>
   </div>
@@ -444,186 +346,96 @@
     <div class="section-head">
       <span class="eyebrow">From zero to running club</span>
       <h2>You'll be live before lunch.</h2>
-      <p>The setup wizard auto-launches on your first admin login. Six steps, plain English, skippable when something doesn't apply.</p>
+      <p>Setup wizard auto-launches on your first admin login. Plain-English steps, skippable when something doesn't apply.</p>
     </div>
     <div class="how-grid">
       <div class="step">
         <div class="step-num">1</div>
         <h3>Sign up</h3>
-        <p>Pick your subdomain (<code>yourclub.poolsideapp.com</code>) and start at $0 — no card needed for the Free Forever tier.</p>
+        <p>Pick your subdomain (<code>yourclub.poolsideapp.com</code>) and start at $0. No credit card on the Free Forever tier.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
         <h3>Walk the wizard</h3>
-        <p>Club name, hero photo, brand color, app icon, pool location, payment handles, Drive backup. Done in 5 minutes on your phone.</p>
+        <p>Club name, hero photo, brand color, app icon, hours, location, payment handles. Done in 5 minutes on your phone.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
         <h3>Send the link</h3>
-        <p>Past members renew via the renewal blast. New families apply at <code>/apply.html</code>. Sign-ins happen with a magic link. You go back to swimming.</p>
+        <p>Past members renew via the renewal blast. New families apply at <code>/apply.html</code>. You go back to swimming.</p>
       </div>
     </div>
   </div>
 </section>
 
+<!-- ─────────── REFERRALS ─────────── -->
+<section id="refer" class="refer">
+  <div class="container">
+    <span class="eyebrow">Our biggest growth lever</span>
+    <h2>Know another pool club? They should be using this too.</h2>
+    <p>Volunteer boards talk to other volunteer boards. We'd rather pay <em>you</em> for a referral than pay Google for ad clicks. So we do — straightforwardly.</p>
+    <div class="refer-card">
+      <h3>Refer a club. Both of you save $100.</h3>
+      <div class="reward">$100 off</div>
+      <p>Send another pool club our way. When they sign up on a paid plan and stay 60 days, you each get $100 off your next renewal. No tracking codes, no funnels — just email <a href="mailto:doug.frevele@gmail.com?subject=Pool%20club%20referral">doug.frevele@gmail.com</a> with their name when you tell them about us, and we'll match it up.</p>
+      <p>This is going to look more polished eventually (referral links, dashboards, automatic credit). For now it's an honest handshake offer.</p>
+      <p class="small">Free Forever clubs can refer too — when one of <em>your</em> referrals upgrades to a paid plan, you get $100 cash via Venmo or PayPal.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ─────────── PRICING ─────────── -->
-<section id="pricing" class="pricing">
+<section id="pricing">
   <div class="container">
     <div class="section-head">
-      <span class="eyebrow">Honest, predictable</span>
-      <h2>One annual fee. No per-member nickel-and-diming.</h2>
-      <p>Pool clubs are seasonal. Pricing should be too. Pay once a year — and free forever if you're under 20 households.</p>
+      <span class="eyebrow">Honest, capacity-only</span>
+      <h2>Tiers differ on size, not features.</h2>
+      <p>Every feature listed above works on every plan. The only thing that changes between tiers is how many households fit. Outgrowing a tier is a good problem.</p>
     </div>
 
     <div class="price-grid">
       <div class="price">
         <div class="price-tier">Free Forever</div>
         <div class="price-amt"><span class="num">$0</span></div>
-        <p class="muted" style="margin:0;font-size:13px">For tiny HOA pools.</p>
-        <ul>
-          <li>Up to <b>20 households</b></li>
-          <li>Every feature included</li>
-          <li>Email magic-link sign-in</li>
-          <li>Drive auto-archive</li>
-          <li>250 SMS / month included</li>
-          <li class="muted">No credit card required</li>
-        </ul>
+        <div class="cap">Up to <b>20 households</b></div>
         <a href="/signup.html?plan=free" class="btn btn-ghost">Start free</a>
       </div>
-
       <div class="price">
         <div class="price-tier">Starter</div>
         <div class="price-amt"><span class="num">$199</span><span class="per">/yr</span></div>
-        <p class="muted" style="margin:0;font-size:13px">Small community clubs.</p>
-        <ul>
-          <li>Up to <b>100 households</b></li>
-          <li>Everything in Free, plus:</li>
-          <li>SMS magic-link sign-in</li>
-          <li>Stripe payment processing</li>
-          <li>Two-installment dues plans</li>
-          <li>1,000 SMS / month included</li>
-        </ul>
-        <a href="/signup.html?plan=starter" class="btn btn-ghost">Start free</a>
+        <div class="cap">Up to <b>100 households</b></div>
+        <a href="/signup.html?plan=starter" class="btn btn-ghost">Start free trial</a>
       </div>
-
       <div class="price featured">
         <span class="price-badge">Most popular</span>
         <div class="price-tier">Pro</div>
         <div class="price-amt"><span class="num">$599</span><span class="per">/yr</span></div>
-        <p class="muted" style="margin:0;font-size:13px">Full-season neighborhood clubs.</p>
-        <ul>
-          <li>Up to <b>300 households</b></li>
-          <li>Everything in Starter, plus:</li>
-          <li>Auto-dunning + late fees</li>
-          <li>Renewal blast (email + SMS)</li>
-          <li>Early-bird discount window</li>
-          <li>2,500 SMS / month included</li>
-        </ul>
-        <a href="/signup.html?plan=pro" class="btn">Start free</a>
+        <div class="cap">Up to <b>300 households</b></div>
+        <a href="/signup.html?plan=pro" class="btn">Start free trial</a>
       </div>
-
       <div class="price">
         <div class="price-tier">Enterprise</div>
         <div class="price-amt"><span class="num">$1,199</span><span class="per">/yr</span></div>
-        <p class="muted" style="margin:0;font-size:13px">Multi-pool &amp; large clubs.</p>
-        <ul>
-          <li><b>Unlimited households</b></li>
-          <li>Everything in Pro, plus:</li>
-          <li>Custom domain</li>
-          <li>White-label sender</li>
-          <li>Premium support included</li>
-          <li>2,500 SMS + overage</li>
-        </ul>
-        <a href="/signup.html?plan=enterprise" class="btn btn-ghost">Start free</a>
+        <div class="cap"><b>Unlimited</b> households</div>
+        <a href="/signup.html?plan=enterprise" class="btn btn-ghost">Start free trial</a>
       </div>
     </div>
 
-    <p class="price-note" style="margin-top:18px">
+    <div class="price-note">
+      Every plan: full feature set, email + SMS sign-in, Stripe + Venmo + PayPal, payment plans, renewal blasts, Drive backup, audit log. <b>Outgrowing a tier is just a click upgrade</b> — your data and settings stay put.<br>
       <a href="/pricing.html" style="color:var(--blue);font-weight:600">Why we charge what we charge →</a>
-    </p>
+    </div>
 
     <div class="fee-table">
       <h4>When members pay you, we take a tiny slice</h4>
-      <p>No fees on dues if you stick with Venmo/check. If you switch on Stripe (auto-renew, auto-dunning, less manual work), here's our cut <i>on top of Stripe's 2.9%</i>:</p>
+      <p>Stick with Venmo / check and these never apply — you only pay the subscription. Stripe transactions get a small fee on top of Stripe's 2.9%:</p>
       <table>
         <tr><td style="text-align:right"><b>Membership dues</b></td><td class="amt">0.5%</td></tr>
-        <tr><td style="text-align:right">Swim lessons, programs, snack-shack tabs</td><td class="amt">1.5%</td></tr>
-        <tr><td style="text-align:right">Parties, events, ticketed things</td><td class="amt">2.0%</td></tr>
-        <tr><td style="text-align:right"><b>Donations</b></td><td class="free">0% — always free</td></tr>
+        <tr><td style="text-align:right">Programs, swim lessons, snack-shack tabs</td><td class="amt">1.5%</td></tr>
+        <tr><td style="text-align:right">Parties, ticketed events</td><td class="amt">2.0%</td></tr>
+        <tr><td style="text-align:right"><b>Donations</b></td><td class="free">0% — always</td></tr>
         <tr><td style="text-align:right">Late fees, reactivation</td><td class="amt">5%</td></tr>
       </table>
-    </div>
-  </div>
-</section>
-
-<!-- ─────────── RECENTLY SHIPPED ─────────── -->
-<section class="shipped">
-  <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">What's new</span>
-      <h2>Recently shipped</h2>
-      <p>Built in the open with Bishop Estates as the daily-driver test club. New stuff lands roughly every week.</p>
-    </div>
-    <div class="ship-list">
-      <div class="ship-item">
-        <div class="ship-icon">🌡️</div>
-        <div class="ship-body">
-          <h4>Stripe-integrated fundraiser + GoFundMe-style leaderboard</h4>
-          <p>Donations by card auto-bump the thermometer in real-time. Recent-supporters list under the bar. Venmo and cash still work; admin records those by hand. 0% Poolside fee on donations, always.</p>
-        </div>
-      </div>
-      <div class="ship-item">
-        <div class="ship-icon">🎨</div>
-        <div class="ship-body">
-          <h4>Custom app icon builder</h4>
-          <p>Auto-generate from your logo, your club's initials, custom text or emoji on a brand-color background — or upload your own square image. Live preview in both square and circle.</p>
-        </div>
-      </div>
-      <div class="ship-item">
-        <div class="ship-icon">🤝</div>
-        <div class="ship-body">
-          <h4>Sponsor program</h4>
-          <p>Sell sponsor slots. Logos rotate in a strip on the home page; configurable pop-up cycles through them on app open (every load, once per session, or once per day).</p>
-        </div>
-      </div>
-      <div class="ship-item">
-        <div class="ship-icon">📋</div>
-        <div class="ship-body">
-          <h4>Application editor — one place</h4>
-          <p>Apply form heading, tiers, policies, application emails, season toggle — all under a single Application top tab. Set it before the season opens; never touch it again.</p>
-        </div>
-      </div>
-      <div class="ship-item">
-        <div class="ship-icon">👨‍👩‍👧</div>
-        <div class="ship-body">
-          <h4>Family management page on the member home</h4>
-          <p>Primary adds + edits + removes household members, with the legal-evidence PDF flow. Plus a transfer-primary danger zone for handing the role to another adult.</p>
-        </div>
-      </div>
-      <div class="ship-item">
-        <div class="ship-icon">🔒</div>
-        <div class="ship-body">
-          <h4>Stay logged in forever</h4>
-          <p>Sliding 5-year sessions. Members sign in once and the session rolls forward on every visit. Click the brand link to the public page, come back — no re-auth.</p>
-        </div>
-      </div>
-      <div class="ship-item">
-        <div class="ship-icon">💬</div>
-        <div class="ship-body">
-          <h4>Anonymous feedback box</h4>
-          <p>One-tap on the home page. Members send a photo + comment about a pool issue without attaching their name. Admin queue with status pills (new / in progress / resolved).</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ─────────── BUILT BY A REAL CLUB ─────────── -->
-<section class="proof">
-  <div class="container">
-    <div class="proof-card">
-      <blockquote>"Every feature in here exists because some board member at my own club told me they needed it — not because I dreamed it up in a vacuum."</blockquote>
-      <cite>— Doug, founder. Built and used by <a href="https://bishopestates.poolsideapp.com">Bishop Estates Cabana Club</a>.</cite>
     </div>
   </div>
 </section>
@@ -637,40 +449,36 @@
     </div>
     <div class="faq-grid">
       <details class="faq">
-        <summary>Do members need to download an app?</summary>
-        <p>No. Poolside is a progressive web app — members open the link on their phone and tap "Add to Home Screen" once. After that it looks and feels like a native app, with your custom club icon, no browser bars, and no App Store / Play Store gatekeeping.</p>
+        <summary>Can we just try it before signing up?</summary>
+        <p>Yes — open <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener">bishopestates.poolsideapp.com</a> on your phone. It's a real working club running on Poolside. Tap around the public landing, the apply form, the photo gallery, the donation flow — everything you'd see if you were a member at your own club.</p>
       </details>
       <details class="faq">
-        <summary>How does the gate unlock work?</summary>
-        <p>It's a <b>paid add-on</b> — not bundled with the base subscription, because keyfob panels vary wildly between vendors. We've certified the <b>MENGQI-CONTROL HXC-7000</b> end-to-end. For other panels, you submit your model and we evaluate one-by-one — on-site testing is required for new ones. Verified panels: $250 setup + $25/month. Custom integrations are quoted individually before any work starts.</p>
+        <summary>Do members need to download anything from an app store?</summary>
+        <p>No. Poolside is a progressive web app — they open the link on their phone and tap "Add to Home Screen" once. After that it looks and feels like a native app, with your custom club icon, no browser bars, and no App Store gatekeeping.</p>
       </details>
       <details class="faq">
         <summary>How does the donation thermometer work?</summary>
-        <p>Set a goal in Settings → Fundraiser. When members donate by card via Stripe, the webhook auto-inserts a verified donation row and the thermometer recomputes. For Venmo / cash / check, your admin records the donation in <i>Members → Donations</i> and the bar moves the moment they save. Donor names and messages render under the bar (GoFundMe-style) when they opt in.</p>
+        <p>Members donate by card (Stripe) or Venmo. Card donations auto-bump the thermometer the moment the payment clears. Venmo donations come in via the admin's "Record manual donation" button, which also bumps the bar. Donor names + messages render under the bar in a GoFundMe-style "Recent supporters" list (when donors opt in).</p>
       </details>
       <details class="faq">
-        <summary>How do members pay dues?</summary>
-        <p>However your club already does it. Stripe (auto-charge a saved card, instant approval), Venmo (admin verifies the payment), PayPal (link-based), check (manual). All four buttons appear automatically based on what you have configured. Stripe's the only one that supports auto-renewal; the rest you mark paid by hand.</p>
+        <summary>What about the gate? How does that work?</summary>
+        <p>It's a paid add-on for clubs with a compatible keyfob panel. We've certified the MENGQI-CONTROL HXC-7000 end-to-end. For other panels, you submit your model and we evaluate one by one — on-site testing required for new vendors. Verified panels run $250 setup + $25/month. We never promise a panel we haven't tested.</p>
       </details>
       <details class="faq">
         <summary>Where does our data live? Can we get it out?</summary>
-        <p>Your data lives in our Supabase Postgres database, mirrored to <em>your</em> Google Drive folder as PDFs (signed waivers) and a Sheet (master roster). You own the Drive folder. If you ever cancel, you keep all of that. The mirror is one-way, append-only — deleting something in Poolside never deletes from your Drive.</p>
-      </details>
-      <details class="faq">
-        <summary>Is there a free trial?</summary>
-        <p>The Free Forever tier IS the free trial — no time limit, no card, every feature included, capped at 20 households. Outgrow that and the paid tiers offer 14 days no-card before billing.</p>
-      </details>
-      <details class="faq">
-        <summary>Can we use our own domain?</summary>
-        <p>Yes — included in the Enterprise tier. Point <code>yourclub.com</code> at us, we handle the SSL. You'll still get an admin login at the standard <code>yourclub.poolsideapp.com</code> in case DNS ever flakes.</p>
+        <p>Your data lives in our Supabase Postgres database, mirrored to <em>your</em> Google Drive folder as PDFs (signed waivers) and a Sheet (master roster). You own the Drive folder. If you ever cancel, you keep all of it. The mirror is one-way — deleting in Poolside never deletes from your Drive.</p>
       </details>
       <details class="faq">
         <summary>What if our board volunteers aren't tech-y?</summary>
-        <p>That's exactly who we built it for. The admin pages avoid every piece of jargon we could find — no "slugs," "endpoints," "tokens" anywhere a board member would see. Help articles substitute your actual club name and URL so nothing reads like fill-in-the-blanks. Setup is a wizard, not a manual.</p>
+        <p>That's exactly who this is for. The admin pages avoid jargon ("slug," "endpoint," "token") wherever a board member would see them. Help articles substitute your real club name and URL. Setup is a wizard, not a manual.</p>
       </details>
       <details class="faq">
         <summary>What happens when the treasurer rotates?</summary>
-        <p>The new treasurer creates an admin account in 30 seconds, the old one gets deactivated, and every signed waiver / payment record / household roster is exactly where the old one left it. No "where did Karen save the spreadsheet" archaeology.</p>
+        <p>The new treasurer creates an admin account, the old one gets deactivated, every signed waiver / payment record / household roster is exactly where the old one left it. No "where did Karen save the spreadsheet" archaeology.</p>
+      </details>
+      <details class="faq">
+        <summary>Money-back guarantee?</summary>
+        <p>If you're not happy in the first 30 days of a paid plan, email <a href="mailto:doug.frevele@gmail.com">doug.frevele@gmail.com</a> and we'll refund the subscription. No "exit interview." We'd rather you find the right tool than feel stuck.</p>
       </details>
     </div>
   </div>
@@ -679,11 +487,12 @@
 <!-- ─────────── FINAL CTA ─────────── -->
 <section class="cta-strip">
   <div class="container">
-    <h2>Try it for one season.</h2>
-    <p>Free Forever if you stay under 20 households. 30-day money-back on paid plans. No "exit interview" if it isn't a fit — just tell us and we refund.</p>
+    <h2>Two ways to start.</h2>
+    <p>Open a real club to see what it feels like, or sign up free and have your own subdomain in two minutes.</p>
     <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
-      <a href="/signup.html" class="btn btn-sun">Start free →</a>
-      <a href="/pricing.html" class="btn btn-ghost" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.4)">See full pricing breakdown</a>
+      <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener" class="btn btn-ghost">See a real club →</a>
+      <a href="/signup.html" class="btn">Start free</a>
+      <a href="mailto:doug.frevele@gmail.com?subject=Poolside%20demo" class="btn btn-ghost">Email Doug for a walkthrough</a>
     </div>
   </div>
 </section>
@@ -694,10 +503,11 @@
     <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
     <div class="links">
       <a href="#features">Features</a>
+      <a href="#refer">Refer a club</a>
       <a href="#pricing">Pricing</a>
       <a href="/pricing.html">Why this price</a>
-      <a href="/signup.html">Start free</a>
-      <a href="mailto:doug.frevele@gmail.com">Email support</a>
+      <a href="https://bishopestates.poolsideapp.com" target="_blank" rel="noopener">See it live</a>
+      <a href="mailto:doug.frevele@gmail.com">Email Doug</a>
     </div>
   </div>
   <div class="container" style="margin-top:18px;font-size:12px;color:var(--muted)">
