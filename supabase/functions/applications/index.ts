@@ -386,8 +386,17 @@ Deno.serve(async (req) => {
     // ── Submit-confirmation email — fires immediately so the applicant
     // doesn't sit in suspense. Template is registry-backed; admin can
     // customize per-tenant via Emails admin page.
+    //
+    // IMPORTANT: For Stripe paths (stripe + stripe_plan), we skip this
+    // entirely — the Stripe webhook auto-approves within seconds-minutes
+    // and fires a combined "got your application + payment confirmed"
+    // welcome email instead, with the legal-evidence PDF attached. Two
+    // emails for one continuous flow felt redundant. (If the applicant
+    // abandons checkout, they get no email — admins see a pending unpaid
+    // application in Members > Pipeline and can nudge from there.)
     const primary_email = email;
-    if (primary_email) {
+    const skipReceivedEmail = payment_method === 'stripe' || payment_method === 'stripe_plan';
+    if (primary_email && !skipReceivedEmail) {
       try {
         const { renderAndSend } = await import('../_shared/email_template.ts');
         const { data: settingsRow2 } = await sb.from('settings').select('value').eq('tenant_id', tenant.id).maybeSingle();
@@ -775,6 +784,33 @@ Deno.serve(async (req) => {
         templateKey = 'application_approved_unpaid_venmo';
       }
 
+      // For Stripe paths, the welcome email IS the receipt — the submit
+      // handler suppresses the "application received" email so the
+      // applicant gets exactly one email for the whole flow. We attach
+      // the legal-evidence PDF (frozen at submit time) here so it still
+      // reaches the family.
+      let welcomeAttachments: Array<{ filename: string; content: string; contentType?: string }> | undefined;
+      if (app.payment_status === 'paid' && (app.payment_method === 'stripe' || app.payment_method === 'stripe_plan')) {
+        try {
+          const { loadApplicationForPdf } = await import('../_shared/sync_application.ts');
+          const { renderApplicationPdf } = await import('../_shared/application_pdf.ts');
+          const { bytesToBase64 } = await import('../_shared/send_email.ts');
+          const pdfData = await loadApplicationForPdf(sb, TID, id);
+          if (pdfData) {
+            const pdfBytes = await renderApplicationPdf(pdfData);
+            const safeFamily = (app.family_name || 'Family').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
+            const dateStr = new Date().toISOString().slice(0, 10);
+            welcomeAttachments = [{
+              filename: `${safeFamily}-application-${dateStr}.pdf`,
+              content: bytesToBase64(pdfBytes),
+              contentType: 'application/pdf',
+            }];
+          }
+        } catch (e) {
+          console.error('welcome PDF attach (non-fatal):', (e as Error).message);
+        }
+      }
+
       try {
         const { renderAndSend } = await import('../_shared/email_template.ts');
         const r = await renderAndSend(sb, {
@@ -786,6 +822,7 @@ Deno.serve(async (req) => {
             venmo_handle: venmo ? String(venmo) : '',
             club_url: clubUrl,
           },
+          attachments: welcomeAttachments,
         });
         welcome_sent = r.sent;
       } catch { /* fall through to dev mode */ }

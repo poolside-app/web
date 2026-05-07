@@ -140,18 +140,21 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
   },
   {
     key: 'application_approved_stripe_paid',
-    label: 'Welcome — Stripe paid',
-    description: 'Sent when an application is approved AND the member already paid via Stripe (auto-approve via webhook).',
+    label: 'Welcome — Stripe paid (combined receipt + welcome)',
+    description: 'Sent when an applicant pays via Stripe — single email confirms application received AND payment cleared. The "application received" email is suppressed for Stripe paths so the applicant gets exactly one email for the whole flow. Legal-evidence PDF is attached.',
     audience: 'applicant',
     variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'Payment confirmed — welcome to {{tenant_name}}!',
+    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
     default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Payment confirmed — welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 16px;color:#64748b;line-height:1.55">Hi {{primary_name}} — your card payment cleared and your membership is active. Sign in below to see your member home.</p>
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application <b>and</b> your card payment cleared. Your membership is active. One email, all set.</p>
       <p style="margin:24px 0">
         <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
       </p>
-      <p style="margin:0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, ask for a fresh one at <a href="{{club_url}}/m/login.html">your member login page</a>.</p>
+      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the verbatim text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, request a fresh one at <a href="{{club_url}}/m/login.html">your member login page</a>.</p>
     `),
   },
   {
@@ -190,17 +193,20 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
   },
   {
     key: 'application_approved_plan_first',
-    label: 'Welcome — first installment paid',
-    description: 'Sent when an applicant\'s first Stripe-plan installment clears (auto-approve).',
+    label: 'Welcome — first installment paid (combined receipt + welcome)',
+    description: 'Sent when an applicant\'s first Stripe-plan installment clears. Single email confirms application received AND first installment paid AND second installment scheduled. The "application received" email is suppressed for plan paths. Legal-evidence PDF attached.',
     audience: 'applicant',
     variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'First installment paid — welcome to {{tenant_name}}!',
+    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
     default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ First installment paid — you're in!</h2>
-      <p style="margin:0 0 16px;color:#64748b;line-height:1.55">Hi {{primary_name}} — your first installment cleared and your membership is active. Your second installment will auto-charge on the final due date and we'll email a reminder before each charge.</p>
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application <b>and</b> your first installment cleared. Your membership is active. Your second installment will auto-charge on the final due date and we'll email a reminder before then.</p>
       <p style="margin:24px 0">
         <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
       </p>
+      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the verbatim text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
     `),
   },
   {
