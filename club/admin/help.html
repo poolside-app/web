@@ -420,12 +420,31 @@ const ARTICLE_FILES = [
 
 let ARTICLES = []; // { slug, title, category, body, html, plainText }
 
+// Help articles are written generically with <your-slug> as a placeholder
+// because they live in the repo and are shared across all clubs. At
+// render time, swap that for the admin's actual subdomain so they don't
+// see "<your-slug>" code-syntax anywhere — they see their real URL.
+function expandTenantPlaceholders(text) {
+  const host = window.location.hostname;
+  const m = host.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  const slug = m && m[1] && m[1] !== 'www' ? m[1] : null;
+  if (!slug) return text;
+  // Match the placeholder in any of these forms:
+  //   <your-slug>            (literal in markdown source)
+  //   &lt;your-slug&gt;       (after markdown→HTML)
+  //   {your-slug}            (alternate)
+  return text
+    .replace(/<your-slug>/g, slug)
+    .replace(/&lt;your-slug&gt;/g, slug)
+    .replace(/\{your-slug\}/g, slug);
+}
+
 async function loadArticles() {
   const results = await Promise.all(ARTICLE_FILES.map(async fname => {
     try {
       const res = await fetch(`/club/admin/help/articles/${fname}`, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`status ${res.status}`);
-      const raw = await res.text();
+      const raw = expandTenantPlaceholders(await res.text());
       return parseArticle(fname.replace(/\.md$/, ''), raw);
     } catch (e) {
       console.error(`Failed to load ${fname}:`, e);

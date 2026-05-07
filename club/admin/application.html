@@ -121,7 +121,7 @@
   <section class="panel on" id="panel-general">
     <div class="card">
       <h2>Apply form basics</h2>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Visible at <code>https://&lt;your-slug&gt;.poolsideapp.com/apply.html</code>.</p>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">This is your public sign-up page — share the link in emails, on flyers, on your neighborhood Facebook group. <a href="" id="g-apply-link" target="_blank" rel="noopener" style="font-weight:600;word-break:break-all">…</a></p>
       <label>Page heading <span style="color:var(--muted);font-weight:500;font-size:11px">(replaces "Apply for membership"; leave blank to keep default)</span></label>
       <input type="text" id="g-heading" placeholder="2026 Membership Application">
 
@@ -222,9 +222,19 @@
     </div>
     <label>Subject</label>
     <input id="em-subject" type="text">
-    <label>Email content <span style="color:var(--muted);font-weight:500;font-size:11px">(supports HTML — bold with &lt;b&gt;, links with &lt;a href="..."&gt;, line breaks with &lt;br&gt;)</span></label>
+    <label>Email message</label>
     <textarea id="em-body" style="min-height:260px;font-family:Menlo,Consolas,monospace;font-size:12px"></textarea>
     <p id="em-vars" style="font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5"></p>
+    <details style="margin-top:8px">
+      <summary style="cursor:pointer;font-size:12px;color:var(--blue);font-weight:600">Need bold text or a link? Tap for tips</summary>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7;padding:10px 12px;background:var(--bg-2);border-radius:8px">
+        These work like the basic formatting in any email tool:<br>
+        • <b>Bold:</b> wrap text in <span style="font-family:Menlo,Consolas,monospace">&lt;b&gt;words&lt;/b&gt;</span><br>
+        • <b>Link:</b> <span style="font-family:Menlo,Consolas,monospace">&lt;a href="https://..."&gt;click here&lt;/a&gt;</span><br>
+        • <b>New line:</b> <span style="font-family:Menlo,Consolas,monospace">&lt;br&gt;</span> at the end of a line<br>
+        Anything you don't add tags around will appear as plain text.
+      </div>
+    </details>
     <div class="err" id="em-err"></div>
     <div class="modal-foot">
       <button class="btn btn-ghost left" onclick="Emails.resetToDefault()">Reset to default</button>
@@ -267,6 +277,15 @@ async function call(url, action, extra = {}) {
   if (res.status === 401) { logout(); throw new Error('Session expired'); }
   return res.json();
 }
+
+// Paint the live apply URL into the General panel so the admin sees the
+// actual page they'd share — not "<your-slug>" placeholder syntax.
+(function paintApplyLink() {
+  const a = document.getElementById('g-apply-link');
+  if (!a) return;
+  const url = `${window.location.protocol}//${window.location.host}/apply.html`;
+  a.textContent = url; a.href = url;
+})();
 
 // ── Sub-tab switcher ─────────────────────────────────────────────────────
 document.querySelectorAll('#subtabs button').forEach(b => {
@@ -513,6 +532,17 @@ const Emails = (() => {
       document.getElementById('emails-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
     }
   }
+  // Plain-English labels for placeholders so admins see "Member's name"
+  // instead of "{{primary_name}}". Same map as emails.html.
+  const VAR_LABELS = {
+    tenant_name:'Club name', primary_name:"Member's name", family_name:'Family name',
+    tier_label:'Tier name', tier_price:'Tier price', venmo_handle:'Venmo handle',
+    num_adults:'Adults count', num_kids:'Kids count', payment_method:'Payment method',
+    first_amount:'1st installment $', second_amount:'2nd installment $', final_due_date:'Final due date',
+    sign_in_link:'Sign-in link', admin_notes:"Note from board", club_url:'Club website URL',
+  };
+  function labelFor(v) { return VAR_LABELS[v] || v.replace(/_/g, ' '); }
+
   function openEdit(key) {
     const t = TEMPLATES.find(x => x.key === key); if (!t) return;
     EDITING = t;
@@ -522,7 +552,28 @@ const Emails = (() => {
     document.getElementById('em-enabled').checked = ovr.enabled !== false;
     setVal('em-subject', ovr.subject ?? t.default_subject);
     setVal('em-body',    ovr.body_html ?? t.default_body_html);
-    document.getElementById('em-vars').textContent = `Variables you can use: ${(t.variables || []).map(v => '{{' + v + '}}').join(', ') || '(none)'}`;
+    // Render variables as clickable chips that insert into the body at the
+    // cursor — friendlier than dumping {{tenant_name}}, {{primary_name}}…
+    const vars = t.variables || [];
+    const varsEl = document.getElementById('em-vars');
+    if (!vars.length) {
+      varsEl.innerHTML = '<i style="color:var(--muted)">No placeholders for this email.</i>';
+    } else {
+      varsEl.innerHTML = `<b style="color:var(--text);font-weight:600">Click to insert:</b> ` + vars.map(v => `
+        <button type="button" data-var="${escapeHtml(v)}" title="Inserts as {{${escapeHtml(v)}}} — auto-fills when the email sends"
+                style="display:inline-block;margin:2px 4px 2px 0;padding:3px 9px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font:600 11px 'Inter';color:#92400e;cursor:pointer">
+          ${escapeHtml(labelFor(v))}
+        </button>`).join('');
+      varsEl.querySelectorAll('button[data-var]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const ta = document.getElementById('em-body');
+          const ins = '{{' + btn.dataset.var + '}}';
+          const start = ta.selectionStart || 0, end = ta.selectionEnd || 0;
+          ta.value = ta.value.slice(0, start) + ins + ta.value.slice(end);
+          ta.focus(); ta.selectionStart = ta.selectionEnd = start + ins.length;
+        });
+      });
+    }
     document.getElementById('em-err').classList.remove('show');
     document.getElementById('em-scrim').classList.add('open');
   }

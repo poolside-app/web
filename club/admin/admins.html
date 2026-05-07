@@ -395,7 +395,13 @@ async function sendInvite() {
     if (r.invite_email_sent) {
       successEl.innerHTML = `<b>Invite sent to ${escapeHtml(email)}.</b> They'll get an email with a temporary password and a link to sign in.`;
     } else {
-      successEl.innerHTML = `<b>Invite created.</b> Email didn't go through — share these manually:<br><br>Sign in at <code>${escapeHtml(window.location.origin)}/club/admin/login.html</code> with email <code>${escapeHtml(email)}</code> and password <code>${escapeHtml(r.temp_password)}</code>.<br><br>They'll be asked to set their own password on first sign-in.`;
+      successEl.innerHTML = `<b>Invite created — but the email didn't go through.</b> Send these to ${escapeHtml(name || email)} another way (text, in person, etc.):<br><br>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;line-height:1.7">
+          <b>Sign-in page:</b> <a href="${escapeHtml(window.location.origin)}/club/admin/login.html" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">${escapeHtml(window.location.origin.replace(/^https?:\/\//, ''))}/club/admin/login.html</a><br>
+          <b>Email:</b> ${escapeHtml(email)}<br>
+          <b>Temporary password:</b> <span style="font-family:Menlo,Consolas,monospace;background:var(--bg-2);padding:2px 8px;border-radius:6px">${escapeHtml(r.temp_password)}</span>
+        </div>
+        <p style="margin:10px 0 0;font-size:13px;color:var(--muted)">They'll be asked to set their own password on first sign-in.</p>`;
     }
     successEl.classList.add('show');
 

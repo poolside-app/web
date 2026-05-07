@@ -129,6 +129,42 @@ const ICONS = {
   'event.create': '📅', 'party.approve': '🎉',
 };
 function iconFor(kind) { return ICONS[kind] || '📝'; }
+// Humanize the dotted-event-kind ("application.approve") into something
+// a board member can read at a glance ("Application approved"). Falls
+// back to a sentence-cased capitalize-and-replace if there's no
+// explicit label registered.
+const KIND_LABELS = {
+  'application.submit': 'New application submitted',
+  'application.approve': 'Application approved',
+  'application.reject': 'Application rejected',
+  'application.verify_payment': 'Payment verified',
+  'application.auto_abandoned': 'Application abandoned (auto-cleaned)',
+  'household.add': 'Household added',
+  'household.update': 'Household updated',
+  'household.transfer_primary': 'Primary contact transferred',
+  'household_member.add': 'Household member added',
+  'household_member.member_added': 'Household member added (by primary)',
+  'household_member.remove': 'Household member removed',
+  'photo.submit': 'Photo submitted',
+  'photo.approve': 'Photo approved',
+  'photo.reject': 'Photo rejected',
+  'party.request': 'Party requested',
+  'party.approve': 'Party approved',
+  'party.reject': 'Party rejected',
+  'admin.invite': 'Admin invited',
+  'admin.signin': 'Admin signed in',
+  'admin.deactivate': 'Admin deactivated',
+  'gate.unlock': 'Gate unlocked',
+  'gate.config_change': 'Gate settings changed',
+};
+function humanizeKind(kind) {
+  if (!kind) return '';
+  if (KIND_LABELS[kind]) return KIND_LABELS[kind];
+  // Fallback: turn "foo.bar_baz" → "Foo bar baz"
+  return String(kind)
+    .replace(/[._]/g, ' ')
+    .replace(/^./, c => c.toUpperCase());
+}
 
 function fmtTime(iso) { return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
 function fmtDay(iso) {
@@ -173,8 +209,8 @@ function render(entries) {
           <div class="ts">${escapeHtml(fmtTime(e.created_at))}</div>
           <div class="icon">${iconFor(e.kind)}</div>
           <div class="body">
-            <div class="summary">${escapeHtml(e.summary || e.kind)}</div>
-            <div class="meta"><span class="pill ${escapeHtml(e.actor_kind || '')}">${escapeHtml(e.actor_kind || '?')}</span> · ${escapeHtml(e.entity_type)} · <code>${escapeHtml(e.kind)}</code></div>
+            <div class="summary">${escapeHtml(e.summary || humanizeKind(e.kind))}</div>
+            <div class="meta"><span class="pill ${escapeHtml(e.actor_kind || '')}">${escapeHtml(e.actor_kind || '?')}</span> · ${escapeHtml(humanizeKind(e.kind))}</div>
           </div>
         </div>
       `);

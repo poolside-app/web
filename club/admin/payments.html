@@ -162,7 +162,7 @@
 
       <div class="card" id="drive-card">
         <h2>📁 Backups & archive (Google Drive)</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver into <code>{Year} Sign-ups/</code>, plus one row appended to the master roster spreadsheet. <b>One-way only</b> — anything deleted in this app is <i>never</i> deleted from your Drive.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
         <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
@@ -358,7 +358,7 @@ async function loadStripeStatus() {
     const r = await api(STRIPE_URL, 'status');
     if (!r.ok) throw new Error(r.error || 'Stripe status failed');
     if (!r.stripe_configured) {
-      box.innerHTML = '<b>Platform Stripe not configured yet.</b> Doug needs to set <code>STRIPE_SECRET_KEY</code> on the platform before clubs can connect.';
+      box.innerHTML = '<b>Card payments aren\'t available yet.</b> The Poolside team is still wrapping up the platform-side Stripe setup — please reach out to support if you want to start accepting cards.';
       return;
     }
     if (!r.connected) {
@@ -367,12 +367,12 @@ async function loadStripeStatus() {
       return;
     }
     if (!r.charges_enabled) {
-      box.innerHTML = `<b>Stripe account created</b> (id: <code>${escapeHtml(r.account_id || '')}</code>) but onboarding isn't finished — finish in Stripe to start accepting payments.`;
+      box.innerHTML = `<b>Stripe account created</b> but onboarding isn't finished. Click <b>Resume setup</b> to finish entering your business info — once that's done, you can start accepting card payments.`;
       resumeBtn.style.display = 'inline-block';
       syncBtn.style.display = 'inline-block';
       return;
     }
-    box.innerHTML = `✓ <b>Stripe ready.</b> Account <code>${escapeHtml(r.account_id || '')}</code> · charges enabled${r.payouts_enabled ? ' · payouts enabled' : ' · payouts pending'}.`;
+    box.innerHTML = `✓ <b>Stripe ready.</b> You're set up to accept card payments${r.payouts_enabled ? ' and payouts to your bank are active' : '. Payouts to your bank are still pending verification'}.`;
     syncBtn.style.display = 'inline-block';
   } catch (e) {
     box.innerHTML = `<b>Couldn't load Stripe status:</b> ${escapeHtml(e.message)}`;
@@ -537,7 +537,7 @@ async function loadDriveStatus() {
     const r = await api(DRIVE_URL, 'status');
     if (!r.ok) throw new Error(r.error || 'Drive status failed');
     if (!r.platform_configured) {
-      box.innerHTML = '<b>Platform Google OAuth not configured yet.</b> The platform owner needs to set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> on Supabase before clubs can connect Drive.';
+      box.innerHTML = '<b>Google Drive backups aren\'t available yet.</b> The Poolside team is still finishing the platform-side setup — please reach out to support if you want auto-archive turned on.';
       return;
     }
     if (!r.connected) {

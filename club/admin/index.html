@@ -232,7 +232,7 @@ document.getElementById('signout').addEventListener('click', logout);
   document.getElementById('main').innerHTML = `
     <div class="card">
       <h1>${escapeHtml(tenant.display_name)}</h1>
-      <p class="lede">Admin dashboard — <code>${escapeHtml(tenant.slug)}.poolsideapp.com</code></p>
+      <p class="lede">Admin dashboard — your club is at <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">${escapeHtml(tenant.slug)}.poolsideapp.com</a></p>
       <div class="grid">
         <div class="stat"><div class="lbl">Status</div><div class="val"><span class="pill ${escapeHtml(tenant.status)}">${escapeHtml(statusLabel)}</span></div></div>
         <div class="stat"><div class="lbl">Plan</div><div class="val">${escapeHtml(planLabel)}</div></div>
