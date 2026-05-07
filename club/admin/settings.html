@@ -187,12 +187,65 @@
 
     <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
     <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">App icon <span style="color:var(--muted);font-weight:500;font-size:12px">— shown when members "Add to Home Screen"</span></h3>
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;line-height:1.55">Generated from your logo + primary color. If you haven't uploaded a logo, we use the first two letters of your club name on a colored background. Saving regenerates the icon when these change.</p>
-    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-      <canvas id="icon-preview" width="192" height="192" style="width:96px;height:96px;border-radius:18px;border:1px solid var(--border);background:var(--bg-2)"></canvas>
-      <div style="flex:1;min-width:200px">
-        <div id="icon-status" style="font-size:12px;color:var(--muted);margin-bottom:8px">Live preview — saves when you click Save.</div>
-        <button type="button" class="btn-ghost btn" onclick="regenerateAndSaveIcons()" style="font-size:12px">Regenerate &amp; save icon now</button>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;line-height:1.55">This is the little square that lands on a member's phone home screen when they install your club. Pick what works — most clubs are happy with the auto-generated version.</p>
+
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <!-- Live previews — square (Android default) + circle (some Androids
+           and the popup) so admins see both shapes at once. -->
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px">
+        <canvas id="icon-preview" width="192" height="192" style="width:104px;height:104px;border-radius:22px;border:1px solid var(--border);background:var(--bg-2)"></canvas>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Square</div>
+      </div>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px">
+        <canvas id="icon-preview-circle" width="192" height="192" style="width:104px;height:104px;border-radius:50%;border:1px solid var(--border);background:var(--bg-2)"></canvas>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase">Circle</div>
+      </div>
+
+      <div style="flex:1;min-width:240px">
+        <label style="margin-top:0">Source</label>
+        <div style="display:grid;gap:6px;margin-top:2px">
+          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
+            <input type="radio" name="icon_mode" value="logo" onchange="onIconModeChange()"> Use my uploaded logo
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
+            <input type="radio" name="icon_mode" value="initials" onchange="onIconModeChange()"> Use my club's initials
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
+            <input type="radio" name="icon_mode" value="text" onchange="onIconModeChange()"> Custom text or emoji
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font:14px Inter;color:var(--text);text-transform:none;letter-spacing:0;font-weight:500;margin:0;cursor:pointer">
+            <input type="radio" name="icon_mode" value="upload" onchange="onIconModeChange()"> Upload my own square image
+          </label>
+        </div>
+
+        <div id="icon-text-row" style="display:none;margin-top:12px">
+          <label>What to show</label>
+          <input type="text" id="icon_text" maxlength="4" placeholder="BE or 🏊" style="font:600 18px Inter;letter-spacing:.04em" oninput="paintIconPreview()">
+          <p style="font-size:11px;color:var(--muted);margin:4px 0 0">1–4 characters. Try initials, a single letter, or an emoji.</p>
+        </div>
+
+        <div id="icon-color-row" style="margin-top:12px">
+          <div class="row2">
+            <div>
+              <label>Background color</label>
+              <input type="color" id="icon_bg_color" value="#0a3b5c" style="width:100%;height:40px;padding:2px;cursor:pointer" oninput="paintIconPreview()">
+            </div>
+            <div id="icon-fg-color-wrap">
+              <label>Text color</label>
+              <input type="color" id="icon_fg_color" value="#ffffff" style="width:100%;height:40px;padding:2px;cursor:pointer" oninput="paintIconPreview()">
+            </div>
+          </div>
+          <button type="button" class="btn-ghost btn" style="margin-top:8px;font-size:12px" onclick="resetIconColors()">Match my brand color</button>
+        </div>
+
+        <div id="icon-upload-row" style="display:none;margin-top:12px">
+          <label>Upload icon (PNG or JPG, square works best)</label>
+          <input type="file" id="icon_upload_file" accept="image/png,image/jpeg,image/webp" onchange="uploadCustomIcon(this)">
+          <p id="icon-upload-status" style="font-size:11px;color:var(--muted);margin:4px 0 0">A square image works best — we'll center it on a colored background otherwise.</p>
+        </div>
+
+        <div id="icon-status" style="font-size:12px;color:var(--muted);margin-top:14px">Live preview — saves when you click Save below.</div>
+        <button type="button" class="btn-ghost btn" onclick="regenerateAndSaveIcons()" style="font-size:12px;margin-top:6px">Save app icon now</button>
       </div>
     </div>
   </div>
@@ -451,28 +504,59 @@ let ICON_FONT_READY = false;
   document.fonts.ready.then(() => { ICON_FONT_READY = true; paintIconPreview(); });
 })();
 
+// Custom-icon state. icon_mode picks the source pipeline; the rest are
+// per-mode tweaks. Persisted on save into settings.value.branding so the
+// admin doesn't lose their picks across visits.
+let UPLOAD_BITMAP = null;        // cached <img> for an uploaded custom icon
+let UPLOAD_URL_RENDERED = '';
+
+function currentIconMode() {
+  const r = document.querySelector('input[name="icon_mode"]:checked');
+  return r ? r.value : 'logo';
+}
 function fingerprintIconInputs() {
-  return [val('logo_url') || '', val('primary_color') || '', val('display_name') || (TENANT?.display_name || '')].join('|');
+  return [
+    currentIconMode(),
+    val('logo_url') || '',
+    val('primary_color') || '',
+    val('display_name') || (TENANT?.display_name || ''),
+    val('icon_text') || '',
+    val('icon_bg_color') || '',
+    val('icon_fg_color') || '',
+    LAST_SETTINGS?.branding?.icon_upload_url || '',
+  ].join('|');
 }
 
-async function loadLogoIfNeeded() {
-  const url = val('logo_url');
-  if (!url) { LOGO_BITMAP = null; LAST_LOGO_URL_RENDERED = ''; return null; }
-  if (url === LAST_LOGO_URL_RENDERED && LOGO_BITMAP) return LOGO_BITMAP;
+async function loadBitmap(url, lastRenderedRef, cacheKey) {
+  // Generic image-loader with cross-origin so we can read pixels back.
+  if (!url) return null;
   try {
-    LOGO_BITMAP = await new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('Image load failed'));
       img.src = url;
     });
-    LAST_LOGO_URL_RENDERED = url;
-  } catch {
-    LOGO_BITMAP = null;
-    LAST_LOGO_URL_RENDERED = '';
-  }
+  } catch { return null; }
+}
+
+async function loadLogoIfNeeded() {
+  const url = val('logo_url');
+  if (!url) { LOGO_BITMAP = null; LAST_LOGO_URL_RENDERED = ''; return null; }
+  if (url === LAST_LOGO_URL_RENDERED && LOGO_BITMAP) return LOGO_BITMAP;
+  LOGO_BITMAP = await loadBitmap(url);
+  LAST_LOGO_URL_RENDERED = LOGO_BITMAP ? url : '';
   return LOGO_BITMAP;
+}
+
+async function loadUploadIfNeeded() {
+  const url = LAST_SETTINGS?.branding?.icon_upload_url;
+  if (!url) { UPLOAD_BITMAP = null; UPLOAD_URL_RENDERED = ''; return null; }
+  if (url === UPLOAD_URL_RENDERED && UPLOAD_BITMAP) return UPLOAD_BITMAP;
+  UPLOAD_BITMAP = await loadBitmap(url);
+  UPLOAD_URL_RENDERED = UPLOAD_BITMAP ? url : '';
+  return UPLOAD_BITMAP;
 }
 
 function clubInitials() {
@@ -482,14 +566,42 @@ function clubInitials() {
   return name.slice(0, 2).toUpperCase();
 }
 
+function drawTextOnCanvas(ctx, size, text, fgColor) {
+  ctx.fillStyle = fgColor || '#ffffff';
+  // Auto-shrink the font when there are 3-4 chars or the text is wide
+  // (e.g. an emoji). Aim for ~62% canvas-width fill so it doesn't crowd
+  // the maskable safe area.
+  const fontFamily = ICON_FONT_READY ? "'Inter','Fraunces',system-ui,sans-serif" : 'system-ui,sans-serif';
+  let pct = text.length <= 1 ? 0.56 : text.length <= 2 ? 0.42 : text.length <= 3 ? 0.32 : 0.26;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold ${Math.round(size * pct)}px ${fontFamily}`;
+  // Tiny bias upward — text-baseline:middle with bold sans renders
+  // visually low otherwise.
+  ctx.fillText(text, size / 2, size * 0.54);
+}
+
 function drawIconAt(canvas, size) {
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext('2d');
-  const color = val('primary_color') || '#0a3b5c';
-  ctx.fillStyle = color;
+  const mode = currentIconMode();
+  const bg = (mode === 'logo' || mode === 'initials' ? val('primary_color') : val('icon_bg_color')) || val('primary_color') || '#0a3b5c';
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, size, size);
 
-  if (LOGO_BITMAP) {
+  if (mode === 'upload' && UPLOAD_BITMAP) {
+    // Cover-fit so a square image fills the whole canvas; non-square
+    // images get center-cropped to square. The uploaded image IS the
+    // icon — no overlay text or padding.
+    const ratio = UPLOAD_BITMAP.width / UPLOAD_BITMAP.height;
+    let sw, sh, sx, sy;
+    if (ratio > 1) { sh = UPLOAD_BITMAP.height; sw = UPLOAD_BITMAP.height; sx = (UPLOAD_BITMAP.width - sw) / 2; sy = 0; }
+    else            { sw = UPLOAD_BITMAP.width;  sh = UPLOAD_BITMAP.width;  sx = 0; sy = (UPLOAD_BITMAP.height - sh) / 2; }
+    ctx.drawImage(UPLOAD_BITMAP, sx, sy, sw, sh, 0, 0, size, size);
+    return;
+  }
+
+  if (mode === 'logo' && LOGO_BITMAP) {
     // Fit logo inside the maskable safe area (~80% of canvas) with padding.
     const pad = size * 0.16;
     const inner = size - pad * 2;
@@ -498,20 +610,69 @@ function drawIconAt(canvas, size) {
     if (ratio > 1) { w = inner; h = inner / ratio; }
     else            { h = inner; w = inner * ratio; }
     ctx.drawImage(LOGO_BITMAP, (size - w) / 2, (size - h) / 2, w, h);
-  } else {
-    ctx.fillStyle = '#ffffff';
-    const fontFamily = ICON_FONT_READY ? "'Inter','Fraunces',system-ui,sans-serif" : 'system-ui,sans-serif';
-    ctx.font = `bold ${Math.round(size * 0.42)}px ${fontFamily}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(clubInitials(), size / 2, size * 0.54);
+    return;
   }
+
+  // Text mode (or initials fallback when logo missing).
+  const text = (mode === 'text' && val('icon_text')) ? val('icon_text') : clubInitials();
+  const fg = (mode === 'text') ? (val('icon_fg_color') || '#ffffff') : '#ffffff';
+  drawTextOnCanvas(ctx, size, text, fg);
 }
 
 async function paintIconPreview() {
-  await loadLogoIfNeeded();
-  const c = document.getElementById('icon-preview');
-  if (c) drawIconAt(c, 192);
+  if (currentIconMode() === 'logo') await loadLogoIfNeeded();
+  if (currentIconMode() === 'upload') await loadUploadIfNeeded();
+  const sq = document.getElementById('icon-preview');
+  const ci = document.getElementById('icon-preview-circle');
+  if (sq) drawIconAt(sq, 192);
+  if (ci) drawIconAt(ci, 192);
+}
+
+function onIconModeChange() {
+  const mode = currentIconMode();
+  document.getElementById('icon-text-row').style.display    = mode === 'text'   ? 'block' : 'none';
+  document.getElementById('icon-upload-row').style.display  = mode === 'upload' ? 'block' : 'none';
+  document.getElementById('icon-color-row').style.display   = mode === 'upload' ? 'none'  : 'block';
+  document.getElementById('icon-fg-color-wrap').style.display = mode === 'logo' ? 'none' : 'block';
+  paintIconPreview();
+}
+
+function resetIconColors() {
+  setVal('icon_bg_color', val('primary_color') || '#0a3b5c');
+  setVal('icon_fg_color', '#ffffff');
+  paintIconPreview();
+}
+
+async function uploadCustomIcon(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const status = document.getElementById('icon-upload-status');
+  if (file.size > MAX_UPLOAD_BYTES) {
+    status.textContent = 'File too large — keep it under 10 MB.'; input.value = ''; return;
+  }
+  status.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] || '');
+      r.onerror = () => rej(new Error('Could not read file'));
+      r.readAsDataURL(file);
+    });
+    const t = token(); if (!t) { logout(); return; }
+    const res = await fetch(UPLOAD_URL, {
+      method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${t}`},
+      body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Upload failed');
+    LAST_SETTINGS = LAST_SETTINGS || {};
+    LAST_SETTINGS.branding = { ...(LAST_SETTINGS.branding || {}), icon_upload_url: data.url };
+    UPLOAD_BITMAP = null; UPLOAD_URL_RENDERED = '';
+    await paintIconPreview();
+    status.textContent = '✓ Uploaded — preview updated. Click "Save app icon now" to apply.';
+  } catch (e) {
+    status.textContent = e.message || 'Upload failed';
+  }
 }
 
 async function canvasToBase64(canvas) {
@@ -541,7 +702,10 @@ async function uploadGeneratedIcon(canvas, filename) {
 // Render 192 + 512, upload both, return { icon_192_url, icon_512_url }.
 // Caller persists those into branding.
 async function generateAndUploadIcons() {
-  await loadLogoIfNeeded();
+  // Make sure the relevant bitmap is loaded for the active mode.
+  const mode = currentIconMode();
+  if (mode === 'logo')   await loadLogoIfNeeded();
+  if (mode === 'upload') await loadUploadIfNeeded();
   const c192 = document.createElement('canvas');
   const c512 = document.createElement('canvas');
   drawIconAt(c192, 192);
@@ -559,7 +723,18 @@ async function regenerateAndSaveIcons() {
   try {
     const icons = await generateAndUploadIcons();
     LAST_SETTINGS = LAST_SETTINGS || {};
-    LAST_SETTINGS.branding = { ...(LAST_SETTINGS.branding || {}), ...icons };
+    // Merge in BOTH the freshly-generated PNG URLs AND the current
+    // builder picks (mode/text/colors) so the admin's choices persist
+    // even when they only hit "Save app icon now" without doing the
+    // main form Save.
+    LAST_SETTINGS.branding = {
+      ...(LAST_SETTINGS.branding || {}),
+      ...icons,
+      icon_mode:       currentIconMode(),
+      icon_text:       val('icon_text') || null,
+      icon_bg_color:   val('icon_bg_color') || null,
+      icon_fg_color:   val('icon_fg_color') || null,
+    };
     await call(SETTINGS_URL, 'save', { value: LAST_SETTINGS, display_name: val('display_name') || TENANT?.display_name || null });
     LAST_ICON_FINGERPRINT = fingerprintIconInputs();
     status.textContent = '✓ App icon saved.';
@@ -668,6 +843,20 @@ function populate(s) {
   setVal('background_photo_url', s.branding?.background_photo_url);
   setVal('logo_url',              s.branding?.logo_url);
   setVal('primary_color',         s.branding?.primary_color || '#0a3b5c');
+
+  // Custom-icon options. Default mode is "logo" if a logo's been
+  // uploaded, otherwise "initials" — matches what the auto-generator
+  // already does, so existing tenants don't see a sudden change.
+  const savedMode = s.branding?.icon_mode
+    || (s.branding?.logo_url ? 'logo' : 'initials');
+  const radio = document.querySelector(`input[name="icon_mode"][value="${savedMode}"]`)
+    || document.querySelector(`input[name="icon_mode"][value="logo"]`);
+  if (radio) radio.checked = true;
+  setVal('icon_text',     s.branding?.icon_text || '');
+  setVal('icon_bg_color', s.branding?.icon_bg_color || s.branding?.primary_color || '#0a3b5c');
+  setVal('icon_fg_color', s.branding?.icon_fg_color || '#ffffff');
+  onIconModeChange();   // toggles the right rows visible
+
   syncBgPreview();
   syncLogoPreview();
   paintIconPreview();
@@ -729,6 +918,14 @@ function collect(prevSettings) {
       // we preserve the previous URLs from prevSettings.
       icon_192_url:         prevSettings?.branding?.icon_192_url ?? null,
       icon_512_url:         prevSettings?.branding?.icon_512_url ?? null,
+      // Custom-icon options the admin picked. Persisted so the builder
+      // re-opens with their choices next time + so save() can regenerate
+      // when any of these change.
+      icon_mode:            currentIconMode(),
+      icon_text:            val('icon_text') || null,
+      icon_bg_color:        val('icon_bg_color') || null,
+      icon_fg_color:        val('icon_fg_color') || null,
+      icon_upload_url:      prevSettings?.branding?.icon_upload_url ?? null,
     },
     pool: {
       ...(prevSettings?.pool ?? {}),
