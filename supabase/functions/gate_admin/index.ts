@@ -138,7 +138,15 @@ Deno.serve(async (req) => {
     }, { onConflict: 'tenant_id' });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
-    // Notify Doug via admin_task. Fires audit_log too.
+    // Pull tenant info so the notification email + audit have the club name.
+    const { data: tenant } = await sb.from('tenants')
+      .select('slug, display_name').eq('id', payload.tid).maybeSingle();
+    const clubName = tenant?.display_name || payload.tid;
+    const clubSlug = tenant?.slug || '';
+
+    // Notify Doug via admin_task. (Owner-scoped so it shows on the tenant's
+    // own dashboard too — useful for the membership chair to know the
+    // request is in flight.)
     await sb.from('admin_tasks').insert({
       tenant_id: payload.tid,
       target_scopes: [],   // owners-only by default
@@ -154,6 +162,42 @@ Deno.serve(async (req) => {
       actor_id: payload.sub, actor_kind: 'tenant_admin',
       metadata: { panel_type: panelType, contact_name: contactName, contact_email: contactEmail },
     });
+
+    // Email Doug so he can reach out + invoice. Best-effort — the request
+    // is recorded in admin_tasks regardless, so a Resend hiccup doesn't
+    // lose the lead.
+    try {
+      const { sendEmail, escHtml: escapeHtml } = await import('../_shared/send_email.ts');
+      const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
+      const panelLabel = ({
+        mengqi_hxc7000: 'MENGQI-CONTROL HXC-7000 (verified template)',
+        unknown:        'Unknown panel — needs identification',
+        custom:         'Custom / unsupported panel',
+      } as Record<string, string>)[panelType] ?? panelType;
+      const subj = `🚪 Gate integration request: ${clubName}`;
+      const html = `
+        <div style="font-family:Inter,Arial,sans-serif;max-width:600px;padding:24px;color:#0f172a">
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 14px">🚪 New gate integration request</h2>
+          <p style="margin:0 0 16px;color:#475569;line-height:1.55"><b>${escapeHtml(clubName)}</b> just requested keyfob integration. Reach out to coordinate hardware + on-site testing.</p>
+          <table style="border-collapse:collapse;font-size:14px;margin:0 0 18px">
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Club</td><td style="padding:6px 0"><b>${escapeHtml(clubName)}</b> (${escapeHtml(clubSlug)}.poolsideapp.com)</td></tr>
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Panel</td><td style="padding:6px 0">${escapeHtml(panelLabel)}</td></tr>
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Contact</td><td style="padding:6px 0">${escapeHtml(contactName || '(not given)')}</td></tr>
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Email</td><td style="padding:6px 0">${contactEmail ? `<a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a>` : '(not given)'}</td></tr>
+          </table>
+          <p style="margin:16px 0 8px"><a href="https://poolsideapp.com/admin/gate-integrations.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Open Gate Integrations admin →</a></p>
+          <p style="margin:18px 0 0;font-size:12px;color:#94a3b8">Once you've talked to them and verified payment, flip their gate panel status to <b>active</b> on the provider admin page. That auto-enables the gate features for their club.</p>
+        </div>
+      `;
+      await sendEmail({
+        to: PROVIDER_EMAIL,
+        subject: subj,
+        html,
+        replyTo: contactEmail || undefined,
+      });
+    } catch (e) {
+      console.error('gate.request_addon: provider email failed (non-fatal):', (e as Error).message);
+    }
 
     return jsonResponse({
       ok: true,
@@ -341,6 +385,25 @@ Deno.serve(async (req) => {
     }, { onConflict: 'tenant_id' });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
+    // Mirror the gate_panels.status into settings.value.features.gate so
+    // the existing tenant_public + member home + admin nav pick up the
+    // change. 'active' = gate features ON; anything else = OFF. Done via
+    // shallow merge so we don't clobber other settings keys.
+    {
+      const featureGateOn = newStatus === 'active';
+      const { data: existing } = await sb.from('settings')
+        .select('value').eq('tenant_id', targetTenant).maybeSingle();
+      const value = ((existing?.value as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+      const features = ((value.features as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+      features.gate = featureGateOn;
+      const merged = { ...value, features };
+      if (existing) {
+        await sb.from('settings').update({ value: merged }).eq('tenant_id', targetTenant);
+      } else {
+        await sb.from('settings').insert({ tenant_id: targetTenant, value: merged });
+      }
+    }
+
     await sb.from('audit_log').insert({
       tenant_id: targetTenant, kind: 'gate.status_changed_by_provider',
       entity_type: 'gate_panel',
@@ -348,6 +411,53 @@ Deno.serve(async (req) => {
       actor_id: payload.sub, actor_kind: 'provider',
       metadata: { new_status: newStatus, notes },
     });
+
+    // Notify the club's owner admins via email + push when the gate goes
+    // active so they know they can start configuring the panel.
+    if (newStatus === 'active') {
+      try {
+        const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+        const { data: tenant } = await sb.from('tenants')
+          .select('slug, display_name').eq('id', targetTenant).maybeSingle();
+        const { data: owners } = await sb.from('admin_users')
+          .select('email').eq('tenant_id', targetTenant).eq('active', true)
+          .or('role_template.eq.owner,role_template.eq.gate_manager');
+        if (tenant && owners && owners.length) {
+          const slug = tenant.slug;
+          const name = tenant.display_name || slug;
+          const html = `
+            <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px">
+              <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 12px">🚪 Your gate integration is live</h2>
+              <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi — your keyfob/gate integration is now active for <b>${escHtml(name)}</b>. You can configure the panel + run a test unlock from your admin dashboard.</p>
+              <p style="margin:18px 0"><a href="https://${escHtml(slug)}.poolsideapp.com/club/admin/settings.html#gate" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Open gate settings →</a></p>
+              <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">Members with paid dues will see an "Unlock gate" button on their home page once the bridge is online.</p>
+            </div>
+          `;
+          for (const o of owners) {
+            if (o.email) await sendEmail({ to: o.email, subject: `🚪 Gate integration is live — ${name}`, html });
+          }
+        }
+        // Phone-push too (uses the existing admin_push_subscriptions infra).
+        await fetch(`${SUPABASE_URL}/functions/v1/push_admin`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'authorization': `Bearer ${SERVICE_ROLE}`,
+            'x-poolside-internal': SERVICE_ROLE,
+          },
+          body: JSON.stringify({
+            action: 'send_scoped',
+            tenant_id: targetTenant,
+            scopes: ['operations'],
+            title: '🚪 Gate integration is live',
+            body: 'Configure your panel + run a test unlock when you have a minute.',
+            url: '/club/admin/settings.html#gate',
+            tag: `gate.activated:${targetTenant}`,
+          }),
+        });
+      } catch (e) { console.error('gate.active notify (non-fatal):', (e as Error).message); }
+    }
+
     return jsonResponse({ ok: true, status: newStatus });
   }
 

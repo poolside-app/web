@@ -158,17 +158,16 @@
       <div id="sp-next" style="margin-top:14px;font-size:13px;line-height:1.5"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="gate-summary-card">
       <div class="card-head">
         <h2>🚪 Gate Integrations <span style="background:var(--sun);color:#422006;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.06em;margin-left:8px;vertical-align:middle">PAID ADD-ON · VETTING-FIRST</span></h2>
         <a href="gate-integrations.html" class="btn-sm">Manage →</a>
       </div>
       <p style="color:var(--muted);font-size:13px;margin-top:0">
-        Each verified template = one panel kind we've fully tested. Untested panels go through Compatibility requests for case-by-case review. Never publish a template before on-site testing.
+        Each request needs back-and-forth coordination + on-site testing. Once you've talked to them and verified payment, flip status to <b>active</b> on the manage page — that auto-emails the club + flips features.gate on their settings.
       </p>
-      <p style="color:var(--muted);font-size:13px;margin:6px 0 0">
-        <b style="color:var(--blue)">1 verified template</b> · <b style="color:var(--amber)">2 requests awaiting review</b> · <b style="color:var(--green)">$50/mo MRR · $1,000 lifetime setup fees</b>
-      </p>
+      <div id="gate-summary-stats" style="color:var(--muted);font-size:13px;margin:6px 0 0">Loading…</div>
+      <div id="gate-summary-pending" style="display:none;margin-top:14px;padding:12px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;font-size:13px;color:#7c2d12"></div>
     </div>
 
     <!-- Anchor target for the Billing nav link. Subscription-billing for
@@ -770,8 +769,53 @@
     } catch { /* silent — health is optional info */ }
   }
 
+  async function loadGateSummary() {
+    const stats = document.getElementById('gate-summary-stats');
+    const pending = document.getElementById('gate-summary-pending');
+    if (!stats) return;
+    try {
+      const tok = localStorage.getItem('poolside_provider_token');
+      if (!tok) return;
+      const r = await fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/gate_admin', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tok}` },
+        body: JSON.stringify({ action: 'super_list' }),
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        stats.textContent = 'Could not load gate stats — ' + (data.error || 'unknown');
+        return;
+      }
+      const panels = data.panels || [];
+      const requested = panels.filter(p => p.status === 'requested').length;
+      const invoiced  = panels.filter(p => p.status === 'invoiced').length;
+      const shipping  = panels.filter(p => p.status === 'shipping').length;
+      const active    = panels.filter(p => p.status === 'active').length;
+      const inFlight  = requested + invoiced + shipping;
+      stats.innerHTML =
+        `<b style="color:${requested ? 'var(--amber)' : 'var(--muted)'}">${requested} new request${requested === 1 ? '' : 's'}</b> · ` +
+        `<b style="color:var(--blue)">${invoiced + shipping} in progress</b> · ` +
+        `<b style="color:var(--green)">${active} active club${active === 1 ? '' : 's'}</b>`;
+      if (requested > 0) {
+        const newest = panels.filter(p => p.status === 'requested')
+          .sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at))
+          .slice(0, 3);
+        const lines = newest.map(p => {
+          const ago = Math.max(0, Math.floor((Date.now() - new Date(p.requested_at).getTime()) / (3600 * 1000)));
+          const when = ago < 1 ? 'just now' : ago < 24 ? `${ago}h ago` : `${Math.floor(ago / 24)}d ago`;
+          const name = (p.tenant_display_name || p.tenant_slug || 'Unknown').replace(/[<>&"']/g, '');
+          return `<li><b>${name}</b> · ${when} · <a href="gate-integrations.html" style="color:#7c2d12;text-decoration:underline">review</a></li>`;
+        }).join('');
+        pending.style.display = 'block';
+        pending.innerHTML = `⚠️ <b>${requested} new request${requested === 1 ? '' : 's'} need${requested === 1 ? 's' : ''} your attention.</b><ul style="margin:6px 0 0;padding-left:22px;line-height:1.6">${lines}</ul>`;
+      } else {
+        pending.style.display = 'none';
+      }
+    } catch (_) { /* silent */ }
+  }
+
   // Kick off the loads
-  setTimeout(() => { loadTenants(); loadPlatformHealth(); }, 400);
+  setTimeout(() => { loadTenants(); loadPlatformHealth(); loadGateSummary(); }, 400);
 </script>
 
 <script type="module">

@@ -306,13 +306,15 @@
             <option>Saturday</option><option>Sunday</option>
           </select>
         </div>
-        <label class="feature">
-          <input type="checkbox" id="f-feat_gate">
-          <div>
-            <div class="ftitle">🚪 Gate access from members' phones</div>
-            <div class="fsub">Paid add-on, $250 setup + $25/mo. We evaluate your gate panel first — on-site testing required.</div>
-          </div>
-        </label>
+        <!-- Gate-from-phone is NOT a self-serve toggle. It's a real-world
+             coordination job: every gate panel is different, hardware
+             needs shipping, on-site testing is required. Mention it here
+             so users know it exists, but route the actual request flow
+             through Settings → Gate Integration after the wizard. -->
+        <div style="margin-top:14px;padding:14px 16px;background:#f7f3eb;border-radius:12px">
+          <div style="font-weight:700; font-size:14px; color:var(--text); margin-bottom:4px">🚪 Want gate access from members' phones?</div>
+          <div style="font-size:12.5px; color:var(--muted); line-height:1.5">Paid add-on ($250 setup + $25/mo). We coordinate manually — request it from <b>Settings → Remote keyfob access</b> after the wizard. We'll talk through your panel, ship the bridge hardware, then activate it for your club.</div>
+        </div>
       </div>
 
       <!-- Step 6 — Done -->
@@ -442,7 +444,11 @@ function collect() {
       campaigns:    !!document.getElementById('f-feat_campaigns').checked,
       guest_passes: !!document.getElementById('f-feat_guest_passes').checked,
       keyfobs:      !!document.getElementById('f-feat_keyfobs').checked,
-      gate:         !!document.getElementById('f-feat_gate').checked,
+      // gate is NOT user-toggleable — it's flipped to true by the provider
+      // when they activate the keyfob/gate add-on (see gate_admin.super_set_status).
+      // Preserve any existing value so wizard re-runs don't clobber an
+      // already-active integration.
+      gate:         !!(window.__EXISTING_FEATURES_GATE__ === true),
     },
   };
 }
@@ -490,7 +496,9 @@ function populate(s) {
   setChk('f-feat_campaigns',    s.features?.campaigns    ?? true);
   setChk('f-feat_guest_passes', s.features?.guest_passes ?? true);
   setChk('f-feat_keyfobs',      s.features?.keyfobs      ?? false);
-  setChk('f-feat_gate',         s.features?.gate         ?? false);
+  // Stash the existing gate flag so collect() can preserve it without a
+  // visible checkbox (see comment in collect()).
+  window.__EXISTING_FEATURES_GATE__ = !!s.features?.gate;
   toggleFobDay();
 }
 

@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
   // bare minimum to launch — not the exhaustive ops health (admin_health
   // covers that).
   if (action === 'setup_status') {
-    const [tenantRes, settingsRes, policyRes, ownerRes] = await Promise.all([
+    const [tenantRes, settingsRes, policyRes, ownerRes, gateRes] = await Promise.all([
       sb.from('tenants').select('display_name, slug, stripe_account_id, stripe_charges_enabled')
         .eq('id', payload.tid).maybeSingle(),
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
         .eq('tenant_id', payload.tid).eq('active', true),
       sb.from('admin_users').select('id', { count: 'exact', head: true })
         .eq('tenant_id', payload.tid).eq('active', true),
+      sb.from('gate_panels').select('status').eq('tenant_id', payload.tid).maybeSingle(),
     ]);
 
     const tenant = (tenantRes.data || {}) as Record<string, unknown>;
@@ -172,6 +173,9 @@ Deno.serve(async (req) => {
 
     const stripeConnected = !!(tenant.stripe_account_id && tenant.stripe_charges_enabled);
     const venmoSet = !!(payments.venmo_handle && String(payments.venmo_handle).trim());
+    const gateStatus = (gateRes.data as { status?: string } | null)?.status ?? null;
+    const gateActive = gateStatus === 'active';
+    const gateRequested = !!gateStatus && gateStatus !== 'active';
 
     const items = [
       {
@@ -245,6 +249,23 @@ Deno.serve(async (req) => {
         fix_url: '/club/admin/admins.html',
         fix_label: 'Invite admin',
         why: 'If you lose access, no one else can manage the club.',
+        optional: true,
+      },
+      {
+        id: 'gate',
+        label: gateActive
+          ? 'Keyfob/gate integration is active'
+          : (gateRequested
+              ? 'Keyfob/gate request in progress — we\'ll be in touch'
+              : 'Want gate access from members\' phones?'),
+        done: gateActive || gateRequested,
+        fix_url: '/club/admin/settings.html#gate',
+        fix_label: gateActive ? 'Configure panel' : (gateRequested ? 'View status' : 'Request keyfob integration'),
+        why: gateActive
+          ? 'Members with paid dues see the "Unlock gate" button on their home.'
+          : (gateRequested
+              ? 'Once we\'ve coordinated hardware + verified payment, we activate this for your club.'
+              : 'Paid add-on ($250 + $25/mo). We coordinate manually — request it and we\'ll reach out.'),
         optional: true,
       },
     ];

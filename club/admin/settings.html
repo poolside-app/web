@@ -446,7 +446,10 @@
   </div>
 
   <!-- Gate add-on card — stateful: shows different UI for "not requested",
-       "requested", and "active" states. Fetched + rendered by JS below. -->
+       "requested", and "active" states. Fetched + rendered by JS below.
+       The anchor name="gate" lets the dashboard "Keyfob / gate access"
+       quick-action and the setup checklist deep-link straight to it. -->
+  <a id="gate" name="gate"></a>
   <div class="card" id="gate-card" data-owner-only style="margin-top:18px;display:none">
     <h2 id="gate-h2">🔐 Remote keyfob access</h2>
     <div id="gate-body" style="font-size:13.5px;color:var(--text);line-height:1.55"></div>
