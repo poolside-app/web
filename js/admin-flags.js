@@ -75,6 +75,7 @@
     impact:        'a[href="/club/admin/impact.html"]',
     audit:         'a[href="/club/admin/audit.html"]',
     settings:      'a[href="/club/admin/settings.html"]',
+    meetings:      'a[href="/club/admin/board-meetings.html"]',
   };
 
   function escapeHtml(s) {
@@ -243,7 +244,7 @@
           }
         }
         // Members hub — visible if user has ANY members-section scope.
-        const MEMBERS_SCOPES = ['households','applications','tiers','renewals','payments','programs','parties','volunteer','passes','documents'];
+        const MEMBERS_SCOPES = ['households','applications','tiers','renewals','payments','programs','parties','volunteer','passes','documents','meetings'];
         const hasAnyMembers = MEMBERS_SCOPES.some(s => scopes.has(s));
         if (!hasAnyMembers) {
           document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });

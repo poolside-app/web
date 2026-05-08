@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Governance — Poolside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin: 0; }
+  h1 { font-size: 32px; line-height: 1.15; }
+  h2 { font-size: 22px; margin-top: 38px; }
+  h3 { font-size: 17px; margin-top: 22px; }
+  header { padding: 16px 22px; border-bottom: 1px solid var(--border); background: #fff; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  main { flex:1; max-width: 760px; width: 100%; margin: 0 auto; padding: 36px 22px 60px; }
+  .lede { font-size: 17px; color: var(--muted); margin: 4px 0 22px; }
+
+  .doc-card {
+    background:#fff; border:1px solid var(--border); border-radius: var(--r-lg);
+    padding: 18px 22px; margin-bottom: 14px;
+    display:flex; gap:16px; align-items: center;
+  }
+  .doc-card .icon { font-size: 30px; flex-shrink: 0; }
+  .doc-card .body { flex: 1; min-width: 0; }
+  .doc-card h3 { font-size: 16px; margin: 0 0 2px; color: var(--blue); font-family: 'Inter'; font-weight: 700; }
+  .doc-card .meta { font-size: 12px; color: var(--muted); }
+  .doc-card a.open {
+    padding: 8px 16px; background: var(--blue); color: #fff;
+    border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .meeting-card {
+    background:#fff; border:1px solid var(--border); border-radius: var(--r-lg);
+    padding: 22px 24px; margin-bottom: 16px;
+  }
+  .meeting-card h3 { font-size: 18px; margin: 0; color: var(--blue); font-family: 'Fraunces', serif; }
+  .meeting-card .when { font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
+  .meeting-card section { margin-top: 18px; }
+  .meeting-card section h4 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); margin: 0 0 8px;
+  }
+  .meeting-card .notes-md { white-space: pre-wrap; font-size: 14.5px; color: var(--text); line-height: 1.6; }
+  .vote {
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+    margin-bottom: 8px; font-size: 14px;
+  }
+  .vote.passed { background: #f0fdf4; border-color: #86efac; }
+  .vote.failed { background: #fef2f2; border-color: #fca5a5; }
+  .vote .motion { font-weight: 600; }
+  .vote .meta-row { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .vote .outcome-pill {
+    display:inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; padding: 2px 9px; border-radius: 999px;
+    background: var(--bg-2); color: var(--muted); margin-left: 8px;
+  }
+  .vote.passed .outcome-pill { background:#dcfce7; color:#14532d; }
+  .vote.failed .outcome-pill { background:#fee2e2; color:#7f1d1d; }
+  .attendees { font-size: 13.5px; color: var(--muted); }
+  .attendees b { color: var(--text); font-weight: 600; }
+
+  .empty {
+    border: 2px dashed var(--border); border-radius: var(--r-lg);
+    padding: 40px 24px; text-align: center; color: var(--muted);
+  }
+  .empty .big { font-size: 38px; margin-bottom: 6px; }
+
+  footer { padding: 22px; text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); background: #fff; margin-top: 48px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> <span id="club-name">Loading…</span></a>
+</header>
+
+<main>
+  <h1 id="page-title">Governance</h1>
+  <p class="lede">Public board meeting minutes and governance documents — bylaws, voting records, follow-ups. <a href="/" style="color:var(--muted)">← Back to home</a></p>
+
+  <h2>Bylaws &amp; documents</h2>
+  <div id="docs-host"><div class="doc-card" style="height:60px"></div></div>
+
+  <h2>Board meeting minutes</h2>
+  <div id="meetings-host"><div class="meeting-card" style="height:120px"></div></div>
+</main>
+
+<footer><a href="/" style="color:var(--muted)">← Back to home</a> · Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const TENANT_PUBLIC_URL = `${SUPABASE_URL}/functions/v1/tenant_public`;
+const MEETINGS_URL      = `${SUPABASE_URL}/functions/v1/board_meetings`;
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Pull the tenant slug from the subdomain. Apex domains (no subdomain or
+// www-only) get a friendly "Pick a club" message rather than a broken page.
+function getSlug() {
+  const host = window.location.hostname;
+  const m = host.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  if (m && m[1] && m[1] !== 'www') return m[1];
+  return null;
+}
+
+(async () => {
+  const slug = getSlug();
+  if (!slug) {
+    document.getElementById('club-name').textContent = 'Poolside';
+    document.querySelector('main').innerHTML = `
+      <h1>Governance pages live on each club's site</h1>
+      <p class="lede">Each pool club's bylaws and board meeting minutes live at <code>your-club.poolsideapp.com/governance.html</code>. Visit your club's site directly to see them.</p>
+    `;
+    return;
+  }
+
+  // Fetch tenant info, documents, and public meetings in parallel.
+  const [pubRes, meetingsRes] = await Promise.all([
+    fetch(TENANT_PUBLIC_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    }).then(r => r.json()).catch(() => ({ ok: false })),
+    fetch(MEETINGS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'list_public', slug }),
+    }).then(r => r.json()).catch(() => ({ ok: false, meetings: [] })),
+  ]);
+
+  // Header / page title
+  if (pubRes.ok && pubRes.tenant) {
+    document.getElementById('club-name').textContent = pubRes.tenant.display_name || slug;
+    document.getElementById('page-title').textContent = `${pubRes.tenant.display_name || slug} — Governance`;
+    document.title = `Governance — ${pubRes.tenant.display_name || 'Poolside'}`;
+  } else {
+    document.getElementById('club-name').textContent = slug;
+  }
+
+  // ── Documents (only public visibility) ─────────────────────────────────
+  const docsHost = document.getElementById('docs-host');
+  const docs = ((pubRes.ok && Array.isArray(pubRes.documents)) ? pubRes.documents : [])
+    .filter(d => d.visibility === 'public');
+  if (!docs.length) {
+    docsHost.innerHTML = `
+      <div class="empty">
+        <div class="big">📄</div>
+        <h3 style="font-size:16px;margin:6px 0 4px;color:var(--text)">No public documents posted yet</h3>
+        <p style="font-size:13.5px;margin:0">When the board uploads bylaws, a member handbook, or other governance documents, they'll appear here.</p>
+      </div>
+    `;
+  } else {
+    docsHost.innerHTML = docs.map(d => `
+      <div class="doc-card">
+        <div class="icon">📄</div>
+        <div class="body">
+          <h3>${escapeHtml(d.title)}</h3>
+          ${d.description ? `<div style="font-size:13.5px;color:var(--muted);margin:2px 0 4px">${escapeHtml(d.description)}</div>` : ''}
+          <div class="meta">Updated ${escapeHtml(new Date(d.updated_at || d.created_at).toLocaleDateString())}</div>
+        </div>
+        <a class="open" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">Open →</a>
+      </div>
+    `).join('');
+  }
+
+  // ── Public board meetings ──────────────────────────────────────────────
+  const meetHost = document.getElementById('meetings-host');
+  const meetings = (meetingsRes.ok && Array.isArray(meetingsRes.meetings)) ? meetingsRes.meetings : [];
+  if (!meetings.length) {
+    meetHost.innerHTML = `
+      <div class="empty">
+        <div class="big">🗒️</div>
+        <h3 style="font-size:16px;margin:6px 0 4px;color:var(--text)">No public meeting minutes yet</h3>
+        <p style="font-size:13.5px;margin:0">When the secretary publishes board meeting minutes here, they'll show with attendance, votes, and follow-up items.</p>
+      </div>
+    `;
+    return;
+  }
+  meetHost.innerHTML = meetings.map(m => {
+    const date = new Date(m.meeting_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    const attendees = (m.attendees_json || []).filter(a => a && a.name);
+    const votes = (m.votes_json || []);
+    const fu = (m.follow_ups_json || []).filter(f => f && f.description);
+
+    const attBlock = attendees.length ? `
+      <section>
+        <h4>Attendance — ${attendees.length}</h4>
+        <div class="attendees">${attendees.map(a => `<b>${escapeHtml(a.name)}</b>${a.role ? ` <span style="opacity:.7">(${escapeHtml(a.role)})</span>` : ''}`).join(' · ')}</div>
+      </section>
+    ` : '';
+
+    const notesBlock = (m.notes_md && m.notes_md.trim()) ? `
+      <section>
+        <h4>Notes</h4>
+        <div class="notes-md">${escapeHtml(m.notes_md)}</div>
+      </section>
+    ` : '';
+
+    const votesBlock = votes.length ? `
+      <section>
+        <h4>Motions &amp; votes</h4>
+        ${votes.map(v => {
+          const cls = v.outcome === 'passed' ? 'passed' : v.outcome === 'failed' ? 'failed' : '';
+          const outcomeLabel = ({passed:'Passed', failed:'Failed', tabled:'Tabled', pending:'Pending'})[v.outcome] || v.outcome;
+          const meta = [
+            v.proposed_by ? `Proposed by ${v.proposed_by}` : null,
+            v.seconded_by ? `Seconded by ${v.seconded_by}` : null,
+            (v.yes || v.no || v.abstain) ? `${v.yes || 0}–${v.no || 0}${(v.abstain || 0) ? ` (${v.abstain} abstain)` : ''}` : null,
+          ].filter(Boolean).join(' · ');
+          return `
+            <div class="vote ${cls}">
+              <div class="motion">${escapeHtml(v.motion)}<span class="outcome-pill">${escapeHtml(outcomeLabel)}</span></div>
+              ${meta ? `<div class="meta-row">${escapeHtml(meta)}</div>` : ''}
+              ${v.notes ? `<div style="margin-top:6px;font-size:13px;color:var(--muted)">${escapeHtml(v.notes)}</div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </section>
+    ` : '';
+
+    const fuBlock = fu.length ? `
+      <section>
+        <h4>Follow-ups</h4>
+        <ul style="margin:0;padding-left:20px;line-height:1.6">
+          ${fu.map(f => {
+            const status = f.status === 'done' ? ' <span style="color:var(--green)">✓ done</span>' : f.status === 'cancelled' ? ' <span style="color:var(--muted)">(skipped)</span>' : '';
+            const due = f.due_date ? ` <span style="color:var(--muted)">— due ${escapeHtml(new Date(f.due_date + 'T00:00:00').toLocaleDateString())}</span>` : '';
+            const who = f.assigned_to ? ` <span style="color:var(--muted)">→ ${escapeHtml(f.assigned_to)}</span>` : '';
+            return `<li>${escapeHtml(f.description)}${who}${due}${status}</li>`;
+          }).join('')}
+        </ul>
+      </section>
+    ` : '';
+
+    return `
+      <div class="meeting-card">
+        <h3>${escapeHtml(m.title || 'Board Meeting')}</h3>
+        <div class="when">${escapeHtml(date)}${m.location ? ` · ${escapeHtml(m.location)}` : ''}</div>
+        ${attBlock}${notesBlock}${votesBlock}${fuBlock}
+      </div>
+    `;
+  }).join('');
+})();
+</script>
+</body>
+</html>

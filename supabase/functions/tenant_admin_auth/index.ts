@@ -149,6 +149,11 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
     description: 'Announcements, campaigns, and photo gallery.',
     scopes: ['announcements', 'campaigns', 'photos', 'documents', 'policies', 'impact'],
   },
+  secretary: {
+    label: 'Secretary',
+    description: 'Takes board meeting minutes. Manages bylaws and other governance documents.',
+    scopes: ['meetings', 'documents', 'impact'],
+  },
   custom: {
     label: 'Custom',
     description: 'Pick exactly what this person can see and change. For unusual cases — most boards don\'t need this.',
@@ -160,6 +165,7 @@ const ALL_SCOPES = [
   'applications', 'households', 'payments', 'tiers', 'renewals', 'events', 'programs', 'parties',
   'announcements', 'campaigns', 'volunteer', 'passes', 'photos', 'documents',
   'policies', 'directory', 'impact', 'audit',
+  'meetings',
 ];
 
 function templateScopes(name: string): string[] {

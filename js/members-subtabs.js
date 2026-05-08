@@ -33,6 +33,9 @@
     { key: 'volunteer',    label: 'Volunteer',    href: '/club/admin/volunteer.html',            scope: 'volunteer'    },
     { key: 'passes',       label: 'Passes',       href: '/club/admin/guest-passes.html',         scope: 'passes'       },
     { key: 'documents',    label: 'Documents',    href: '/club/admin/documents.html',            scope: 'documents'    },
+    // Secretary's note-taking surface for board meetings — votes,
+    // attendance, follow-ups, with optional public visibility.
+    { key: 'meetings',     label: 'Board minutes', href: '/club/admin/board-meetings.html',      scope: 'meetings'     },
     // Fundraiser donations — stripe-paid land here automatically; admin
     // records Venmo/cash/check by hand. Thermometer recomputes on every
     // insert/update/delete.
@@ -60,6 +63,7 @@
     if (path.endsWith('/documents.html'))    return 'documents';
     if (path.endsWith('/donations.html'))    return 'donations';
     if (path.endsWith('/emails.html'))       return 'emails';
+    if (path.endsWith('/board-meetings.html')) return 'meetings';
     return null;
   }
 

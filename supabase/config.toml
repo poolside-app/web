@@ -213,3 +213,9 @@ verify_jwt = false
 # x-poolside-internal=SERVICE_ROLE header.
 [functions.push_admin]
 verify_jwt = false
+
+# Secretary's board-meeting note-taking surface. Mixed: list_public is
+# anonymous (members see public meeting minutes on /governance.html);
+# admin actions require the 'meetings' scope.
+[functions.board_meetings]
+verify_jwt = false

@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Board meetings — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#475569;
+    --border:#e5e7eb;
+    --green:#16a34a; --green-l:#dcfce7;
+    --yellow:#d97706; --yellow-l:#fef3c7;
+    --red:#dc2626; --red-l:#fee2e2;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md:12px; --r-lg:18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 15px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding: 24px 22px; max-width: 880px; width: 100%; margin: 0 auto; }
+
+  .lede { color: var(--muted); font-size: 14px; margin: 6px 0 18px; }
+
+  .btn { padding: 10px 18px; border-radius: 10px; font: 600 13.5px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: #fff; color: var(--text); transition: filter .12s; }
+  .btn:hover { filter: brightness(.96); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-primary:hover { background: var(--blue-2); }
+  .btn-success { background: var(--green); color: #fff; border-color: var(--green); }
+  .btn-danger  { background: var(--red); color: #fff; border-color: var(--red); }
+  .btn-ghost   { background: transparent; color: var(--muted); border-color: var(--border); }
+  .btn-big { padding: 16px 32px; font-size: 16px; font-weight: 700; }
+
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px 22px; margin-bottom: 16px; box-shadow: var(--shadow); }
+
+  /* List view */
+  .list-row {
+    display:flex; align-items:center; gap:14px; padding: 14px 18px;
+    background:#fff; border:1px solid var(--border); border-radius: var(--r-md);
+    margin-bottom: 8px; cursor: pointer; text-decoration:none; color: inherit;
+    transition: border-color .12s;
+  }
+  .list-row:hover { border-color: var(--blue); }
+  .list-row .date { font-family: 'Fraunces', serif; font-weight: 600; font-size: 16px; color: var(--blue); min-width: 100px; }
+  .list-row .title { flex: 1; font-weight: 600; font-size: 14px; min-width: 0; }
+  .list-row .title small { display:block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+  .badge { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:999px; }
+  .badge-draft { background: var(--bg-2); color: var(--muted); }
+  .badge-progress { background: var(--yellow-l); color: var(--yellow); }
+  .badge-completed { background: var(--green-l); color: #14532d; }
+  .badge-public { background: #dbeafe; color: #1e3a8a; }
+  .badge-private { background: var(--bg-2); color: var(--muted); }
+
+  .empty {
+    padding: 50px 24px; text-align: center; color: var(--muted);
+    border: 2px dashed var(--border); border-radius: var(--r-lg);
+  }
+  .empty .big { font-size: 42px; margin-bottom: 8px; }
+
+  /* Editor view */
+  label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; color: var(--text); }
+  input, textarea, select {
+    width: 100%; padding: 11px 14px; font: 15px/1.4 'Inter', sans-serif;
+    border: 1.5px solid var(--border); border-radius: var(--r-md);
+    background: #fff; color: var(--text); transition: border-color .12s; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  textarea { resize: vertical; min-height: 120px; }
+  .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  /* Meeting state banner */
+  .state-banner {
+    padding: 14px 18px; border-radius: var(--r-md); margin-bottom: 16px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    font-size: 14px;
+  }
+  .state-banner.draft { background: var(--bg-2); color: var(--muted); }
+  .state-banner.progress { background: var(--yellow-l); color: #92400e; border: 1px solid #fde68a; }
+  .state-banner.completed { background: var(--green-l); color: #14532d; border: 1px solid #86efac; }
+  .state-banner b { font-weight: 700; }
+  .state-banner .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Attendance checkboxes */
+  .attendee-row {
+    display:flex; align-items:center; gap: 12px;
+    padding: 9px 12px; background: #fafafa; border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 6px;
+  }
+  .attendee-row.checked { background: var(--blue-l); border-color: var(--blue); }
+  .attendee-row input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; }
+  .attendee-row .name { font-weight: 600; flex: 1; }
+  .attendee-row .role { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .attendee-manual {
+    display: flex; gap: 8px; padding: 9px 12px;
+    background: #fffbeb; border: 1px dashed #fde68a; border-radius: 10px; margin-bottom: 6px;
+  }
+  .attendee-manual input { padding: 7px 10px; font-size: 14px; }
+  .attendee-manual .x { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 4px 8px; }
+
+  /* Vote row */
+  .vote-row {
+    background: #fafafa; border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+  }
+  .vote-row.passed { background: #f0fdf4; border-color: #86efac; }
+  .vote-row.failed { background: #fef2f2; border-color: #fca5a5; }
+  .vote-row .motion-input { font-weight: 600; font-size: 14.5px; }
+  .vote-counts { display:flex; gap: 10px; align-items:center; margin-top: 10px; flex-wrap: wrap; }
+  .vote-counts .pill {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 10px; border-radius: 999px; background:#fff; border:1px solid var(--border);
+    font-size: 13px; font-weight: 600;
+  }
+  .vote-counts .pill.yes { color: var(--green); }
+  .vote-counts .pill.no  { color: var(--red); }
+  .vote-counts .pill button {
+    background: transparent; border: 0; color: inherit; font-size: 16px; line-height: 1;
+    cursor: pointer; font-weight: 700; padding: 0 4px;
+  }
+  .vote-counts .pill button:hover { opacity: .7; }
+  .vote-counts .pill .count { min-width: 20px; text-align: center; }
+  .vote-row .outcome-row { display:flex; gap:8px; margin-top: 10px; }
+  .vote-row .outcome-row button {
+    flex: 1; padding: 8px; border-radius: 8px; border: 1.5px solid var(--border);
+    background: #fff; font: 600 12px 'Inter'; cursor: pointer;
+  }
+  .vote-row .outcome-row button.on.passed { background: var(--green); color: #fff; border-color: var(--green); }
+  .vote-row .outcome-row button.on.failed { background: var(--red); color: #fff; border-color: var(--red); }
+  .vote-row .outcome-row button.on.tabled { background: var(--muted); color: #fff; border-color: var(--muted); }
+  .vote-row .x { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 0 6px; float: right; }
+
+  /* Follow-ups */
+  .follow-row {
+    background: #fafafa; border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+    display: grid; grid-template-columns: 1fr 200px 130px 90px 30px; gap: 10px; align-items: center;
+  }
+  .follow-row.done { background: #f0fdf4; opacity: .7; }
+  .follow-row input { padding: 7px 10px; font-size: 13.5px; }
+  .follow-row .x { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 0 6px; }
+  @media (max-width: 700px) {
+    .follow-row { grid-template-columns: 1fr; }
+  }
+
+  .save-status {
+    font-size: 12px; color: var(--muted); margin-left: 10px;
+    transition: color .3s;
+  }
+  .save-status.saving { color: var(--yellow); }
+  .save-status.saved { color: var(--green); }
+  .save-status.failed { color: var(--red); }
+
+  .err { color: var(--red); font-size: 13px; margin-top: 6px; display: none; }
+  .err.show { display: block; }
+
+  footer { padding: 22px; text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); background: #fff; margin-top: 48px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout" tabindex="0" role="button">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/application.html">Application</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<div id="members-subtabs"></div>
+<script src="/js/admin-flags.js"></script>
+<script src="/js/members-subtabs.js"></script>
+
+<main>
+  <!-- Two views — list (default) and editor (when ?id=...). -->
+  <div id="view-list">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+      <h1>Board meetings</h1>
+      <button class="btn btn-primary" onclick="newMeeting()">+ New meeting</button>
+    </div>
+    <p class="lede">Notes from board meetings live here. Mark a meeting <b>public</b> if you want members to see it on your governance page; otherwise it stays board-only.</p>
+    <div id="list-host">
+      <div class="card" style="height:60px"></div>
+      <div class="card" style="height:60px"></div>
+    </div>
+  </div>
+
+  <div id="view-editor" style="display:none">
+    <div style="margin-bottom:6px"><a href="javascript:goList()" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to all meetings</a></div>
+
+    <div id="state-banner" class="state-banner draft">
+      <span id="state-text">Draft — fill in the details, then click Start meeting when you're ready.</span>
+      <span class="save-status" id="save-status"></span>
+      <div class="actions" id="state-actions"></div>
+    </div>
+
+    <div class="card">
+      <div class="row2">
+        <div>
+          <label>Meeting title</label>
+          <input id="m-title" placeholder="Board Meeting" oninput="scheduleSave()">
+        </div>
+        <div>
+          <label>Date</label>
+          <input id="m-date" type="date" oninput="scheduleSave()">
+        </div>
+      </div>
+      <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional — Pool House, Zoom link, etc.)</span></label>
+      <input id="m-location" placeholder="Pool House" oninput="scheduleSave()">
+    </div>
+
+    <!-- Attendance -->
+    <div class="card">
+      <h2 style="margin-bottom:6px">Who's here?</h2>
+      <p class="lede" style="margin:0 0 14px">Check off the board members in attendance. Add anyone else (member, guest) at the bottom.</p>
+      <div id="attendance-host"><div style="color:var(--muted);font-size:13px">Loading admins…</div></div>
+      <div id="manual-host" style="margin-top:10px"></div>
+      <button class="btn btn-ghost" onclick="addManualAttendee()" style="margin-top:8px;font-size:13px;padding:8px 14px">+ Add someone not on the admin list</button>
+      <p style="margin:14px 0 0;font-size:12.5px;color:var(--muted)" id="attend-count">No one marked yet.</p>
+    </div>
+
+    <!-- Notes -->
+    <div class="card">
+      <h2 style="margin-bottom:6px">Notes</h2>
+      <p class="lede" style="margin:0 0 10px">General meeting discussion — agenda items, updates, anything that doesn't fit a vote or a follow-up below.</p>
+      <textarea id="m-notes" placeholder="Treasurer's report: $X in operating, $Y reserved for the new pool cover…&#10;&#10;Pool opening date confirmed for May 25.&#10;&#10;Discussion about extending lap-swim hours on weekends." oninput="scheduleSave()"></textarea>
+    </div>
+
+    <!-- Votes -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <h2 style="margin:0">Motions &amp; votes</h2>
+        <button class="btn btn-primary" onclick="addVote()" style="padding:8px 14px;font-size:13px">+ Add motion</button>
+      </div>
+      <p class="lede" style="margin:0 0 10px">Each motion = one thing the board voted on. Tap +/− to record vote counts; click Pass / Fail / Tabled when the vote is decided.</p>
+      <div id="votes-host"></div>
+    </div>
+
+    <!-- Follow-ups -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <h2 style="margin:0">Follow-ups</h2>
+        <button class="btn btn-primary" onclick="addFollowUp()" style="padding:8px 14px;font-size:13px">+ Add follow-up</button>
+      </div>
+      <p class="lede" style="margin:0 0 10px">Anything that needs to happen after the meeting. Assign someone, set a due date, mark Done when it's handled.</p>
+      <div id="follow-host"></div>
+    </div>
+
+    <!-- Visibility -->
+    <div class="card">
+      <h2 style="margin-bottom:6px">Visibility</h2>
+      <p class="lede" style="margin:0 0 10px">Choose who can see this meeting's minutes after you finalize them.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fafafa;cursor:pointer;flex:1;min-width:240px;font-weight:500">
+          <input type="radio" name="vis" value="private" id="vis-private" onchange="scheduleSave()" style="width:auto;margin-top:3px">
+          <div>
+            <div style="font-weight:700">🔒 Board only</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">Only admins can see this. Default.</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fafafa;cursor:pointer;flex:1;min-width:240px;font-weight:500">
+          <input type="radio" name="vis" value="public" id="vis-public" onchange="scheduleSave()" style="width:auto;margin-top:3px">
+          <div>
+            <div style="font-weight:700">🌐 Public</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">Visible to anyone on the club's governance page.</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div id="m-err" class="err" style="margin-bottom:14px"></div>
+
+    <div class="card" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
+      <div>
+        <button class="btn btn-danger" onclick="deleteMeeting()" id="del-btn">🗑️ Delete meeting</button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" onclick="saveNow()" id="save-btn">💾 Save</button>
+        <button class="btn btn-success" onclick="finalize()" id="final-btn" style="display:none">✓ Finalize meeting</button>
+        <button class="btn btn-ghost" onclick="reopen()" id="reopen-btn" style="display:none">🔓 Re-open for editing</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const FN_URL  = `${SUPABASE_URL}/functions/v1/board_meetings`;
+const ME_URL  = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+let MEETING = null;          // currently-edited meeting object
+let ADMINS = [];             // list of active admin users for the attendance checkboxes
+let SAVE_TIMER = null;
+let SAVE_GENERATION = 0;     // monotonically increases; lets us ignore stale autosave responses
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const r = await fetch(FN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (r.status === 401) { logout(); throw new Error('Session expired'); }
+  return r.json();
+}
+
+// ── List view ──────────────────────────────────────────────────────────
+async function loadList() {
+  const host = document.getElementById('list-host');
+  try {
+    const r = await call('list');
+    if (!r.ok) throw new Error(r.error || 'Failed to load');
+    const meetings = r.meetings || [];
+    if (!meetings.length) {
+      host.innerHTML = `
+        <div class="empty">
+          <div class="big">🗒️</div>
+          <h3 style="font-size:18px;margin:6px 0 4px;color:var(--text)">No board meetings yet</h3>
+          <p style="font-size:14px;margin:0">Click <b>+ New meeting</b> above to start your first one.</p>
+        </div>
+      `;
+      return;
+    }
+    host.innerHTML = meetings.map(m => {
+      const date = new Date(m.meeting_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Completed</span>'
+                       : m.status === 'in_progress' ? '<span class="badge badge-progress">In progress</span>'
+                       : '<span class="badge badge-draft">Draft</span>';
+      const visBadge = m.visibility === 'public' ? '<span class="badge badge-public">Public</span>' : '<span class="badge badge-private">Board only</span>';
+      const attCount = (m.attendees_json || []).length;
+      const voteCount = (m.votes_json || []).length;
+      const sub = [
+        attCount > 0 ? `${attCount} attendee${attCount === 1 ? '' : 's'}` : null,
+        voteCount > 0 ? `${voteCount} motion${voteCount === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(' · ');
+      return `
+        <a href="javascript:openMeeting('${m.id}')" class="list-row">
+          <div class="date">${escapeHtml(date)}</div>
+          <div class="title">${escapeHtml(m.title)}${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div>
+          ${statusBadge}
+          ${visBadge}
+        </a>
+      `;
+    }).join('');
+  } catch (e) {
+    host.innerHTML = `<div class="card" style="color:var(--red)">Couldn't load: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function newMeeting() {
+  try {
+    const r = await call('create');
+    if (!r.ok) throw new Error(r.error || 'Could not create');
+    openMeeting(r.meeting.id);
+  } catch (e) { alert(e.message); }
+}
+
+function openMeeting(id) {
+  history.pushState(null, '', `?id=${encodeURIComponent(id)}`);
+  showEditor(id);
+}
+
+function goList() {
+  history.pushState(null, '', window.location.pathname);
+  document.getElementById('view-editor').style.display = 'none';
+  document.getElementById('view-list').style.display = '';
+  loadList();
+}
+
+// ── Editor ─────────────────────────────────────────────────────────────
+async function showEditor(id) {
+  document.getElementById('view-list').style.display = 'none';
+  document.getElementById('view-editor').style.display = '';
+
+  // Load admins (for attendance checkboxes) + the meeting in parallel.
+  const [adminsRes, meetingRes] = await Promise.all([
+    call('list_active_admins'),
+    call('get', { id }),
+  ]);
+  if (!meetingRes.ok) {
+    document.getElementById('m-err').textContent = meetingRes.error;
+    document.getElementById('m-err').classList.add('show');
+    return;
+  }
+  ADMINS = adminsRes.ok ? (adminsRes.admins || []) : [];
+  MEETING = meetingRes.meeting;
+  paintEditor();
+}
+
+function paintEditor() {
+  const m = MEETING;
+  // Top-of-form fields
+  document.getElementById('m-title').value = m.title || 'Board Meeting';
+  document.getElementById('m-date').value = m.meeting_date;
+  document.getElementById('m-location').value = m.location || '';
+  document.getElementById('m-notes').value = m.notes_md || '';
+  document.getElementById(`vis-${m.visibility === 'public' ? 'public' : 'private'}`).checked = true;
+
+  paintStateBanner();
+  paintAttendance();
+  paintVotes();
+  paintFollowUps();
+}
+
+function paintStateBanner() {
+  const m = MEETING;
+  const banner = document.getElementById('state-banner');
+  const text = document.getElementById('state-text');
+  const actions = document.getElementById('state-actions');
+  banner.classList.remove('draft', 'progress', 'completed');
+  if (m.status === 'completed') {
+    banner.classList.add('completed');
+    const ended = m.ended_at ? new Date(m.ended_at).toLocaleString() : 'just now';
+    text.innerHTML = `<b>✓ Finalized.</b> Locked on ${escapeHtml(ended)}. Click "Re-open" below if you need to edit.`;
+    actions.innerHTML = '';
+    document.getElementById('final-btn').style.display = 'none';
+    document.getElementById('reopen-btn').style.display = '';
+    document.getElementById('save-btn').style.display = 'none';
+  } else if (m.status === 'in_progress') {
+    banner.classList.add('progress');
+    const started = m.started_at ? new Date(m.started_at).toLocaleString() : 'just now';
+    text.innerHTML = `<b>📝 Meeting in progress</b> · started ${escapeHtml(started)}. Type away — we autosave every few seconds.`;
+    actions.innerHTML = '';
+    document.getElementById('final-btn').style.display = '';
+    document.getElementById('reopen-btn').style.display = 'none';
+    document.getElementById('save-btn').style.display = '';
+  } else {
+    banner.classList.add('draft');
+    text.innerHTML = `<b>Draft.</b> Fill in the title and date below, then hit <b>▶ Start meeting now</b> when you're ready to take notes.`;
+    actions.innerHTML = `<button class="btn btn-success btn-big" onclick="startMeeting()">▶ Start meeting now</button>`;
+    document.getElementById('final-btn').style.display = 'none';
+    document.getElementById('reopen-btn').style.display = 'none';
+    document.getElementById('save-btn').style.display = '';
+  }
+}
+
+// ── Attendance ──────────────────────────────────────────────────────────
+function paintAttendance() {
+  const host = document.getElementById('attendance-host');
+  const checkedIds = new Set((MEETING.attendees_json || [])
+    .filter(a => a.source === 'admin' && a.admin_user_id)
+    .map(a => a.admin_user_id));
+
+  if (!ADMINS.length) {
+    host.innerHTML = '<div style="color:var(--muted);font-size:13px">No admins on the team yet — add some via Settings → Co-admins.</div>';
+  } else {
+    host.innerHTML = ADMINS.map(a => `
+      <label class="attendee-row ${checkedIds.has(a.id) ? 'checked' : ''}">
+        <input type="checkbox" data-admin-id="${escapeHtml(a.id)}" ${checkedIds.has(a.id) ? 'checked' : ''} onchange="toggleAdminAttendee('${escapeHtml(a.id)}', this.checked, this.parentElement)">
+        <span class="name">${escapeHtml(a.name)}</span>
+        <span class="role">${escapeHtml((a.role || '').replace(/_/g, ' '))}</span>
+      </label>
+    `).join('');
+  }
+  paintManualAttendees();
+  updateAttendCount();
+}
+
+function paintManualAttendees() {
+  const host = document.getElementById('manual-host');
+  const manual = (MEETING.attendees_json || []).filter(a => a.source === 'manual');
+  if (!manual.length) { host.innerHTML = ''; return; }
+  host.innerHTML = manual.map((a, i) => `
+    <div class="attendee-manual">
+      <input type="text" placeholder="Name" value="${escapeHtml(a.name || '')}" oninput="updateManualName(${i}, this.value)">
+      <input type="text" placeholder="Role / why they're here (optional)" value="${escapeHtml(a.role || '')}" oninput="updateManualRole(${i}, this.value)">
+      <button class="x" onclick="removeManualAttendee(${i})" title="Remove">×</button>
+    </div>
+  `).join('');
+}
+
+function updateAttendCount() {
+  const total = (MEETING.attendees_json || []).length;
+  const adminTotal = ADMINS.length;
+  const adminPresent = (MEETING.attendees_json || []).filter(a => a.source === 'admin').length;
+  const el = document.getElementById('attend-count');
+  if (total === 0) {
+    el.textContent = 'No one marked yet.';
+  } else {
+    el.innerHTML = `<b>${total}</b> total attendee${total === 1 ? '' : 's'}: ${adminPresent} of ${adminTotal} board admin${adminTotal === 1 ? '' : 's'} + ${total - adminPresent} other${total - adminPresent === 1 ? '' : 's'}.`;
+  }
+}
+
+function toggleAdminAttendee(adminId, checked, rowEl) {
+  const list = MEETING.attendees_json || [];
+  if (checked) {
+    if (!list.find(a => a.source === 'admin' && a.admin_user_id === adminId)) {
+      const a = ADMINS.find(x => x.id === adminId);
+      list.push({
+        admin_user_id: adminId, name: a?.name || 'Admin', role: a?.role || null, source: 'admin',
+      });
+    }
+    if (rowEl) rowEl.classList.add('checked');
+  } else {
+    const i = list.findIndex(a => a.source === 'admin' && a.admin_user_id === adminId);
+    if (i >= 0) list.splice(i, 1);
+    if (rowEl) rowEl.classList.remove('checked');
+  }
+  MEETING.attendees_json = list;
+  updateAttendCount();
+  scheduleSave();
+}
+
+function addManualAttendee() {
+  if (!MEETING.attendees_json) MEETING.attendees_json = [];
+  MEETING.attendees_json.push({ source: 'manual', name: '', role: null });
+  paintManualAttendees();
+  updateAttendCount();
+  scheduleSave();
+}
+
+// Manual attendees are ordered after admins in the array; we filter to find
+// the n-th MANUAL one regardless of admin checkboxes interleaved. updates
+// edit in place + autosave.
+function manualIndexToArrayIndex(manualIdx) {
+  const arr = MEETING.attendees_json || [];
+  let m = -1;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].source === 'manual') {
+      m++;
+      if (m === manualIdx) return i;
+    }
+  }
+  return -1;
+}
+
+function updateManualName(i, v) {
+  const idx = manualIndexToArrayIndex(i);
+  if (idx >= 0) {
+    MEETING.attendees_json[idx].name = v;
+    scheduleSave();
+  }
+}
+function updateManualRole(i, v) {
+  const idx = manualIndexToArrayIndex(i);
+  if (idx >= 0) {
+    MEETING.attendees_json[idx].role = v || null;
+    scheduleSave();
+  }
+}
+function removeManualAttendee(i) {
+  const idx = manualIndexToArrayIndex(i);
+  if (idx >= 0) {
+    MEETING.attendees_json.splice(idx, 1);
+    paintManualAttendees();
+    updateAttendCount();
+    scheduleSave();
+  }
+}
+
+// ── Votes ───────────────────────────────────────────────────────────────
+function paintVotes() {
+  const host = document.getElementById('votes-host');
+  const votes = MEETING.votes_json || [];
+  if (!votes.length) {
+    host.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0">No motions yet. Click <b>+ Add motion</b> above to record a vote.</div>';
+    return;
+  }
+  host.innerHTML = votes.map((v, i) => {
+    const cls = v.outcome === 'passed' ? 'passed' : v.outcome === 'failed' ? 'failed' : '';
+    return `
+      <div class="vote-row ${cls}">
+        <button class="x" onclick="removeVote(${i})" title="Remove">×</button>
+        <input class="motion-input" placeholder="Motion to…" value="${escapeHtml(v.motion || '')}" oninput="updateVote(${i}, 'motion', this.value)">
+        <div class="row2" style="margin-top:8px">
+          <input placeholder="Proposed by" value="${escapeHtml(v.proposed_by || '')}" oninput="updateVote(${i}, 'proposed_by', this.value)">
+          <input placeholder="Seconded by" value="${escapeHtml(v.seconded_by || '')}" oninput="updateVote(${i}, 'seconded_by', this.value)">
+        </div>
+        <div class="vote-counts">
+          <span class="pill yes">Yes
+            <button onclick="bumpVote(${i}, 'yes', -1)">−</button>
+            <span class="count">${v.yes || 0}</span>
+            <button onclick="bumpVote(${i}, 'yes', +1)">+</button>
+          </span>
+          <span class="pill no">No
+            <button onclick="bumpVote(${i}, 'no', -1)">−</button>
+            <span class="count">${v.no || 0}</span>
+            <button onclick="bumpVote(${i}, 'no', +1)">+</button>
+          </span>
+          <span class="pill">Abstain
+            <button onclick="bumpVote(${i}, 'abstain', -1)">−</button>
+            <span class="count">${v.abstain || 0}</span>
+            <button onclick="bumpVote(${i}, 'abstain', +1)">+</button>
+          </span>
+        </div>
+        <div class="outcome-row">
+          <button class="${v.outcome === 'passed' ? 'on passed' : ''}" onclick="setOutcome(${i}, 'passed')">✓ Passed</button>
+          <button class="${v.outcome === 'failed' ? 'on failed' : ''}" onclick="setOutcome(${i}, 'failed')">✗ Failed</button>
+          <button class="${v.outcome === 'tabled' ? 'on tabled' : ''}" onclick="setOutcome(${i}, 'tabled')">⏸ Tabled</button>
+        </div>
+        <input style="margin-top:8px" placeholder="Notes (optional)" value="${escapeHtml(v.notes || '')}" oninput="updateVote(${i}, 'notes', this.value)">
+      </div>
+    `;
+  }).join('');
+}
+
+function addVote() {
+  if (!MEETING.votes_json) MEETING.votes_json = [];
+  MEETING.votes_json.push({
+    id: crypto.randomUUID(), motion: '', proposed_by: null, seconded_by: null,
+    yes: 0, no: 0, abstain: 0, outcome: 'pending', notes: null,
+  });
+  paintVotes();
+  scheduleSave();
+}
+function updateVote(i, key, value) {
+  if (!MEETING.votes_json[i]) return;
+  MEETING.votes_json[i][key] = value || null;
+  scheduleSave();
+}
+function bumpVote(i, key, delta) {
+  if (!MEETING.votes_json[i]) return;
+  MEETING.votes_json[i][key] = Math.max(0, (MEETING.votes_json[i][key] || 0) + delta);
+  paintVotes();
+  scheduleSave();
+}
+function setOutcome(i, outcome) {
+  if (!MEETING.votes_json[i]) return;
+  MEETING.votes_json[i].outcome = MEETING.votes_json[i].outcome === outcome ? 'pending' : outcome;
+  paintVotes();
+  scheduleSave();
+}
+function removeVote(i) {
+  if (!confirm('Remove this motion from the minutes?')) return;
+  MEETING.votes_json.splice(i, 1);
+  paintVotes();
+  scheduleSave();
+}
+
+// ── Follow-ups ──────────────────────────────────────────────────────────
+function paintFollowUps() {
+  const host = document.getElementById('follow-host');
+  const fu = MEETING.follow_ups_json || [];
+  if (!fu.length) {
+    host.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0">No follow-ups yet. Click <b>+ Add follow-up</b> for anything that needs to happen after the meeting.</div>';
+    return;
+  }
+  const adminNames = ADMINS.map(a => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)}</option>`).join('');
+  host.innerHTML = fu.map((f, i) => `
+    <div class="follow-row ${f.status === 'done' ? 'done' : ''}">
+      <input placeholder="What needs to happen?" value="${escapeHtml(f.description || '')}" oninput="updateFollowUp(${i}, 'description', this.value)">
+      <input list="admin-list-${i}" placeholder="Assigned to" value="${escapeHtml(f.assigned_to || '')}" oninput="updateFollowUp(${i}, 'assigned_to', this.value)">
+      <datalist id="admin-list-${i}">${adminNames}</datalist>
+      <input type="date" value="${escapeHtml(f.due_date || '')}" onchange="updateFollowUp(${i}, 'due_date', this.value)">
+      <select onchange="updateFollowUp(${i}, 'status', this.value)">
+        <option value="open" ${f.status === 'open' ? 'selected' : ''}>Open</option>
+        <option value="done" ${f.status === 'done' ? 'selected' : ''}>Done</option>
+        <option value="cancelled" ${f.status === 'cancelled' ? 'selected' : ''}>Skip</option>
+      </select>
+      <button class="x" onclick="removeFollowUp(${i})" title="Remove">×</button>
+    </div>
+  `).join('');
+}
+function addFollowUp() {
+  if (!MEETING.follow_ups_json) MEETING.follow_ups_json = [];
+  MEETING.follow_ups_json.push({ id: crypto.randomUUID(), description: '', assigned_to: null, due_date: null, status: 'open' });
+  paintFollowUps();
+  scheduleSave();
+}
+function updateFollowUp(i, key, value) {
+  if (!MEETING.follow_ups_json[i]) return;
+  MEETING.follow_ups_json[i][key] = value || null;
+  if (key === 'status') paintFollowUps();      // restyle the row
+  scheduleSave();
+}
+function removeFollowUp(i) {
+  MEETING.follow_ups_json.splice(i, 1);
+  paintFollowUps();
+  scheduleSave();
+}
+
+// ── Autosave ────────────────────────────────────────────────────────────
+function scheduleSave() {
+  if (MEETING.status === 'completed') return;     // locked — don't auto-save
+  if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
+  setSaveStatus('saving', 'Saving…');
+  SAVE_TIMER = setTimeout(() => { saveNow(); }, 1500);
+}
+async function saveNow() {
+  if (!MEETING || MEETING.status === 'completed') return;
+  const myGen = ++SAVE_GENERATION;
+  setSaveStatus('saving', 'Saving…');
+  // Pull current form state into MEETING before sending.
+  MEETING.title = document.getElementById('m-title').value.trim() || 'Board Meeting';
+  MEETING.meeting_date = document.getElementById('m-date').value || MEETING.meeting_date;
+  MEETING.location = document.getElementById('m-location').value.trim() || null;
+  MEETING.notes_md = document.getElementById('m-notes').value;
+  MEETING.visibility = document.getElementById('vis-public').checked ? 'public' : 'private';
+  try {
+    const r = await call('update', {
+      id: MEETING.id,
+      title: MEETING.title,
+      meeting_date: MEETING.meeting_date,
+      location: MEETING.location,
+      notes_md: MEETING.notes_md,
+      attendees: MEETING.attendees_json,
+      votes: MEETING.votes_json,
+      follow_ups: MEETING.follow_ups_json,
+      visibility: MEETING.visibility,
+    });
+    if (myGen !== SAVE_GENERATION) return;        // a newer save raced ahead
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    MEETING = r.meeting;
+    setSaveStatus('saved', '✓ Saved');
+  } catch (e) {
+    if (myGen !== SAVE_GENERATION) return;
+    setSaveStatus('failed', '⚠ ' + e.message);
+  }
+}
+function setSaveStatus(cls, text) {
+  const el = document.getElementById('save-status');
+  el.classList.remove('saving', 'saved', 'failed');
+  el.classList.add(cls);
+  el.textContent = text;
+  if (cls === 'saved') setTimeout(() => { if (el.textContent === '✓ Saved') el.textContent = ''; }, 2500);
+}
+
+// Save before leaving the page if there's an unsaved change in flight.
+window.addEventListener('beforeunload', (e) => {
+  if (SAVE_TIMER) {
+    // best-effort sync save — modern browsers ignore custom prompts but
+    // we still flush what we can.
+    saveNow();
+  }
+});
+
+// ── Lifecycle actions ───────────────────────────────────────────────────
+async function startMeeting() {
+  // Save current draft fields first so the timestamps reflect actual content.
+  await saveNow();
+  try {
+    const r = await call('start', { id: MEETING.id });
+    if (!r.ok) throw new Error(r.error || 'Could not start');
+    MEETING = r.meeting;
+    paintEditor();
+  } catch (e) { alert(e.message); }
+}
+
+async function finalize() {
+  if (!confirm('Finalize this meeting? You can re-open it later if you need to edit, but finalizing locks it for now and makes it visible on the public governance page (if visibility is set to Public).')) return;
+  await saveNow();
+  try {
+    const r = await call('finalize', { id: MEETING.id });
+    if (!r.ok) throw new Error(r.error || 'Could not finalize');
+    MEETING = r.meeting;
+    paintEditor();
+  } catch (e) { alert(e.message); }
+}
+
+async function reopen() {
+  try {
+    const r = await call('reopen', { id: MEETING.id });
+    if (!r.ok) throw new Error(r.error || 'Could not re-open');
+    MEETING = r.meeting;
+    paintEditor();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteMeeting() {
+  if (!confirm(`Delete "${MEETING.title}" (${MEETING.meeting_date})? This can't be undone.`)) return;
+  try {
+    const r = await call('delete', { id: MEETING.id });
+    if (!r.ok) throw new Error(r.error || 'Delete failed');
+    goList();
+  } catch (e) { alert(e.message); }
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────
+(async () => {
+  // Identity + brand paint.
+  const t = token(); if (!t) { logout(); return; }
+  try {
+    const r = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'me' }),
+    });
+    const d = await r.json();
+    if (!d.ok) { logout(); return; }
+    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply(d.tenant.features || {}, d.user, d.tenant, d.usage);
+  } catch (_) { /* keep going */ }
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('id')) {
+    showEditor(params.get('id'));
+  } else {
+    loadList();
+  }
+})();
+</script>
+</body>
+</html>

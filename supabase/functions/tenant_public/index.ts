@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
   // their own authenticated endpoint (member_auth.me already returns them; for
   // now public surface is enough).
   const { data: docsData } = await sb.from('documents')
-    .select('id, title, description, url, sort_order')
+    .select('id, title, description, url, visibility, sort_order, created_at, updated_at')
     .eq('tenant_id', tenant.id)
     .eq('active', true)
     .eq('visibility', 'public')
