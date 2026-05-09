@@ -130,17 +130,25 @@ function escapeHtml(s) {
 const SLUG = getSlugFromHostname();
 
 // Wire Google sign-in to OAuth init. Hide if no slug — Google can't know
-// which tenant to check the email against without one.
-(function () {
+// which tenant to check the email against without one. Hide ALSO if the
+// platform hasn't configured GOOGLE_CLIENT_ID yet — clicking through to
+// the OAuth init would just produce a "not configured" error page. Probe
+// /functions/v1/google_oauth?action=status to find out before showing.
+(async function () {
   const g = document.getElementById('google-signin');
-  if (g) {
-    if (SLUG) {
+  if (!g) return;
+  if (!SLUG) { g.style.display = 'none'; return; }
+  // Hide by default; show only after we confirm Google is configured.
+  g.style.display = 'none';
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/google_oauth?action=status`);
+    const data = await r.json();
+    if (data && data.ok && data.configured) {
       const params = new URLSearchParams({ action: 'init', slug: SLUG, kind: 'admin' });
       g.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
-    } else {
-      g.style.display = 'none';
+      g.style.display = '';
     }
-  }
+  } catch (_) { /* leave hidden on probe failure */ }
 })();
 
 (async () => {

@@ -207,16 +207,22 @@ async function autoSignInIfPossible() {
       }
     }
   } catch { /* keep generic title */ }
-  // Wire Google sign-in to bounce through our OAuth init endpoint.
-  // Hide the button if no slug is detected — without a slug Google can't
-  // know which tenant to look up, and the init endpoint returns an error.
+  // Wire Google sign-in. Hide unless we have a slug AND Google OAuth is
+  // configured platform-side. Probe ?action=status to find out — saves
+  // members from clicking through to a "not configured" error page.
   const gBtn = document.getElementById('google-signin');
   if (gBtn) {
+    gBtn.style.display = 'none';
     if (SLUG) {
-      const params = new URLSearchParams({ action: 'init', slug: SLUG, kind: 'member' });
-      gBtn.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
-    } else {
-      gBtn.style.display = 'none';
+      try {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/google_oauth?action=status`);
+        const data = await r.json();
+        if (data && data.ok && data.configured) {
+          const params = new URLSearchParams({ action: 'init', slug: SLUG, kind: 'member' });
+          gBtn.href = `${SUPABASE_URL}/functions/v1/google_oauth?${params.toString()}`;
+          gBtn.style.display = '';
+        }
+      } catch (_) { /* leave hidden on probe failure */ }
     }
   }
 })();

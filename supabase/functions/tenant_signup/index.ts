@@ -91,15 +91,16 @@ Deno.serve(async (req) => {
 
   const slug         = String(body.slug ?? '').trim().toLowerCase();
   const display_name = String(body.display_name ?? '').trim();
-  const email        = String(body.email ?? '').trim().toLowerCase();
+  const emailRaw     = String(body.email ?? '').trim().toLowerCase();
   const password     = String(body.password ?? '');
   const plan         = String(body.plan ?? 'free').toLowerCase();
-  // Optional E.164 phone for future SMS-based admin login (Twilio TBD).
-  // We only validate shape — if it's bogus we silently drop it rather than
-  // blocking the signup (the user can fix it later in Settings).
+  // Phone is now an alternative sign-in identifier alongside email — at
+  // least one is required, both is fine. If only phone is supplied, we
+  // use the E.164 string as the username so admin login still works.
   let phone_e164: string | null = null;
   const phoneRaw = typeof body.phone_e164 === 'string' ? body.phone_e164.trim() : '';
   if (phoneRaw && /^\+\d{8,15}$/.test(phoneRaw)) phone_e164 = phoneRaw;
+  const email = emailRaw && emailRaw.includes('@') && emailRaw.length <= 200 ? emailRaw : null;
 
   // ── Validation ─────────────────────────────────────────────────────────
   if (!display_name || display_name.length < 2) {
@@ -117,8 +118,18 @@ Deno.serve(async (req) => {
   if (RESERVED_SLUGS.has(slug)) {
     return jsonResponse({ ok: false, error: `"${slug}" is reserved — pick another.` });
   }
-  if (!email || !email.includes('@') || email.length > 200) {
-    return jsonResponse({ ok: false, error: 'Valid email is required' });
+  // Either email OR phone must be present — phone-only is fine for clubs
+  // where the founder doesn't want to use email. Username falls back to
+  // phone if no email.
+  if (!email && !phone_e164) {
+    return jsonResponse({ ok: false, error: 'Add an email or a phone number — at least one is required for sign-in' });
+  }
+  if (emailRaw && !email) {
+    // They typed something email-shaped that didn't validate
+    return jsonResponse({ ok: false, error: 'Email looks invalid — double-check it or leave it blank if you want to use phone only' });
+  }
+  if (phoneRaw && !phone_e164) {
+    return jsonResponse({ ok: false, error: 'Phone number looks invalid — use a 10-digit US number or leave it blank if you want to use email only' });
   }
   if (!password || password.length < 10) {
     return jsonResponse({ ok: false, error: 'Password must be at least 10 characters' });
@@ -158,13 +169,20 @@ Deno.serve(async (req) => {
 
   // ── Create the first admin user (the person signing up) ────────────────
   const password_hash = await bcrypt.hash(password, 10);
+  // Username falls back to phone when no email — that's how the user
+  // signs in by phone. display_name uses email's local-part if email,
+  // else the last 4 digits of phone (e.g. "Member 4567").
+  const username = email ?? phone_e164!;
+  const display_name_default = email
+    ? email.split('@')[0]
+    : `Member ${phone_e164!.slice(-4)}`;
   const { data: admin, error: uErr } = await sb.from('admin_users').insert({
     tenant_id: tenant.id,
-    username: email,
+    username,
     email,
     phone_e164,
     password_hash,
-    display_name: email.split('@')[0],
+    display_name: display_name_default,
     is_super: true,        // first admin of a fresh tenant is the org owner
     is_default_pw: false,  // they just typed the password themselves
     active: true,

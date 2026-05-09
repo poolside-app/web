@@ -851,7 +851,7 @@ async function submitApplication() {
         <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">You're set up as a member. Now back to admin setup →</div>
           <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Your application is queued. Keep going on the rest of your club setup so members can apply, pay, and use everything.</div>
-          <a href="/club/admin/setup.html" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:13px">Continue to admin setup →</a>
+          <a href="/club/admin/" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:13px">Continue to admin →</a>
         </div>
       ` : `<p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`}
     `;
@@ -931,6 +931,27 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
     <p style="font-size:13px;color:var(--muted)">Your sign-in link is on its way to your inbox — should arrive within a minute. Check spam if you don't see it.</p>`;
 }
 
+// Append a "Continue to admin" link to the success card whenever the
+// applicant came in via ?prefill=admin — they're the club founder and
+// need a way back to the admin setup. Otherwise the only nav out is
+// the member-side sign-in link, which is wrong for the founder.
+function appendAdminContinueIfNeeded() {
+  const isAdmin = (new URLSearchParams(window.location.search)).get('prefill') === 'admin';
+  if (!isAdmin) return;
+  const formEl = document.getElementById('form');
+  if (!formEl) return;
+  if (formEl.querySelector('[data-admin-continue]')) return;
+  const div = document.createElement('div');
+  div.dataset.adminContinue = '1';
+  div.style.cssText = 'margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb';
+  div.innerHTML = `
+    <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">You're set up as a member. Back to admin setup →</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Keep going on the rest of your club setup so members can apply, pay, and use everything.</div>
+    <a href="/club/admin/" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:13px">Continue to admin →</a>
+  `;
+  formEl.appendChild(div);
+}
+
 (async () => {
   // If the user just came back from Stripe Checkout, show a success/cancel
   // banner instead of the empty form. Stripe redirected to ?paid=1 / ?paid=0
@@ -945,12 +966,13 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
         'Your dues are paid and your membership is being finalized.',
         appId,
       );
+      appendAdminContinueIfNeeded();
       return;
     }
     document.getElementById('form').className = 'card ok';
     const isAdmin = params.get('prefill') === 'admin';
     document.getElementById('form').innerHTML =
-      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/setup.html">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
+      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
     return;
   }
   if (params.has('plan_started')) {
@@ -962,13 +984,14 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
         'First installment paid. Your second installment auto-charges on the final due date — we\'ll email reminders before each charge.',
         appId,
       );
+      appendAdminContinueIfNeeded();
       return;
     }
     document.getElementById('form').className = 'card ok';
     {
       const isAdmin = params.get('prefill') === 'admin';
       document.getElementById('form').innerHTML =
-        `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/setup.html">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
+        `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
     }
     return;
   }

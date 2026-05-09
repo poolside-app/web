@@ -74,6 +74,14 @@ Deno.serve(async (req) => {
   const action = url.searchParams.get('action')
     || (url.searchParams.get('code') ? 'callback' : '');
 
+  // Public probe used by sign-in pages to decide whether to show the
+  // "Continue with Google" button. Returns JSON, never redirects, no
+  // auth required. Doesn't leak the client id — just configured: bool.
+  if (action === 'status') {
+    const configured = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+    return jsonResponse({ ok: true, configured });
+  }
+
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     return htmlError('Google sign-in isn\'t configured yet — ask the club admin to wire GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET.', 503);
   }
