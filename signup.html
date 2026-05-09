@@ -84,6 +84,19 @@
     <h1>Start your club</h1>
     <p class="lede">Free for clubs up to 20 households — no credit card, ever. Bigger clubs get 14 days to try it out before billing. We'll spin up your subdomain right away and your setup wizard will be waiting on first login.</p>
 
+    <!-- "Sign up with Google" — bounces through google_oauth?action=init&kind=tenant_signup.
+         The OAuth callback redirects back here with #google_email/#google_name/#google_sub
+         in the URL hash; the script at the bottom of this page reads them, prefills
+         the form fields, hides the password input, and stores the sub for submit. -->
+    <a id="google-signup-btn" href="#" style="display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#0f172a;border:1.5px solid var(--border);border-radius:var(--r-md);padding:12px 16px;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:14px">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.79 2.71v2.26h2.9c1.69-1.56 2.69-3.86 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.91-2.26c-.81.54-1.83.86-3.05.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.34A8.99 8.99 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.71a5.4 5.4 0 0 1 0-3.43V4.96H.96a8.99 8.99 0 0 0 0 8.08l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58A8.99 8.99 0 0 0 .96 4.96l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+      Sign up with Google
+    </a>
+    <div style="margin:0 0 18px;text-align:center;color:var(--muted);font-size:12px;position:relative">
+      <span style="background:#fff;padding:0 10px;position:relative;z-index:1">or fill in the details below</span>
+      <div style="position:absolute;top:50%;left:0;right:0;border-top:1px solid var(--border);z-index:0"></div>
+    </div>
+
     <label for="club">Club name</label>
     <input id="club" type="text" placeholder="Bishop Estates Cabana Club" autocomplete="organization" required>
 
@@ -115,7 +128,68 @@
 </main>
 <script src="/js/phone-format.js"></script>
 <script>
-const SIGNUP_URL = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_signup';
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const SIGNUP_URL = `${SUPABASE_URL}/functions/v1/tenant_signup`;
+
+// Stash for the Google sub when the user signs up via Google. Set by the
+// hash handler below; cleared if they bail and use email instead.
+let GOOGLE_SUB = null;
+
+// ── Sign up with Google ─────────────────────────────────────────────────
+// Probe the OAuth status endpoint on init. If Google isn't configured
+// platform-side, hide the button (clicking would lead to an error page).
+// Otherwise wire its href to start the OAuth flow.
+(async function () {
+  const btn = document.getElementById('google-signup-btn');
+  if (!btn) return;
+  btn.style.display = 'none';
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/google_oauth?action=status`);
+    const data = await r.json();
+    if (data && data.ok && data.configured) {
+      btn.href = `${SUPABASE_URL}/functions/v1/google_oauth?action=init&kind=tenant_signup`;
+      btn.style.display = 'flex';
+    }
+  } catch (_) { /* leave hidden on probe failure */ }
+})();
+
+// ── Hash handler: prefill from Google identity ──────────────────────────
+// google_oauth callback redirects to /signup.html#google_email=...&google_name=...&google_sub=...
+// Read those params, prefill the form, hide the password input (Google
+// users sign in via Google going forward).
+(function () {
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) return;
+  const params = new URLSearchParams(hash);
+  const email = params.get('google_email');
+  const name  = params.get('google_name');
+  const sub   = params.get('google_sub');
+  if (!email || !sub) return;
+  // Prefill identity
+  document.getElementById('email').value = email;
+  // Hide password — sign in via Google going forward. We still need a
+  // password value for the schema, so we generate a random one server-
+  // side via the google_sub branch in tenant_signup (skip-password path).
+  const pwLabel = document.querySelector('label[for="pw"]');
+  const pwInput = document.getElementById('pw');
+  const pwHelp  = pwInput?.nextElementSibling;
+  if (pwLabel) pwLabel.style.display = 'none';
+  if (pwInput) {
+    pwInput.removeAttribute('required');
+    pwInput.style.display = 'none';
+    pwInput.value = '';
+  }
+  if (pwHelp && pwHelp.classList.contains('field-help')) pwHelp.style.display = 'none';
+  // Stash the sub for submit
+  GOOGLE_SUB = sub;
+  // Banner showing they're signed in via Google
+  const banner = document.createElement('div');
+  banner.style.cssText = 'background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;margin:0 0 14px;font-size:13px;color:#14532d';
+  banner.innerHTML = `<b>✓ Continuing as ${email}</b> via Google. You'll sign in with Google going forward — no password needed.`;
+  document.querySelector('form.card').insertBefore(banner, document.getElementById('club').previousElementSibling);
+  // Strip the hash so refreshes don't re-fire this
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+})();
 
 // Auto-suggest slug from club name
 const clubInput = document.getElementById('club');
@@ -162,7 +236,12 @@ async function fakeSubmit() {
     const res = await fetch(SIGNUP_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ display_name, slug, email, password, phone_e164, plan: 'free' }),
+      body: JSON.stringify({
+        display_name, slug, email, password, phone_e164, plan: 'free',
+        // When Google-signup, we forward the verified sub so tenant_signup
+        // can link this admin to it (skip-password path on the server).
+        google_sub: GOOGLE_SUB || undefined,
+      }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Sign-up failed');

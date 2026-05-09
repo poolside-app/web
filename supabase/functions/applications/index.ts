@@ -373,26 +373,55 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
       `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
-    // Enqueue an admin task + fire a phone-push to subscribed admins
-    // with the 'applications' scope (or owner-role).
-    try {
-      const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-      const isVenmo = payment_method === 'venmo';
-      await enqueueAdminTask(sb, {
-        tenant_id: tenant.id,
-        target_scopes: ['applications'],
-        kind: 'application.submitted',
-        summary: `New application: ${family_name} (${primary_name})`,
-        link_url: '/club/admin/members.html#applications',
-        source_kind: 'application', source_id: data.id,
-        push_title: isVenmo
-          ? `🟢 New application + Venmo payment to verify`
-          : `📨 New application from ${family_name}`,
-        push_body: isVenmo
-          ? `${primary_name} applied and chose Venmo. Open Venmo to verify their payment, then approve.`
-          : `${primary_name} just applied. Tap to review.`,
-      });
-    } catch { /* best-effort — never fails submission */ }
+
+    // ── Auto-approval routing (2026-05-09 redesign) ─────────────────────
+    //   Stripe / stripe_plan : the webhook auto-approves on payment.
+    //                          NO admin_task here — the application is
+    //                          either pending-payment (60-min cleanup)
+    //                          or auto-approved+paid by webhook.
+    //   Venmo                : auto-approve INLINE via internal call.
+    //                          Admin only acts on payment verification
+    //                          (separate venmo.claim task that fires
+    //                          when the member taps "I paid Venmo").
+    //                          Fallback admin_task if auto-approve fails
+    //                          (no phone, capacity hit, etc.).
+    //   No method (decide later) : admin_task fires for manual approval.
+    let autoApproved = false;
+    if (payment_method === 'venmo') {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+          body: JSON.stringify({ action: 'approve', id: data.id, tenant_id: tenant.id }),
+        });
+        const ar = await r.json().catch(() => ({ ok: false }));
+        if (ar && ar.ok) autoApproved = true;
+      } catch (_) { /* fall through to admin_task fallback below */ }
+    }
+
+    const isStripeFlow = payment_method === 'stripe' || payment_method === 'stripe_plan';
+    if (!isStripeFlow && !autoApproved) {
+      try {
+        const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+        const isVenmo = payment_method === 'venmo';  // here only when Venmo auto-approve failed
+        await enqueueAdminTask(sb, {
+          tenant_id: tenant.id,
+          target_scopes: ['applications'],
+          kind: 'application.submitted',
+          summary: isVenmo
+            ? `New Venmo application — auto-approve failed, review needed: ${family_name} (${primary_name})`
+            : `New application: ${family_name} (${primary_name})`,
+          link_url: '/club/admin/members.html#applications',
+          source_kind: 'application', source_id: data.id,
+          push_title: isVenmo
+            ? `⚠️ Application needs manual review`
+            : `📨 New application from ${family_name}`,
+          push_body: isVenmo
+            ? `${primary_name} applied via Venmo but auto-approve failed (likely missing phone). Open and approve manually.`
+            : `${primary_name} just applied. Tap to review.`,
+        });
+      } catch { /* best-effort — never fails submission */ }
+    }
 
     // Referral capture: if this application came in via a code, create a
     // referrals row at status='applied'. Will flip to 'verified' (or

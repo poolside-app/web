@@ -91,8 +91,10 @@ Deno.serve(async (req) => {
     const slug = (url.searchParams.get('slug') || '').toLowerCase();
     const kind = (url.searchParams.get('kind') || 'member').toLowerCase();
     const returnTo = url.searchParams.get('return_to') || '';
-    if (!slug) return htmlError('Missing slug — visit your club\'s subdomain to sign in with Google.');
-    if (!['member', 'admin'].includes(kind)) return htmlError('Invalid kind');
+    if (!['member', 'admin', 'tenant_signup'].includes(kind)) return htmlError('Invalid kind');
+    // tenant_signup is a brand-new club — there's no slug to look up. Other
+    // kinds need a slug to scope the user lookup to one tenant.
+    if (kind !== 'tenant_signup' && !slug) return htmlError('Missing slug — visit your club\'s subdomain to sign in with Google.');
 
     const state = await encodeState({ slug, kind, return_to: returnTo });
     const params = new URLSearchParams({
@@ -145,6 +147,19 @@ Deno.serve(async (req) => {
     if (!profileRes.ok) return htmlError('Couldn\'t fetch Google profile.');
     const profile = await profileRes.json() as { sub: string; email: string; email_verified?: boolean; name?: string };
     if (!profile.email_verified) return htmlError('Your Google email isn\'t verified — sign in with email or phone instead.');
+
+    // tenant_signup: no tenant exists yet — bounce back to the marketing
+    // signup page with the Google identity prefilled in the URL hash.
+    // signup.html reads it, fills email + name, hides password, and links
+    // the new admin row to google_sub via tenant_signup.
+    if (kind === 'tenant_signup') {
+      const params = new URLSearchParams({
+        google_email: profile.email,
+        google_name: String(profile.name || ''),
+        google_sub: profile.sub,
+      });
+      return Response.redirect(`https://www.poolsideapp.com/signup.html#${params.toString()}`, 302);
+    }
 
     const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: tenant } = await sb.from('tenants')
