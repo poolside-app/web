@@ -185,6 +185,10 @@ Deno.serve(async (req) => {
     const gateRequested = !!gateStatus && gateStatus !== 'active';
     const bylawsCount = bylawsRes.count ?? 0;
 
+    // Each fix_url ends with `?focus=<id>` so the destination page can
+    // scroll-to + pulse the matching field via /js/focus-highlight.js.
+    // Pages annotate target nodes with data-focus="<id>" or supply a
+    // FOCUS_FALLBACKS map.
     const items = [
       {
         id: 'wizard',
@@ -198,7 +202,7 @@ Deno.serve(async (req) => {
         id: 'logo',
         label: 'Upload your club logo',
         done: !!(branding.logo_url || branding.logo),
-        fix_url: '/club/admin/settings.html',
+        fix_url: '/club/admin/settings.html?focus=logo',
         fix_label: 'Upload logo',
         why: 'Replaces the placeholder dot in your header and emails.',
       },
@@ -222,7 +226,7 @@ Deno.serve(async (req) => {
         id: 'tiers',
         label: 'Set up at least one membership tier',
         done: tiers.length > 0,
-        fix_url: '/club/admin/billing.html',
+        fix_url: '/club/admin/members.html?focus=tiers#tiers',
         fix_label: 'Add a tier',
         why: 'Without tiers, your apply form is broken.',
       },
@@ -230,7 +234,7 @@ Deno.serve(async (req) => {
         id: 'policies',
         label: 'Add policies (waiver, rules)',
         done: policyCount > 0,
-        fix_url: '/club/admin/policies.html',
+        fix_url: '/club/admin/policies.html?focus=policies',
         fix_label: 'Edit policies',
         why: 'Liability protection — applicants must agree before submitting.',
       },
@@ -244,7 +248,7 @@ Deno.serve(async (req) => {
           ? 'Payment method set up'
           : 'Set up a way for members to pay',
         done: stripeConnected || venmoSet,
-        fix_url: '/club/admin/payments.html',
+        fix_url: '/club/admin/payments.html?focus=venmo',
         fix_label: (stripeConnected || venmoSet) ? 'Manage payments' : 'Set up payments',
         why: stripeConnected && venmoSet
           ? 'Both Stripe (cards) and Venmo are configured — members can pick either.'
@@ -265,7 +269,7 @@ Deno.serve(async (req) => {
           ? 'Stripe connected — cards work'
           : 'Connect Stripe (accept credit cards)',
         done: stripeConnected,
-        fix_url: '/club/admin/payments.html',
+        fix_url: '/club/admin/payments.html?focus=stripe',
         fix_label: stripeConnected ? 'Stripe dashboard' : 'Connect Stripe',
         why: stripeConnected
           ? 'Members can pay dues, programs, and donations with their card.'
@@ -276,7 +280,7 @@ Deno.serve(async (req) => {
         id: 'admins',
         label: 'Invite a backup admin',
         done: adminCount >= 2,
-        fix_url: '/club/admin/admins.html',
+        fix_url: '/club/admin/admins.html?focus=invite',
         fix_label: 'Invite admin',
         why: 'If you lose access, no one else can manage the club.',
         optional: true,
@@ -287,7 +291,7 @@ Deno.serve(async (req) => {
           ? 'Bylaws uploaded'
           : 'Upload your club\'s bylaws',
         done: bylawsCount > 0,
-        fix_url: '/club/admin/documents.html',
+        fix_url: '/club/admin/documents.html?focus=upload',
         fix_label: bylawsCount > 0 ? 'Manage documents' : 'Upload bylaws',
         why: bylawsCount > 0
           ? 'Members can read your bylaws on the public governance page.'
@@ -302,7 +306,7 @@ Deno.serve(async (req) => {
               ? 'Keyfob/gate request in progress — we\'ll be in touch'
               : 'Want gate access from members\' phones?'),
         done: gateActive || gateRequested,
-        fix_url: '/club/admin/settings.html#gate',
+        fix_url: '/club/admin/settings.html?focus=gate#gate',
         fix_label: gateActive ? 'Configure panel' : (gateRequested ? 'View status' : 'Request keyfob integration'),
         why: gateActive
           ? 'Members with paid dues see the "Unlock gate" button on their home.'

@@ -518,5 +518,44 @@
   </div>
 </footer>
 
+<script>
+// "See it live" / "See a real club" point at bishopestates.poolsideapp.com.
+// If that tenant doesn't exist (e.g. it was deleted or hasn't been re-created
+// yet), swap every showcase link to a "Email Doug for a demo" mailto. The
+// home page never shows a dead link.
+(async () => {
+  const SHOWCASE_SLUG = 'bishopestates';
+  const PROBE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_public';
+  const SHOWCASE_URL = `https://${SHOWCASE_SLUG}.poolsideapp.com`;
+  const FALLBACK_HREF = 'mailto:doug.frevele@gmail.com?subject=Poolside%20demo&body=Hi%20Doug%20%E2%80%94%20I%27d%20like%20to%20see%20Poolside%20in%20action.%20Can%20you%20show%20me%20a%20live%20club%3F';
+  const FALLBACK_LABEL = '📧 Email Doug for a demo';
+  let alive = false;
+  try {
+    const res = await fetch(PROBE_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: SHOWCASE_SLUG }),
+    });
+    const data = await res.json();
+    alive = !!(data && data.ok && data.tenant);
+  } catch (_) { alive = false; }
+  if (alive) return;  // showcase exists — links work as-is
+
+  // Showcase not available — swap every link pointing at the slug.
+  document.querySelectorAll(`a[href*="${SHOWCASE_SLUG}.poolsideapp.com"]`).forEach(a => {
+    a.href = FALLBACK_HREF;
+    a.removeAttribute('target');
+    a.removeAttribute('rel');
+    // If the link text mentions "live" or "real club" or the slug, replace
+    // with the fallback label. Otherwise leave the text alone (e.g. the
+    // body sentence "Built and used by Bishop Estates").
+    const txt = (a.textContent || '').toLowerCase();
+    if (txt.includes('live') || txt.includes('real club') || txt.includes(SHOWCASE_SLUG)) {
+      a.textContent = FALLBACK_LABEL;
+    }
+  });
+})();
+</script>
+
 </body>
 </html>

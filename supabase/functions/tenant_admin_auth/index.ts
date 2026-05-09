@@ -199,7 +199,11 @@ async function signToken(
       role_template: extras.role_template ?? 'owner',
       scopes: extras.scopes ?? [],
       is_super: extras.is_super ?? false,
-      exp: getNumericDate(60 * 60 * 24 * 30),  // 30 days
+      // 100 days. Sliding-renewal lives in the `me` action below — every
+       // me() call older than 7 days returns a fresh token so an active
+       // user effectively never gets logged out. 100d cap protects against
+       // truly abandoned sessions.
+      exp: getNumericDate(60 * 60 * 24 * 100),
     },
     key,
   );
@@ -435,10 +439,31 @@ Deno.serve(async (req) => {
     }
     if (!user || !user.active) return jsonResponse({ ok: false, error: 'User not found' }, 401);
 
+    // ── Sliding renewal ─────────────────────────────────────────────────
+    // If the token's remaining lifetime is under 93 days (i.e. it's been
+    // alive for more than 7), mint a fresh 100-day token and return it
+    // so an active admin effectively never has to re-login. Skip for
+    // impersonation tokens — they have a deliberately shorter cap.
+    let renewed_token: string | null = null;
+    if (!payload.impersonated_by && payload.exp && tenant.slug) {
+      const remaining = (payload.exp as number) * 1000 - Date.now();
+      const NINETY_THREE_DAYS_MS = 93 * 24 * 60 * 60 * 1000;
+      if (remaining < NINETY_THREE_DAYS_MS) {
+        try {
+          renewed_token = await signToken(payload.sub, payload.tid, tenant.slug, {
+            role_template: user.role_template ?? 'owner',
+            scopes: (user.scopes ?? []) as string[],
+            is_super: !!user.is_super,
+          });
+        } catch (_) { /* renewal best-effort; user keeps current token */ }
+      }
+    }
+
     return jsonResponse({
       ok: true,
       tenant: { ...tenant, features, branding },
       usage,
+      renewed_token,
       user: {
         ...user,
         scopes: user.scopes ?? [],

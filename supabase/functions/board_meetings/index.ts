@@ -107,18 +107,28 @@ function sanitizeVotes(input: unknown): Array<Record<string, unknown>> {
   return input.slice(0, 100).map(raw => {
     const r = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
     const motion = String(r.motion ?? '').trim().slice(0, 1000);
-    if (!motion) return null;
+    const yes     = Math.max(0, Math.trunc(Number(r.yes ?? 0)) || 0);
+    const no      = Math.max(0, Math.trunc(Number(r.no ?? 0)) || 0);
+    const abstain = Math.max(0, Math.trunc(Number(r.abstain ?? 0)) || 0);
     const outcome = String(r.outcome ?? 'pending');
+    const notes   = String(r.notes ?? '').trim().slice(0, 2000);
+    const proposed_by = String(r.proposed_by ?? '').trim().slice(0, 120);
+    const seconded_by = String(r.seconded_by ?? '').trim().slice(0, 120);
+    // Keep the row if it has ANY data — empty motions are allowed
+    // mid-meeting so the secretary can record vote counts before typing
+    // the motion text. Only skip rows that are completely empty (the
+    // user clicked + Add motion and then changed their mind).
+    const hasAnyData = !!motion || yes > 0 || no > 0 || abstain > 0
+      || (outcome !== 'pending' && outcome !== '') || !!notes || !!proposed_by || !!seconded_by;
+    if (!hasAnyData) return null;
     return {
       id: r.id ? String(r.id).slice(0, 40) : crypto.randomUUID(),
       motion,
-      proposed_by: String(r.proposed_by ?? '').trim().slice(0, 120) || null,
-      seconded_by: String(r.seconded_by ?? '').trim().slice(0, 120) || null,
-      yes:     Math.max(0, Math.trunc(Number(r.yes ?? 0)) || 0),
-      no:      Math.max(0, Math.trunc(Number(r.no ?? 0)) || 0),
-      abstain: Math.max(0, Math.trunc(Number(r.abstain ?? 0)) || 0),
+      proposed_by: proposed_by || null,
+      seconded_by: seconded_by || null,
+      yes, no, abstain,
       outcome: VALID_OUT.has(outcome) ? outcome : 'pending',
-      notes:   String(r.notes ?? '').trim().slice(0, 2000) || null,
+      notes: notes || null,
     };
   }).filter((x): x is Record<string, unknown> => !!x);
 }
@@ -129,17 +139,21 @@ function sanitizeFollowUps(input: unknown): Array<Record<string, unknown>> {
   return input.slice(0, 100).map(raw => {
     const r = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
     const description = String(r.description ?? '').trim().slice(0, 500);
-    if (!description) return null;
+    const assigned_to = String(r.assigned_to ?? '').trim().slice(0, 120);
     const status = String(r.status ?? 'open');
     let due_date: string | null = null;
     if (r.due_date) {
       const s = String(r.due_date).slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) due_date = s;
     }
+    // Keep rows with any data so an in-flight follow-up doesn't disappear
+    // on autosave just because description hasn't been typed yet.
+    const hasAnyData = !!description || !!assigned_to || !!due_date || (status && status !== 'open');
+    if (!hasAnyData) return null;
     return {
       id: r.id ? String(r.id).slice(0, 40) : crypto.randomUUID(),
       description,
-      assigned_to: String(r.assigned_to ?? '').trim().slice(0, 120) || null,
+      assigned_to: assigned_to || null,
       due_date,
       status: VALID_S.has(status) ? status : 'open',
     };

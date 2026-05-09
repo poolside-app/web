@@ -116,6 +116,7 @@
   <a href="/club/admin/settings.html" class="on">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 
 <main>
@@ -151,7 +152,7 @@
     <input id="hero_tagline" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
   </div>
 
-  <div class="card">
+  <div class="card" data-focus="logo">
     <h2>Branding</h2>
 
     <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Background photo <span style="color:var(--muted);font-weight:500;font-size:12px">— shown behind the public hero</span></h3>
@@ -450,7 +451,7 @@
        The anchor name="gate" lets the dashboard "Keyfob / gate access"
        quick-action and the setup checklist deep-link straight to it. -->
   <a id="gate" name="gate"></a>
-  <div class="card" id="gate-card" data-owner-only style="margin-top:18px;display:none">
+  <div class="card" id="gate-card" data-focus="gate" data-owner-only style="margin-top:18px;display:none">
     <h2 id="gate-h2">🔐 Remote keyfob access</h2>
     <div id="gate-body" style="font-size:13.5px;color:var(--text);line-height:1.55"></div>
     <div class="err" id="gate-err"></div>

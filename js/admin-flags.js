@@ -16,6 +16,36 @@
 (function () {
   'use strict';
 
+  // ── Auto-renew admin tokens ───────────────────────────────────────────
+  // tenant_admin_auth.me returns `renewed_token` whenever the current
+  // token has been alive >7 days. We hook fetch globally so EVERY page
+  // (not just the ones we update by hand) participates in the renewal.
+  // The user effectively stays logged in as long as they use the app at
+  // least once every 100 days — no per-page changes needed.
+  try {
+    const orig = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const isMeCall = url.includes('/tenant_admin_auth');
+      if (!isMeCall) return orig(input, init);
+      return orig(input, init).then(async (res) => {
+        try {
+          // Clone so the original consumer can still read the body.
+          const cloned = res.clone();
+          const text = await cloned.text();
+          if (text && text.length < 50000) {
+            const data = JSON.parse(text);
+            if (data && data.renewed_token && typeof data.renewed_token === 'string') {
+              try { localStorage.setItem('poolside_tenant_token', data.renewed_token); }
+              catch (_) { /* ignore */ }
+            }
+          }
+        } catch (_) { /* response wasn't JSON or didn't contain token — ignore */ }
+        return res;
+      });
+    };
+  } catch (_) { /* fetch override is best-effort */ }
+
   // Synchronous brand paint. Runs the moment this script loads so the
   // header never shows "Poolside" while waiting for tenant_admin_auth.me.
   //
@@ -264,5 +294,15 @@
     }
   }
 
-  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker, paintSetupBanner };
+  // Slide the admin session forward — if me() returned a freshly-issued
+  // token (because the current one is more than 7 days old), persist it
+  // here so the user effectively never has to log in again as long as
+  // they keep using the app at least once every 100 days.
+  function persistRenewedToken(tok) {
+    if (!tok || typeof tok !== 'string') return;
+    try { localStorage.setItem('poolside_tenant_token', tok); }
+    catch (_) { /* storage may be disabled — ignore */ }
+  }
+
+  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker, paintSetupBanner, persistRenewedToken };
 })();

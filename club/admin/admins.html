@@ -167,6 +167,18 @@
 </div>
 
 <script src="/js/admin-flags.js"></script>
+<script src="/js/phone-format.js"></script>
+<script src="/js/focus-highlight.js"></script>
+<script>
+  // ?focus=invite — open + highlight the invite form
+  window.FOCUS_FALLBACKS = { invite: '#invite-form, #invite-toggle' };
+  document.addEventListener('DOMContentLoaded', () => {
+    if ((new URLSearchParams(location.search)).get('focus') === 'invite') {
+      const f = document.getElementById('invite-form');
+      if (f) setTimeout(() => f.classList.add('open'), 700);
+    }
+  });
+</script>
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const ADMIN_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;

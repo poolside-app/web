@@ -96,6 +96,7 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <div id="members-subtabs"></div>
 <script src="/js/members-subtabs.js"></script>
@@ -106,7 +107,7 @@
       <span class="chev">▶</span> Payment options setup <span style="font-weight:400">(Venmo, PayPal, Stripe)</span>
     </summary>
     <div style="margin-top:12px">
-      <div class="card" data-owner-only>
+      <div class="card" data-owner-only data-focus="stripe">
         <h2>Card payments (Stripe)</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, applications, programs, and guest passes. Charges land directly in your bank. Poolside takes a 0.5% platform fee on dues; 1.5% on programs/passes.</p>
         <div id="stripe-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
@@ -176,7 +177,7 @@
         <div class="err" id="drive-err"></div>
       </div>
 
-      <div class="card">
+      <div class="card" data-focus="venmo">
         <h2>Venmo &amp; PayPal</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Member-facing payment links. Venmo handle paints a QR on the apply form and member home; PayPal link drops a 'Pay with PayPal' button.</p>
         <label>Venmo handle <span class="opt">(without @)</span></label>

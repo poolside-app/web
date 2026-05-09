@@ -90,12 +90,13 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <div id="content-subtabs"></div>
 <script src="/js/content-subtabs.js"></script>
 
 <main>
-  <div class="toolbar">
+  <div class="toolbar" data-focus="upload">
     <h1>Documents</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input id="search" type="search" placeholder="🔍 Search documents…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">

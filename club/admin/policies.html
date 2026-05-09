@@ -78,10 +78,15 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
+<script>
+  // ?focus=policies → highlight the toolbar (which has the +Add button)
+  window.FOCUS_FALLBACKS = { policies: '.toolbar, main' };
+</script>
 
 <main>
-  <div class="toolbar">
+  <div class="toolbar" data-focus="policies">
     <div>
       <h1>Policies</h1>
       <div style="font-size:12px;color:var(--muted);margin-top:4px">The text members agree to when they apply. Required policies show as gated checkboxes during signup.</div>
