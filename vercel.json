@@ -1,6 +1,20 @@
 {
   "rewrites": [
     {
+      "source": "/oauth/google/signin/callback",
+      "has": [
+        { "type": "host", "value": "www\\.poolsideapp\\.com" }
+      ],
+      "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/google_oauth"
+    },
+    {
+      "source": "/oauth/google/drive/callback",
+      "has": [
+        { "type": "host", "value": "www\\.poolsideapp\\.com" }
+      ],
+      "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/google_drive_sync"
+    },
+    {
       "source": "/manifest.webmanifest",
       "has": [
         {

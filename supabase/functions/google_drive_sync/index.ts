@@ -36,6 +36,11 @@ const SERVICE_ROLE  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET    = Deno.env.get('ADMIN_JWT_SECRET');
 const GOOGLE_ID     = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+// Public-facing redirect URI Google sees on the consent screen. We proxy it
+// back to this function via Vercel rewrite (/oauth/google/drive/callback) so
+// users see "to continue to poolsideapp.com" instead of a Supabase URL.
+const GOOGLE_DRIVE_REDIRECT_URI = Deno.env.get('GOOGLE_DRIVE_REDIRECT_URI')
+  || 'https://www.poolsideapp.com/oauth/google/drive/callback';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -102,10 +107,10 @@ async function verifyState(tok: string): Promise<{ tid: string; aid: string } | 
 }
 
 function redirectUri(_req: Request): string {
-  // Use the public Supabase URL — req.url inside the edge runtime reflects
-  // the INTERNAL routing (http://, no /functions/v1/ prefix) which doesn't
-  // match what's registered in Google Cloud Console.
-  return `${SUPABASE_URL}/functions/v1/google_drive_sync`;
+  // Public-facing URL on poolsideapp.com (proxied to this function by a
+  // Vercel rewrite). Google's consent screen displays the host of this URL
+  // to the user — branded host = no scary "supabase.co" trust prompt.
+  return GOOGLE_DRIVE_REDIRECT_URI;
 }
 
 // Kick off the OAuth flow with drive.file scope (least-privilege — only

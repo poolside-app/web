@@ -22,12 +22,13 @@ const JWT_SECRET   = Deno.env.get('ADMIN_JWT_SECRET');
 
 const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
-// Google requires the registered redirect URI to match the one we send
-// EXACTLY — including query string. Cloud Console registers the bare URL,
-// so we can't append ?action=callback. Detect callback by presence of the
-// `code` parameter Google appends instead.
+// Public-facing redirect URI Google's consent screen displays. Proxied back
+// to this function by a Vercel rewrite (/oauth/google/signin/callback) so
+// users see "to continue to poolsideapp.com" instead of "supabase.co".
+// Detect callback by presence of the `code` parameter Google appends
+// (we can't put ?action=callback in the URI — Google requires exact match).
 const GOOGLE_REDIRECT_URI  = Deno.env.get('GOOGLE_REDIRECT_URI')
-  || `${SUPABASE_URL}/functions/v1/google_oauth`;
+  || 'https://www.poolsideapp.com/oauth/google/signin/callback';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

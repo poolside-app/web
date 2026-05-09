@@ -52,6 +52,25 @@ Save and Continue → Scopes. Make sure all 4 scopes from the table above are li
 
 ---
 
+## Step 2b — Register the branded redirect URIs (CRITICAL — do this now)
+
+By default, Google's consent screen displays the host of the OAuth redirect URI to the user. Without this step, users see "to continue to **sdewylbddkcvidwosgxo.supabase.co**" instead of "poolsideapp.com" — which looks like a phishing site and tanks trust.
+
+We proxy the OAuth callbacks through poolsideapp.com via Vercel rewrites, so Google should display `poolsideapp.com`.
+
+In Google Cloud Console → APIs & Services → **Credentials** → click your OAuth 2.0 Client ID → under **Authorized redirect URIs**, add these two:
+
+```
+https://www.poolsideapp.com/oauth/google/signin/callback
+https://www.poolsideapp.com/oauth/google/drive/callback
+```
+
+Click Save. (Keep any older `*.supabase.co` URIs registered for now as a rollback fallback — remove them once you've confirmed sign-in + drive-connect both work end-to-end on the new URIs.)
+
+The functions already use these URIs in code; once Cloud Console is saved, OAuth flips to the branded host on the next sign-in attempt. No deploy required.
+
+---
+
 ## Step 3 — Click "PUBLISH APP"
 
 This moves the app from Testing to "In production — pending verification". Users who weren't on the Test Users list can now go through the OAuth flow, but they'll see the "this app is being tested" warning until verification completes.
