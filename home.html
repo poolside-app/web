@@ -80,8 +80,11 @@
     box-shadow: 0 0 0 3px rgba(245, 158, 11, .18);
   }
   nav.top-nav { display: flex; gap: 26px; align-items: center; font-size: 14px; }
-  nav.top-nav a { color: var(--text); font-weight: 500; }
-  nav.top-nav a:hover { color: var(--blue); text-decoration: none; }
+  /* :not(.btn) so the "Start free" CTA in the nav keeps its .btn white-on-blue
+     styling — without this, nav.top-nav a beats .btn on specificity and the
+     button reads as near-black text on blue. */
+  nav.top-nav a:not(.btn) { color: var(--text); font-weight: 500; }
+  nav.top-nav a:not(.btn):hover { color: var(--blue); text-decoration: none; }
   @media (max-width: 720px) { nav.top-nav a:not(.btn) { display: none; } }
 
   /* Hero */
