@@ -69,19 +69,17 @@
   <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
 </header>
 <main>
-  <form class="card" onsubmit="event.preventDefault(); doLogin()">
-    <h1 id="title">Sign in</h1>
-    <p class="lede" id="sub">Enter your admin credentials.</p>
-
-    <label for="email">Email</label>
-    <input id="email" type="email" autocomplete="email" required>
-
-    <label for="pw">Password</label>
-    <input id="pw" type="password" autocomplete="current-password" required>
-
-    <button class="btn" id="submit" type="submit">Sign in</button>
-
-    <p class="small" style="text-align:center;margin-top:14px"><a href="#" onclick="event.preventDefault();showMagicLinkForm()" style="color:#0a3b5c;font-weight:600">Email or text me a sign-in link instead</a></p>
+  <!-- Phone-or-email magic-link form is the DEFAULT sign-in path (2026-05-08).
+       Phone is fastest (one-tap SMS code on the device they're already
+       holding); email also works (link in inbox). Password form is below
+       as a fallback for users who prefer it. -->
+  <form class="card" id="magic-form" onsubmit="event.preventDefault(); doMagic()">
+    <h1 id="m-title">Sign in</h1>
+    <p class="lede">Enter your phone or email — we'll send a one-tap sign-in link.</p>
+    <label for="m-id">Phone or email</label>
+    <input id="m-id" type="text" required placeholder="(555) 123-4567 or you@example.com">
+    <p style="font-size:11.5px;color:#0a3b5c;font-weight:500;margin:4px 0 0">📱 Phone is fastest — we text you a sign-in code.</p>
+    <button class="btn" id="m-submit" type="submit" style="margin-top:14px">Send me a sign-in link</button>
 
     <div style="margin:18px 0;text-align:center;color:#64748b;font-size:12px;position:relative">
       <span style="background:#fefdfb;padding:0 10px;position:relative;z-index:1">or</span>
@@ -92,21 +90,32 @@
       Sign in with Google
     </a>
 
-    <div id="err" class="err"></div>
+    <p class="small" style="text-align:center;margin-top:14px"><a href="#" onclick="event.preventDefault();showPasswordForm()" style="color:#64748b">Use email + password instead</a></p>
 
-    <p class="small">Wrong club? <a href="/">Back to club home</a></p>
-  </form>
-
-  <form class="card" id="magic-form" style="display:none" onsubmit="event.preventDefault(); doMagic()">
-    <h1 id="m-title">Sign-in link</h1>
-    <p class="lede">Enter your email or phone — we'll send a one-tap sign-in link.</p>
-    <label for="m-id">Email or phone</label>
-    <input id="m-id" type="text" required placeholder="you@example.com or (555) 123-4567">
-    <button class="btn" id="m-submit" type="submit">Send me a link</button>
-    <p class="small" style="text-align:center;margin-top:14px"><a href="#" onclick="event.preventDefault();showPasswordForm()" style="color:#0a3b5c;font-weight:600">← Back to password sign-in</a></p>
     <div id="m-err" class="err"></div>
     <div id="m-ok" class="err" style="background:#dcfce7;border-color:#86efac;color:#14532d"></div>
     <div id="m-dev" class="err" style="background:#fef3c7;border-color:#fde68a;color:#78350f"></div>
+    <p class="small">Wrong club? <a href="/">Back to club home</a></p>
+  </form>
+
+  <!-- Password form — fallback for users who prefer it. Hidden by default. -->
+  <form class="card" id="pw-form" style="display:none" onsubmit="event.preventDefault(); doLogin()">
+    <h1 id="title">Sign in with password</h1>
+    <p class="lede" id="sub">Enter your admin email + password.</p>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="email" required>
+
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+
+    <button class="btn" id="submit" type="submit">Sign in</button>
+
+    <p class="small" style="text-align:center;margin-top:14px"><a href="#" onclick="event.preventDefault();showMagicLinkForm()" style="color:#0a3b5c;font-weight:600">← Back to phone/email sign-in</a></p>
+
+    <div id="err" class="err"></div>
+
+    <p class="small">Wrong club? <a href="/">Back to club home</a></p>
   </form>
 </main>
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
@@ -199,12 +208,12 @@ const SLUG = getSlugFromHostname();
 })();
 
 function showMagicLinkForm() {
-  document.querySelector('form.card[onsubmit*=doLogin]').style.display = 'none';
+  document.getElementById('pw-form').style.display = 'none';
   document.getElementById('magic-form').style.display = '';
 }
 function showPasswordForm() {
-  document.querySelector('form.card[onsubmit*=doLogin]').style.display = '';
   document.getElementById('magic-form').style.display = 'none';
+  document.getElementById('pw-form').style.display = '';
 }
 
 async function doMagic() {

@@ -118,18 +118,18 @@ Deno.serve(async (req) => {
   if (RESERVED_SLUGS.has(slug)) {
     return jsonResponse({ ok: false, error: `"${slug}" is reserved — pick another.` });
   }
-  // Either email OR phone must be present — phone-only is fine for clubs
-  // where the founder doesn't want to use email. Username falls back to
-  // phone if no email.
-  if (!email && !phone_e164) {
-    return jsonResponse({ ok: false, error: 'Add an email or a phone number — at least one is required for sign-in' });
+  // Email is REQUIRED — it's the only reliable channel for sending PDFs of
+  // approved applications, payment receipts, password-reset links, and
+  // official board communications. Phone is optional but heavily encouraged
+  // because SMS-based sign-in is faster than typing an email password.
+  if (!emailRaw) {
+    return jsonResponse({ ok: false, error: 'Email is required — we use it for receipts, signed application PDFs, and important board messages' });
   }
-  if (emailRaw && !email) {
-    // They typed something email-shaped that didn't validate
-    return jsonResponse({ ok: false, error: 'Email looks invalid — double-check it or leave it blank if you want to use phone only' });
+  if (!email) {
+    return jsonResponse({ ok: false, error: 'Email looks invalid — double-check the format' });
   }
   if (phoneRaw && !phone_e164) {
-    return jsonResponse({ ok: false, error: 'Phone number looks invalid — use a 10-digit US number or leave it blank if you want to use email only' });
+    return jsonResponse({ ok: false, error: 'Phone number looks invalid — use a 10-digit US number or leave it blank' });
   }
   if (!password || password.length < 10) {
     return jsonResponse({ ok: false, error: 'Password must be at least 10 characters' });
@@ -169,20 +169,15 @@ Deno.serve(async (req) => {
 
   // ── Create the first admin user (the person signing up) ────────────────
   const password_hash = await bcrypt.hash(password, 10);
-  // Username falls back to phone when no email — that's how the user
-  // signs in by phone. display_name uses email's local-part if email,
-  // else the last 4 digits of phone (e.g. "Member 4567").
-  const username = email ?? phone_e164!;
-  const display_name_default = email
-    ? email.split('@')[0]
-    : `Member ${phone_e164!.slice(-4)}`;
+  // Username = email (we always have one). Phone is optional but stored
+  // for SMS-based sign-in via tenant_admin_auth.start_link.
   const { data: admin, error: uErr } = await sb.from('admin_users').insert({
     tenant_id: tenant.id,
-    username,
+    username: email,
     email,
     phone_e164,
     password_hash,
-    display_name: display_name_default,
+    display_name: email.split('@')[0],
     is_super: true,        // first admin of a fresh tenant is the org owner
     is_default_pw: false,  // they just typed the password themselves
     active: true,

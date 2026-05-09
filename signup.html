@@ -94,14 +94,13 @@
     </div>
     <p class="field-help">Lowercase letters, numbers, and hyphens — 2 to 30 characters. Auto-suggests from club name.</p>
 
-    <p style="font-weight:600;font-size:13px;color:var(--blue);margin:18px 0 8px">How will you sign in? <span style="font-weight:400;color:var(--muted);font-size:12px">— at least one of email or phone</span></p>
+    <label for="email">Your email</label>
+    <input id="email" type="email" placeholder="you@yourclub.org" autocomplete="email" required>
+    <p class="field-help">Required — we send signed application PDFs, payment receipts, and official board messages here.</p>
 
-    <label for="phone">Phone <span style="color:#0a3b5c;font-weight:600;font-size:11px">⭐ easiest — get a sign-in code via text</span></label>
+    <label for="phone" style="margin-top:14px">Your phone <span style="color:#0a3b5c;font-weight:600;font-size:11px">⭐ recommended — easiest sign-in</span></label>
     <input id="phone" type="tel" placeholder="(555) 123-4567" autocomplete="tel">
-
-    <label for="email" style="margin-top:14px">Email <span style="color:var(--muted);font-weight:500;font-size:11px">(optional if you gave a phone above)</span></label>
-    <input id="email" type="email" placeholder="you@yourclub.org" autocomplete="email">
-    <p class="field-help">Add at least one. If both, you can sign in with either.</p>
+    <p class="field-help">Add a phone and we'll text you a one-tap sign-in code instead of needing a password. Email password still works as backup.</p>
 
     <label for="pw">Password</label>
     <input id="pw" type="password" minlength="10" autocomplete="new-password" required>
@@ -150,9 +149,10 @@ async function fakeSubmit() {
     else if (/^\d{10}$/.test(digits)) phone_e164 = '+1' + digits;
     else if (/^1\d{10}$/.test(digits)) phone_e164 = '+' + digits;
   }
-  // Client-side guard: at least one identifier must be present.
-  if (!email && !phone_e164) {
-    errEl.textContent = 'Add an email or phone — at least one is required for sign-in.';
+  // Email is required (used for receipts + PDFs). Phone is encouraged but
+  // optional. Server-side validates again; this is just for instant UX.
+  if (!email || !email.includes('@')) {
+    errEl.textContent = 'Email is required — we use it for receipts and signed application PDFs.';
     errEl.style.display = 'block';
     return;
   }
