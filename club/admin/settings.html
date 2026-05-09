@@ -1109,28 +1109,66 @@ function renderGatePending(panel) {
 // live on the PROVIDER admin (/admin/gate-integrations.html). Doug installs
 // every panel himself so duplicating the editor on the tenant side just
 // invited misconfigurations. Tenants get: status badge, bridge health,
-// recent unlocks log, and a "contact us if something's wrong" pointer.
+// self-service troubleshooting steps when offline, and a "contact us if
+// nothing works" fallback. Cron-based offline detection (gate_admin/
+// cron_check_bridges) emails the same steps to the board the moment the
+// bridge stops checking in.
 function renderGateActive(panel, health) {
-  const healthColor = { online:'#16a34a', stale:'#d97706', offline:'#dc2626', never_seen:'#94a3b8' }[health.state] || '#94a3b8';
-  const healthLabel = {
-    online:    `🟢 Bridge online (last seen ${health.last_seen_seconds_ago}s ago)`,
-    stale:     `🟡 Bridge stale (${health.last_seen_seconds_ago}s — possible network blip)`,
-    offline:   `🔴 Bridge offline (${health.last_seen_seconds_ago}s — power or network issue)`,
-    never_seen:'⚪ Bridge never connected — once you plug it in, it phones home automatically',
-  }[health.state] || 'Bridge state unknown';
+  const state = health.state || 'unknown';
+  const sec = health.last_seen_seconds_ago;
+  const minutesOffline = sec ? Math.floor(sec / 60) : null;
+
+  // Banner color + label depend on health state.
+  let bannerBg = '#f0fdf4', bannerBorder = '#86efac', bannerColor = '#14532d', bannerSubColor = '#166534';
+  let bannerTitle = '✓ Active', bannerSub;
+  if (state === 'online') {
+    bannerSub = `🟢 Bridge online (last seen ${sec}s ago)`;
+  } else if (state === 'stale') {
+    bannerBg = '#fef3c7'; bannerBorder = '#fde68a'; bannerColor = '#78350f'; bannerSubColor = '#92400e';
+    bannerTitle = '⚠️ Bridge briefly stale';
+    bannerSub = `🟡 Last seen ~${sec}s ago. Could be a momentary network blip — give it 5 min before troubleshooting.`;
+  } else if (state === 'offline') {
+    bannerBg = '#fef2f2'; bannerBorder = '#fca5a5'; bannerColor = '#7f1d1d'; bannerSubColor = '#991b1b';
+    bannerTitle = '🔴 Bridge offline';
+    bannerSub = `Last seen ${minutesOffline} min ago. Members can't unlock the gate from their phones until it's back.`;
+  } else if (state === 'never_seen') {
+    bannerBg = '#f1f5f9'; bannerBorder = '#cbd5e1'; bannerColor = '#475569'; bannerSubColor = '#64748b';
+    bannerTitle = '⚪ Bridge not yet installed';
+    bannerSub = `The Pi bridge hasn't phoned home yet. Once you plug it into the club's network, it connects automatically — no setup needed on your end.`;
+  } else {
+    bannerSub = 'Bridge state unknown.';
+  }
 
   document.getElementById('gate-h2').innerHTML = `🔐 Remote keyfob access`;
 
-  document.getElementById('gate-body').innerHTML = `
-    <div style="padding:14px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;margin-bottom:14px">
-      <div style="font-weight:700;color:#14532d;font-size:14px;margin-bottom:4px">✓ Active</div>
-      <div style="font-size:13px;color:#166534;line-height:1.5">${healthLabel}</div>
+  // Show the 3-step troubleshooting guide when offline OR stale.
+  // Same steps the cron-based email sends so the board sees consistent
+  // copy whether they discovered the outage themselves or got our email.
+  const showTroubleshooting = (state === 'offline' || state === 'stale');
+  const troubleshooting = showTroubleshooting ? `
+    <div style="margin:14px 0;padding:16px 18px;background:#fffbeb;border:1.5px solid #fbbf24;border-left-width:5px;border-left-color:#f59e0b;border-radius:12px">
+      <div style="font-weight:700;font-size:14px;color:#78350f;margin-bottom:8px">Try these 3 things at the pool — most issues fix in 2 minutes</div>
+      <ol style="margin:0;padding-left:22px;color:#7c2d12;font-size:13.5px;line-height:1.7">
+        <li><b>Check the Pi's power LED.</b> It should be solid green. If off or red — plug the power cable back in firmly.</li>
+        <li><b>Check the club's internet.</b> Open any website on a phone connected to the club Wi-Fi. If it doesn't load — restart the club's router.</li>
+        <li><b>Reboot the Pi.</b> Unplug power for <b>10 seconds</b>, plug back in, wait <b>60 seconds</b>. The bridge phones home automatically once the network is back.</li>
+      </ol>
+      <p style="margin:14px 0 0;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12.5px;color:#166534"><b>If the bridge comes back online while you're troubleshooting</b>, this banner turns green within a couple minutes — no need to do anything else.</p>
+      <p style="margin:12px 0 0;font-size:12.5px;color:#7c2d12">Tried all three and still offline? Email <a href="mailto:doug@poolsideapp.com?subject=Gate%20bridge%20still%20offline" style="color:#7c2d12;font-weight:600">doug@poolsideapp.com</a> with: club name, when it went down, and what you tried.</p>
     </div>
+  ` : '';
+
+  document.getElementById('gate-body').innerHTML = `
+    <div style="padding:14px 16px;background:${bannerBg};border:1px solid ${bannerBorder};border-radius:10px;margin-bottom:14px">
+      <div style="font-weight:700;color:${bannerColor};font-size:14px;margin-bottom:4px">${bannerTitle}</div>
+      <div style="font-size:13px;color:${bannerSubColor};line-height:1.5">${bannerSub}</div>
+    </div>
+    ${troubleshooting}
     <p style="margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.55">
       Members with paid dues see an <b>"Unlock gate"</b> button on their home page. Each tap is logged below.
-      Panel configuration is managed by Poolside support — email
-      <a href="mailto:doug@poolsideapp.com?subject=Gate%20panel%20question" style="color:var(--blue);font-weight:600">doug@poolsideapp.com</a>
-      if something needs to change.
+      Panel configuration is managed by Poolside support —
+      <a href="mailto:doug@poolsideapp.com?subject=Gate%20panel%20question" style="color:var(--blue);font-weight:600">email Doug</a>
+      if you need anything beyond the steps above.
     </p>
     <details style="margin-top:18px">
       <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600">Recent unlocks (last 25)</summary>

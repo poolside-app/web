@@ -30,7 +30,7 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 function jsonResponse(body: unknown, status = 200) {
@@ -99,6 +99,183 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
+
+  // ── cron_check_bridges (no admin auth — gated by CRON_SECRET) ──────
+  // Runs every 5 minutes via pg_cron. Detects newly-offline and newly-
+  // recovered bridges across all active panels and notifies the affected
+  // clubs (admin_task + push + email) plus the provider. State machine
+  // on gate_panels.bridge_alert_state ensures we don't alert twice for
+  // the same outage.
+  if (action === 'cron_check_bridges') {
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const got = req.headers.get('x-cron-secret');
+    if (!cronSecret || got !== cronSecret) {
+      return jsonResponse({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    const OFFLINE_THRESHOLD_MS = 10 * 60 * 1000;  // 10 minutes
+    const ONLINE_THRESHOLD_MS  = 2 * 60 * 1000;   //  2 minutes (recovery)
+    const now = Date.now();
+    const offlineCutoff = new Date(now - OFFLINE_THRESHOLD_MS).toISOString();
+
+    const { data: panels } = await sb.from('gate_panels')
+      .select('tenant_id, status, bridge_last_seen_at, bridge_alert_state, bridge_alert_first_offline_at, panel_host')
+      .eq('status', 'active');
+
+    let newly_offline = 0;
+    let newly_recovered = 0;
+    const results: Array<{ tenant_id: string; transition: string; ago_min?: number }> = [];
+
+    for (const p of (panels ?? [])) {
+      const lastSeen = p.bridge_last_seen_at ? new Date(p.bridge_last_seen_at as string).getTime() : 0;
+      const isOffline = !lastSeen || (now - lastSeen) > OFFLINE_THRESHOLD_MS;
+      const isOnline  = !!lastSeen && (now - lastSeen) < ONLINE_THRESHOLD_MS;
+      const wasAlerted = p.bridge_alert_state === 'alerted_offline';
+
+      // ── ok → alerted_offline ────────────────────────────────────────
+      if (isOffline && !wasAlerted && p.panel_host) {
+        // Skip never-seen-yet panels (panel_host gating filters new
+        // installs that haven't even checked in once — those are the
+        // provider's problem, not the club's, until first contact).
+        const firstSeen = p.bridge_last_seen_at ?? null;
+        if (!firstSeen) continue;
+
+        const agoMin = Math.floor((now - lastSeen) / 60000);
+        await sb.from('gate_panels').update({
+          bridge_alert_state: 'alerted_offline',
+          bridge_alert_first_offline_at: firstSeen,
+          bridge_last_alert_at: new Date().toISOString(),
+        }).eq('tenant_id', p.tenant_id);
+
+        // Notify the club + the provider.
+        try {
+          const { data: tenant } = await sb.from('tenants')
+            .select('slug, display_name').eq('id', p.tenant_id).maybeSingle();
+          const clubName = tenant?.display_name || 'your club';
+
+          // 1) Admin task + push (board-side ops scope)
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: p.tenant_id,
+            target_scopes: ['operations'],
+            kind: 'gate.bridge_offline',
+            summary: `🚪 Gate bridge offline (${agoMin} min) — try the troubleshooting steps in Settings`,
+            link_url: '/club/admin/settings.html#gate',
+            source_kind: 'gate_panel', source_id: p.tenant_id,
+            push_title: `🔴 Gate bridge offline at ${clubName}`,
+            push_body: `Last seen ${agoMin} min ago. Open Settings → Remote keyfob access for the 3-step fix (Pi power, internet, reboot).`,
+          });
+
+          // 2) Email club owner admins with the troubleshooting steps
+          const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+          const { data: owners } = await sb.from('admin_users')
+            .select('email')
+            .eq('tenant_id', p.tenant_id).eq('active', true)
+            .or('role_template.eq.owner,role_template.eq.gate_manager');
+          const html = `
+            <div style="font-family:Inter,Arial,sans-serif;max-width:560px;padding:24px;color:#0f172a">
+              <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 12px">🔴 Gate bridge offline</h2>
+              <p style="margin:0 0 12px;color:#475569;line-height:1.55">The on-site Pi bridge for <b>${escHtml(clubName)}</b> stopped checking in <b>${agoMin} minutes ago</b>. Members can't unlock the gate from their phones until it's back online.</p>
+              <h3 style="font-family:Georgia,serif;color:#0a3b5c;font-size:15px;margin:18px 0 6px">Try these in order — most issues fix in 2 minutes:</h3>
+              <ol style="margin:0 0 14px;padding-left:22px;font-size:14px;line-height:1.8;color:#0f172a">
+                <li><b>Check the Pi's power LED.</b> It should be solid green. If it's off or red, plug the power back in.</li>
+                <li><b>Check the club's internet.</b> Open any website on a phone connected to the club Wi-Fi. If it doesn't load, restart the club's router.</li>
+                <li><b>Reboot the Pi.</b> Unplug the power for <b>10 seconds</b>, plug back in, then wait <b>60 seconds</b>. The bridge phones home automatically once the network is up.</li>
+              </ol>
+              <p style="margin:0 0 16px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px;color:#166534">If the bridge comes back online during your troubleshooting, you'll get an "all clear" email from us within ~5 minutes — no need to do anything else.</p>
+              <p style="margin:14px 0 0;font-size:13.5px;color:#475569">Tried all three and still offline? Email <a href="mailto:doug@poolsideapp.com?subject=Gate%20bridge%20still%20offline">doug@poolsideapp.com</a> with: club name, when it went down, and what you tried.</p>
+            </div>
+          `;
+          for (const o of (owners ?? [])) {
+            if (o.email) await sendEmail({ to: o.email, subject: `🔴 Gate bridge offline at ${clubName}`, html });
+          }
+
+          // 3) Provider email — short, actionable.
+          const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
+          await sendEmail({
+            to: PROVIDER_EMAIL,
+            subject: `[bridge offline] ${clubName} — ${agoMin} min`,
+            html: `
+              <div style="font-family:Inter,Arial,sans-serif;padding:18px">
+                <p><b>${escHtml(clubName)}</b> bridge offline ${agoMin} min. Last seen <code>${escHtml(p.bridge_last_seen_at as string)}</code>.</p>
+                <p>Owner admins were notified with the 3-step troubleshooting email. Watch for a recovery alert; if none in ~30 min, follow up.</p>
+                <p><a href="https://poolsideapp.com/admin/gate-integrations.html">Open provider gate-integrations →</a></p>
+              </div>
+            `,
+          });
+        } catch (e) {
+          console.error('bridge offline notify (non-fatal):', (e as Error).message);
+        }
+
+        results.push({ tenant_id: p.tenant_id, transition: 'offline', ago_min: agoMin });
+        newly_offline++;
+        continue;
+      }
+
+      // ── alerted_offline → ok ────────────────────────────────────────
+      if (isOnline && wasAlerted) {
+        await sb.from('gate_panels').update({
+          bridge_alert_state: 'ok',
+          bridge_alert_first_offline_at: null,
+          bridge_last_alert_at: new Date().toISOString(),
+        }).eq('tenant_id', p.tenant_id);
+
+        try {
+          const { data: tenant } = await sb.from('tenants')
+            .select('slug, display_name').eq('id', p.tenant_id).maybeSingle();
+          const clubName = tenant?.display_name || 'your club';
+
+          // Push to admins (cheap; just reassurance)
+          await fetch(`${SUPABASE_URL}/functions/v1/push_admin`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'authorization': `Bearer ${SERVICE_ROLE}`,
+              'x-poolside-internal': SERVICE_ROLE,
+            },
+            body: JSON.stringify({
+              action: 'send_scoped',
+              tenant_id: p.tenant_id,
+              scopes: ['operations'],
+              title: `✓ Gate bridge back online at ${clubName}`,
+              body: 'Members can unlock the gate again. Whatever you did, it worked.',
+              url: '/club/admin/settings.html#gate',
+              tag: `gate.recovery:${p.tenant_id}`,
+            }),
+          });
+
+          // Brief email — reassuring, no action needed
+          const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+          const { data: owners } = await sb.from('admin_users')
+            .select('email')
+            .eq('tenant_id', p.tenant_id).eq('active', true)
+            .or('role_template.eq.owner,role_template.eq.gate_manager');
+          const html = `
+            <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
+              <h2 style="font-family:Georgia,serif;color:#14532d;margin:0 0 12px">✓ Gate bridge back online</h2>
+              <p style="margin:0 0 8px;color:#475569;line-height:1.55">The bridge at <b>${escHtml(clubName)}</b> is checking in again. Members can unlock the gate from their phones. No further action needed.</p>
+            </div>
+          `;
+          for (const o of (owners ?? [])) {
+            if (o.email) await sendEmail({ to: o.email, subject: `✓ Gate bridge back online — ${clubName}`, html });
+          }
+        } catch (e) {
+          console.error('bridge recovery notify (non-fatal):', (e as Error).message);
+        }
+
+        results.push({ tenant_id: p.tenant_id, transition: 'recovered' });
+        newly_recovered++;
+      }
+    }
+
+    return jsonResponse({
+      ok: true,
+      checked: (panels ?? []).length,
+      newly_offline,
+      newly_recovered,
+      results,
+    });
+  }
 
   const payload = action.startsWith('super_')
     ? await verifyTenantAdminOrProvider(req)
