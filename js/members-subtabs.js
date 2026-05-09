@@ -13,33 +13,20 @@
 (function () {
   'use strict';
 
-  // Sub-tab labels are intentionally distinct from the top-nav "Application"
-  // (the apply-form EDITOR). The sub-tab below is the *queue* of incoming
-  // applicants — separate concern. We renamed it from "Applications" to
-  // "Pipeline" so the two surfaces don't read as duplicates in the chrome.
-  // Tiers ALSO moved out of here — it lives under top-nav Application now.
-  // Sub-tab labels are intentionally distinct from the top-nav "Application"
-  // (the apply-form EDITOR). The sub-tab below is the *queue* of incoming
-  // applicants — separate concern. We renamed it from "Applications" to
-  // "Pipeline" so the two surfaces don't read as duplicates in the chrome.
-  // Tiers ALSO moved out of here — it lives under top-nav Application now.
+  // Members sub-tabs as of 2026-05-08 reshuffle: PEOPLE-focused.
+  // Activities (programs, parties, volunteer, passes) moved to Calendar
+  // — they're date-bound things happening at the pool, not member ops.
+  // Tiers + Apply form (was a top-tab "Application") fold in here so
+  // the apply-pipeline workflow lives in one place: edit the form,
+  // see the queue, manage tiers, track renewals, see admins.
   const SUBTABS = [
     { key: 'households',   label: 'Households',   href: '/club/admin/members.html#households',   scope: 'households'   },
     { key: 'applications', label: 'Pipeline',     href: '/club/admin/members.html#applications', scope: 'applications' },
+    { key: 'apply-form',   label: 'Apply form',   href: '/club/admin/application.html',          scope: 'applications' },
     { key: 'renewals',     label: 'Renewals',     href: '/club/admin/members.html#renewals',     scope: 'renewals'     },
+    { key: 'tiers',        label: 'Tiers',        href: '/club/admin/members.html#tiers',        scope: 'tiers'        },
     { key: 'payments',     label: 'Payments',     href: '/club/admin/payments.html',             scope: 'payments'     },
-    { key: 'programs',     label: 'Programs',     href: '/club/admin/programs.html',             scope: 'programs'     },
-    { key: 'parties',      label: 'Parties',      href: '/club/admin/parties.html',              scope: 'parties'      },
-    { key: 'volunteer',    label: 'Volunteer',    href: '/club/admin/volunteer.html',            scope: 'volunteer'    },
-    { key: 'passes',       label: 'Passes',       href: '/club/admin/guest-passes.html',         scope: 'passes'       },
-    // Admins moved here from Settings (2026-05-08) — admins ARE people, so
-    // managing the board roster fits Members better than Settings clutter.
     { key: 'admins',       label: 'Admins',       href: '/club/admin/admins.html',               scope: 'admins'       },
-    // Documents, Board minutes, AND Donations moved to Content sub-tabs
-    // (2026-05-08) — they're public-facing/content surfaces, not member ops.
-    // Member-lifecycle email templates (renewals, plan installments, party
-    // approve/deny). Application-lifecycle templates live on the
-    // Application top-tab. emails.html honors ?audience=member to filter.
     { key: 'emails',       label: 'Emails',       href: '/club/admin/emails.html?audience=member', scope: 'settings'   },
   ];
 
@@ -52,12 +39,8 @@
       if (hash === 'renewals') return 'renewals';
       return 'households';
     }
+    if (path.endsWith('/application.html'))  return 'apply-form';
     if (path.endsWith('/payments.html'))     return 'payments';
-    if (path.endsWith('/programs.html'))     return 'programs';
-    if (path.endsWith('/parties.html'))      return 'parties';
-    if (path.endsWith('/volunteer.html'))    return 'volunteer';
-    if (path.endsWith('/guest-passes.html')) return 'passes';
-    if (path.endsWith('/documents.html'))    return 'documents';
     if (path.endsWith('/emails.html'))       return 'emails';
     if (path.endsWith('/admins.html'))       return 'admins';
     return null;

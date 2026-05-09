@@ -73,7 +73,6 @@
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
   <a href="/club/admin/members.html">Members</a>
-  <a href="/club/admin/application.html">Application</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html" class="on">Content</a>
   <a href="/club/admin/impact.html">Insights</a>
@@ -100,6 +99,38 @@
 
   <div class="card" style="padding:0">
     <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- Fundraiser thermometer settings — moved here from Settings on
+       2026-05-08 because the thermometer is a fundraising surface, not
+       generic config. Saves via tenant_settings.save with shallow merge,
+       so other settings keys are not affected. -->
+  <div class="card" style="margin-top:18px">
+    <h2>Public thermometer</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.55">The progress-bar card on your public + member home pages with a Donate button. Donations route to your Venmo handle (set under Members → Payments).</p>
+    <label>Show the thermometer</label>
+    <select id="fundraiser_enabled">
+      <option value="false">Off</option>
+      <option value="true">On — show on home pages</option>
+    </select>
+    <div class="row2" style="margin-top:12px">
+      <div><label>Fund title</label><input type="text" id="fundraiser_title" placeholder="Resurfacing Fund"></div>
+      <div></div>
+    </div>
+    <div class="row2" style="margin-top:12px">
+      <div>
+        <label>Raised so far ($)</label>
+        <input type="number" min="0" step="1" id="fundraiser_raised" placeholder="0">
+        <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Auto-recalculates from verified donations above. You can override.</p>
+      </div>
+      <div><label>Goal ($)</label><input type="number" min="0" step="1" id="fundraiser_goal" placeholder="30000"></div>
+    </div>
+    <label style="margin-top:12px">Donate-modal message <span style="color:var(--muted);font-weight:500;font-size:11px">(shown above the Venmo QR)</span></label>
+    <textarea id="fundraiser_donate_message" rows="3" placeholder="Thanks for supporting the pool! Every dollar goes toward the resurfacing project."></textarea>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+      <button class="btn" id="thermometer-save" type="button">Save thermometer</button>
+      <span id="thermometer-saved" style="display:none;color:var(--green);font-size:13px;font-weight:600">✓ Saved</span>
+    </div>
   </div>
 </main>
 
@@ -328,9 +359,60 @@ async function deleteRow() {
   }
 }
 
+// ── Public thermometer settings — load/save via tenant_settings (shallow merge) ──
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+async function loadThermometer() {
+  try {
+    const t = token(); if (!t) return;
+    const r = await fetch(SETTINGS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+      body: JSON.stringify({ action: 'get' }),
+    });
+    const d = await r.json();
+    if (!d.ok) return;
+    const f = d.settings?.fundraiser || {};
+    document.getElementById('fundraiser_enabled').value = f.enabled ? 'true' : 'false';
+    document.getElementById('fundraiser_title').value = f.title || '';
+    document.getElementById('fundraiser_raised').value = (f.raised_cents ?? 0) / 100;
+    document.getElementById('fundraiser_goal').value = (f.goal_cents ?? 0) / 100;
+    document.getElementById('fundraiser_donate_message').value = f.donate_message || '';
+  } catch (_) { /* non-critical */ }
+}
+async function saveThermometer() {
+  const btn = document.getElementById('thermometer-save');
+  const saved = document.getElementById('thermometer-saved');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const value = {
+      fundraiser: {
+        enabled:        document.getElementById('fundraiser_enabled').value === 'true',
+        title:          document.getElementById('fundraiser_title').value.trim() || null,
+        raised_cents:   Math.max(0, Math.round((Number(document.getElementById('fundraiser_raised').value) || 0) * 100)),
+        goal_cents:     Math.max(0, Math.round((Number(document.getElementById('fundraiser_goal').value) || 0) * 100)),
+        donate_message: document.getElementById('fundraiser_donate_message').value.trim() || null,
+      },
+    };
+    const r = await fetch(SETTINGS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'save', value }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Save failed');
+    saved.style.display = 'inline';
+    setTimeout(() => { saved.style.display = 'none'; }, 2500);
+  } catch (e) {
+    alert(e.message || 'Save failed');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+document.getElementById('thermometer-save').addEventListener('click', saveThermometer);
+
 (async () => {
   if (!token()) { logout(); return; }
-  await Promise.all([loadMe(), refresh()]);
+  await Promise.all([loadMe(), refresh(), loadThermometer()]);
 })();
 </script>
 </body>

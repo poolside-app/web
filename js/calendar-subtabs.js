@@ -12,24 +12,27 @@
 (function () {
   'use strict';
 
+  // Calendar sub-tabs as of 2026-05-08 reshuffle: things HAPPENING at the
+  // pool on a date. Members-related concepts (Tiers, Renewals) moved BACK
+  // to Members where they belong — Calendar should not cross-link into
+  // member surfaces; that was confusing and the cross-link itself was
+  // broken. Programs, Parties, Volunteer, Passes are all date-bound
+  // member-facing signups, so they live here.
   const SUBTABS = [
-    { key: 'events',     label: 'Events',      href: '/club/admin/events.html',                 scope: 'events'    },
-    // Seasons (renewals) and Memberships (tiers) live in panels on
-    // members.html — but conceptually they're calendar/season-bound, so
-    // we show them under Calendar too. Cross-section sub-tabs.
-    { key: 'seasons',    label: 'Seasons',     href: '/club/admin/members.html#renewals?nav=calendar', scope: 'renewals' },
-    { key: 'memberships',label: 'Memberships', href: '/club/admin/members.html#tiers?nav=calendar',    scope: 'tiers'    },
+    { key: 'events',     label: 'Events',     href: '/club/admin/events.html',         scope: 'events'    },
+    { key: 'programs',   label: 'Programs',   href: '/club/admin/programs.html',       scope: 'programs'  },
+    { key: 'parties',    label: 'Parties',    href: '/club/admin/parties.html',        scope: 'parties'   },
+    { key: 'volunteer',  label: 'Volunteer',  href: '/club/admin/volunteer.html',      scope: 'volunteer' },
+    { key: 'passes',     label: 'Guest passes', href: '/club/admin/guest-passes.html', scope: 'passes'    },
   ];
 
   function detectActive() {
     const path = window.location.pathname;
-    const hash = (window.location.hash || '').replace(/^#/, '').replace(/\?.*$/, '');
-    const params = new URLSearchParams(window.location.search);
-    if (path.endsWith('/events.html')) return 'events';
-    if (path.endsWith('/members.html') && params.get('nav') === 'calendar') {
-      if (hash === 'renewals') return 'seasons';
-      if (hash === 'tiers')    return 'memberships';
-    }
+    if (path.endsWith('/events.html'))       return 'events';
+    if (path.endsWith('/programs.html'))     return 'programs';
+    if (path.endsWith('/parties.html'))      return 'parties';
+    if (path.endsWith('/volunteer.html'))    return 'volunteer';
+    if (path.endsWith('/guest-passes.html')) return 'passes';
     return null;
   }
 

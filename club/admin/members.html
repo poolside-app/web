@@ -128,46 +128,20 @@
   <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
   <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
 </header>
-<nav class="tabs" id="top-nav">
+<nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
-  <a href="/club/admin/members.html" class="on" data-tab="members">Members</a>
-  <a href="/club/admin/application.html">Application</a>
-  <a href="/club/admin/events.html" data-tab="calendar">Calendar</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
   <a href="/club/admin/impact.html">Insights</a>
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
-<script>
-  // ?nav=calendar swaps the active top-nav from Members → Calendar so the
-  // user feels like they're in Calendar even though Renewals/Tiers panels
-  // physically live on members.html. Companion to /js/calendar-subtabs.js.
-  (function () {
-    const params = new URLSearchParams(location.search);
-    if (params.get('nav') === 'calendar') {
-      document.querySelectorAll('#top-nav a').forEach(a => a.classList.remove('on'));
-      const cal = document.querySelector('#top-nav a[data-tab="calendar"]');
-      if (cal) cal.classList.add('on');
-    }
-  })();
-</script>
 <script src="/js/admin-flags.js"></script>
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 
 <div id="members-subtabs"></div>
 <script src="/js/members-subtabs.js"></script>
-<!-- When navigated via ?nav=calendar, also render the Calendar sub-tabs
-     strip in addition (or instead of) the Members one. -->
-<script>
-  if ((new URLSearchParams(location.search)).get('nav') === 'calendar') {
-    const host = document.createElement('div');
-    host.id = 'calendar-subtabs';
-    document.querySelector('#members-subtabs').replaceWith(host);
-    const s = document.createElement('script');
-    s.src = '/js/calendar-subtabs.js';
-    document.body.appendChild(s);
-  }
-</script>
 
 <main>
   <!-- ── Households panel ──────────────────────────────────────────────── -->
@@ -186,7 +160,7 @@
   <!-- ── Applications panel ───────────────────────────────────────────── -->
   <section class="panel" id="panel-applications">
     <div class="toolbar">
-      <h1>Application pipeline <span style="font-size:13px;font-weight:500;color:var(--muted);font-family:'Inter',sans-serif;letter-spacing:0;margin-left:6px">— review submissions; set up the form on the <a href="/club/admin/application.html">Application</a> tab</span></h1>
+      <h1>Application pipeline <span style="font-size:13px;font-weight:500;color:var(--muted);font-family:'Inter',sans-serif;letter-spacing:0;margin-left:6px">— review submissions. <a href="/club/admin/application.html">Edit the form →</a></span></h1>
       <input id="app-search" type="search" placeholder="🔍 Search applications…" oninput="App.applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
         <div class="filter-row" id="app-status-filter">

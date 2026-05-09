@@ -109,7 +109,6 @@
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
   <a href="/club/admin/members.html">Members</a>
-  <a href="/club/admin/application.html">Application</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
   <a href="/club/admin/impact.html">Insights</a>
@@ -311,25 +310,8 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>Fundraiser thermometer</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Always-visible card on the public + member home with a progress bar and Donate button. Donations route to your Venmo handle (set under Payments).</p>
-    <label>Show the thermometer</label>
-    <select id="fundraiser_enabled">
-      <option value="false">Off</option>
-      <option value="true">On — show on home pages</option>
-    </select>
-    <div class="row2" style="margin-top:12px">
-      <div><label>Fund title</label><input type="text" id="fundraiser_title" placeholder="Resurfacing Fund"></div>
-      <div></div>
-    </div>
-    <div class="row2" style="margin-top:12px">
-      <div><label>Raised so far ($)</label><input type="number" min="0" step="1" id="fundraiser_raised" placeholder="0"></div>
-      <div><label>Goal ($)</label><input type="number" min="0" step="1" id="fundraiser_goal" placeholder="30000"></div>
-    </div>
-    <label style="margin-top:12px">Donate-modal message <span style="color:var(--muted);font-weight:500;font-size:11px">(shown above the Venmo QR)</span></label>
-    <textarea id="fundraiser_donate_message" rows="3" placeholder="Thanks for supporting the pool! Every dollar goes toward the resurfacing project."></textarea>
-  </div>
+  <!-- Fundraiser thermometer card moved 2026-05-08 to Content > Donations
+       (donations.html). It's a fundraising/content surface, not Settings. -->
 
   <div class="card">
     <h2>Public page extras</h2>
@@ -923,11 +905,7 @@ function populate(s) {
   setVal('season_end_date',       s.season?.end_date);
 
   // Fundraiser thermometer
-  setVal('fundraiser_enabled',         s.fundraiser?.enabled ? 'true' : 'false');
-  setVal('fundraiser_title',           s.fundraiser?.title);
-  setVal('fundraiser_raised',          (s.fundraiser?.raised_cents ?? 0) / 100);
-  setVal('fundraiser_goal',            (s.fundraiser?.goal_cents ?? 0) / 100);
-  setVal('fundraiser_donate_message',  s.fundraiser?.donate_message);
+  // Fundraiser fields removed from settings.html — managed in donations.html.
 
   // Public extras
   setVal('show_member_count',     s.public?.show_member_count === false ? 'false' : 'true');
@@ -990,13 +968,9 @@ function collect(prevSettings) {
       start_date:         val('season_start_date') || null,
       end_date:           val('season_end_date')   || null,
     },
-    fundraiser: {
-      enabled:        val('fundraiser_enabled') === 'true',
-      title:          val('fundraiser_title') || null,
-      raised_cents:   Math.max(0, Math.round((Number(val('fundraiser_raised')) || 0) * 100)),
-      goal_cents:     Math.max(0, Math.round((Number(val('fundraiser_goal'))   || 0) * 100)),
-      donate_message: val('fundraiser_donate_message') || null,
-    },
+    // Fundraiser key omitted intentionally — UI moved to Content > Donations.
+    // Server-side shallow-merge keeps the existing fundraiser object untouched
+    // when settings.html saves.
     public: {
       ...(prevSettings?.public ?? {}),
       show_member_count: val('show_member_count') !== 'false',
