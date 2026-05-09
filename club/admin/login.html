@@ -237,7 +237,20 @@ async function doMagic() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not send a sign-in link');
     if (data.dev_link) {
-      devEl.innerHTML = `<b>Email/SMS not configured yet.</b> Use the link below:<br><a href="${escapeHtml(data.dev_link)}" style="display:inline-block;margin-top:8px;padding:10px 18px;background:#0a3b5c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Continue to admin →</a>`;
+      // Extract the token from the dev_link and verify in-page. The link
+      // itself is `${clubUrl}/club/admin/login.html#magic=<tok>`, but the
+      // user is ALREADY on login.html — clicking <a href> only updates
+      // the hash and does NOT re-fire the page-load init that verifies.
+      // So we button-ify it: the click directly calls the same verify
+      // flow that #magic= would have triggered.
+      let extractedToken = '';
+      try {
+        const m = String(data.dev_link).match(/#magic=([^&]+)/);
+        if (m) extractedToken = decodeURIComponent(m[1]);
+      } catch (_) { /* fall back to raw link below */ }
+      devEl.innerHTML = `<b>SMS/email not configured yet.</b> One-click sign-in:<br>
+        <button type="button" onclick="window.__poolsideVerifyDev('${escapeHtml(extractedToken)}')" style="display:inline-block;margin-top:8px;padding:10px 18px;background:#0a3b5c;color:#fff;border:0;border-radius:8px;font:600 14px Inter;cursor:pointer">Continue to admin →</button>
+        <div style="margin-top:8px;font-size:11px;color:#92400e;word-break:break-all">Or copy: <code>${escapeHtml(data.dev_link)}</code></div>`;
       devEl.classList.add('show');
     } else {
       okEl.textContent = data.message || 'A sign-in link is on the way.';
@@ -252,13 +265,14 @@ async function doMagic() {
   }
 }
 
-// If we landed here via #magic=<token> (link from email/SMS), verify it
-// and bootstrap the admin token, then redirect to the dashboard.
-(async () => {
-  if (!window.location.hash.startsWith('#magic=')) return;
-  const token = decodeURIComponent(window.location.hash.slice('#magic='.length));
-  history.replaceState(null, '', window.location.pathname);
-  if (!SLUG) return;
+// Verify a magic-link token + bootstrap the admin session. Called from:
+//   • Initial page load when URL has #magic=<token> (email/SMS link arrives)
+//   • The dev-link "Continue to admin →" button (when SMS/email isn't
+//     configured and we display the link in-page — same-page hash-change
+//     doesn't re-run init, so we need a direct call)
+//   • hashchange events (defense-in-depth for any browser quirk)
+async function verifyMagicToken(token) {
+  if (!token || !SLUG) return;
   try {
     const res = await fetch(AUTH_URL, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -271,11 +285,34 @@ async function doMagic() {
     localStorage.setItem('poolside_tenant_tenant', JSON.stringify(data.tenant));
     window.location.href = '/club/admin/';
   } catch (e) {
-    const errEl = document.getElementById('err');
-    errEl.textContent = 'Sign-in link failed: ' + e.message;
-    errEl.classList.add('show');
+    const errEl = document.getElementById('err') || document.getElementById('m-err');
+    if (errEl) {
+      errEl.textContent = 'Sign-in link failed: ' + e.message;
+      errEl.classList.add('show');
+    }
   }
+}
+// Used by the dev_link button (above) — exposes verifyMagicToken on
+// window so the inline onclick can call it.
+window.__poolsideVerifyDev = function (tok) {
+  if (!tok) return;
+  verifyMagicToken(tok);
+};
+
+(async () => {
+  if (!window.location.hash.startsWith('#magic=')) return;
+  const token = decodeURIComponent(window.location.hash.slice('#magic='.length));
+  history.replaceState(null, '', window.location.pathname);
+  await verifyMagicToken(token);
 })();
+// Also fire on hash changes — covers the case where a same-page anchor
+// click updates the URL hash without triggering a page reload.
+window.addEventListener('hashchange', () => {
+  if (!window.location.hash.startsWith('#magic=')) return;
+  const token = decodeURIComponent(window.location.hash.slice('#magic='.length));
+  history.replaceState(null, '', window.location.pathname);
+  verifyMagicToken(token);
+});
 
 async function doLogin() {
   const btn = document.getElementById('submit');
