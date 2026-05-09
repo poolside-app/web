@@ -109,11 +109,10 @@
 
 <main>
   <h1 style="margin-bottom:6px">Membership application</h1>
-  <p style="color:var(--muted);font-size:13.5px;margin:0 0 22px;line-height:1.55">One place to set up the apply form: heading, tiers, policies, and the emails the applicant gets back. Set it once before the season opens and don't think about it again.</p>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 0 22px;line-height:1.55">Set up the apply form: heading, season state, policies, and the emails the applicant gets back. Tier pricing lives at <a href="/club/admin/members.html#tiers">Members → Tiers</a>.</p>
 
   <div class="subtabs" id="subtabs">
     <button class="on" data-panel="general">General</button>
-    <button data-panel="tiers">Tiers</button>
     <button data-panel="policies">Policies</button>
     <button data-panel="emails">Emails</button>
   </div>
@@ -150,21 +149,8 @@
     </div>
   </section>
 
-  <!-- ── Tiers panel ───────────────────────────────────────────────── -->
-  <section class="panel" id="panel-tiers">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <h2 style="margin:0">Membership tiers</h2>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" onclick="Tiers.add()">+ Add tier</button>
-          <button class="btn btn-sm" id="tiers-save" onclick="Tiers.save()">Save tiers</button>
-        </div>
-      </div>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Pricing rows the applicant picks from on the apply form. The slug is what's stored on the application — pick something stable.</p>
-      <div id="tiers-list"><div class="empty" style="padding:30px">Loading…</div></div>
-      <div class="err" id="tiers-err"></div>
-    </div>
-  </section>
+  <!-- Tiers panel removed 2026-05-08 — tier setup is duplicated at
+       Members → Tiers; that's the canonical home. -->
 
   <!-- ── Policies panel ────────────────────────────────────────────── -->
   <section class="panel" id="panel-policies">
@@ -296,7 +282,6 @@ document.querySelectorAll('#subtabs button').forEach(b => {
     b.classList.add('on');
     const panel = document.getElementById('panel-' + b.dataset.panel);
     if (panel) panel.classList.add('on');
-    if (b.dataset.panel === 'tiers'    && !Tiers.LOADED)    Tiers.refresh();
     if (b.dataset.panel === 'policies' && !Policies.LOADED) Policies.refresh();
     if (b.dataset.panel === 'emails'   && !Emails.LOADED)   Emails.refresh();
     history.replaceState(null, '', '#' + b.dataset.panel);
@@ -341,63 +326,6 @@ async function saveGeneral() {
   finally { btn.disabled = false; btn.textContent = orig; }
 }
 
-// ── Tiers panel ──────────────────────────────────────────────────────────
-const Tiers = (() => {
-  const DEFAULTS = [
-    { slug:'family', label:'Family', price_cents:60000, description:'All household members' },
-    { slug:'single', label:'Single', price_cents:35000, description:'One adult' },
-    { slug:'senior', label:'Senior', price_cents:25000, description:'65+' },
-  ];
-  let LOADED = false;
-  function paint(tiers) {
-    const list = document.getElementById('tiers-list');
-    const rows = (tiers && tiers.length) ? tiers : DEFAULTS;
-    list.innerHTML = rows.map((t, i) => `
-      <div class="tier-row" data-i="${i}">
-        <div><label>Name shown to applicants</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family"></div>
-        <div><label>Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents/100).toFixed(2) : ''}"></div>
-        <button type="button" onclick="this.parentElement.remove()" title="Remove" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer">×</button>
-        <div style="grid-column:1/-1"><label>Description (optional)</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers"></div>
-        <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
-      </div>`).join('');
-  }
-  function collect() {
-    const out = [];
-    document.querySelectorAll('#tiers-list .tier-row').forEach(row => {
-      const get = f => (row.querySelector(`[data-field="${f}"]`) || {}).value || '';
-      const label = get('label').trim(); if (!label) return;
-      const slug = (get('slug').trim() || label).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-      const price = parseFloat(get('price'));
-      out.push({ slug, label, price_cents: Number.isFinite(price) ? Math.round(price*100) : 0, description: get('description').trim() || null });
-    });
-    return out;
-  }
-  function add() { const t = collect(); t.push({ slug:'', label:'', price_cents:0, description:'' }); paint(t); }
-  async function refresh() {
-    try {
-      const data = await call(SETTINGS_URL, 'get');
-      if (!data.ok) throw new Error(data.error || 'Failed');
-      const tiers = Array.isArray(data.settings?.membership_tiers) ? data.settings.membership_tiers : null;
-      paint(tiers); LOADED = true;
-    } catch (e) {
-      document.getElementById('tiers-err').textContent = e.message;
-      document.getElementById('tiers-err').classList.add('show');
-    }
-  }
-  async function save() {
-    const btn = document.getElementById('tiers-save');
-    const errEl = document.getElementById('tiers-err'); errEl.classList.remove('show');
-    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
-    try {
-      const tiers = collect();
-      const r = await call(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
-      if (!r.ok) throw new Error(r.error || 'Save failed');
-      toast('Tiers saved.');
-    } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
-    finally { btn.disabled = false; btn.textContent = orig; }
-  }
-  return { add, save, refresh, get LOADED() { return LOADED; } };
-})();
 
 // ── Policies panel ───────────────────────────────────────────────────────
 const Policies = (() => {

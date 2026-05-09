@@ -283,13 +283,9 @@
             <div class="fsub">In-app modals for fundraisers, RSVPs, time-sensitive announcements.</div>
           </div>
         </label>
-        <label class="feature">
-          <input type="checkbox" id="f-feat_guest_passes" checked>
-          <div>
-            <div class="ftitle">🎟️ Guest pass packs</div>
-            <div class="fsub">Pre-paid bundles members redeem at the gate. Single-use also works.</div>
-          </div>
-        </label>
+        <!-- Guest passes feature removed 2026-05-08. -->
+        <input type="hidden" id="f-feat_guest_passes" value="">  <!-- preserves backward-compat for collect() -->
+
         <!-- Keyfob check-in used to be a self-serve checkbox here, but it's
              really a sub-feature of the paid gate integration — clubs without
              gate hardware never need it. We auto-flip features.keyfobs=true
@@ -466,7 +462,7 @@ function collect() {
       parties:      !!document.getElementById('f-feat_parties').checked,
       volunteer:    !!document.getElementById('f-feat_volunteer').checked,
       campaigns:    !!document.getElementById('f-feat_campaigns').checked,
-      guest_passes: !!document.getElementById('f-feat_guest_passes').checked,
+      guest_passes: false,  // feature removed 2026-05-08
       // Preserve provider-flipped values so wizard re-runs don't clobber
       // an already-active integration. Both keyfobs and gate go true when
       // gate_admin.super_set_status flips status='active'.
@@ -517,7 +513,7 @@ function populate(s) {
   setChk('f-feat_parties',      s.features?.parties      ?? true);
   setChk('f-feat_volunteer',    s.features?.volunteer    ?? true);
   setChk('f-feat_campaigns',    s.features?.campaigns    ?? true);
-  setChk('f-feat_guest_passes', s.features?.guest_passes ?? true);
+  // guest_passes removed 2026-05-08
   // keyfobs + gate are NOT user-toggleable from the wizard. They're
   // flipped to true by the provider when they activate the keyfob/gate
   // add-on (gate_admin.super_set_status). Stash existing values so

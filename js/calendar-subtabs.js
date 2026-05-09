@@ -19,11 +19,11 @@
   // broken. Programs, Parties, Volunteer, Passes are all date-bound
   // member-facing signups, so they live here.
   const SUBTABS = [
-    { key: 'events',     label: 'Events',     href: '/club/admin/events.html',         scope: 'events'    },
-    { key: 'programs',   label: 'Programs',   href: '/club/admin/programs.html',       scope: 'programs'  },
-    { key: 'parties',    label: 'Parties',    href: '/club/admin/parties.html',        scope: 'parties'   },
-    { key: 'volunteer',  label: 'Volunteer',  href: '/club/admin/volunteer.html',      scope: 'volunteer' },
-    { key: 'passes',     label: 'Guest passes', href: '/club/admin/guest-passes.html', scope: 'passes'    },
+    { key: 'events',     label: 'Events',     href: '/club/admin/events.html',    scope: 'events'    },
+    { key: 'programs',   label: 'Programs',   href: '/club/admin/programs.html',  scope: 'programs'  },
+    { key: 'parties',    label: 'Parties',    href: '/club/admin/parties.html',   scope: 'parties'   },
+    { key: 'volunteer',  label: 'Volunteer',  href: '/club/admin/volunteer.html', scope: 'volunteer' },
+    // Guest passes removed 2026-05-08.
   ];
 
   function detectActive() {
@@ -32,7 +32,6 @@
     if (path.endsWith('/programs.html'))     return 'programs';
     if (path.endsWith('/parties.html'))      return 'parties';
     if (path.endsWith('/volunteer.html'))    return 'volunteer';
-    if (path.endsWith('/guest-passes.html')) return 'passes';
     return null;
   }
 

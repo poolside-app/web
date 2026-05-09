@@ -313,16 +313,8 @@
   <!-- Fundraiser thermometer card moved 2026-05-08 to Content > Donations
        (donations.html). It's a fundraising/content surface, not Settings. -->
 
-  <div class="card">
-    <h2>Public page extras</h2>
-    <label>Member-count ticker</label>
-    <select id="show_member_count">
-      <option value="true">Show "X households · Y members" on home pages</option>
-      <option value="false">Hide</option>
-    </select>
-    <label style="margin-top:14px">Apply page heading override <span style="color:var(--muted);font-weight:500;font-size:11px">(replaces "Membership Application" — leave blank to keep default)</span></label>
-    <input type="text" id="apply_heading_override" placeholder="2026 Membership Application">
-  </div>
+  <!-- "Public page extras" card removed 2026-05-08 — clutter; defaults are fine.
+       Apply-page heading still editable on Members → Apply form > General. -->
 
   <div class="card">
     <h2>Pool location &amp; hours</h2>
@@ -374,13 +366,7 @@
         <div class="fsub">In-app modals for fundraisers, RSVPs, time-sensitive announcements.</div>
       </div>
     </label>
-    <label class="feature">
-      <input type="checkbox" id="feat_guest_passes">
-      <div>
-        <div class="ftitle">🎟️ Guest pass packs</div>
-        <div class="fsub">Pre-paid bundles members redeem at the gate.</div>
-      </div>
-    </label>
+    <!-- Guest passes feature removed 2026-05-08 — not on the roadmap. -->
     <label class="feature">
       <input type="checkbox" id="feat_keyfobs" onchange="toggleFobDay()">
       <div>
@@ -411,16 +397,8 @@
     <button class="btn" id="save-btn-2" onclick="save()">Save changes</button>
   </div>
 
-  <div class="card" id="admins-card" data-owner-only style="margin-top:18px">
-    <h2>Club admins</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.55">
-      The people who help you run the club online — treasurer, membership chair, communications, etc.
-      Each one only sees the parts of Poolside that match their job.
-    </p>
-    <a href="/club/admin/admins.html" class="btn" style="display:inline-block;text-decoration:none">
-      Manage admins &amp; roles →
-    </a>
-  </div>
+  <!-- Club admins card removed 2026-05-08 — Members → Admins is the canonical
+       home, this Settings stub was redundant. -->
 
   <!-- Gate add-on card — stateful: shows different UI for "not requested",
        "requested", and "active" states. Fetched + rendered by JS below.
@@ -908,13 +886,12 @@ function populate(s) {
   // Fundraiser fields removed from settings.html — managed in donations.html.
 
   // Public extras
-  setVal('show_member_count',     s.public?.show_member_count === false ? 'false' : 'true');
-  setVal('apply_heading_override', s.apply?.heading_override);
+  // Public page extras + apply heading override fields removed 2026-05-08.
   setChk('feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
   setChk('feat_parties',      s.features?.parties      ?? true);
   setChk('feat_volunteer',    s.features?.volunteer    ?? true);
   setChk('feat_campaigns',    s.features?.campaigns    ?? true);
-  setChk('feat_guest_passes', s.features?.guest_passes ?? true);
+  // guest_passes removed 2026-05-08
   setChk('feat_keyfobs',      s.features?.keyfobs      ?? false);
   setChk('feat_gate',         s.features?.gate         ?? false);
   toggleFobDay();
@@ -968,26 +945,15 @@ function collect(prevSettings) {
       start_date:         val('season_start_date') || null,
       end_date:           val('season_end_date')   || null,
     },
-    // Fundraiser key omitted intentionally — UI moved to Content > Donations.
-    // Server-side shallow-merge keeps the existing fundraiser object untouched
-    // when settings.html saves.
-    public: {
-      ...(prevSettings?.public ?? {}),
-      show_member_count: val('show_member_count') !== 'false',
-    },
-    apply: {
-      ...(prevSettings?.apply ?? {}),
-      heading_override: val('apply_heading_override') || null,
-    },
-    // Payments (venmo_handle, paypal_link) live under Members → Payments now
-    // and save through there; we omit the key entirely so server-side merge
-    // leaves the existing payments object untouched.
+    // Fundraiser, public, apply, payments keys are all omitted — managed in
+    // their dedicated screens (Content > Donations, Members > Apply form,
+    // Members > Payments). Server-side shallow-merge leaves them untouched.
     features: {
       programs:     !!document.getElementById('feat_programs').checked,
       parties:      !!document.getElementById('feat_parties').checked,
       volunteer:    !!document.getElementById('feat_volunteer').checked,
       campaigns:    !!document.getElementById('feat_campaigns').checked,
-      guest_passes: !!document.getElementById('feat_guest_passes').checked,
+      // guest_passes removed 2026-05-08
       keyfobs:      !!document.getElementById('feat_keyfobs').checked,
       gate:         !!document.getElementById('feat_gate').checked,
     },
@@ -1138,6 +1104,12 @@ function renderGatePending(panel) {
   `;
 }
 
+// Active state — TENANT view is intentionally read-only as of 2026-05-08.
+// Panel host/user/password, bridge secret rotation, and test unlocks all
+// live on the PROVIDER admin (/admin/gate-integrations.html). Doug installs
+// every panel himself so duplicating the editor on the tenant side just
+// invited misconfigurations. Tenants get: status badge, bridge health,
+// recent unlocks log, and a "contact us if something's wrong" pointer.
 function renderGateActive(panel, health) {
   const healthColor = { online:'#16a34a', stale:'#d97706', offline:'#dc2626', never_seen:'#94a3b8' }[health.state] || '#94a3b8';
   const healthLabel = {
@@ -1147,48 +1119,19 @@ function renderGateActive(panel, health) {
     never_seen:'⚪ Bridge never connected — once you plug it in, it phones home automatically',
   }[health.state] || 'Bridge state unknown';
 
-  const locked = !!panel.config_locked;
-  const lockedAttrs = locked ? 'readonly tabindex="-1"' : '';
-  const lockedStyle = locked ? 'background:#f1f5f9;color:var(--muted);cursor:not-allowed;' : '';
-  const lockedBanner = locked ? `
-    <div style="margin:0 0 14px;padding:10px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;font-size:13px;color:#7c2d12">
-      🔒 <b>Panel configuration is locked.</b> Click Unlock below to edit.${panel.config_locked_at ? ' Locked ' + new Date(panel.config_locked_at).toLocaleString() + '.' : ''}
-    </div>
-  ` : '';
-
-  document.getElementById('gate-h2').innerHTML = `🔐 Remote keyfob access · <span style="font-size:13px;font-weight:500;color:${healthColor}">${healthLabel}</span>${locked ? ' · <span style="font-size:13px;font-weight:600;color:#7c2d12">🔒 Locked</span>' : ''}`;
+  document.getElementById('gate-h2').innerHTML = `🔐 Remote keyfob access`;
 
   document.getElementById('gate-body').innerHTML = `
-    ${lockedBanner}
-    <p style="margin:0 0 14px;color:var(--muted);font-size:13px">Members with paid dues see a <b>"Unlock gate"</b> button on their home page. Each tap is logged and audited.</p>
-    <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:440px">
-      <div>
-        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Panel IP / hostname</label>
-        <input id="gp-host" placeholder="192.168.1.50" value="${escapeHtml(panel.panel_host || '')}" ${lockedAttrs} style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;${lockedStyle}">
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Admin user</label>
-          <input id="gp-user" placeholder="admin" value="${escapeHtml(panel.panel_admin_user || '')}" ${lockedAttrs} style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;${lockedStyle}">
-        </div>
-        <div>
-          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Admin password</label>
-          <input id="gp-pass" type="password" placeholder="${panel.panel_password_set ? '•••••••• (saved)' : 'panel admin password'}" ${lockedAttrs} style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;${lockedStyle}">
-        </div>
-      </div>
+    <div style="padding:14px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;margin-bottom:14px">
+      <div style="font-weight:700;color:#14532d;font-size:14px;margin-bottom:4px">✓ Active</div>
+      <div style="font-size:13px;color:#166534;line-height:1.5">${healthLabel}</div>
     </div>
-    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-      ${locked ? `
-        <button class="btn" onclick="setGateLock(false)" style="background:#fef3c7;color:#7c2d12;border-color:#fde68a">🔓 Unlock to edit</button>
-        <button class="btn" onclick="testGateUnlock()" ${!panel.panel_host ? 'disabled style="opacity:.5"' : ''}>Test unlock</button>
-      ` : `
-        <button class="btn btn-primary" onclick="saveGateConfig()" style="background:var(--blue);color:#fff">Save panel config</button>
-        <button class="btn" onclick="testGateUnlock()" ${!panel.panel_host ? 'disabled style="opacity:.5"' : ''}>Test unlock</button>
-        <button class="btn" onclick="rotateBridgeSecret()">Rotate bridge secret</button>
-        ${panel.panel_host ? `<button class="btn" onclick="setGateLock(true)" style="background:#fef3c7;color:#7c2d12;border-color:#fde68a">🔒 Lock these settings</button>` : ''}
-      `}
-      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:6px;align-self:center;display:none">✓ Saved</span>
-    </div>
+    <p style="margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.55">
+      Members with paid dues see an <b>"Unlock gate"</b> button on their home page. Each tap is logged below.
+      Panel configuration is managed by Poolside support — email
+      <a href="mailto:doug@poolsideapp.com?subject=Gate%20panel%20question" style="color:var(--blue);font-weight:600">doug@poolsideapp.com</a>
+      if something needs to change.
+    </p>
     <details style="margin-top:18px">
       <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600">Recent unlocks (last 25)</summary>
       <div id="gate-unlocks-list" style="margin-top:10px;font-size:13px;color:var(--muted)">Loading…</div>

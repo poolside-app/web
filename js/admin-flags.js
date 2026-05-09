@@ -79,7 +79,7 @@
     programs:      'a[href="/club/admin/programs.html"]',
     volunteer:     'a[href="/club/admin/volunteer.html"]',
     campaigns:     'a[href="/club/admin/campaigns.html"]',
-    guest_passes:  'a[href="/club/admin/guest-passes.html"]',
+    // guest_passes removed 2026-05-08
   };
 
   // Scope → nav selector (per-admin role assignments).
@@ -98,7 +98,7 @@
     announcements: 'a[href="/club/admin/announcements.html"]',
     campaigns:     'a[href="/club/admin/campaigns.html"]',
     volunteer:     'a[href="/club/admin/volunteer.html"]',
-    passes:        'a[href="/club/admin/guest-passes.html"]',
+    // passes scope removed 2026-05-08
     policies:      'a[href="/club/admin/policies.html"]',
     photos:        'a[href="/club/admin/photos.html"]',
     documents:     'a[href="/club/admin/documents.html"]',
