@@ -106,6 +106,40 @@ const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary
 
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'venmo']);
 
+// Bind an admin row to the household_member they just got approved as.
+// Match on email OR phone (E.164) — phone is a stronger signal because
+// the admin-prefill flow copies it byte-for-byte from admin_users.
+// Idempotent: skips if linked_member_id is already set.
+async function autoLinkAdminToMember(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  identity: { email?: string | null; phone?: string | null },
+  memberId: string,
+): Promise<void> {
+  if (!identity.email && !identity.phone) return;
+  try {
+    const orParts: string[] = [];
+    if (identity.email) orParts.push(`email.ilike.${identity.email}`);
+    if (identity.phone) orParts.push(`phone_e164.eq.${identity.phone}`);
+    const { data: matchedAdmin } = await sb.from('admin_users')
+      .select('id, linked_member_id')
+      .eq('tenant_id', tenantId).eq('active', true)
+      .or(orParts.join(','))
+      .limit(1).maybeSingle();
+    if (matchedAdmin && !matchedAdmin.linked_member_id) {
+      await sb.from('admin_users')
+        .update({ linked_member_id: memberId })
+        .eq('id', matchedAdmin.id);
+      await sb.from('audit_log').insert({
+        tenant_id: tenantId, kind: 'admin.linked_to_member',
+        entity_type: 'admin_user', entity_id: matchedAdmin.id,
+        summary: 'Admin auto-linked to household member',
+        actor_kind: 'system',
+      });
+    }
+  } catch { /* never fail the calling action over this */ }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -388,11 +422,35 @@ Deno.serve(async (req) => {
     //   No method (decide later) : admin_task fires for manual approval.
     let autoApproved = false;
     if (payment_method === 'venmo') {
+      // Self-signup detection: if the applicant's email or phone matches an
+      // active admin on this tenant, they're an admin signing up their own
+      // family — there's no third party for the admin to "verify the Venmo
+      // payment landed from". Auto-verify the payment so the application
+      // ends fully paid and no stale venmo.claim task lingers.
+      let isAdminSelfSignup = false;
+      try {
+        const orParts: string[] = [];
+        if (email) orParts.push(`email.ilike.${email}`);
+        if (phone) orParts.push(`phone_e164.eq.${phone}`);
+        if (orParts.length) {
+          const { data: matchedAdmin } = await sb.from('admin_users')
+            .select('id').eq('tenant_id', tenant.id).eq('active', true)
+            .or(orParts.join(',')).limit(1).maybeSingle();
+          if (matchedAdmin) isAdminSelfSignup = true;
+        }
+      } catch { /* if the lookup fails, treat as non-self-signup */ }
+
       try {
         const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
-          body: JSON.stringify({ action: 'approve', id: data.id, tenant_id: tenant.id }),
+          body: JSON.stringify({
+            action: 'approve',
+            id: data.id,
+            tenant_id: tenant.id,
+            verify_venmo_payment: isAdminSelfSignup,
+            venmo_note: isAdminSelfSignup ? 'Auto-verified — admin self-signup' : undefined,
+          }),
         });
         const ar = await r.json().catch(() => ({ ok: false }));
         if (ar && ar.ok) autoApproved = true;
@@ -983,31 +1041,14 @@ Deno.serve(async (req) => {
       .in('kind', ['application.submitted', 'venmo.claim'])
       .is('completed_at', null);
 
-    // Auto-link: if the approved primary's email matches an active admin on
-    // this tenant, set admin_users.linked_member_id so we know that admin is
-    // also a member of the club. The "Set up my membership" banner on the
-    // admin home checks this flag — once linked, the banner disappears.
-    if (app.primary_email) {
-      try {
-        const { data: matchedAdmin } = await sb.from('admin_users')
-          .select('id, linked_member_id')
-          .eq('tenant_id', TID)
-          .eq('active', true)
-          .ilike('email', app.primary_email as string)
-          .maybeSingle();
-        if (matchedAdmin && !matchedAdmin.linked_member_id) {
-          await sb.from('admin_users')
-            .update({ linked_member_id: pm.id })
-            .eq('id', matchedAdmin.id);
-          await sb.from('audit_log').insert({
-            tenant_id: TID, kind: 'admin.linked_to_member',
-            entity_type: 'admin_user', entity_id: matchedAdmin.id,
-            summary: `Admin auto-linked to household member after application approval`,
-            actor_kind: 'system',
-          });
-        }
-      } catch { /* never fail approval over this */ }
-    }
+    // Auto-link: if the approved primary's email/phone matches an active
+    // admin on this tenant, set admin_users.linked_member_id so the system
+    // knows that admin is also a member. The "Set up my membership" banner
+    // on the admin home checks this flag — once linked, the banner hides.
+    await autoLinkAdminToMember(sb, TID, {
+      email: app.primary_email as string | null,
+      phone: app.primary_phone as string | null,
+    }, pm.id);
 
     return jsonResponse({
       ok: true,
@@ -1073,6 +1114,21 @@ Deno.serve(async (req) => {
       .update({ completed_at: now, completed_by: verified_by })
       .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id)
       .is('completed_at', null);
+
+    // Run auto-link here too — covers the case where approve happened
+    // before the admin row existed (e.g., admin invited later, or the
+    // initial approve missed the link due to email mismatch). Idempotent.
+    if (app.household_id) {
+      const { data: primaryMember } = await sb.from('household_members')
+        .select('id').eq('household_id', app.household_id)
+        .eq('role', 'primary').maybeSingle();
+      if (primaryMember) {
+        await autoLinkAdminToMember(sb, TID, {
+          email: app.primary_email as string | null,
+          phone: app.primary_phone as string | null,
+        }, primaryMember.id);
+      }
+    }
 
     // Reflect the verification in the Drive sheet (best-effort, write-once).
     const GOOGLE_ID  = Deno.env.get('GOOGLE_CLIENT_ID');

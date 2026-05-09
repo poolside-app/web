@@ -118,7 +118,17 @@ Deno.serve(async (req) => {
 
     const items: Array<Record<string, unknown>> = [];
 
+    // Dedupe: if a household already has an open application-payment item,
+    // skip its dues row — both items represent the SAME unpaid year. Verifying
+    // the application flips household.dues_paid_for_year=true and clears both
+    // naturally. Without this, a self-signing admin sees "Venmo payment
+    // pending" + "Dues for 2026" as two distinct line items for one obligation.
+    const householdsWithOpenApp = new Set<string>(
+      (apps ?? []).map(a => String(a.household_id)).filter(Boolean),
+    );
+
     for (const h of (dueHouseholds ?? [])) {
+      if (householdsWithOpenApp.has(h.id)) continue;
       items.push({
         source: 'dues',
         source_id: h.id,

@@ -751,8 +751,8 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
       </div>
     </section>` : '';
 
-  const memberCountTicker = (memberCount && (memberCount.households || memberCount.members) && ps?.public?.show_member_count !== false)
-    ? `<div style="text-align:center;padding:12px 22px 0;font-size:13px;color:var(--muted)"><b style="color:var(--blue)">${memberCount.households}</b> households · <b style="color:var(--blue)">${memberCount.members}</b> members</div>`
+  const memberCountTicker = (memberCount && memberCount.members && ps?.public?.show_member_count !== false)
+    ? `<div style="text-align:center;padding:12px 22px 0;font-size:13px;color:var(--muted)"><b style="color:var(--blue)">${memberCount.members}</b> member${memberCount.members === 1 ? '' : 's'}</div>`
     : '';
 
   const fund = ps?.fundraiser;
