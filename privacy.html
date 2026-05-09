@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy Policy — Poolside</title>
+<meta name="description" content="How Poolside handles your club's data — written in plain English.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px; --max: 760px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.65 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin: 0 0 16px; }
+  h1 { font-size: 38px; line-height: 1.15; }
+  h2 { font-size: 24px; margin-top: 44px; }
+  h3 { font-size: 18px; margin-top: 28px; }
+  p { margin: 0 0 14px; }
+  header.site { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
+  .container { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  main { padding: 56px 0 80px; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 600px; margin: 0 0 24px; }
+  .meta { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+  ul { padding-left: 22px; margin: 0 0 14px; }
+  ul li { margin: 6px 0; }
+  .callout {
+    padding: 18px 22px; background: var(--blue-l); border-left: 4px solid var(--blue);
+    border-radius: 0 var(--r-md) var(--r-md) 0; margin: 22px 0;
+  }
+  .callout p:last-child { margin: 0; }
+  .callout b { color: var(--blue); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; font-size: 14px; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; }
+  footer { padding: 32px 22px; text-align: center; font-size: 13px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 64px; background: #fff; }
+  footer a { color: var(--muted); margin: 0 10px; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="container" style="display:flex;justify-content:space-between;align-items:center">
+    <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+    <a href="/signup.html" style="font-size:13px;color:var(--blue);font-weight:600;text-decoration:none">Start a club →</a>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <h1>Privacy Policy</h1>
+    <p class="lede">Plain English: what we collect, why, and what we don't do with it.</p>
+    <p class="meta">Last updated: May 9, 2026</p>
+
+    <p>Poolside is a software service for neighborhood pool clubs. This policy covers how we handle data that flows through the service — for both the board admins running a club, and the members applying to or belonging to one.</p>
+
+    <h2>The short version</h2>
+    <ul>
+      <li>We collect what we need to run the club: contact info, household details, payment status, photos members upload.</li>
+      <li>We never sell data. We don't show ads. We don't allow third-party advertising trackers on member-facing pages.</li>
+      <li>We share data with a small set of vendors that make Poolside work (hosting, email, SMS, payments). They're listed below.</li>
+      <li>You can export or delete your club's data at any time by emailing <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</li>
+    </ul>
+
+    <h2>What we collect</h2>
+
+    <h3>From board admins</h3>
+    <ul>
+      <li><b>Email and phone number</b> — for sign-in (magic links via email or SMS) and notifications.</li>
+      <li><b>Display name</b> — shown on the club's admin pages so other admins know who did what.</li>
+      <li><b>Hashed password</b> — if you signed up with email + password. We never store the password itself; we use bcrypt one-way hashing.</li>
+      <li><b>Google account ID</b> (a numeric string Google calls "sub") — if you signed in with Google.</li>
+      <li><b>Sign-in audit log</b> — last sign-in time, browser user-agent, and a partial IP address, kept for security review.</li>
+    </ul>
+
+    <h3>From members and applicants</h3>
+    <ul>
+      <li><b>Family contact info</b> — household name, primary contact name, email, phone, mailing address, ZIP code.</li>
+      <li><b>Household roster</b> — adults' names + emails + phones; children's names + dates of birth.</li>
+      <li><b>Application form responses</b> — anything the applicant typed, the policies they agreed to, and a typed signature when required for waivers.</li>
+      <li><b>Payment status</b> — what tier they're on, whether dues are paid for the year, and the method (Stripe, Venmo, check, etc.). We never see card numbers — Stripe handles those directly.</li>
+      <li><b>Optional uploads</b> — photos members submit for the gallery, documents (waivers, IDs) admins archive.</li>
+      <li><b>Gate-access records</b> — if the club has the keyfob/gate add-on, a log of unlock requests with timestamp and member ID.</li>
+    </ul>
+
+    <h2>How we use it</h2>
+    <ul>
+      <li>To run the club's operations: tracking who's a member, who's paid, who's been approved, what's scheduled.</li>
+      <li>To send transactional messages: sign-in links, payment receipts, application confirmations, board-meeting invites, gate-bridge outage alerts.</li>
+      <li>To bill the club for its Poolside subscription (paid tiers only).</li>
+      <li>To improve the product based on aggregate, non-identifying patterns (e.g., "X% of clubs use the parties feature"). We do <b>not</b> use individual member data to train AI models.</li>
+    </ul>
+
+    <h2>Who we share it with</h2>
+    <p>We use a small set of vendors to make Poolside work. Each one is listed below with what they see and why.</p>
+    <table>
+      <thead>
+        <tr><th>Vendor</th><th>What they see</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>Vercel</b></td><td>Web traffic, IP addresses</td><td>Hosts the Poolside web app + handles HTTPS</td></tr>
+        <tr><td><b>Supabase</b></td><td>All stored data (database + uploaded files)</td><td>Database, file storage, authentication. Encrypted at rest.</td></tr>
+        <tr><td><b>Stripe</b></td><td>Payment data (card details, billing address)</td><td>Processes member dues + Poolside subscription. Card numbers never touch Poolside servers.</td></tr>
+        <tr><td><b>Resend</b></td><td>Email recipient address + message body</td><td>Sends transactional email (sign-in links, receipts, notifications)</td></tr>
+        <tr><td><b>Twilio</b></td><td>Phone number + SMS message body</td><td>Sends sign-in codes by text + renewal reminders</td></tr>
+        <tr><td><b>Google</b></td><td>Drive folder + spreadsheet contents you create through Poolside (only if you connect Drive auto-archive); your name + email if you Sign in with Google</td><td>Auto-archives applications to your club's own Drive; OAuth-based sign-in</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Data from Google APIs (required disclosure)</h2>
+    <p>Some clubs choose to connect their own Google account so Poolside can auto-archive applications to their Drive and append rows to a roster spreadsheet. When you connect Google Drive:</p>
+    <ul>
+      <li>Poolside requests <code>drive.file</code> (limited Drive access — only files Poolside creates) and <code>spreadsheets</code> (read/write the roster spreadsheet Poolside creates).</li>
+      <li>We use these scopes <b>only</b> to create the yearly application-archive folder, upload PDF copies of approved applications, and write rows to the roster spreadsheet.</li>
+      <li>We do <b>not</b> read files in Drive that we didn't create, transfer Google data to other services beyond what's needed for the integration, use Google data for advertising, or use it to train AI/ML models.</li>
+      <li>We store the encrypted Google refresh token plus the Drive folder ID and spreadsheet ID, so we can keep writing to the same place. You can disconnect any time from Settings → Integrations, which revokes our access.</li>
+    </ul>
+    <div class="callout">
+      <p><b>Limited Use disclosure:</b> Poolside's use and transfer of information received from Google APIs to any other app will adhere to <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+    </div>
+
+    <h2>How long we keep it</h2>
+    <ul>
+      <li>While the club is active, we retain everything to keep the service running.</li>
+      <li>If a club is deleted, the entire dataset (households, applications, photos, audit logs) is hard-deleted from our database within 30 days. Backups roll off after 30 more days.</li>
+      <li>Individual members can ask their club admin to remove them; the admin can delete the household from their dashboard, which cascades to all related rows.</li>
+      <li>Email-deliverability logs (held by Resend/Twilio) follow those vendors' retention windows, typically 30–90 days.</li>
+    </ul>
+
+    <h2>Your rights</h2>
+    <ul>
+      <li><b>Export</b> — Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a> and we'll provide a CSV/JSON export of your club's data within 7 business days.</li>
+      <li><b>Delete</b> — Same email. Deletion takes effect within 30 days.</li>
+      <li><b>Correct</b> — Most fields are editable in the app directly. For things you can't edit (audit logs), email us.</li>
+      <li><b>California (CCPA), EU (GDPR), other regional rights</b> — We honor access, rectification, deletion, and portability requests. Contact us using the email above.</li>
+    </ul>
+
+    <h2>Security</h2>
+    <ul>
+      <li>HTTPS-only (TLS 1.2+). We don't accept plaintext connections.</li>
+      <li>Database encryption at rest (managed by Supabase).</li>
+      <li>Passwords stored as bcrypt hashes; we never see your plaintext password.</li>
+      <li>Sign-in tokens are HMAC-signed with a server secret; they expire and rotate.</li>
+      <li>Stripe handles all card-number data — Poolside servers never receive PANs.</li>
+      <li>Two-factor auth via SMS/email magic links is the default. Password is a fallback.</li>
+    </ul>
+
+    <h2>Children's data</h2>
+    <p>Pool clubs naturally handle data about minors (kids who swim there). We collect that data only on behalf of the club, at the direction of the parent/guardian who fills out the membership application. The club, not Poolside, is the controller of that data. Poolside processes it only to run the club's operations — we don't market to kids, profile them, or use their data outside what the club needs.</p>
+
+    <h2>Cookies and tracking</h2>
+    <p>We use only first-party cookies/localStorage strictly needed for the service: sign-in tokens, theme preferences, dismissed-banner flags. No third-party advertising or analytics trackers.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If we make material changes, we'll notify each tenant's primary admin by email with at least 30 days' notice. Smaller clarifications get noted with a date stamp on this page.</p>
+
+    <h2>Contact</h2>
+    <p>Questions, requests, security reports — email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>. We reply within one business day.</p>
+
+  </div>
+</main>
+
+<footer>
+  <span>© 2026 Poolside</span>
+  <a href="/privacy.html">Privacy</a>
+  <a href="/terms.html">Terms</a>
+  <a href="/">Home</a>
+</footer>
+</body>
+</html>
