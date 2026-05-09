@@ -32,12 +32,11 @@
     { key: 'parties',      label: 'Parties',      href: '/club/admin/parties.html',              scope: 'parties'      },
     { key: 'volunteer',    label: 'Volunteer',    href: '/club/admin/volunteer.html',            scope: 'volunteer'    },
     { key: 'passes',       label: 'Passes',       href: '/club/admin/guest-passes.html',         scope: 'passes'       },
-    // Documents and Board minutes moved to Content sub-tabs (2026-05-08)
-    // — they're governance content, not member operations.
-    // Fundraiser donations — stripe-paid land here automatically; admin
-    // records Venmo/cash/check by hand. Thermometer recomputes on every
-    // insert/update/delete.
-    { key: 'donations',    label: 'Donations',    href: '/club/admin/donations.html',            scope: 'payments'     },
+    // Admins moved here from Settings (2026-05-08) — admins ARE people, so
+    // managing the board roster fits Members better than Settings clutter.
+    { key: 'admins',       label: 'Admins',       href: '/club/admin/admins.html',               scope: 'admins'       },
+    // Documents, Board minutes, AND Donations moved to Content sub-tabs
+    // (2026-05-08) — they're public-facing/content surfaces, not member ops.
     // Member-lifecycle email templates (renewals, plan installments, party
     // approve/deny). Application-lifecycle templates live on the
     // Application top-tab. emails.html honors ?audience=member to filter.
@@ -59,8 +58,8 @@
     if (path.endsWith('/volunteer.html'))    return 'volunteer';
     if (path.endsWith('/guest-passes.html')) return 'passes';
     if (path.endsWith('/documents.html'))    return 'documents';
-    if (path.endsWith('/donations.html'))    return 'donations';
     if (path.endsWith('/emails.html'))       return 'emails';
+    if (path.endsWith('/admins.html'))       return 'admins';
     return null;
   }
 

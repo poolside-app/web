@@ -384,6 +384,18 @@
   </main>
 </div>
 
+<!-- Provider config modal — opens via openConfig(tenant_id). Mirrors the
+     tenant-side panel-config UI so Doug never has to log into the tenant. -->
+<div id="config-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto;backdrop-filter:blur(2px)" onclick="if(event.target.id==='config-scrim') closeConfig()">
+  <div style="background:#fff;border-radius:18px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(10,59,92,.25);margin:auto;padding:24px;position:relative">
+    <button onclick="closeConfig()" style="position:absolute;top:14px;right:18px;background:transparent;border:0;font-size:24px;line-height:1;color:var(--muted);cursor:pointer;padding:6px 10px">×</button>
+    <div id="config-host" data-tenant-id=""></div>
+  </div>
+</div>
+<style>
+  #config-scrim.open { display: flex !important; }
+</style>
+
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const GATE_URL = `${SUPABASE_URL}/functions/v1/gate_admin`;
@@ -444,12 +456,162 @@ async function loadDeployments() {
         <td>${healthDot} ${escapeHtml(healthState)}</td>
         <td style="font-size:12px;color:var(--muted)">${lastSeen}</td>
         <td>
-          <select onchange="setStatus('${escapeHtml(p.tenant_id)}', this.value)" style="padding:4px 8px;font-size:12px">
+          <select onchange="setStatus('${escapeHtml(p.tenant_id)}', this.value)" style="padding:4px 8px;font-size:12px;margin-right:6px">
             ${statusOptions}
           </select>
+          <button class="btn-sm" onclick="openConfig('${escapeHtml(p.tenant_id)}')">🔧 Configure</button>
         </td>
       </tr>
     `;
+  }).join('');
+}
+
+// ── Provider-side panel config modal ────────────────────────────────────
+// Doug installs every gate panel himself — instead of asking him to log
+// into the tenant's admin, the same config UI lives here. All actions
+// hit the super_* variants that take tenant_id in the body.
+async function openConfig(tenantId) {
+  document.getElementById('config-scrim').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('config-host').dataset.tenantId = tenantId;
+  document.getElementById('config-host').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Loading panel config…</div>';
+  const r = await gateApi('super_get_panel', { tenant_id: tenantId });
+  if (!r.ok) { document.getElementById('config-host').innerHTML = `<div style="color:var(--red)">${escapeHtml(r.error || 'Failed')}</div>`; return; }
+  paintConfig(r.panel);
+}
+function closeConfig() {
+  document.getElementById('config-scrim').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function paintConfig(p) {
+  const host = document.getElementById('config-host');
+  const tenantId = host.dataset.tenantId;
+  const healthState = p.bridge_health?.state || 'unknown';
+  const healthDot = { online: '🟢', stale: '🟡', offline: '🔴', never_seen: '⚪', unknown: '⚪' }[healthState] || '⚪';
+  const pwSet = !!p.panel_password_set;
+  host.innerHTML = `
+    <div style="margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <h2 style="font-size:20px;margin:0">🔧 ${escapeHtml(p.tenant_display_name || p.tenant_slug)}</h2>
+      <div style="font-size:13px;color:var(--muted);margin-top:4px">${escapeHtml(p.tenant_slug || '')}.poolsideapp.com · status <b style="color:var(--blue)">${escapeHtml(p.status)}</b> · bridge ${healthDot} ${escapeHtml(healthState)}</div>
+    </div>
+
+    <h3 style="margin:0 0 8px;font-family:'Fraunces',serif">Panel config</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">The on-site Pi bridge connects to this panel over the club's LAN. Plaintext credentials live in service_role-only DB rows; treat them like ssh keys.</p>
+    <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:8px 0 4px">Panel type</label>
+    <select id="cfg-panel_type" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%;background:#fff">
+      <option value="mengqi_hxc7000" ${p.panel_type === 'mengqi_hxc7000' ? 'selected' : ''}>MENGQI-CONTROL HXC-7000 (verified)</option>
+      <option value="unknown" ${p.panel_type === 'unknown' ? 'selected' : ''}>Unknown — needs identification</option>
+      <option value="custom" ${p.panel_type === 'custom' ? 'selected' : ''}>Custom / unsupported</option>
+    </select>
+
+    <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Panel IP / hostname</label>
+    <input type="text" id="cfg-panel_host" value="${escapeHtml(p.panel_host || '')}" placeholder="192.168.1.50" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Admin user</label>
+        <input type="text" id="cfg-panel_admin_user" value="${escapeHtml(p.panel_admin_user || '')}" placeholder="admin" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Admin password</label>
+        <input type="password" id="cfg-panel_admin_password" placeholder="${pwSet ? '•••••••• (saved — leave blank to keep)' : 'panel admin password'}" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%">
+      </div>
+    </div>
+
+    <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Internal notes <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">(install date, gate quirks, etc.)</span></label>
+    <textarea id="cfg-notes" rows="2" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%;font-family:inherit;resize:vertical">${escapeHtml(p.notes || '')}</textarea>
+
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn-primary" onclick="saveConfig('${escapeHtml(tenantId)}')">💾 Save panel config</button>
+      <button class="btn-sm" onclick="rotateSecret('${escapeHtml(tenantId)}')">🔑 Rotate bridge secret</button>
+      <button class="btn-sm" onclick="testUnlock('${escapeHtml(tenantId)}')" ${!p.panel_host ? 'disabled style="opacity:.5"' : ''}>⚡ Test unlock</button>
+      <span id="cfg-status" style="font-size:13px;color:var(--green);align-self:center"></span>
+    </div>
+
+    <details style="margin-top:22px">
+      <summary style="cursor:pointer;font-weight:600;color:var(--blue);font-size:13px">Bridge identity (for the .env file on the Pi)</summary>
+      <div style="margin-top:10px;padding:14px;background:var(--bg-2);border-radius:10px;font-size:12px;line-height:1.6;font-family:Consolas,monospace">
+        BRIDGE_ID=${escapeHtml(p.bridge_id || '')}<br>
+        BRIDGE_SECRET=&lt;rotate to reveal — secret is hashed in DB&gt;<br>
+        TENANT_ID=${escapeHtml(p.tenant_id || '')}<br>
+        BRIDGE_ENDPOINT=${SUPABASE_URL}/functions/v1/gate_bridge<br>
+      </div>
+    </details>
+
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;font-weight:600;color:var(--blue);font-size:13px">Recent unlocks</summary>
+      <div id="recent-unlocks-host" style="margin-top:10px;font-size:13px"></div>
+    </details>
+  `;
+  loadRecentUnlocks(tenantId);
+}
+
+async function saveConfig(tenantId) {
+  const status = document.getElementById('cfg-status');
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Saving…';
+  const body = {
+    tenant_id: tenantId,
+    panel_type: document.getElementById('cfg-panel_type').value,
+    panel_host: document.getElementById('cfg-panel_host').value.trim(),
+    panel_admin_user: document.getElementById('cfg-panel_admin_user').value.trim(),
+    notes: document.getElementById('cfg-notes').value,
+  };
+  const pw = document.getElementById('cfg-panel_admin_password').value;
+  if (pw) body.panel_admin_password = pw;
+  const r = await gateApi('super_update_config', body);
+  if (!r.ok) { status.style.color = 'var(--red)'; status.textContent = '⚠ ' + (r.error || 'Save failed'); return; }
+  status.style.color = 'var(--green)';
+  status.textContent = '✓ Saved';
+  setTimeout(() => status.textContent = '', 2500);
+}
+
+async function rotateSecret(tenantId) {
+  if (!confirm('Rotate the bridge secret?\n\nThe currently-installed Pi bridge will stop working until its .env file is updated with the new secret. Only do this if you have access to the Pi (or it hasn\'t been installed yet).')) return;
+  const r = await gateApi('super_rotate_bridge_secret', { tenant_id: tenantId });
+  if (!r.ok) { alert(r.error || 'Rotate failed'); return; }
+  // Surface the secret one-time + give a copyable .env block.
+  const envBlock =
+    `BRIDGE_ID=${r.bridge_id}\n` +
+    `BRIDGE_SECRET=${r.bridge_secret}\n` +
+    `TENANT_ID=${tenantId}\n` +
+    `BRIDGE_ENDPOINT=${SUPABASE_URL}/functions/v1/gate_bridge\n`;
+  const ok = window.prompt(
+    `🔑 New bridge credentials (one-time):\n\n${envBlock}\nPaste this into the Pi's /etc/poolside-bridge.env file. Click OK to copy to clipboard.`,
+    envBlock,
+  );
+  if (ok !== null) {
+    try { await navigator.clipboard.writeText(envBlock); alert('✓ Copied to clipboard.'); }
+    catch (_) { alert('Couldn\'t copy automatically — copy from the prompt manually.'); }
+  }
+}
+
+async function testUnlock(tenantId) {
+  const r = await gateApi('super_test_unlock', { tenant_id: tenantId });
+  if (!r.ok) { alert(r.error || 'Test failed'); return; }
+  alert('✓ Test unlock queued. The bridge picks it up within ~2 seconds. Watch the Recent unlocks log to see the result.');
+  setTimeout(() => loadRecentUnlocks(tenantId), 3000);
+}
+
+async function loadRecentUnlocks(tenantId) {
+  const host = document.getElementById('recent-unlocks-host');
+  if (!host) return;
+  host.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+  const r = await gateApi('super_recent_unlocks', { tenant_id: tenantId });
+  if (!r.ok) { host.innerHTML = `<div style="color:var(--red)">${escapeHtml(r.error)}</div>`; return; }
+  const items = r.unlocks || [];
+  if (!items.length) { host.innerHTML = '<div style="color:var(--muted)">No unlocks yet.</div>'; return; }
+  host.innerHTML = items.slice(0, 25).map(u => {
+    const when = new Date(u.requested_at).toLocaleString();
+    const statusColor = u.status === 'completed' ? '#16a34a' : u.status === 'failed' ? '#dc2626' : u.status === 'pending' ? '#d97706' : '#64748b';
+    return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+      <span style="color:${statusColor};font-weight:600">${escapeHtml(u.status)}</span> ·
+      ${escapeHtml(when)} ·
+      ${u.is_test ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;font-size:11px">test</span> ' : ''}
+      ${u.member_name ? escapeHtml(u.member_name) : '<i style="color:var(--muted)">no member</i>'}
+      ${u.result_detail ? `<br><span style="color:var(--muted);font-size:11px">${escapeHtml(u.result_detail)}</span>` : ''}
+    </div>`;
   }).join('');
 }
 

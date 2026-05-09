@@ -18,6 +18,9 @@
     { key: 'sponsors',      label: 'Sponsors',      href: '/club/admin/sponsors.html',       scope: 'announcements' },
     { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
     { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
+    // Donations + thermometer — moved here from Members 2026-05-08 because
+    // it's a public-facing fundraising surface, not a member-roster thing.
+    { key: 'donations',     label: 'Donations',     href: '/club/admin/donations.html',      scope: 'payments'      },
     // Documents (bylaws, handbook, forms) and Board minutes are governance
     // CONTENT — they live here, not under Members. Moved 2026-05-08 after
     // user feedback that "Members" should be people-focused.
@@ -32,6 +35,7 @@
     if (path.endsWith('/sponsors.html'))        return 'sponsors';
     if (path.endsWith('/feedback.html'))        return 'feedback';
     if (path.endsWith('/photos.html'))          return 'photos';
+    if (path.endsWith('/donations.html'))       return 'donations';
     if (path.endsWith('/documents.html'))       return 'documents';
     if (path.endsWith('/board-meetings.html'))  return 'meetings';
     return null;

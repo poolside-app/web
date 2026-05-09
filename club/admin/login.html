@@ -144,6 +144,27 @@ const SLUG = getSlugFromHostname();
 })();
 
 (async () => {
+  // Auto-redirect if the user is already signed in. Without this, anyone
+  // who lands on login.html (e.g. via a stale link or a direct /club/admin/login.html
+  // type-in) is forced to enter credentials again even though their token
+  // is fine. Confirms validity by hitting `me` — anything else is a real
+  // logout that the user expects.
+  const existingTok = localStorage.getItem('poolside_tenant_token');
+  if (existingTok) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/tenant_admin_auth`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${existingTok}` },
+        body: JSON.stringify({ action: 'me' }),
+      });
+      const d = await r.json();
+      if (d && d.ok) {
+        window.location.href = '/club/admin/';
+        return;
+      }
+      // 401 or any non-ok → token is stale; let them re-enter creds.
+    } catch (_) { /* network blip — show login form rather than spin */ }
+  }
   if (!SLUG) {
     document.getElementById('title').textContent = 'Wrong page';
     document.getElementById('sub').textContent = 'This sign-in is for tenant clubs only. Visit your club\'s subdomain to sign in.';

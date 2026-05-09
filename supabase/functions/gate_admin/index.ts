@@ -465,5 +465,138 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, status: newStatus });
   }
 
+  // ── Provider-side panel config ────────────────────────────────────────
+  // Doug installs every gate panel himself (it's a real-world coordination
+  // job — see notes near 'request_addon'). So the provider needs to do
+  // EVERYTHING the tenant could do, without logging into the tenant. Each
+  // action here mirrors a tenant action above but takes tenant_id in the
+  // body.
+
+  if (action === 'super_get_panel') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const tid = String(body.tenant_id ?? '').trim();
+    if (!tid) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const { data: panel } = await sb.from('gate_panels')
+      .select('*, tenants:tenant_id (slug, display_name)')
+      .eq('tenant_id', tid).maybeSingle();
+    if (!panel) return jsonResponse({ ok: false, error: 'No gate panel for this tenant' }, 404);
+    return jsonResponse({
+      ok: true,
+      panel: {
+        ...publicGatePanel(panel),
+        tenant_slug: (panel as Record<string, unknown> & { tenants?: { slug: string; display_name: string } }).tenants?.slug,
+        tenant_display_name: (panel as Record<string, unknown> & { tenants?: { slug: string; display_name: string } }).tenants?.display_name,
+        bridge_health: bridgeHealth(panel),
+      },
+    });
+  }
+
+  if (action === 'super_update_config') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const tid = String(body.tenant_id ?? '').trim();
+    if (!tid) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.panel_host !== undefined)        patch.panel_host = String(body.panel_host).trim() || null;
+    if (body.panel_admin_user !== undefined)  patch.panel_admin_user = String(body.panel_admin_user).trim() || null;
+    if (body.panel_admin_password !== undefined && String(body.panel_admin_password).trim()) {
+      patch.panel_admin_password = String(body.panel_admin_password);
+    }
+    if (body.panel_type !== undefined) {
+      const t = String(body.panel_type);
+      if (['mengqi_hxc7000', 'unknown', 'custom'].includes(t)) patch.panel_type = t;
+    }
+    if (body.notes !== undefined) patch.notes = String(body.notes).slice(0, 4000) || null;
+    const { error } = await sb.from('gate_panels').update(patch).eq('tenant_id', tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await sb.from('audit_log').insert({
+      tenant_id: tid, kind: 'gate.config_updated_by_provider',
+      entity_type: 'gate_panel',
+      summary: 'Panel config updated by provider',
+      actor_id: payload.sub, actor_kind: 'provider',
+    });
+    return jsonResponse({ ok: true });
+  }
+
+  if (action === 'super_rotate_bridge_secret') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const tid = String(body.tenant_id ?? '').trim();
+    if (!tid) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const secret = randomBridgeSecret();
+    const hash = await sha256Hex(secret);
+    const { data: row, error } = await sb.from('gate_panels')
+      .update({ bridge_secret_hash: hash, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tid)
+      .select('bridge_id').maybeSingle();
+    if (error || !row) return jsonResponse({ ok: false, error: error?.message || 'No gate config' }, 500);
+    await sb.from('audit_log').insert({
+      tenant_id: tid, kind: 'gate.bridge_secret_rotated_by_provider',
+      entity_type: 'gate_panel', entity_id: row.bridge_id,
+      summary: 'Bridge secret rotated by provider',
+      actor_id: payload.sub, actor_kind: 'provider',
+    });
+    return jsonResponse({
+      ok: true,
+      bridge_id: row.bridge_id,
+      bridge_secret: secret,
+      message: 'One-time plaintext — copy now and paste into the on-site bridge .env file.',
+    });
+  }
+
+  if (action === 'super_test_unlock') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const tid = String(body.tenant_id ?? '').trim();
+    if (!tid) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const { data: row } = await sb.from('gate_panels')
+      .select('id, status, panel_host').eq('tenant_id', tid).maybeSingle();
+    if (!row || row.status !== 'active') {
+      return jsonResponse({ ok: false, error: 'Gate add-on is not active' }, 400);
+    }
+    if (!row.panel_host) {
+      return jsonResponse({ ok: false, error: 'Panel host not configured yet' }, 400);
+    }
+    const { data: unlock, error } = await sb.from('gate_unlocks').insert({
+      tenant_id: tid,
+      member_id: null,
+      status: 'pending',
+      is_test: true,
+      actor_kind: 'provider_test',
+      client_user_agent: req.headers.get('user-agent')?.slice(0, 200) || null,
+    }).select('id').single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, unlock_id: unlock.id });
+  }
+
+  if (action === 'super_recent_unlocks') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const tid = String(body.tenant_id ?? '').trim();
+    if (!tid) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const limit = Math.min(100, Math.max(1, Number(body.limit) || 25));
+    const { data, error } = await sb.from('gate_unlocks')
+      .select('id, member_id, status, requested_at, completed_at, result_code, result_detail, is_test, actor_kind')
+      .eq('tenant_id', tid)
+      .order('requested_at', { ascending: false })
+      .limit(limit);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    const memberIds = [...new Set((data ?? []).map(r => r.member_id).filter(Boolean))];
+    const { data: members } = memberIds.length
+      ? await sb.from('household_members').select('id, name').in('id', memberIds)
+      : { data: [] };
+    const nameById = new Map((members ?? []).map(m => [m.id, m.name]));
+    return jsonResponse({
+      ok: true,
+      unlocks: (data ?? []).map(u => ({ ...u, member_name: nameById.get(u.member_id) ?? null })),
+    });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });
