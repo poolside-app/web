@@ -238,7 +238,7 @@
       </div>
       <div id="ren-sms-meter" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--muted)"></div>
       <label>Custom intro <span style="color:var(--muted);font-weight:500">(optional — overrides default body)</span></label>
-      <textarea id="ren-message" rows="3" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your tier and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
+      <textarea id="ren-message" rows="3" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your membership level and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
       <div style="display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="ren-send" type="button" onclick="Renewals.send()">Send blast →</button>
         <span id="ren-result" style="font-size:13px;color:var(--muted)"></span>
@@ -256,13 +256,13 @@
   <!-- ── Tiers panel ──────────────────────────────────────────────────── -->
   <section class="panel" id="panel-tiers" data-focus="tiers">
     <div class="toolbar">
-      <h1>Membership tiers</h1>
+      <h1>Membership levels</h1>
       <div style="display:flex;gap:10px;align-items:center">
-        <button class="btn-ghost btn" type="button" onclick="Tiers.add()">+ Add tier</button>
-        <button class="btn" id="tiers-save" type="button" onclick="Tiers.save()">Save tiers</button>
+        <button class="btn-ghost btn" type="button" onclick="Tiers.add()">+ Add level</button>
+        <button class="btn" id="tiers-save" type="button" onclick="Tiers.save()">Save levels</button>
       </div>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Levels applicants pick from on the apply form. The first tier is the default. Leave price blank if you bill per-household manually.</p>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Membership levels applicants pick from on the apply form. The first one is the default. Leave price blank if you bill per-household manually.</p>
     <div class="card" style="padding:18px">
       <div id="tiers-list"><div class="empty" style="padding:30px">Loading…</div></div>
     </div>
@@ -279,7 +279,7 @@
     <label>Family name</label>
     <input id="c-family_name" placeholder="Smith Family">
     <div class="row3" style="margin-top:6px">
-      <div><label>Tier</label><select id="c-tier">
+      <div><label>Membership level</label><select id="c-tier">
         <option value="family">Family</option><option value="single">Single</option>
         <option value="senior">Senior</option><option value="staff">Staff</option>
       </select></div>
@@ -325,7 +325,7 @@
     <label>Family name</label>
     <input id="e-family_name">
     <div class="row3" style="margin-top:6px">
-      <div><label>Tier</label><select id="e-tier">
+      <div><label>Membership level</label><select id="e-tier">
         <option value="family">Family</option><option value="single">Single</option>
         <option value="senior">Senior</option><option value="staff">Staff</option>
       </select></div>
@@ -381,7 +381,7 @@
     <h3>Approve as</h3>
     <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Optional household-level overrides.</p>
     <div class="row3">
-      <div><label>Tier</label>
+      <div><label>Membership level</label>
         <select id="am-tier" style="width:100%;padding:10px 12px;font:14px 'Inter';border:1.5px solid var(--border);border-radius:10px">
           <option value="family">Family</option><option value="single">Single</option>
           <option value="senior">Senior</option><option value="staff">Staff</option>
@@ -400,13 +400,17 @@
       <div style="font-weight:700; color:#075985; font-size:14px; margin-bottom:6px">💵 They paid via Venmo — verify it before approving</div>
       <ol style="margin:6px 0 10px; padding-left:20px; font-size:13px; color:#075985; line-height:1.6">
         <li>Open Venmo on your phone or <a id="am-venmo-link" href="#" target="_blank" rel="noopener" style="color:#075985;font-weight:600;text-decoration:underline">go to your business profile</a>.</li>
-        <li>Look for a payment from <b id="am-venmo-from">the applicant</b> matching <b id="am-venmo-amount">the tier amount</b>.</li>
+        <li>Look for a payment from <b id="am-venmo-from">the applicant</b> matching <b id="am-venmo-amount">the level price</b>.</li>
         <li>If it's there, click "Verify + Approve" below — this approves the application AND records the Venmo payment in one step.</li>
       </ol>
       <p style="font-size:12px; color:#0c4a6e; margin:0">Not there yet? Use "📧 Send reminder" instead — we'll nudge them with the Venmo handle and amount.</p>
     </div>
 
     <div class="err" id="am-err"></div>
+    <!-- Plain-English explainer of the application's current state +
+         what the primary button below will do. Painted dynamically by
+         App.openModal based on status + payment_status + payment_method. -->
+    <div id="am-state-explainer" style="margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5"></div>
     <div class="modal-foot" style="flex-wrap:wrap">
       <button class="btn btn-ghost" id="am-remind" style="display:none" onclick="App.reminder()">📧 Send reminder</button>
       <button class="btn btn-ghost" onclick="App.closeM()">Close</button>
@@ -518,7 +522,7 @@ const Households = (() => {
       ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>`
       : `<span class="pill unpaid">Unpaid</span>`;
     card.innerHTML = `<table>
-      <thead><tr><th>Family</th><th>Primary</th><th>Members</th><th>Tier</th><th>Fob</th><th>Dues</th></tr></thead>
+      <thead><tr><th>Family</th><th>Primary</th><th>Members</th><th>Level</th><th>Fob</th><th>Dues</th></tr></thead>
       <tbody>${rows.map(h => {
         const p = primaryOf(h);
         const cnt = (h.members || []).filter(m => m.active).length;
@@ -708,7 +712,7 @@ function csvCell(s) {
   return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 function exportCsv() {
-  const headers = ['Family name','Tier','Fob #','Dues paid','Paid until year','Address','City','Zip','Emergency contact','Notes','# Members (active)','Primary name','Primary phone','Primary email','Other members'];
+  const headers = ['Family name','Membership level','Fob #','Dues paid','Paid until year','Address','City','Zip','Emergency contact','Notes','# Members (active)','Primary name','Primary phone','Primary email','Other members'];
   const rows = [headers.map(csvCell).join(',')];
   for (const h of Households.cache) {
     if (h.active === false) continue;
@@ -909,6 +913,37 @@ const App = (() => {
     document.getElementById('am-approve-venmo').style.display = (isPending && isVenmoUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
     document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid') || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
+
+    // Plain-English state explainer — tells the volunteer admin what this
+    // application's situation is and what the green button below will do.
+    // Removes the "which button do I click?" guesswork.
+    const explainer = document.getElementById('am-state-explainer');
+    if (explainer) {
+      let html = '';
+      if (a.status === 'approved' && a.payment_status === 'paid') {
+        html = `<div style="background:#dcfce7;color:#14532d;padding:0;border:0">✓ <b>Active member.</b> Approved and paid — nothing left to do here.</div>`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#dcfce7;color:#14532d';
+      } else if (a.status === 'approved' && a.payment_status !== 'paid') {
+        const method = a.payment_method === 'venmo' ? 'Venmo' : a.payment_method === 'stripe_plan' ? 'a payment plan' : a.payment_method === 'stripe' ? 'a card' : 'their dues';
+        html = `<b>Approved, awaiting payment.</b> Application is approved but ${method} hasn't been verified yet.<br><b>The green button below</b> marks this paid and flips their dues to ${CURRENT_YEAR}.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
+      } else if (isPending && isVenmoUnpaid) {
+        html = `<b>New Venmo application.</b> ${escapeHtml(a.primary_name || a.family_name)} chose to pay via Venmo.<br><b>The green button below</b> creates their household, marks their dues paid, and emails them a sign-in link — all in one click. Use it once you've confirmed the payment landed in your Venmo account.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
+      } else if (isPending && !a.payment_method) {
+        html = `<b>Decide-later application.</b> ${escapeHtml(a.primary_name || a.family_name)} didn't pick a payment method.<br><b>The green button below</b> approves them and creates the household — you'll need to chase the payment separately.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
+      } else if (isPending && a.payment_method === 'stripe' && a.payment_status === 'paid') {
+        html = `<b>Stripe-paid, awaiting approval.</b> Card payment cleared — finalize membership.<br><b>The green button below</b> creates their household and emails them their welcome link.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
+      } else if (a.status === 'rejected') {
+        html = `<b>Rejected.</b> No further action.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fee2e2;color:#7f1d1d';
+      } else {
+        explainer.style.cssText = 'display:none';
+      }
+      explainer.innerHTML = html;
+    }
 
     // Venmo helper visibility + content
     const helper = document.getElementById('am-venmo-helper');

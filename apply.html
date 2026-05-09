@@ -207,11 +207,11 @@
       </div>
     </div>
 
-    <!-- Step 4 — Tier + payment + submit -->
+    <!-- Step 4 — Membership level + payment + submit -->
     <div class="step" data-step="4" style="display:none">
-      <h2>Membership tier</h2>
+      <h2>Membership level</h2>
       <p class="lede" style="margin-top:0">Pick the level that fits your household. Admin can adjust on approval.</p>
-      <div id="tiers-box"><div style="color:var(--muted);font-size:13px">Loading tiers…</div></div>
+      <div id="tiers-box"><div style="color:var(--muted);font-size:13px">Loading membership levels…</div></div>
 
       <h2 style="margin-top:24px">Payment</h2>
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
@@ -292,7 +292,7 @@ function paintTiers() {
   if (!box) return;
   const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
   if (!tiers.length) {
-    box.innerHTML = '<div style="font-size:13px;color:var(--muted)">No tiers configured — admin will set yours on approval.</div>';
+    box.innerHTML = '<div style="font-size:13px;color:var(--muted)">No membership levels configured — admin will set yours on approval.</div>';
     return;
   }
   box.innerHTML = tiers.map((t, i) => {
@@ -802,6 +802,28 @@ async function submitApplication() {
     const isVenmo = method === 'venmo';
     const isStripe = method === 'stripe';
     const isStripePlan = method === 'stripe_plan';
+
+    // Founder self-signup celebration: when an admin signs up their own
+    // family, the backend auto-approves AND auto-verifies the Venmo payment
+    // in one shot (data.self_signup_complete=true). Skip the generic "we got
+    // your application" page and show "you're in!" with a clear path back
+    // to admin setup — no member-side limbo, no "I paid Venmo" button to
+    // tap, no welcome-email round-trip.
+    if (data.self_signup_complete) {
+      const clubName = data.tenant_display_name || 'your club';
+      const familyName = (document.getElementById('family_name')?.value || '').trim() || 'Your family';
+      document.getElementById('form').className = 'card ok';
+      document.getElementById('form').innerHTML = `
+        <h1 style="color:var(--blue)">✓ You're in!</h1>
+        <p class="lede"><b>${escapeHtml(familyName)}</b> is now an active member of <b>${escapeHtml(clubName)}</b>. Your dues are marked paid and your gate access (if you have a gate) is on.</p>
+        <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
+          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Next: finish your club setup</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Pick up where you left off — set membership levels, share your apply link with members, invite your treasurer, and so on.</div>
+          <a href="/club/admin/" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:13px">Back to admin dashboard →</a>
+        </div>
+      `;
+      return;
+    }
 
     // Stripe paths: auto-redirect to Checkout immediately. The applicant
     // shouldn't be able to "submit and walk away unpaid" — submit is a

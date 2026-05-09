@@ -844,6 +844,35 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // Onboarding checklist state for the first-run dashboard. Returns the four
+  // boolean steps + the apply URL the dashboard's "share apply link" card
+  // shows. The fifth step ("share your apply link") is tracked client-side
+  // via localStorage since there's no clean DB signal for "I clicked Copy".
+  if (action === 'onboarding_status') {
+    const [{ data: tenant }, { data: settings }, { data: admin }, { count: adminCount }] = await Promise.all([
+      sb.from('tenants').select('slug, stripe_charges_enabled').eq('id', payload.tid).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
+      sb.from('admin_users').select('linked_member_id').eq('id', payload.sub).maybeSingle(),
+      sb.from('admin_users').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', payload.tid).eq('active', true),
+    ]);
+    const sv = (settings?.value as Record<string, unknown> | undefined) ?? {};
+    const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+    const payments = (sv.payments as Record<string, unknown> | undefined) ?? {};
+    const venmoHandle = String(payments.venmo_handle ?? '').trim();
+    const slug = tenant?.slug ?? payload.slug ?? '';
+    return jsonResponse({
+      ok: true,
+      apply_url: slug ? `https://${slug}.poolsideapp.com/apply.html` : null,
+      steps: {
+        tiers_set:        Array.isArray(tiers) && tiers.length > 0,
+        payment_set:      !!venmoHandle || !!tenant?.stripe_charges_enabled,
+        self_signup_done: !!admin?.linked_member_id,
+        invite_board:     (adminCount ?? 0) > 1,
+      },
+    });
+  }
+
   if (action === 'reset_admin_password') {
     // OWNER ONLY: was previously open to any tenant_admin — meaning a
     // scoped admin could reset a peer's password and steal their session.

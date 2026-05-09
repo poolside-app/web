@@ -421,13 +421,13 @@ Deno.serve(async (req) => {
     //                          (no phone, capacity hit, etc.).
     //   No method (decide later) : admin_task fires for manual approval.
     let autoApproved = false;
+    let isAdminSelfSignup = false;
     if (payment_method === 'venmo') {
       // Self-signup detection: if the applicant's email or phone matches an
       // active admin on this tenant, they're an admin signing up their own
       // family — there's no third party for the admin to "verify the Venmo
       // payment landed from". Auto-verify the payment so the application
       // ends fully paid and no stale venmo.claim task lingers.
-      let isAdminSelfSignup = false;
       try {
         const orParts: string[] = [];
         if (email) orParts.push(`email.ilike.${email}`);
@@ -619,7 +619,19 @@ Deno.serve(async (req) => {
       } catch { /* never fail submission because of an email hiccup */ }
     }
 
-    return jsonResponse({ ok: true, application_id: data.id, payment_method });
+    return jsonResponse({
+      ok: true,
+      application_id: data.id,
+      payment_method,
+      auto_approved: autoApproved,
+      // True when the applicant matched an active admin and we auto-verified
+      // the Venmo payment in the same call. apply.html branches on this to
+      // show the founder "you're in!" celebration page instead of the
+      // generic "we got your application" page.
+      self_signup_complete: autoApproved && isAdminSelfSignup,
+      tenant_slug: tenant.slug,
+      tenant_display_name: tenant.display_name,
+    });
   }
 
   // ── post_payment_signin — public, time-bounded ───────────────────────
