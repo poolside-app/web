@@ -77,9 +77,23 @@
     <h1 id="m-title">Sign in</h1>
     <p class="lede">Enter your phone or email — we'll send a one-tap sign-in link.</p>
     <label for="m-id">Phone or email</label>
-    <input id="m-id" type="text" required placeholder="(555) 123-4567 or you@example.com">
-    <p style="font-size:11.5px;color:#0a3b5c;font-weight:500;margin:4px 0 0">📱 Phone is fastest — we text you a sign-in code.</p>
-    <button class="btn" id="m-submit" type="submit" style="margin-top:14px">Send me a sign-in link</button>
+    <input id="m-id" type="text" required placeholder="(555) 123-4567 or you@example.com" autocomplete="username">
+    <p style="font-size:11.5px;color:#0a3b5c;font-weight:500;margin:4px 0 0">📱 Phone is fastest — we text you a 6-digit code.</p>
+    <button class="btn" id="m-submit" type="submit" style="margin-top:14px">Send me a sign-in code</button>
+
+    <!-- Code-entry sub-form. Shown after a successful start_link with
+         channel='sms'. The 6-digit code from the SMS is entered here. -->
+    <div id="code-entry" style="display:none;margin-top:14px;padding:14px;background:var(--bg-2);border-radius:10px;border:1.5px solid var(--blue-l)">
+      <p style="margin:0 0 8px;font-size:13px;color:var(--blue);font-weight:600">📱 We just texted a 6-digit code to <span id="code-phone-display"></span></p>
+      <input id="code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" autocomplete="one-time-code"
+             style="width:100%;padding:14px 18px;font:600 24px ui-monospace,monospace;letter-spacing:.4em;text-align:center;border:1.5px solid var(--border);border-radius:10px;margin:6px 0">
+      <button type="button" id="code-submit" class="btn" style="width:100%;margin-top:6px">Verify code →</button>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px">
+        <a href="#" id="code-back" style="color:#64748b">← Use a different number</a>
+        <a href="#" id="code-resend" style="color:var(--blue);font-weight:600">Resend code</a>
+      </div>
+      <div class="err" id="code-err" style="margin-top:8px"></div>
+    </div>
 
     <div style="margin:18px 0;text-align:center;color:#64748b;font-size:12px;position:relative">
       <span style="background:#fefdfb;padding:0 10px;position:relative;z-index:1">or</span>
@@ -216,6 +230,35 @@ function showPasswordForm() {
   document.getElementById('pw-form').style.display = '';
 }
 
+// Holds the phone the user entered, in case start_link returns channel=sms
+// and we need to call verify_code with the same phone.
+let __PENDING_PHONE = null;
+
+// Live phone formatter on m-id. Detects intent from the FIRST char: if it
+// starts with a digit / "(" / "+", treat as phone and format as the user
+// types. If it starts with a letter or contains "@", leave alone (email).
+// Reset detection if the user clears the field.
+(function () {
+  const inp = document.getElementById('m-id');
+  if (!inp) return;
+  function looksLikePhoneStart(v) {
+    if (!v) return false;
+    if (v.includes('@')) return false;
+    return /^[\d+(]/.test(v.replace(/^\s+/, ''));
+  }
+  inp.addEventListener('input', () => {
+    if (!looksLikePhoneStart(inp.value)) return;
+    const digits = inp.value.replace(/\D/g, '').slice(0, 11);
+    let formatted;
+    // 11-digit US: leading 1 stripped for display
+    const ten = digits.startsWith('1') && digits.length === 11 ? digits.slice(1) : digits;
+    if (ten.length <= 3)      formatted = ten;
+    else if (ten.length <= 6) formatted = `(${ten.slice(0,3)}) ${ten.slice(3)}`;
+    else                       formatted = `(${ten.slice(0,3)}) ${ten.slice(3,6)}-${ten.slice(6,10)}`;
+    if (inp.value !== formatted) inp.value = formatted;
+  });
+})();
+
 async function doMagic() {
   const btn = document.getElementById('m-submit');
   const errEl = document.getElementById('m-err');
@@ -236,24 +279,38 @@ async function doMagic() {
     }).finally(() => clearTimeout(tid));
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not send a sign-in link');
+    // Phone (SMS) path: switch to code-entry UI so the user types the
+    // 6-digit code we just texted them. Also handles the dev_code fallback
+    // when SMS isn't configured.
+    if (data.channel === 'sms') {
+      __PENDING_PHONE = raw;
+      const phoneDisplay = document.getElementById('code-phone-display');
+      if (phoneDisplay) phoneDisplay.textContent = raw;
+      document.getElementById('code-entry').style.display = 'block';
+      document.getElementById('code-input').focus();
+      if (data.dev_code) {
+        // Dev mode: surface the code so we can sign in without an actual SMS.
+        const devCodeEl = document.getElementById('code-err');
+        devCodeEl.style.background = '#fef3c7';
+        devCodeEl.style.color = '#78350f';
+        devCodeEl.textContent = `Dev code (SMS not configured): ${data.dev_code}`;
+        devCodeEl.classList.add('show');
+      }
+      return;
+    }
+    // Email path with dev_link fallback (Resend not configured)
     if (data.dev_link) {
-      // Extract the token from the dev_link and verify in-page. The link
-      // itself is `${clubUrl}/club/admin/login.html#magic=<tok>`, but the
-      // user is ALREADY on login.html — clicking <a href> only updates
-      // the hash and does NOT re-fire the page-load init that verifies.
-      // So we button-ify it: the click directly calls the same verify
-      // flow that #magic= would have triggered.
       let extractedToken = '';
       try {
         const m = String(data.dev_link).match(/#magic=([^&]+)/);
         if (m) extractedToken = decodeURIComponent(m[1]);
       } catch (_) { /* fall back to raw link below */ }
-      devEl.innerHTML = `<b>SMS/email not configured yet.</b> One-click sign-in:<br>
+      devEl.innerHTML = `<b>Email not configured yet.</b> One-click sign-in:<br>
         <button type="button" onclick="window.__poolsideVerifyDev('${escapeHtml(extractedToken)}')" style="display:inline-block;margin-top:8px;padding:10px 18px;background:#0a3b5c;color:#fff;border:0;border-radius:8px;font:600 14px Inter;cursor:pointer">Continue to admin →</button>
         <div style="margin-top:8px;font-size:11px;color:#92400e;word-break:break-all">Or copy: <code>${escapeHtml(data.dev_link)}</code></div>`;
       devEl.classList.add('show');
     } else {
-      okEl.textContent = data.message || 'A sign-in link is on the way.';
+      okEl.textContent = data.message || 'A sign-in link is on the way. Check your email.';
       okEl.classList.add('show');
     }
     document.getElementById('m-id').value = '';
@@ -264,6 +321,68 @@ async function doMagic() {
     btn.disabled = false; btn.textContent = orig;
   }
 }
+
+// Code-entry handlers (SMS OTP flow). Submit → verify_code action; on
+// success, store JWT + redirect to /club/admin/. Resend → re-fire start_link
+// with the same phone. Back → reset to phone/email entry.
+(function () {
+  const submitBtn = document.getElementById('code-submit');
+  const codeInput = document.getElementById('code-input');
+  const errEl     = document.getElementById('code-err');
+  const resendLink = document.getElementById('code-resend');
+  const backLink   = document.getElementById('code-back');
+  if (!submitBtn || !codeInput) return;
+
+  async function doVerify() {
+    errEl.classList.remove('show');
+    const code = codeInput.value.trim().replace(/\D/g, '');
+    if (code.length !== 6) {
+      errEl.textContent = 'Enter the 6-digit code.';
+      errEl.style.background = ''; errEl.style.color = '';
+      errEl.classList.add('show');
+      return;
+    }
+    submitBtn.disabled = true; const orig = submitBtn.textContent; submitBtn.textContent = 'Verifying…';
+    try {
+      const res = await fetch(AUTH_URL, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'verify_code', slug: SLUG, phone: __PENDING_PHONE, code }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Wrong code or expired');
+      localStorage.setItem('poolside_tenant_token', data.token);
+      localStorage.setItem('poolside_tenant_user', JSON.stringify(data.user));
+      localStorage.setItem('poolside_tenant_tenant', JSON.stringify(data.tenant));
+      window.location.href = '/club/admin/';
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.background = ''; errEl.style.color = '';
+      errEl.classList.add('show');
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = orig;
+    }
+  }
+  submitBtn.addEventListener('click', doVerify);
+  codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doVerify(); } });
+  // Auto-submit when 6 digits entered (matches OS-level autofill UX)
+  codeInput.addEventListener('input', () => {
+    if (codeInput.value.replace(/\D/g, '').length === 6) doVerify();
+  });
+
+  resendLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!__PENDING_PHONE) return;
+    document.getElementById('m-id').value = __PENDING_PHONE;
+    doMagic();
+  });
+  backLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('code-entry').style.display = 'none';
+    document.getElementById('m-id').value = '';
+    document.getElementById('m-id').focus();
+    __PENDING_PHONE = null;
+  });
+})();
 
 // Verify a magic-link token + bootstrap the admin session. Called from:
 //   • Initial page load when URL has #magic=<token> (email/SMS link arrives)

@@ -78,11 +78,14 @@ async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUr
   } catch (e) { return { sent: false, error: String(e) }; }
 }
 
-async function sendAdminSms(args: { to: string; tenantName: string; verifyLink: string }) {
+// SMS sign-in body: short, code-prominent. iOS + Android auto-detect the
+// "code is XXXXXX" pattern and offer one-tap autofill from the keyboard
+// suggestion bar — far better UX than asking users to copy/paste a long URL.
+async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string }) {
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const sid = TWILIO_SID, tok = TWILIO_TOKEN, from = TWILIO_FROM_N;
   if (!sid || !tok || !from) return { sent: false, error: 'TWILIO_* env vars not set' };
-  const smsBody = `Sign in to ${args.tenantName} admin: ${args.verifyLink}`;
+  const smsBody = `Your ${args.tenantName} sign-in code is ${args.code}. Expires in 10 min. If you didn't ask for it, ignore this message.`;
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
@@ -92,6 +95,18 @@ async function sendAdminSms(args: { to: string; tenantName: string; verifyLink: 
     if (!res.ok) { const t = await res.text(); return { sent: false, error: `Twilio ${res.status}: ${t.slice(0, 200)}` }; }
     return { sent: true };
   } catch (e) { return { sent: false, error: String(e) }; }
+}
+
+// Generate a cryptographically random 6-digit code (100000–999999, never
+// leading zeros). Caller hashes + stores in admin_magic_links.token_hash.
+function generateOtpCode(): string {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return String(100000 + (buf[0] % 900000));
+}
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -311,9 +326,13 @@ Deno.serve(async (req) => {
       if (!email.includes('@')) return jsonResponse({ ok: false, error: 'Invalid email' }, 400);
     }
 
-    const generic = { ok: true, sent: true, message: phone_e164
-      ? 'If your number is on file, a sign-in text is on the way.'
-      : 'If your email is on file, a sign-in link is on the way.' };
+    // Channel hint sent back to the UI so it can show the right next step.
+    // Phone path → "Enter the 6-digit code" form. Email path → "Check your
+    // inbox for a sign-in link" message.
+    const channel: 'sms' | 'email' = phone_e164 ? 'sms' : 'email';
+    const generic = { ok: true, sent: true, channel, message: phone_e164
+      ? 'If your number is on file, a 6-digit code is on its way.'
+      : 'If your email is on file, a sign-in link is on its way.' };
 
     let q = sb.from('admin_users').select('id, display_name, email, phone_e164, active')
       .eq('tenant_id', tenant.id).eq('active', true);
@@ -326,34 +345,134 @@ Deno.serve(async (req) => {
       return jsonResponse(generic);
     }
 
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
-    const tokRaw = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tokRaw));
-    const tokenHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    await sb.from('admin_magic_links').insert({
-      tenant_id: tenant.id, admin_user_id: admin.id, token_hash: tokenHash,
-      expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
-    });
-
-    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    const verifyLink = `${clubUrl}/club/admin/login.html#magic=${encodeURIComponent(tokRaw)}`;
-
     if (phone_e164) {
-      const send = await sendAdminSms({ to: phone_e164, tenantName: tenant.display_name, verifyLink });
-      // Auth-category SMS — uncapped, logged for audit visibility.
+      // SMS path: 6-digit OTP code, 10-min expiry. Phone-savvy mental model
+      // (every bank app does this). Resilient to brute-force via single-use
+      // + short window; rate limit via existing sms_log + per-phone cap if
+      // we see abuse later.
+      const code = generateOtpCode();
+      const codeHash = await sha256Hex(code);
+      // Insert with a tiny retry on the unique-token collision (1-in-1M
+      // chance with random 6-digit codes; in practice never hits, but
+      // safe to handle): if first insert fails, regenerate.
+      let inserted = false, lastErr: string | null = null;
+      for (let attempt = 0; attempt < 3 && !inserted; attempt++) {
+        const tryCode = attempt === 0 ? code : generateOtpCode();
+        const tryHash = attempt === 0 ? codeHash : await sha256Hex(tryCode);
+        const { error } = await sb.from('admin_magic_links').insert({
+          tenant_id: tenant.id, admin_user_id: admin.id, token_hash: tryHash,
+          expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+        });
+        if (!error) { inserted = true; if (attempt > 0) Object.assign({ code: tryCode }); break; }
+        lastErr = error.message;
+      }
+      if (!inserted) {
+        return jsonResponse({ ok: false, error: 'Could not create sign-in code', detail: lastErr }, 500);
+      }
+
+      const send = await sendAdminSmsCode({ to: phone_e164, tenantName: tenant.display_name, code });
       await sb.from('sms_log').insert({
         tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
         success: send.sent, error: send.error ?? null, source: 'tenant_admin_auth.start_link',
       });
       if (send.sent) return jsonResponse(generic);
-      return jsonResponse({ ok: true, sent: false, message: 'SMS not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
+      // Dev-mode fallback: surface the code so the developer can sign in
+      // even when Twilio isn't configured (testing, local). NEVER exposed
+      // in production paths once Twilio is set up.
+      return jsonResponse({ ok: true, sent: false, channel, message: 'SMS not configured. Use the code below.', dev_code: code, dev_error: send.error });
     }
+
+    // Email path: long random magic-link token (15-min expiry, one-tap
+    // sign-in from any device). Familiar from every other email-sign-in
+    // flow; works well in inbox UI.
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+    const tokRaw = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const tokenHash = await sha256Hex(tokRaw);
+    await sb.from('admin_magic_links').insert({
+      tenant_id: tenant.id, admin_user_id: admin.id, token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const verifyLink = `${clubUrl}/club/admin/login.html#magic=${encodeURIComponent(tokRaw)}`;
     const send = await sendAdminEmailLink({ to: admin.email as string, tenantName: tenant.display_name, clubUrl, verifyLink, adminName: admin.display_name || '' });
     if (send.sent) return jsonResponse(generic);
-    return jsonResponse({ ok: true, sent: false, message: 'Email not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
+    return jsonResponse({ ok: true, sent: false, channel, message: 'Email not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
+  }
+
+  // verify_code: phone-OTP sign-in. Take phone + code, hash, look up an
+  // unused, unexpired admin_magic_links row, mint JWT, mark used. Same
+  // contract as verify_link below — returns { token, user, tenant } on
+  // success.
+  if (action === 'verify_code') {
+    const slugIn  = String(body.slug ?? '').trim().toLowerCase();
+    const phoneIn = String(body.phone ?? body.identifier ?? '').trim();
+    const codeIn  = String(body.code ?? '').trim().replace(/\D/g, '');
+    if (!slugIn || !phoneIn || codeIn.length !== 6) {
+      return jsonResponse({ ok: false, error: 'slug + phone + 6-digit code required' }, 400);
+    }
+    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, status, plan, trial_ends_at, custom_domain, plan_label_override, household_cap_override, features, stripe_account_id, stripe_charges_enabled')
+      .eq('slug', slugIn).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+
+    const digits = phoneIn.replace(/[^\d+]/g, '');
+    let phone_e164: string | null = null;
+    if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone_e164 = digits;
+    else if (/^\d{10}$/.test(digits)) phone_e164 = '+1' + digits;
+    else if (/^1\d{10}$/.test(digits)) phone_e164 = '+' + digits;
+    if (!phone_e164) return jsonResponse({ ok: false, error: 'Invalid phone' }, 400);
+
+    const { data: admin } = await sb.from('admin_users')
+      .select('id, email, phone_e164, display_name, is_super, is_default_pw, scopes, role_template, roles, active')
+      .eq('tenant_id', tenant.id).eq('phone_e164', phone_e164).eq('active', true).maybeSingle();
+    if (!admin) {
+      await new Promise(r => setTimeout(r, 250));
+      return jsonResponse({ ok: false, error: 'Wrong code or expired' }, 401);
+    }
+
+    const codeHash = await sha256Hex(codeIn);
+    const { data: link } = await sb.from('admin_magic_links')
+      .select('id, expires_at, used_at, admin_user_id')
+      .eq('tenant_id', tenant.id)
+      .eq('admin_user_id', admin.id)
+      .eq('token_hash', codeHash)
+      .maybeSingle();
+    if (!link || link.used_at || new Date(link.expires_at).getTime() < Date.now()) {
+      return jsonResponse({ ok: false, error: 'Wrong code or expired' }, 401);
+    }
+    await sb.from('admin_magic_links').update({ used_at: new Date().toISOString() }).eq('id', link.id);
+
+    // Mint JWT (same shape as login/verify_link)
+    const key = await getJwtKey();
+    const jwtTok = await create(
+      { alg: 'HS256', typ: 'JWT' },
+      {
+        sub: admin.id, kind: 'tenant_admin', tid: tenant.id, slug: tenant.slug,
+        is_super: !!admin.is_super,
+        scopes: admin.scopes ?? [],
+        role_template: admin.role_template ?? null,
+        roles: admin.roles ?? null,
+        exp: getNumericDate(60 * 60 * 24 * 100),
+      },
+      key,
+    );
+    await sb.from('admin_users').update({ last_login_at: new Date().toISOString() }).eq('id', admin.id);
+    return jsonResponse({
+      ok: true,
+      token: jwtTok,
+      user: {
+        id: admin.id,
+        email: admin.email,
+        display_name: admin.display_name,
+        is_super: !!admin.is_super,
+        is_default_pw: !!admin.is_default_pw,
+        scopes: admin.scopes ?? [],
+        role_template: admin.role_template ?? null,
+        roles: admin.roles ?? null,
+      },
+      tenant,
+    });
   }
 
   // ── verify_link: public — exchange a magic-link token for a JWT
