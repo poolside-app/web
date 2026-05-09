@@ -167,6 +167,18 @@
 
     <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
     <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Logo <span style="color:var(--muted);font-weight:500;font-size:12px">— replaces "Poolside" in the topbar</span></h3>
+
+    <!-- Visual mockup so the user sees exactly where the logo lands.
+         Updates live as they upload / paste a URL via syncLogoPreview(). -->
+    <div style="margin:6px 0 14px;padding:0;border:1.5px solid var(--border);border-radius:10px;overflow:hidden">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--bg-2);padding:5px 10px;border-bottom:1px solid var(--border)">↓ this is what your topbar looks like</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;background:#fff">
+        <span id="mock-logo-img" style="display:none"><img id="mock-logo-img-el" src="" alt="" style="height:24px;width:24px;object-fit:cover;border-radius:6px"></span>
+        <span id="mock-logo-dot" style="width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--sun),#fbbf24);box-shadow:0 0 0 3px rgba(245,158,11,.18)"></span>
+        <span id="mock-club-name" style="font-family:'Fraunces',serif;font-weight:600;font-size:16px;color:var(--blue)">Your Club Name</span>
+      </div>
+    </div>
+
     <div id="logo-preview" class="bg-preview" style="display:none;margin-bottom:12px">
       <img id="logo-preview-img" alt="" style="max-height:80px;width:auto;background:var(--bg-2);padding:8px;border-radius:8px">
       <button type="button" class="btn-ghost btn" style="margin-top:8px" onclick="clearLogo()">Remove logo</button>
@@ -329,6 +341,22 @@
     </div>
   </div>
 
+  <!-- Integrations card — central place for "connect to a 3rd party tool".
+       Currently only Google Drive (auto-archive of applications + roster
+       spreadsheet). Future: QuickBooks export, Mailchimp sync, etc. -->
+  <div class="card" data-focus="integrations">
+    <h2>Integrations</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Optional plug-ins that connect Poolside to other tools your club already uses.</p>
+    <div style="display:flex;gap:14px;align-items:center;padding:14px 16px;background:var(--bg-2);border-radius:12px">
+      <div style="font-size:24px;flex-shrink:0">📁</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px">Google Drive auto-archive</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px">Every approved application's signed PDF lands in your club's Drive folder; a roster spreadsheet row is added automatically. One-way; we never delete anything.</div>
+      </div>
+      <a class="btn-ghost btn" href="/club/admin/payments.html?focus=drive" style="text-decoration:none;font-size:13px;white-space:nowrap">Connect / manage →</a>
+    </div>
+  </div>
+
   <!-- Payment options card removed 2026-05-08 — full setup lives at
        /club/admin/payments.html (Members → Payments). Stub cards on
        Settings just added clutter without info. -->
@@ -367,29 +395,15 @@
       </div>
     </label>
     <!-- Guest passes feature removed 2026-05-08 — not on the roadmap. -->
-    <label class="feature">
-      <input type="checkbox" id="feat_keyfobs" onchange="toggleFobDay()">
-      <div>
-        <div class="ftitle">🔑 Keyfob check-in</div>
-        <div class="fsub">Track which household has which fob and when each goes live.</div>
-      </div>
-    </label>
-    <div id="fob-day-row" style="display:none;margin:6px 0 12px;padding:0 4px">
-      <label>Fob activation day</label>
-      <select id="fob_activation_day">
-        <option>Monday</option><option>Tuesday</option>
-        <option selected>Wednesday</option>
-        <option>Thursday</option><option>Friday</option>
-        <option>Saturday</option><option>Sunday</option>
-      </select>
-    </div>
-    <label class="feature">
-      <input type="checkbox" id="feat_gate">
-      <div>
-        <div class="ftitle">🚪 Gate access from members' phones</div>
-        <div class="fsub">Paid add-on, $250 setup + $25/mo. We evaluate your gate panel first.</div>
-      </div>
-    </label>
+    <!-- Keyfob + Gate toggles removed 2026-05-09 — these are flipped by the
+         provider when they activate the keyfob/gate add-on (gate_admin
+         super_set_status). Showing them as user-toggles confused tenants
+         into thinking they were self-serve. Hidden inputs preserve the
+         existing values across saves. The fob_activation_day used to be
+         toggled here too — also moved to provider-only. -->
+    <input type="hidden" id="feat_keyfobs">
+    <input type="hidden" id="feat_gate">
+    <input type="hidden" id="fob_activation_day" value="Wednesday">
   </div>
 
   <div id="err" class="err"></div>
@@ -461,10 +475,9 @@ async function call(url, action, extra = {}) {
   return res.json();
 }
 
-function toggleFobDay() {
-  const on = !!document.getElementById('feat_keyfobs').checked;
-  document.getElementById('fob-day-row').style.display = on ? 'block' : 'none';
-}
+// toggleFobDay no longer needed — keyfob feature is provider-controlled
+// and the fob-day-row UI was removed alongside the visible toggle.
+function toggleFobDay() { /* deprecated 2026-05-09 */ }
 function syncBgPreview() {
   const url = val('background_photo_url');
   const wrap = document.getElementById('bg-preview');
@@ -478,6 +491,22 @@ function syncLogoPreview() {
   const img  = document.getElementById('logo-preview-img');
   if (url) { img.src = url; wrap.style.display = 'block'; }
   else { img.removeAttribute('src'); wrap.style.display = 'none'; }
+  // Mirror into the topbar mockup at the top of this card so the user
+  // sees the actual rendered position of the logo.
+  const mockImgEl = document.getElementById('mock-logo-img-el');
+  const mockImg   = document.getElementById('mock-logo-img');
+  const mockDot   = document.getElementById('mock-logo-dot');
+  if (mockImgEl && mockImg && mockDot) {
+    if (url) { mockImgEl.src = url; mockImg.style.display = ''; mockDot.style.display = 'none'; }
+    else     { mockImgEl.removeAttribute('src'); mockImg.style.display = 'none'; mockDot.style.display = ''; }
+  }
+  // Also mirror the club name so the mockup feels real once they've named
+  // the club. Falls back to "Your Club Name" placeholder.
+  const nameEl = document.getElementById('mock-club-name');
+  if (nameEl) {
+    const dn = (TENANT && TENANT.display_name) ? TENANT.display_name : 'Your Club Name';
+    nameEl.textContent = dn;
+  }
   paintIconPreview();
 }
 
@@ -892,9 +921,12 @@ function populate(s) {
   setChk('feat_volunteer',    s.features?.volunteer    ?? true);
   setChk('feat_campaigns',    s.features?.campaigns    ?? true);
   // guest_passes removed 2026-05-08
-  setChk('feat_keyfobs',      s.features?.keyfobs      ?? false);
-  setChk('feat_gate',         s.features?.gate         ?? false);
-  toggleFobDay();
+  // keyfobs + gate are provider-controlled. Stash existing values in
+  // module-scope so collect() can preserve them across saves without a
+  // visible toggle. setVal sets a hidden input's value; not used for
+  // boolean-state, just for round-tripping.
+  window.__EXISTING_FEATURES_KEYFOBS__ = !!s.features?.keyfobs;
+  window.__EXISTING_FEATURES_GATE__    = !!s.features?.gate;
 }
 
 function collect(prevSettings) {
@@ -954,8 +986,9 @@ function collect(prevSettings) {
       volunteer:    !!document.getElementById('feat_volunteer').checked,
       campaigns:    !!document.getElementById('feat_campaigns').checked,
       // guest_passes removed 2026-05-08
-      keyfobs:      !!document.getElementById('feat_keyfobs').checked,
-      gate:         !!document.getElementById('feat_gate').checked,
+      // Provider-controlled — preserve via the stash from populate().
+      keyfobs:      !!(window.__EXISTING_FEATURES_KEYFOBS__ === true),
+      gate:         !!(window.__EXISTING_FEATURES_GATE__    === true),
     },
   };
 }
@@ -1060,12 +1093,26 @@ function renderGatePitch() {
         <li>Once payment clears + bridge is installed + on-site test passes, we activate the integration. Members start seeing the unlock button on their phone the moment we flip the switch.</li>
       </ol>
     </div>
-    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use? (we'll figure out compatibility together)</label>
-    <select id="gate-panel-type" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;max-width:420px;background:#fff">
-      <option value="mengqi_hxc7000">MENGQI-CONTROL HXC-7000 TCP/IP keyfob — verified, ships in 5 days</option>
-      <option value="unknown">I don't know what panel I have — help me figure it out</option>
-      <option value="custom">Other / custom panel — talk to us</option>
-    </select>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use?</label>
+    <div style="display:flex;flex-direction:column;gap:8px;max-width:420px">
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;font-weight:500">
+        <input type="radio" name="gate-panel-mode" value="unknown" checked onchange="syncGatePanelMode()" style="width:auto;margin-top:3px">
+        <div>
+          <div style="font-weight:600;font-size:13.5px">I don't know — help me figure it out</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">We'll ask for a photo of the existing panel and walk through it together.</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;font-weight:500">
+        <input type="radio" name="gate-panel-mode" value="known" onchange="syncGatePanelMode()" style="width:auto;margin-top:3px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13.5px">I know what we have →</div>
+          <input id="gate-panel-describe" type="text" placeholder="Brand + model, e.g. MENGQI HXC-7000, ButterflyMX, DoorKing 1812…" disabled style="margin-top:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font:13.5px 'Inter';width:100%;background:#f8fafc">
+        </div>
+      </label>
+    </div>
+    <!-- Hidden field that requestGateAddon() reads. Synced by syncGatePanelMode. -->
+    <input type="hidden" id="gate-panel-type" value="unknown">
+    <input type="hidden" id="gate-panel-notes" value="">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;max-width:420px">
       <div>
         <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Your name</label>
@@ -1254,15 +1301,40 @@ function typedConfirm({ title, bodyHtml, keyword, confirmLabel, cancelLabel, con
   });
 }
 
+// Sync the radio-driven panel-type UI into the hidden fields that
+// requestGateAddon() reads. Mode 'unknown' = "help me figure it out";
+// mode 'known' = panel_type='custom' + free-text describe → notes.
+function syncGatePanelMode() {
+  const mode = document.querySelector('input[name="gate-panel-mode"]:checked')?.value || 'unknown';
+  const describeInput = document.getElementById('gate-panel-describe');
+  if (mode === 'known') {
+    describeInput.disabled = false;
+    describeInput.style.background = '#fff';
+    document.getElementById('gate-panel-type').value = 'custom';
+  } else {
+    describeInput.disabled = true;
+    describeInput.style.background = '#f8fafc';
+    document.getElementById('gate-panel-type').value = 'unknown';
+  }
+}
+
 async function requestGateAddon() {
   const errEl = document.getElementById('gate-err');
   errEl.classList.remove('show');
   const panelType    = document.getElementById('gate-panel-type').value;
+  const panelDescribe = document.getElementById('gate-panel-describe')?.value.trim() || '';
   const contactName  = document.getElementById('gate-contact-name').value.trim();
   const contactEmail = document.getElementById('gate-contact-email').value.trim();
   if (!contactEmail || !contactEmail.includes('@')) { errEl.textContent = 'Please add an email so we can invoice you.'; errEl.classList.add('show'); return; }
   try {
-    const r = await gateApi('request_addon', { panel_type: panelType, contact_name: contactName, contact_email: contactEmail });
+    const r = await gateApi('request_addon', {
+      panel_type: panelType,
+      contact_name: contactName,
+      contact_email: contactEmail,
+      // When user says "I know what we have", their description goes in
+      // notes so Doug can read it on the provider side without parsing.
+      notes: panelDescribe ? `Self-describe panel: ${panelDescribe}` : null,
+    });
     if (!r.ok) throw new Error(r.error || 'Request failed');
     document.getElementById('gate-saved').textContent = '✓ ' + (r.message || 'Reservation received');
     document.getElementById('gate-saved').style.display = '';

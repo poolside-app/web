@@ -160,21 +160,10 @@
         </div>
       </div>
 
-      <div class="card" id="drive-card">
-        <h2>📁 Backups & archive (Google Drive)</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
-        <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
-          <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
-          <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
-          <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
-          <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
-          <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
-          <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
-        </div>
-        <div class="err" id="drive-err"></div>
-      </div>
+      <!-- Drive card moved outside the collapsed setup section (2026-05-09)
+           — see below the </details>. Kept here as a comment so the next
+           dev finds it. -->
+
 
       <div class="card" data-focus="venmo">
         <h2>Venmo &amp; PayPal</h2>
@@ -202,6 +191,25 @@
       </div>
     </div>
   </details>
+
+  <!-- Drive card — moved out of the collapsed setup block so users can
+       find it. Settings page also has an "Integrations" pointer that
+       deep-links here with ?focus=drive. -->
+  <div class="card" id="drive-card" data-focus="drive" style="margin-bottom:18px">
+    <h2>📁 Backups &amp; archive (Google Drive)</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
+    <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
+      <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
+      <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
+      <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
+      <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
+      <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
+      <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
+    </div>
+    <div class="err" id="drive-err"></div>
+  </div>
 
   <div class="toolbar">
     <div>
