@@ -170,6 +170,26 @@
       <div id="gate-summary-pending" style="display:none;margin-top:14px;padding:12px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;font-size:13px;color:#7c2d12"></div>
     </div>
 
+    <!-- Drive access requests — interim gate while Google OAuth verification
+         is pending. Approving here flips settings.value.drive_access_request
+         to 'approved' and emails the tenant. Doug still has to manually paste
+         the requesting admin's email into Google Cloud Console → OAuth
+         consent screen → Test users (the only way to bypass the unverified
+         warning). Once Google's verification clears, the Request button on
+         the tenant side goes away and this card stays empty. -->
+    <div class="card" id="drive-requests">
+      <div class="card-head">
+        <h2>📁 Drive access requests <span style="background:var(--blue-l);color:var(--blue);font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.06em;margin-left:8px;vertical-align:middle">INTERIM</span></h2>
+        <button class="btn-sm" onclick="loadDriveAccessRequests()">Refresh</button>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin-top:0;line-height:1.55">
+        Tenants click "Request Drive access" → email lands in your inbox with the admin email pre-formatted. Paste it into <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">Google Cloud Console → Test users</a>, then click <b>Approve</b> below to email them the Connect link.
+      </p>
+      <div id="drive-requests-list" style="margin-top:12px">
+        <div style="color:#9ca3af;padding:18px 0;text-align:center;font-size:13px">Loading…</div>
+      </div>
+    </div>
+
     <!-- Anchor target for the Billing nav link. Subscription-billing for
          Poolside itself (charging tenants for their plan) isn't built
          yet — show what's in flight rather than a dead fragment. -->
@@ -814,8 +834,88 @@
     } catch (_) { /* silent */ }
   }
 
+  async function loadDriveAccessRequests() {
+    const list = document.getElementById('drive-requests-list');
+    if (!list) return;
+    list.innerHTML = '<div style="color:#9ca3af;padding:14px 0;text-align:center;font-size:13px">Loading…</div>';
+    try {
+      const tok = localStorage.getItem('poolside_provider_token');
+      if (!tok) return;
+      const r = await fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/google_drive_sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tok}` },
+        body: JSON.stringify({ action: 'super_list_access_requests' }),
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        list.innerHTML = `<div style="color:var(--red);font-size:13px">Could not load: ${(data.error || 'unknown').replace(/[<>&"']/g, '')}</div>`;
+        return;
+      }
+      const requests = (data.requests || []).sort((a, b) => {
+        // Pending first, then most-recently requested
+        if (a.status === 'pending' && b.status !== 'pending') return -1;
+        if (b.status === 'pending' && a.status !== 'pending') return 1;
+        return new Date(b.requested_at || 0) - new Date(a.requested_at || 0);
+      });
+      if (!requests.length) {
+        list.innerHTML = '<div style="color:var(--muted);padding:8px 0;font-size:13px">No requests yet. They\'ll show up here when a tenant clicks the Request button.</div>';
+        return;
+      }
+      const esc = s => String(s ?? '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
+      list.innerHTML = `
+        <table class="table">
+          <thead><tr><th>Club</th><th>Admin email</th><th>Requested</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${requests.map(req => {
+              const ago = req.requested_at ? Math.max(0, Math.floor((Date.now() - new Date(req.requested_at).getTime()) / (3600 * 1000))) : null;
+              const when = ago === null ? '—' : ago < 1 ? 'just now' : ago < 24 ? `${ago}h ago` : `${Math.floor(ago / 24)}d ago`;
+              const pill = req.status === 'pending'
+                ? '<span class="pill pill-trial">Pending</span>'
+                : req.status === 'approved'
+                ? '<span class="pill pill-active">Approved</span>'
+                : '<span class="pill pill-suspended">Denied</span>';
+              const actions = req.status === 'pending' ? `
+                <button class="btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)" onclick="setDriveAccessStatus('${esc(req.tenant_id)}', 'approved')">Approve</button>
+                <button class="btn-sm" onclick="setDriveAccessStatus('${esc(req.tenant_id)}', 'denied')">Deny</button>
+              ` : `
+                <button class="btn-sm" onclick="setDriveAccessStatus('${esc(req.tenant_id)}', 'approved')">Re-approve</button>
+              `;
+              return `
+                <tr>
+                  <td><b>${esc(req.tenant_display_name || req.tenant_slug || '—')}</b><div style="font-size:12px;color:var(--muted)">${esc(req.tenant_slug || '')}</div></td>
+                  <td><code style="font-size:13px;user-select:all">${esc(req.requested_by_email || '—')}</code></td>
+                  <td style="color:var(--muted);font-size:13px">${esc(when)}</td>
+                  <td>${pill}</td>
+                  <td style="text-align:right;display:flex;gap:6px;justify-content:flex-end">${actions}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (e) {
+      list.innerHTML = `<div style="color:var(--red);font-size:13px">${String(e.message || e).replace(/[<>&"']/g, '')}</div>`;
+    }
+  }
+  async function setDriveAccessStatus(tenantId, status) {
+    const tok = localStorage.getItem('poolside_provider_token');
+    if (!tok) return;
+    try {
+      const r = await fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/google_drive_sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tok}` },
+        body: JSON.stringify({ action: 'super_set_access_status', tenant_id: tenantId, status }),
+      });
+      const data = await r.json();
+      if (!data.ok) { alert('Failed: ' + (data.error || 'unknown')); return; }
+      await loadDriveAccessRequests();
+    } catch (e) { alert(String(e.message || e)); }
+  }
+  window.loadDriveAccessRequests = loadDriveAccessRequests;
+  window.setDriveAccessStatus = setDriveAccessStatus;
+
   // Kick off the loads
-  setTimeout(() => { loadTenants(); loadPlatformHealth(); loadGateSummary(); }, 400);
+  setTimeout(() => { loadTenants(); loadPlatformHealth(); loadGateSummary(); loadDriveAccessRequests(); }, 400);
 </script>
 
 <script type="module">

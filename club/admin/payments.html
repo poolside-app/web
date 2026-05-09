@@ -200,6 +200,7 @@
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
     <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
       <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
       <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
       <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
@@ -529,13 +530,14 @@ async function reactivatePlan(planId) {
 // ── Setup: Google Drive backups ─────────────────────────────────────────
 async function loadDriveStatus() {
   const box       = document.getElementById('drive-status');
+  const requestBtn = document.getElementById('drive-request-btn');
   const connectBtn = document.getElementById('drive-connect-btn');
   const folderLink = document.getElementById('drive-folder-link');
   const sheetLink  = document.getElementById('drive-sheet-link');
   const retryBtn   = document.getElementById('drive-retry-btn');
   const disconnect = document.getElementById('drive-disconnect-btn');
   // Hide all action buttons by default
-  [connectBtn, folderLink, sheetLink, retryBtn, disconnect].forEach(el => { if (el) el.style.display = 'none'; });
+  [requestBtn, connectBtn, folderLink, sheetLink, retryBtn, disconnect].forEach(el => { if (el) el.style.display = 'none'; });
   // Auto-open the setup section if we just came back from a successful connect
   if (window.location.hash.includes('drive=connected')) {
     history.replaceState(null, '', window.location.pathname);
@@ -549,8 +551,23 @@ async function loadDriveStatus() {
       return;
     }
     if (!r.connected) {
-      box.innerHTML = '<b>Not connected.</b> Click <i>Connect Google Drive</i> to start auto-archiving every new application as a PDF + roster spreadsheet row in your Drive.';
-      connectBtn.style.display = 'inline-block';
+      // Drive access is gated on a one-time approval while Google's OAuth
+      // verification is in progress (4–6 weeks). Tenant requests access →
+      // Doug adds them to Test Users in Google Cloud Console → tenant gets
+      // an email and can connect without seeing the unverified-app warning.
+      // Once verification clears, this gate goes away for everyone.
+      const reqStatus = r.access_request && r.access_request.status;
+      if (reqStatus === 'approved') {
+        box.innerHTML = '<b>You\'re approved to connect.</b> Click <i>Connect Google Drive</i> below — you won\'t see any "this app is being tested" warning.';
+        connectBtn.style.display = 'inline-block';
+      } else if (reqStatus === 'pending') {
+        box.innerHTML = '<b>Drive access request pending.</b> We\'re adding your email to our Google approved-testers list — usually under 24 hours. We\'ll email you when it\'s ready. <span style="color:var(--muted)">If it\'s been longer, email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</span>';
+      } else if (reqStatus === 'denied') {
+        box.innerHTML = '<b>Drive access wasn\'t approved.</b> Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a> to follow up.';
+      } else {
+        box.innerHTML = '<b>Connect Google Drive</b> to auto-archive every new application as a PDF + roster spreadsheet row in your own Drive. Click below to request access — we\'ll add you to our testers list and email you when you can connect (usually within a day).';
+        requestBtn.style.display = 'inline-block';
+      }
       return;
     }
     const lastSync = r.last_sync_at
@@ -586,6 +603,20 @@ async function connectDrive() {
     window.location.href = r.url;     // off to Google's consent screen
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+async function requestDriveAccess() {
+  const btn = document.getElementById('drive-request-btn');
+  const errEl = document.getElementById('drive-err');
+  errEl.classList.remove('show');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Requesting…';
+  try {
+    const r = await api(DRIVE_URL, 'request_access');
+    if (!r.ok) throw new Error(r.error || 'request failed');
+    await loadDriveStatus();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 async function disconnectDrive() {

@@ -28,6 +28,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify, create as jwtCreate, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { syncApplicationToDrive, enqueueDriveSync } from '../_shared/sync_application.ts';
 import { getAccessToken, formatYearTab, loadGrant } from '../_shared/google_drive.ts';
+import { verifyTenantAdminOrProvider, requireSuper } from '../_shared/auth.ts';
+import { sendEmail, escHtml } from '../_shared/send_email.ts';
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -208,16 +210,105 @@ Deno.serve(async (req) => {
 
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
 
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch { /* keep empty */ }
+  const action = String(body.action ?? '');
+  const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // ── Provider-side actions (super only) ──────────────────────────────────
+  // Doug's /admin/index.html lists pending Drive access requests across all
+  // tenants and approves them. Provider tokens come from /admin/login.html
+  // and don't carry a tenant scope, so verifyTenantAdminOrProvider
+  // synthesizes a super-shaped payload.
+  if (action.startsWith('super_')) {
+    const sp = await verifyTenantAdminOrProvider(req);
+    if (!sp) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
+    if (!(await requireSuper(sb, sp))) return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+
+    if (action === 'super_list_access_requests') {
+      const { data, error } = await sb.from('settings')
+        .select('tenant_id, value, tenants:tenant_id(slug, display_name)')
+        .not('value->drive_access_request', 'is', null);
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      const requests = (data ?? []).map(r => {
+        const v = r.value as Record<string, unknown> | null;
+        const req = (v?.drive_access_request as Record<string, unknown> | undefined);
+        if (!req) return null;
+        const t = (r as { tenants?: { slug: string; display_name: string } }).tenants;
+        return {
+          tenant_id: r.tenant_id,
+          tenant_slug: t?.slug ?? null,
+          tenant_display_name: t?.display_name ?? null,
+          status: req.status ?? null,
+          requested_at: req.requested_at ?? null,
+          requested_by_email: req.requested_by_email ?? null,
+          resolved_at: req.resolved_at ?? null,
+        };
+      }).filter(Boolean);
+      return jsonResponse({ ok: true, requests });
+    }
+
+    if (action === 'super_set_access_status') {
+      const targetTenant = String(body.tenant_id ?? '').trim();
+      const newStatus    = String(body.status ?? '').trim();
+      if (!targetTenant) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+      if (!['approved', 'denied'].includes(newStatus)) {
+        return jsonResponse({ ok: false, error: 'Invalid status' }, 400);
+      }
+      const { data: existing } = await sb.from('settings')
+        .select('value').eq('tenant_id', targetTenant).maybeSingle();
+      const value = ((existing?.value as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+      const prev = (value.drive_access_request as Record<string, unknown> | undefined) ?? {};
+      value.drive_access_request = {
+        ...prev,
+        status: newStatus,
+        resolved_at: new Date().toISOString(),
+        resolved_by: sp.sub,
+      };
+      if (existing) {
+        await sb.from('settings').update({ value }).eq('tenant_id', targetTenant);
+      } else {
+        await sb.from('settings').insert({ tenant_id: targetTenant, value });
+      }
+
+      // Email the requesting admin on approval so they know to come back
+      // and click Connect. We deliberately don't email on denial — Doug
+      // can reach out directly if he wants to explain.
+      if (newStatus === 'approved') {
+        try {
+          const requestedBy = prev.requested_by_email as string | undefined;
+          const { data: tenant } = await sb.from('tenants')
+            .select('slug, display_name').eq('id', targetTenant).maybeSingle();
+          if (requestedBy && tenant) {
+            const slug = tenant.slug as string;
+            const name = (tenant.display_name as string) || slug;
+            await sendEmail({
+              to: requestedBy,
+              subject: `Google Drive access approved — ${name}`,
+              html: `
+                <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
+                  <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 12px">✅ Drive access approved</h2>
+                  <p style="margin:0 0 12px;line-height:1.55">Hi — you can now connect Google Drive for <b>${escHtml(name)}</b> without seeing the "this app is being tested" warning.</p>
+                  <p style="margin:18px 0"><a href="https://${escHtml(slug)}.poolsideapp.com/club/admin/payments.html#drive" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Connect Drive →</a></p>
+                  <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">Once Google's verification finishes (4–6 weeks), this approval step will go away for everyone.</p>
+                </div>
+              `,
+            });
+          }
+        } catch (e) { console.error('drive.access approve notify (non-fatal):', (e as Error).message); }
+      }
+      return jsonResponse({ ok: true, status: newStatus });
+    }
+
+    return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
+  }
+
+  // ── Tenant-side actions ─────────────────────────────────────────────────
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = tokRaw ? await verifyAdmin(tokRaw) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
-  let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { /* keep empty */ }
-  const action = String(body.action ?? '');
-
-  const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   if (!(await hasPaymentsScope(sb, payload))) {
     return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
   }
@@ -231,6 +322,12 @@ Deno.serve(async (req) => {
     const { count: queuePending } = await sb.from('drive_sync_queue')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', payload.tid).eq('status', 'pending');
+    // Drive access-request state — interim gate while Google OAuth
+    // verification is pending. UI uses this to decide whether to show the
+    // Request button, the Pending state, or the Connect button.
+    const { data: settings } = await sb.from('settings')
+      .select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const reqState = ((settings?.value as Record<string, unknown> | undefined)?.drive_access_request as Record<string, unknown> | undefined) ?? null;
     return jsonResponse({
       ok: true,
       platform_configured: platformOk,
@@ -242,7 +339,80 @@ Deno.serve(async (req) => {
       pending_in_queue: queuePending ?? 0,
       drive_root_link:  grant?.root_folder_id ? `https://drive.google.com/drive/folders/${grant.root_folder_id}` : null,
       spreadsheet_link: grant?.spreadsheet_id ? `https://docs.google.com/spreadsheets/d/${grant.spreadsheet_id}/edit` : null,
+      access_request: reqState ? {
+        status: reqState.status ?? null,
+        requested_at: reqState.requested_at ?? null,
+        resolved_at: reqState.resolved_at ?? null,
+      } : null,
     });
+  }
+
+  // ── request_access ──────────────────────────────────────────────────────
+  // Tenant admin clicks "Request Drive access" while Google OAuth is in
+  // verification. We store a request record on settings.value, email Doug
+  // with the admin's email pre-formatted for paste-into-Test-Users, and the
+  // tenant UI flips to a "Pending" state until super_set_access_status
+  // approves. This unblocks the unverified-warning hurdle for the first ~100
+  // beta clubs without anyone seeing the scary screen.
+  if (action === 'request_access') {
+    const { data: existing } = await sb.from('settings')
+      .select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const value = ((existing?.value as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+    const prev = (value.drive_access_request as Record<string, unknown> | undefined);
+    if (prev && prev.status === 'approved') {
+      return jsonResponse({ ok: true, status: 'approved', already: true });
+    }
+    if (prev && prev.status === 'pending') {
+      return jsonResponse({ ok: true, status: 'pending', already: true });
+    }
+
+    const { data: admin } = await sb.from('admin_users')
+      .select('email, display_name').eq('id', payload.sub).maybeSingle();
+    const { data: tenant } = await sb.from('tenants')
+      .select('slug, display_name').eq('id', payload.tid).maybeSingle();
+    const now = new Date().toISOString();
+
+    value.drive_access_request = {
+      status: 'pending',
+      requested_at: now,
+      requested_by_admin_id: payload.sub,
+      requested_by_email: admin?.email ?? null,
+      requested_by_name: admin?.display_name ?? null,
+    };
+    if (existing) {
+      await sb.from('settings').update({ value }).eq('tenant_id', payload.tid);
+    } else {
+      await sb.from('settings').insert({ tenant_id: payload.tid, value });
+    }
+
+    // Email Doug. Subject + body shaped so he can copy the email into
+    // Google Cloud Console Test Users in two clicks.
+    try {
+      const slug = tenant?.slug ?? payload.slug ?? '';
+      const name = (tenant?.display_name as string) || slug;
+      const adminEmail = admin?.email ?? '(unknown — check admin_users)';
+      await sendEmail({
+        to: 'doug@poolsideapp.com',
+        subject: `Drive access request — ${name}`,
+        html: `
+          <div style="font-family:Inter,Arial,sans-serif;max-width:560px;padding:24px;color:#0f172a">
+            <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 12px">📁 Drive access request</h2>
+            <p style="margin:0 0 12px;line-height:1.55"><b>${escHtml(name)}</b> (${escHtml(slug)}) wants to connect Google Drive.</p>
+            <p style="margin:0 0 6px;color:#475569;font-size:14px">Admin email to paste into Test Users:</p>
+            <pre style="background:#f7f3eb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;font-size:14px;margin:0 0 14px;user-select:all">${escHtml(adminEmail)}</pre>
+            <ol style="margin:0 0 14px;padding-left:20px;color:#475569;line-height:1.6;font-size:14px">
+              <li>Open <a href="https://console.cloud.google.com/apis/credentials/consent">Google Cloud Console → OAuth consent screen → Audience</a></li>
+              <li>Click "Add users" under Test users, paste the email above, save</li>
+              <li>Click Approve below — they get an email to Connect</li>
+            </ol>
+            <p style="margin:18px 0"><a href="https://www.poolsideapp.com/admin/index.html#drive-requests" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Open provider admin →</a></p>
+            <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">Once Google's verification clears (4–6 weeks), this manual step goes away.</p>
+          </div>
+        `,
+      });
+    } catch (e) { console.error('drive.access request notify (non-fatal):', (e as Error).message); }
+
+    return jsonResponse({ ok: true, status: 'pending' });
   }
 
   if (action === 'connect_url') {
