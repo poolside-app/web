@@ -114,7 +114,7 @@
         <div class="logo"><span class="logo-dot"></span> Poolside</div>
         <div style="display:flex; align-items:center; gap:14px">
           <a id="cancel-link" href="/club/admin/" style="display:none; font-size:12px; color:var(--muted); text-decoration:none">Cancel</a>
-          <div class="step-counter"><span id="step-num">1</span> of 6</div>
+          <div class="step-counter"><span id="step-num">1</span> of 7</div>
         </div>
       </div>
       <div class="progress"><div class="progress-fill" id="progress"></div></div>
@@ -317,8 +317,33 @@
         </div>
       </div>
 
-      <!-- Step 6 — Done -->
+      <!-- Step 6 — Your board -->
+      <!-- This is the SINGLE source of truth for board members. Each row
+           creates one admin_users row via tenant_admin_auth.invite_admin
+           when the user finalizes the wizard. The same admins later show
+           as attendance checkboxes in board meetings, get scope-targeted
+           push notifications, and see their role-relevant tabs. There is
+           no separate "board members" list anywhere — admins ARE the board. -->
       <div class="step" data-step="6" style="display:none">
+        <div class="step-icon">👥</div>
+        <h2 class="step-title">Who else is on your board?</h2>
+        <p class="step-tag">Each person you add gets their own login. They only see the tabs that match their role — nothing else. The Treasurer admin you invite here <i>is</i> your board treasurer; same person, one identity, no double-entry.</p>
+
+        <!-- Pre-shown current user (the signup admin) — always Board chair,
+             never editable here. Just a confidence cue. -->
+        <div style="background:#f0f6fb;border:1.5px solid #cfe1f0;border-radius:12px;padding:12px 14px;margin:10px 0 14px">
+          <div style="font-weight:700;font-size:13.5px;color:#0a3b5c;margin-bottom:2px">👑 You — Board chair</div>
+          <div style="font-size:12px;color:#475569" id="self-line">Loading…</div>
+        </div>
+
+        <div id="board-rows-host"></div>
+        <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:13px;padding:8px 14px;font-weight:500" onclick="addBoardRow()">+ Add a board member</button>
+
+        <p class="help" style="margin-top:14px;line-height:1.5">Don't have everyone's email handy? Skip — you can add the rest from <b>Settings → Co-admins</b> later.</p>
+      </div>
+
+      <!-- Step 7 — Done -->
+      <div class="step" data-step="7" style="display:none">
         <div class="done-card">
           <div class="done-icon">✓</div>
           <h2 class="step-title" style="text-align:center">Wizard done — a few things left</h2>
@@ -372,10 +397,17 @@
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const UPLOAD_URL   = `${SUPABASE_URL}/functions/v1/tenant_upload`;
+const AUTH_URL     = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const TOTAL = 6;
+const TOTAL = 7;
 let step = 1;
 let TENANT = null;
+let SELF_USER = null;
+// In-memory board roster typed in step 6. Each row: { name, email, role }.
+// Not persisted until the user clicks "Continue setup →" on step 7 — at
+// which point onWizardDoneNext() bulk-fires invite_admin for each row.
+// Backing out of the wizard before then leaves admin_users untouched.
+let BOARD_ROWS = [];
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) {
@@ -571,6 +603,105 @@ async function geocodeNow() {
   }
 }
 
+// ── Board-roster step (step 6) ───────────────────────────────────────────
+// Each role here matches a ROLE_TEMPLATES key in tenant_admin_auth so
+// invite_admin understands them directly. Labels are the user-facing
+// "what does this person actually do" version of each.
+const BOARD_ROLES = [
+  { value: 'membership',      label: 'Membership chair',      help: 'Approves applications, manages households' },
+  { value: 'treasurer',       label: 'Treasurer',             help: 'Tracks payments, marks dues paid, refunds' },
+  { value: 'secretary',       label: 'Secretary',             help: 'Takes board meeting minutes, manages bylaws' },
+  { value: 'events',          label: 'Volunteer coordinator', help: 'Schedules parties, programs, signups' },
+  { value: 'communications',  label: 'Communications',        help: 'Announcements, campaigns, photo gallery' },
+  { value: 'owner',           label: 'Co-chair (sees everything)', help: 'Same access as you — only add for actual co-chairs' },
+];
+
+function paintBoardRows() {
+  const host = document.getElementById('board-rows-host');
+  if (!host) return;
+  if (BOARD_ROWS.length === 0) {
+    host.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">Click "+ Add a board member" below to invite someone.</div>';
+    return;
+  }
+  host.innerHTML = BOARD_ROWS.map((r, i) => `
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div class="row2">
+            <div>
+              <label style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Name</label>
+              <input type="text" placeholder="Margaret Kowalski" value="${escapeAttr(r.name || '')}" oninput="updateBoardRow(${i}, 'name', this.value)">
+            </div>
+            <div>
+              <label style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Email</label>
+              <input type="email" placeholder="margaret@example.com" value="${escapeAttr(r.email || '')}" oninput="updateBoardRow(${i}, 'email', this.value)">
+            </div>
+          </div>
+          <label style="margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Role</label>
+          <select onchange="updateBoardRow(${i}, 'role', this.value)">
+            ${BOARD_ROLES.map(role => `<option value="${role.value}" ${role.value === r.role ? 'selected' : ''}>${role.label}</option>`).join('')}
+          </select>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:4px" id="board-role-help-${i}">${escapeHtml((BOARD_ROLES.find(x => x.value === r.role) || {}).help || '')}</div>
+        </div>
+        <button type="button" onclick="removeBoardRow(${i})" title="Remove" style="background:transparent;border:0;color:var(--red);font-size:20px;cursor:pointer;padding:4px 8px;flex-shrink:0">×</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeAttr(s) {
+  return String(s ?? '').replace(/["'<>&]/g, c => ({'"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+}
+
+function addBoardRow() {
+  BOARD_ROWS.push({ name: '', email: '', role: 'membership' });
+  paintBoardRows();
+}
+
+function updateBoardRow(i, key, value) {
+  if (!BOARD_ROWS[i]) return;
+  BOARD_ROWS[i][key] = value;
+  if (key === 'role') {
+    // Repaint just the help line for snappier UX (avoids losing input focus)
+    const help = (BOARD_ROLES.find(x => x.value === value) || {}).help || '';
+    const el = document.getElementById('board-role-help-' + i);
+    if (el) el.textContent = help;
+  }
+}
+
+function removeBoardRow(i) {
+  BOARD_ROWS.splice(i, 1);
+  paintBoardRows();
+}
+
+// Fire one invite. Returns { ok, who, error?, reactivated? } so the caller
+// can build a summary line for each row.
+async function inviteOneBoardMember(row) {
+  const name = String(row.name || '').trim();
+  const email = String(row.email || '').trim().toLowerCase();
+  if (!name && !email) return { ok: true, skipped: true };
+  if (!name)  return { ok: false, who: email || '?', error: 'missing name' };
+  if (!email || !email.includes('@')) return { ok: false, who: name, error: 'invalid email' };
+  try {
+    const r = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({
+        action: 'invite_admin',
+        display_name: name,
+        email,
+        username: email,
+        role_template: row.role || 'membership',
+      }),
+    });
+    const data = await r.json();
+    if (!data.ok) return { ok: false, who: name, error: data.error || 'invite failed' };
+    return { ok: true, who: name, reactivated: !!data.reactivated };
+  } catch (e) {
+    return { ok: false, who: name, error: e.message };
+  }
+}
+
 function syncBgPreview() {
   const url = val('f-background_photo_url');
   const wrap = document.getElementById('bg-preview');
@@ -647,26 +778,52 @@ function next() { if (step < TOTAL) { step++; show(step); } }
 function prev() { if (step > 1) { step--; show(step); } }
 
 // On the final wizard step the admin picks "I'm also a member" or "I'm
-// just an admin." Yes → open the apply form (prefilled), then send to
-// the setup checklist. No → dismiss the founder banner permanently and
-// go straight to the setup checklist.
+// just an admin." We also bulk-fire the board-roster invites collected on
+// step 6 here — invites are deferred until this final click so backing
+// out of the wizard mid-flow can't accidentally email half the board.
 async function onWizardDoneNext() {
+  const nb = document.getElementById('nextBtn');
+  nb.disabled = true; const orig = nb.textContent;
+
+  // 1. Fire board invites (one at a time so we can build a per-person
+  //    summary; small N = ≤10 typical, no need for parallelism).
+  const filled = (BOARD_ROWS || []).filter(r => (r.name || '').trim() && (r.email || '').trim());
+  let inviteSummary = null;
+  if (filled.length > 0) {
+    nb.textContent = `Inviting ${filled.length} board admin${filled.length === 1 ? '' : 's'}…`;
+    const results = [];
+    for (const row of filled) {
+      const r = await inviteOneBoardMember(row);
+      if (!r.skipped) results.push(r);
+    }
+    const ok   = results.filter(r => r.ok).length;
+    const fail = results.filter(r => !r.ok);
+    if (fail.length === 0) {
+      inviteSummary = `✓ Invited ${ok} board admin${ok === 1 ? '' : 's'}. They'll receive a magic-link email shortly.`;
+    } else {
+      const failLines = fail.map(f => `• ${f.who} — ${f.error}`).join('\n');
+      inviteSummary = `Invited ${ok} of ${results.length}. Couldn't invite:\n${failLines}\n\nYou can add these manually from Settings → Co-admins.`;
+    }
+  }
+
+  // 2. Apply the admin-as-member radio choice
   const isMember = document.getElementById('adm-mem-yes')?.checked;
   if (!isMember) {
-    try { await fetch(`${SUPABASE_URL}/functions/v1/tenant_admin_auth`, {
+    try { await fetch(AUTH_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
       body: JSON.stringify({ action: 'dismiss_member_apply' }),
     }); } catch (_) { /* harmless if it fails */ }
-    window.location.href = '/club/admin/setup.html';
-    return;
   }
-  // Yes: open apply form on the public subdomain in a new tab so they can
-  // fill it out, then take this tab to the checklist so the admin can
-  // continue setup in parallel.
-  const slug = TENANT?.slug;
-  if (slug) {
-    window.open(`https://${slug}.poolsideapp.com/apply.html?prefill=admin`, '_blank', 'noopener');
+
+  // 3. Surface the invite summary (alert is loud-but-simple; preserves
+  //    the existing single-click flow without a separate confirmation page)
+  if (inviteSummary) alert(inviteSummary);
+
+  // 4. Open apply form for member admins, then redirect to setup checklist.
+  if (isMember) {
+    const slug = TENANT?.slug;
+    if (slug) window.open(`https://${slug}.poolsideapp.com/apply.html?prefill=admin`, '_blank', 'noopener');
   }
   window.location.href = '/club/admin/setup.html';
 }
@@ -724,6 +881,25 @@ async function finish() {
   if (data.settings?.setup_wizard_complete) {
     document.getElementById('cancel-link').style.display = 'inline';
   }
+
+  // Hydrate the "You — Board chair" line on step 6 with the actual signup
+  // admin's name + email. Done in parallel with the settings load — small
+  // call, no impact on wizard's first-paint perf.
+  fetch(AUTH_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+    body: JSON.stringify({ action: 'me' }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok && d.user) {
+      SELF_USER = d.user;
+      const line = document.getElementById('self-line');
+      if (line) line.textContent = `${d.user.display_name || d.user.email} · ${d.user.email}`;
+    }
+  }).catch(() => { /* non-critical */ });
+
+  // Paint the (empty) board rows host so step 6 looks correct on first show.
+  paintBoardRows();
+
   show(1);
 })();
 
