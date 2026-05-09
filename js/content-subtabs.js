@@ -13,20 +13,27 @@
   'use strict';
 
   const SUBTABS = [
-    { key: 'announcements', label: 'Announcements', href: '/club/admin/announcements.html', scope: 'announcements' },
-    { key: 'campaigns',     label: 'Campaigns',     href: '/club/admin/campaigns.html',     scope: 'campaigns'     },
-    { key: 'sponsors',      label: 'Sponsors',      href: '/club/admin/sponsors.html',      scope: 'announcements' },
-    { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',      scope: 'announcements' },
-    { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',        scope: 'photos'        },
+    { key: 'announcements', label: 'Announcements', href: '/club/admin/announcements.html',  scope: 'announcements' },
+    { key: 'campaigns',     label: 'Campaigns',     href: '/club/admin/campaigns.html',      scope: 'campaigns'     },
+    { key: 'sponsors',      label: 'Sponsors',      href: '/club/admin/sponsors.html',       scope: 'announcements' },
+    { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
+    { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
+    // Documents (bylaws, handbook, forms) and Board minutes are governance
+    // CONTENT — they live here, not under Members. Moved 2026-05-08 after
+    // user feedback that "Members" should be people-focused.
+    { key: 'documents',     label: 'Documents',     href: '/club/admin/documents.html',      scope: 'documents'     },
+    { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: 'meetings'      },
   ];
 
   function detectActive() {
     const path = window.location.pathname;
-    if (path.endsWith('/announcements.html')) return 'announcements';
-    if (path.endsWith('/campaigns.html'))     return 'campaigns';
-    if (path.endsWith('/sponsors.html'))      return 'sponsors';
-    if (path.endsWith('/feedback.html'))      return 'feedback';
-    if (path.endsWith('/photos.html'))        return 'photos';
+    if (path.endsWith('/announcements.html'))   return 'announcements';
+    if (path.endsWith('/campaigns.html'))       return 'campaigns';
+    if (path.endsWith('/sponsors.html'))        return 'sponsors';
+    if (path.endsWith('/feedback.html'))        return 'feedback';
+    if (path.endsWith('/photos.html'))          return 'photos';
+    if (path.endsWith('/documents.html'))       return 'documents';
+    if (path.endsWith('/board-meetings.html'))  return 'meetings';
     return null;
   }
 

@@ -93,11 +93,11 @@
 <main>
   <form class="card" onsubmit="event.preventDefault(); doStart()">
     <h1 id="title">Member sign in</h1>
-    <p class="lede" id="sub">Enter the email your club has on file. We'll send you a one-time sign-in link.</p>
+    <p class="lede" id="sub">Enter the email your club has on file. We'll send you a one-tap sign-in link.</p>
 
     <label for="email">Email or phone</label>
     <input id="email" type="text" autocomplete="email" required placeholder="you@example.com or (555) 123-4567">
-    <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Email gets a magic link; phone gets a sign-in text.</p>
+    <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Email = sign-in link in your inbox. Phone = sign-in code by text. Either way, no password to remember.</p>
 
     <button class="btn" id="submit" type="submit">Send me a link</button>
 

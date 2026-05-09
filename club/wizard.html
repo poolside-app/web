@@ -290,22 +290,13 @@
             <div class="fsub">Pre-paid bundles members redeem at the gate. Single-use also works.</div>
           </div>
         </label>
-        <label class="feature">
-          <input type="checkbox" id="f-feat_keyfobs" onchange="toggleFobDay()">
-          <div>
-            <div class="ftitle">🔑 Keyfob check-in</div>
-            <div class="fsub">Track which household has which fob and when each one activates. Works with your existing physical panel — no extra hardware required.</div>
-          </div>
-        </label>
-        <div id="fob-day-row" style="display:none;margin:6px 0 12px;padding:0 4px">
-          <label style="margin-top:8px">Fob activation day <span class="opt">(when new fobs go live each week)</span></label>
-          <select id="f-fob_activation_day">
-            <option>Monday</option><option>Tuesday</option>
-            <option selected>Wednesday</option>
-            <option>Thursday</option><option>Friday</option>
-            <option>Saturday</option><option>Sunday</option>
-          </select>
-        </div>
+        <!-- Keyfob check-in used to be a self-serve checkbox here, but it's
+             really a sub-feature of the paid gate integration — clubs without
+             gate hardware never need it. We auto-flip features.keyfobs=true
+             when the provider activates a gate panel (gate_admin.super_set_status).
+             Until then, the keyfob admin tab stays hidden. -->
+        <input type="hidden" id="f-feat_keyfobs">
+        <input type="hidden" id="f-fob_activation_day" value="Wednesday">
         <!-- Gate-from-phone is NOT a self-serve toggle. It's a real-world
              coordination job: every gate panel is different, hardware
              needs shipping, on-site testing is required. Mention it here
@@ -327,19 +318,19 @@
       <div class="step" data-step="6" style="display:none">
         <div class="step-icon">👥</div>
         <h2 class="step-title">Who else is on your board?</h2>
-        <p class="step-tag">Each person you add gets their own login. They only see the tabs that match their role — nothing else. The Treasurer admin you invite here <i>is</i> your board treasurer; same person, one identity, no double-entry.</p>
+        <p class="step-tag">Each person you add gets their own login + sees the tabs that match their title. The Treasurer you invite here <i>is</i> your board treasurer — same person, one identity, no double-entry. <b>Add a phone number for one-tap text-message sign-in</b> (much easier than email).</p>
 
-        <!-- Pre-shown current user (the signup admin) — always Board chair,
+        <!-- Pre-shown current user (the signup admin) — always President,
              never editable here. Just a confidence cue. -->
         <div style="background:#f0f6fb;border:1.5px solid #cfe1f0;border-radius:12px;padding:12px 14px;margin:10px 0 14px">
-          <div style="font-weight:700;font-size:13.5px;color:#0a3b5c;margin-bottom:2px">👑 You — Board chair</div>
+          <div style="font-weight:700;font-size:13.5px;color:#0a3b5c;margin-bottom:2px">👑 You — President</div>
           <div style="font-size:12px;color:#475569" id="self-line">Loading…</div>
         </div>
 
         <div id="board-rows-host"></div>
         <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:13px;padding:8px 14px;font-weight:500" onclick="addBoardRow()">+ Add a board member</button>
 
-        <p class="help" style="margin-top:14px;line-height:1.5">Don't have everyone's email handy? Skip — you can add the rest from <b>Settings → Co-admins</b> later.</p>
+        <p class="help" style="margin-top:14px;line-height:1.5">Don't have everyone's email handy? Skip — you can add the rest (and change titles) any time from <b>Settings → Co-admins</b>.</p>
       </div>
 
       <!-- Step 7 — Done -->
@@ -475,11 +466,10 @@ function collect() {
       volunteer:    !!document.getElementById('f-feat_volunteer').checked,
       campaigns:    !!document.getElementById('f-feat_campaigns').checked,
       guest_passes: !!document.getElementById('f-feat_guest_passes').checked,
-      keyfobs:      !!document.getElementById('f-feat_keyfobs').checked,
-      // gate is NOT user-toggleable — it's flipped to true by the provider
-      // when they activate the keyfob/gate add-on (see gate_admin.super_set_status).
-      // Preserve any existing value so wizard re-runs don't clobber an
-      // already-active integration.
+      // Preserve provider-flipped values so wizard re-runs don't clobber
+      // an already-active integration. Both keyfobs and gate go true when
+      // gate_admin.super_set_status flips status='active'.
+      keyfobs:      !!(window.__EXISTING_FEATURES_KEYFOBS__ === true),
       gate:         !!(window.__EXISTING_FEATURES_GATE__ === true),
     },
   };
@@ -527,18 +517,19 @@ function populate(s) {
   setChk('f-feat_volunteer',    s.features?.volunteer    ?? true);
   setChk('f-feat_campaigns',    s.features?.campaigns    ?? true);
   setChk('f-feat_guest_passes', s.features?.guest_passes ?? true);
-  setChk('f-feat_keyfobs',      s.features?.keyfobs      ?? false);
-  // Stash the existing gate flag so collect() can preserve it without a
-  // visible checkbox (see comment in collect()).
-  window.__EXISTING_FEATURES_GATE__ = !!s.features?.gate;
-  toggleFobDay();
+  // keyfobs + gate are NOT user-toggleable from the wizard. They're
+  // flipped to true by the provider when they activate the keyfob/gate
+  // add-on (gate_admin.super_set_status). Stash existing values so
+  // collect() preserves them across wizard re-runs.
+  window.__EXISTING_FEATURES_GATE__    = !!s.features?.gate;
+  window.__EXISTING_FEATURES_KEYFOBS__ = !!s.features?.keyfobs;
+  document.getElementById('f-feat_keyfobs').value = s.features?.keyfobs ? '1' : '';
+  if (s.pool?.fob_activation_day) document.getElementById('f-fob_activation_day').value = s.pool.fob_activation_day;
 }
 
-function toggleFobDay() {
-  const on = !!document.getElementById('f-feat_keyfobs')?.checked;
-  const row = document.getElementById('fob-day-row');
-  if (row) row.style.display = on ? 'block' : 'none';
-}
+// toggleFobDay() removed — keyfob feature is no longer wizard-toggleable;
+// it's auto-enabled by gate_admin.super_set_status when the provider
+// activates a gate panel.
 
 // Live-update the hero mockup as the user types each line. Default text
 // shows when a field is empty so the mockup never goes blank.
@@ -604,16 +595,20 @@ async function geocodeNow() {
 }
 
 // ── Board-roster step (step 6) ───────────────────────────────────────────
-// Each role here matches a ROLE_TEMPLATES key in tenant_admin_auth so
-// invite_admin understands them directly. Labels are the user-facing
-// "what does this person actually do" version of each.
-const BOARD_ROLES = [
-  { value: 'membership',      label: 'Membership chair',      help: 'Approves applications, manages households' },
-  { value: 'treasurer',       label: 'Treasurer',             help: 'Tracks payments, marks dues paid, refunds' },
-  { value: 'secretary',       label: 'Secretary',             help: 'Takes board meeting minutes, manages bylaws' },
-  { value: 'events',          label: 'Volunteer coordinator', help: 'Schedules parties, programs, signups' },
-  { value: 'communications',  label: 'Communications',        help: 'Announcements, campaigns, photo gallery' },
-  { value: 'owner',           label: 'Co-chair (sees everything)', help: 'Same access as you — only add for actual co-chairs' },
+// Two separate concepts:
+//   - permission_role: what the admin CAN see/do (maps to ROLE_TEMPLATES)
+//   - title: what they're CALLED on the board (President, VP, etc.)
+// Most users only need the title — we infer the permission_role from it.
+const BOARD_TITLES = [
+  // [title, permission_role, help]
+  { title: 'President',         role: 'owner',          help: 'Sees and changes everything (same as you)' },
+  { title: 'Vice President',    role: 'owner',          help: 'Backup chair — sees everything' },
+  { title: 'Treasurer',         role: 'treasurer',      help: 'Money + payments. Marks paid, refunds' },
+  { title: 'Secretary',         role: 'secretary',      help: 'Board meeting minutes + bylaws' },
+  { title: 'Membership Chair',  role: 'membership',     help: 'Approves applications, manages households' },
+  { title: 'Volunteer Coord.',  role: 'events',         help: 'Parties, programs, volunteer signups' },
+  { title: 'Communications',    role: 'communications', help: 'Announcements, campaigns, photo gallery' },
+  { title: 'Member-at-large',   role: 'membership',     help: 'General board member — limited admin access' },
 ];
 
 function paintBoardRows() {
@@ -637,11 +632,19 @@ function paintBoardRows() {
               <input type="email" placeholder="margaret@example.com" value="${escapeAttr(r.email || '')}" oninput="updateBoardRow(${i}, 'email', this.value)">
             </div>
           </div>
-          <label style="margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Role</label>
-          <select onchange="updateBoardRow(${i}, 'role', this.value)">
-            ${BOARD_ROLES.map(role => `<option value="${role.value}" ${role.value === r.role ? 'selected' : ''}>${role.label}</option>`).join('')}
-          </select>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:4px" id="board-role-help-${i}">${escapeHtml((BOARD_ROLES.find(x => x.value === r.role) || {}).help || '')}</div>
+          <div class="row2" style="margin-top:8px">
+            <div>
+              <label style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Phone <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:500">(easier sign-in)</span></label>
+              <input type="tel" placeholder="(555) 123-4567" value="${escapeAttr(r.phone || '')}" oninput="updateBoardRow(${i}, 'phone', this.value)">
+            </div>
+            <div>
+              <label style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Title</label>
+              <select onchange="updateBoardRow(${i}, 'title', this.value)">
+                ${BOARD_TITLES.map(t => `<option value="${escapeAttr(t.title)}" ${t.title === r.title ? 'selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:6px" id="board-title-help-${i}">${escapeHtml((BOARD_TITLES.find(x => x.title === r.title) || BOARD_TITLES[0]).help || '')}</div>
         </div>
         <button type="button" onclick="removeBoardRow(${i})" title="Remove" style="background:transparent;border:0;color:var(--red);font-size:20px;cursor:pointer;padding:4px 8px;flex-shrink:0">×</button>
       </div>
@@ -654,17 +657,17 @@ function escapeAttr(s) {
 }
 
 function addBoardRow() {
-  BOARD_ROWS.push({ name: '', email: '', role: 'membership' });
+  BOARD_ROWS.push({ name: '', email: '', phone: '', title: 'Membership Chair' });
   paintBoardRows();
 }
 
 function updateBoardRow(i, key, value) {
   if (!BOARD_ROWS[i]) return;
   BOARD_ROWS[i][key] = value;
-  if (key === 'role') {
+  if (key === 'title') {
     // Repaint just the help line for snappier UX (avoids losing input focus)
-    const help = (BOARD_ROLES.find(x => x.value === value) || {}).help || '';
-    const el = document.getElementById('board-role-help-' + i);
+    const help = (BOARD_TITLES.find(x => x.title === value) || {}).help || '';
+    const el = document.getElementById('board-title-help-' + i);
     if (el) el.textContent = help;
   }
 }
@@ -679,9 +682,13 @@ function removeBoardRow(i) {
 async function inviteOneBoardMember(row) {
   const name = String(row.name || '').trim();
   const email = String(row.email || '').trim().toLowerCase();
-  if (!name && !email) return { ok: true, skipped: true };
-  if (!name)  return { ok: false, who: email || '?', error: 'missing name' };
+  const phone = String(row.phone || '').trim();
+  const title = String(row.title || '').trim() || 'Member-at-large';
+  if (!name && !email && !phone) return { ok: true, skipped: true };
+  if (!name)  return { ok: false, who: email || phone || '?', error: 'missing name' };
   if (!email || !email.includes('@')) return { ok: false, who: name, error: 'invalid email' };
+  // Map title → permission role via the local BOARD_TITLES table.
+  const tdef = BOARD_TITLES.find(x => x.title === title) || BOARD_TITLES[BOARD_TITLES.length - 1];
   try {
     const r = await fetch(AUTH_URL, {
       method: 'POST',
@@ -691,7 +698,9 @@ async function inviteOneBoardMember(row) {
         display_name: name,
         email,
         username: email,
-        role_template: row.role || 'membership',
+        role_template: tdef.role,
+        board_title: title,
+        phone_e164: phone || undefined,
       }),
     });
     const data = await r.json();
@@ -799,7 +808,7 @@ async function onWizardDoneNext() {
     const ok   = results.filter(r => r.ok).length;
     const fail = results.filter(r => !r.ok);
     if (fail.length === 0) {
-      inviteSummary = `✓ Invited ${ok} board admin${ok === 1 ? '' : 's'}. They'll receive a magic-link email shortly.`;
+      inviteSummary = `✓ Invited ${ok} board admin${ok === 1 ? '' : 's'}. They'll get an email with their sign-in link shortly.`;
     } else {
       const failLines = fail.map(f => `• ${f.who} — ${f.error}`).join('\n');
       inviteSummary = `Invited ${ok} of ${results.length}. Couldn't invite:\n${failLines}\n\nYou can add these manually from Settings → Co-admins.`;

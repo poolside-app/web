@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
   // ── list_active_admins — checkbox source for the attendance UI ──────────
   if (action === 'list_active_admins') {
     const { data } = await sb.from('admin_users')
-      .select('id, display_name, email, role_template, roles, active')
+      .select('id, display_name, email, role_template, roles, board_title, active')
       .eq('tenant_id', TID).eq('active', true)
       .order('display_name', { ascending: true });
     return jsonResponse({
@@ -218,6 +218,7 @@ Deno.serve(async (req) => {
         id: a.id,
         name: a.display_name || a.email,
         role: (a.roles && a.roles[0]) || a.role_template || 'owner',
+        board_title: a.board_title || null,
       })),
     });
   }

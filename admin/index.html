@@ -742,8 +742,8 @@
       const integrationsTbody = document.getElementById('integrations-tbody');
       if (integrationsTbody) {
         integrationsTbody.innerHTML = `
-          <tr><td><b>Resend</b> <code style="font-size:11px;color:var(--muted)">RESEND_API_KEY</code></td><td>${dot(data.env_resend_set || false)}</td><td>Email magic links + renewal blasts + receipts</td></tr>
-          <tr><td><b>Twilio</b> <code style="font-size:11px;color:var(--muted)">TWILIO_*</code></td><td>${dot(data.env_twilio_set || false)}</td><td>SMS magic links + renewal blasts (per-plan caps)</td></tr>
+          <tr><td><b>Resend</b> <code style="font-size:11px;color:var(--muted)">RESEND_API_KEY</code></td><td>${dot(data.env_resend_set || false)}</td><td>Email sign-in links + renewal blasts + receipts</td></tr>
+          <tr><td><b>Twilio</b> <code style="font-size:11px;color:var(--muted)">TWILIO_*</code></td><td>${dot(data.env_twilio_set || false)}</td><td>SMS sign-in codes + renewal blasts (per-plan caps)</td></tr>
           <tr><td><b>Google OAuth</b> <code style="font-size:11px;color:var(--muted)">GOOGLE_CLIENT_*</code></td><td>${dot(data.env_google_set || false)}</td><td>"Sign in with Google" on member + admin login</td></tr>
           <tr><td><b>Stripe Connect</b> <code style="font-size:11px;color:var(--muted)">STRIPE_SECRET_KEY</code></td><td>${dot(sp.secret_set)}</td><td>Card payments — once set, all clubs get a working Connect button</td></tr>
         `;

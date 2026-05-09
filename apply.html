@@ -828,7 +828,13 @@ async function submitApplication() {
     }
 
     // Non-Stripe paths render the existing confirmation card with venmo
-    // claim button or generic "we'll be in touch" message.
+    // claim button or generic "we'll be in touch" message. If the user
+    // came in via ?prefill=admin (founder filling out their own family's
+    // membership), show a CTA back to the admin setup checklist instead
+    // of a passive "close this tab" message — the original tab is still
+    // on the wizard or dashboard so they need an explicit link to keep
+    // the setup flow moving.
+    const isAdminFlow = (new URLSearchParams(window.location.search)).get('prefill') === 'admin';
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
@@ -841,7 +847,13 @@ async function submitApplication() {
           <div id="claim-result" style="display:none;margin-top:10px;padding:10px;background:#dcfce7;color:#14532d;border-radius:8px;font-size:13px"></div>
         </div>
       ` : ''}
-      <p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>
+      ${isAdminFlow ? `
+        <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
+          <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">You're set up as a member. Now back to admin setup →</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Your application is queued. Keep going on the rest of your club setup so members can apply, pay, and use everything.</div>
+          <a href="/club/admin/setup.html" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:13px">Continue to admin setup →</a>
+        </div>
+      ` : `<p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`}
     `;
     const claimBtn = document.getElementById('claim-paid-btn');
     if (claimBtn) claimBtn.addEventListener('click', async () => {
@@ -936,8 +948,9 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
       return;
     }
     document.getElementById('form').className = 'card ok';
+    const isAdmin = params.get('prefill') === 'admin';
     document.getElementById('form').innerHTML =
-      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
+      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/setup.html">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
     return;
   }
   if (params.has('plan_started')) {
@@ -952,8 +965,11 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
       return;
     }
     document.getElementById('form').className = 'card ok';
-    document.getElementById('form').innerHTML =
-      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can close this tab and the board will follow up with payment options after they review your application.</p>`;
+    {
+      const isAdmin = params.get('prefill') === 'admin';
+      document.getElementById('form').innerHTML =
+        `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/setup.html">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
+    }
     return;
   }
 

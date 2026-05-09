@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Board meetings — Poolside</title>
+<title>Board minutes — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -47,15 +47,24 @@
 
   .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px 22px; margin-bottom: 16px; box-shadow: var(--shadow); }
 
-  /* List view */
+  /* List view — compact rows. Date on the left is most prominent so the
+     user scans by date. Click anywhere on a row to open the modal. */
   .list-row {
     display:flex; align-items:center; gap:14px; padding: 14px 18px;
     background:#fff; border:1px solid var(--border); border-radius: var(--r-md);
-    margin-bottom: 8px; cursor: pointer; text-decoration:none; color: inherit;
-    transition: border-color .12s;
+    margin-bottom: 8px; cursor: pointer; text-align: left;
+    width: 100%; font-family: inherit; transition: border-color .12s;
   }
-  .list-row:hover { border-color: var(--blue); }
-  .list-row .date { font-family: 'Fraunces', serif; font-weight: 600; font-size: 16px; color: var(--blue); min-width: 100px; }
+  .list-row:hover { border-color: var(--blue); background:#fafcff; }
+  .list-row .date {
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--blue); min-width: 140px; line-height: 1.1;
+  }
+  .list-row .date small {
+    display:block; font-family: 'Inter'; font-weight: 500; font-size: 11px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+    margin-top: 3px;
+  }
   .list-row .title { flex: 1; font-weight: 600; font-size: 14px; min-width: 0; }
   .list-row .title small { display:block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
   .badge { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:999px; }
@@ -71,7 +80,31 @@
   }
   .empty .big { font-size: 42px; margin-bottom: 8px; }
 
-  /* Editor view */
+  /* ── Modal ───────────────────────────────────────────────────────── */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(15,23,42,.5);
+    z-index: 100; display: none;
+    align-items: flex-start; justify-content: center;
+    padding: 24px 16px; overflow-y: auto;
+    backdrop-filter: blur(2px);
+  }
+  .scrim.open { display: flex; }
+  .modal {
+    background: var(--bg); border-radius: 18px;
+    max-width: 760px; width: 100%; box-shadow: 0 20px 60px rgba(10,59,92,.25);
+    margin: auto; padding: 24px;
+  }
+  .modal-head {
+    display:flex; align-items:center; justify-content: space-between;
+    gap: 14px; margin-bottom: 14px;
+  }
+  .modal-close {
+    background: transparent; border: 0; font-size: 24px; line-height: 1;
+    color: var(--muted); cursor: pointer; padding: 6px 10px;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  /* Editor fields */
   label { font-weight: 600; font-size: 13px; display: block; margin: 14px 0 6px; color: var(--text); }
   input, textarea, select {
     width: 100%; padding: 11px 14px; font: 15px/1.4 'Inter', sans-serif;
@@ -81,13 +114,11 @@
   input:focus, textarea:focus, select:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
   textarea { resize: vertical; min-height: 120px; }
   .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
-  /* Meeting state banner */
   .state-banner {
-    padding: 14px 18px; border-radius: var(--r-md); margin-bottom: 16px;
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    font-size: 14px;
+    padding: 12px 16px; border-radius: var(--r-md); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    font-size: 13.5px;
   }
   .state-banner.draft { background: var(--bg-2); color: var(--muted); }
   .state-banner.progress { background: var(--yellow-l); color: #92400e; border: 1px solid #fde68a; }
@@ -95,10 +126,10 @@
   .state-banner b { font-weight: 700; }
   .state-banner .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
-  /* Attendance checkboxes */
+  /* Attendance */
   .attendee-row {
     display:flex; align-items:center; gap: 12px;
-    padding: 9px 12px; background: #fafafa; border: 1px solid var(--border);
+    padding: 9px 12px; background: #fff; border: 1px solid var(--border);
     border-radius: 10px; margin-bottom: 6px;
   }
   .attendee-row.checked { background: var(--blue-l); border-color: var(--blue); }
@@ -112,41 +143,64 @@
   .attendee-manual input { padding: 7px 10px; font-size: 14px; }
   .attendee-manual .x { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 4px 8px; }
 
-  /* Vote row */
+  /* Votes — tap-to-increment design.
+     Big Yes / No / Abstain pills; tap one to bump its count by 1.
+     Reset link at the bottom to clear all three. Far simpler than +/-. */
   .vote-row {
-    background: #fafafa; border: 1px solid var(--border);
+    background: #fff; border: 1px solid var(--border);
     border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
   }
   .vote-row.passed { background: #f0fdf4; border-color: #86efac; }
   .vote-row.failed { background: #fef2f2; border-color: #fca5a5; }
   .vote-row .motion-input { font-weight: 600; font-size: 14.5px; }
-  .vote-counts { display:flex; gap: 10px; align-items:center; margin-top: 10px; flex-wrap: wrap; }
-  .vote-counts .pill {
-    display:inline-flex; align-items:center; gap:6px;
-    padding:6px 10px; border-radius: 999px; background:#fff; border:1px solid var(--border);
-    font-size: 13px; font-weight: 600;
+  .vote-row .x-row { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 0 6px; float: right; }
+
+  .vote-buttons {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px; margin-top: 10px;
   }
-  .vote-counts .pill.yes { color: var(--green); }
-  .vote-counts .pill.no  { color: var(--red); }
-  .vote-counts .pill button {
-    background: transparent; border: 0; color: inherit; font-size: 16px; line-height: 1;
-    cursor: pointer; font-weight: 700; padding: 0 4px;
+  .vote-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 14px 8px; border-radius: 12px;
+    border: 2px solid var(--border); background: #fff;
+    font: 600 13px 'Inter', sans-serif; cursor: pointer;
+    transition: transform .08s, border-color .12s, background .12s;
   }
-  .vote-counts .pill button:hover { opacity: .7; }
-  .vote-counts .pill .count { min-width: 20px; text-align: center; }
-  .vote-row .outcome-row { display:flex; gap:8px; margin-top: 10px; }
-  .vote-row .outcome-row button {
+  .vote-btn:hover { transform: translateY(-1px); }
+  .vote-btn:active { transform: translateY(0); }
+  .vote-btn .label { font-size: 13px; font-weight: 600; }
+  .vote-btn .count { font: 700 22px/1 'Fraunces', serif; }
+  .vote-btn.yes { color: #14532d; border-color: #86efac; background: #f0fdf4; }
+  .vote-btn.yes:hover { background: #dcfce7; border-color: var(--green); }
+  .vote-btn.no { color: #7f1d1d; border-color: #fca5a5; background: #fef2f2; }
+  .vote-btn.no:hover { background: #fee2e2; border-color: var(--red); }
+  .vote-btn.abstain { color: var(--muted); border-color: var(--border); background: #f8fafc; }
+  .vote-btn.abstain:hover { background: #f1f5f9; border-color: #94a3b8; }
+  .vote-btn .count.zero { opacity: .35; }
+
+  .reset-row {
+    margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end;
+    align-items: center; font-size: 12px; color: var(--muted);
+  }
+  .reset-row button {
+    background: transparent; border: 0; color: var(--muted);
+    font: 500 12px 'Inter'; cursor: pointer; padding: 4px 8px;
+    border-radius: 6px;
+  }
+  .reset-row button:hover { background: var(--bg-2); color: var(--text); }
+
+  .outcome-row { display:flex; gap:8px; margin-top: 12px; }
+  .outcome-row button {
     flex: 1; padding: 8px; border-radius: 8px; border: 1.5px solid var(--border);
     background: #fff; font: 600 12px 'Inter'; cursor: pointer;
   }
-  .vote-row .outcome-row button.on.passed { background: var(--green); color: #fff; border-color: var(--green); }
-  .vote-row .outcome-row button.on.failed { background: var(--red); color: #fff; border-color: var(--red); }
-  .vote-row .outcome-row button.on.tabled { background: var(--muted); color: #fff; border-color: var(--muted); }
-  .vote-row .x { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 0 6px; float: right; }
+  .outcome-row button.on.passed { background: var(--green); color: #fff; border-color: var(--green); }
+  .outcome-row button.on.failed { background: var(--red); color: #fff; border-color: var(--red); }
+  .outcome-row button.on.tabled { background: var(--muted); color: #fff; border-color: var(--muted); }
 
   /* Follow-ups */
   .follow-row {
-    background: #fafafa; border: 1px solid var(--border);
+    background: #fff; border: 1px solid var(--border);
     border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
     display: grid; grid-template-columns: 1fr 200px 130px 90px 30px; gap: 10px; align-items: center;
   }
@@ -168,6 +222,10 @@
   .err { color: var(--red); font-size: 13px; margin-top: 6px; display: none; }
   .err.show { display: block; }
 
+  /* Visibility radios */
+  .vis-radio { display:flex; align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fff;cursor:pointer;flex:1;min-width:240px;font-weight:500; }
+  .vis-radio input { width:auto; margin-top:3px; }
+
   footer { padding: 22px; text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); background: #fff; margin-top: 48px; }
 </style>
 </head>
@@ -178,120 +236,105 @@
 </header>
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
-  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/members.html">Members</a>
   <a href="/club/admin/application.html">Application</a>
   <a href="/club/admin/events.html">Calendar</a>
-  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/announcements.html" class="on">Content</a>
   <a href="/club/admin/impact.html">Insights</a>
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
-<div id="members-subtabs"></div>
+<div id="content-subtabs"></div>
 <script src="/js/admin-flags.js"></script>
-<script src="/js/members-subtabs.js"></script>
+<script src="/js/content-subtabs.js"></script>
 
 <main>
-  <!-- Two views — list (default) and editor (when ?id=...). -->
-  <div id="view-list">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-      <h1>Board meetings</h1>
-      <button class="btn btn-primary" onclick="newMeeting()">+ New meeting</button>
-    </div>
-    <p class="lede">Notes from board meetings live here. Mark a meeting <b>public</b> if you want members to see it on your governance page; otherwise it stays board-only.</p>
-    <div id="list-host">
-      <div class="card" style="height:60px"></div>
-      <div class="card" style="height:60px"></div>
-    </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+    <h1>Board minutes</h1>
+    <button class="btn btn-primary" onclick="newMeeting()">+ New meeting</button>
   </div>
+  <p class="lede">Notes from board meetings live here. Click any meeting to open it. Mark a meeting <b>public</b> if you want members to see it on your governance page; otherwise it stays board-only.</p>
+  <div id="list-host">
+    <div class="card" style="height:60px"></div>
+    <div class="card" style="height:60px"></div>
+  </div>
+</main>
 
-  <div id="view-editor" style="display:none">
-    <div style="margin-bottom:6px"><a href="javascript:goList()" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to all meetings</a></div>
+<!-- Editor opens as a modal overlay. URL hash carries the meeting id so
+     refresh + deep links land on the same modal. -->
+<div class="scrim" id="scrim" onclick="if (event.target.id==='scrim') closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">Meeting</h2>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">×</button>
+    </div>
 
     <div id="state-banner" class="state-banner draft">
-      <span id="state-text">Draft — fill in the details, then click Start meeting when you're ready.</span>
+      <span id="state-text">Draft.</span>
       <span class="save-status" id="save-status"></span>
       <div class="actions" id="state-actions"></div>
     </div>
 
-    <div class="card">
-      <div class="row2">
-        <div>
-          <label>Meeting title</label>
-          <input id="m-title" placeholder="Board Meeting" oninput="scheduleSave()">
-        </div>
-        <div>
-          <label>Date</label>
-          <input id="m-date" type="date" oninput="scheduleSave()">
-        </div>
-      </div>
-      <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional — Pool House, Zoom link, etc.)</span></label>
-      <input id="m-location" placeholder="Pool House" oninput="scheduleSave()">
-    </div>
-
-    <!-- Attendance -->
-    <div class="card">
-      <h2 style="margin-bottom:6px">Who's here?</h2>
-      <p class="lede" style="margin:0 0 14px">Check off the board members in attendance. Add anyone else (member, guest) at the bottom.</p>
-      <div id="attendance-host"><div style="color:var(--muted);font-size:13px">Loading admins…</div></div>
-      <div id="manual-host" style="margin-top:10px"></div>
-      <button class="btn btn-ghost" onclick="addManualAttendee()" style="margin-top:8px;font-size:13px;padding:8px 14px">+ Add someone not on the admin list</button>
-      <p style="margin:14px 0 0;font-size:12.5px;color:var(--muted)" id="attend-count">No one marked yet.</p>
-    </div>
-
-    <!-- Notes -->
-    <div class="card">
-      <h2 style="margin-bottom:6px">Notes</h2>
-      <p class="lede" style="margin:0 0 10px">General meeting discussion — agenda items, updates, anything that doesn't fit a vote or a follow-up below.</p>
-      <textarea id="m-notes" placeholder="Treasurer's report: $X in operating, $Y reserved for the new pool cover…&#10;&#10;Pool opening date confirmed for May 25.&#10;&#10;Discussion about extending lap-swim hours on weekends." oninput="scheduleSave()"></textarea>
-    </div>
-
-    <!-- Votes -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
-        <h2 style="margin:0">Motions &amp; votes</h2>
-        <button class="btn btn-primary" onclick="addVote()" style="padding:8px 14px;font-size:13px">+ Add motion</button>
-      </div>
-      <p class="lede" style="margin:0 0 10px">Each motion = one thing the board voted on. Tap +/− to record vote counts; click Pass / Fail / Tabled when the vote is decided.</p>
-      <div id="votes-host"></div>
-    </div>
-
-    <!-- Follow-ups -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
-        <h2 style="margin:0">Follow-ups</h2>
-        <button class="btn btn-primary" onclick="addFollowUp()" style="padding:8px 14px;font-size:13px">+ Add follow-up</button>
-      </div>
-      <p class="lede" style="margin:0 0 10px">Anything that needs to happen after the meeting. Assign someone, set a due date, mark Done when it's handled.</p>
-      <div id="follow-host"></div>
-    </div>
-
-    <!-- Visibility -->
-    <div class="card">
-      <h2 style="margin-bottom:6px">Visibility</h2>
-      <p class="lede" style="margin:0 0 10px">Choose who can see this meeting's minutes after you finalize them.</p>
-      <div style="display:flex;gap:14px;flex-wrap:wrap">
-        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fafafa;cursor:pointer;flex:1;min-width:240px;font-weight:500">
-          <input type="radio" name="vis" value="private" id="vis-private" onchange="scheduleSave()" style="width:auto;margin-top:3px">
-          <div>
-            <div style="font-weight:700">🔒 Board only</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:3px">Only admins can see this. Default.</div>
-          </div>
-        </label>
-        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fafafa;cursor:pointer;flex:1;min-width:240px;font-weight:500">
-          <input type="radio" name="vis" value="public" id="vis-public" onchange="scheduleSave()" style="width:auto;margin-top:3px">
-          <div>
-            <div style="font-weight:700">🌐 Public</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:3px">Visible to anyone on the club's governance page.</div>
-          </div>
-        </label>
-      </div>
-    </div>
-
-    <div id="m-err" class="err" style="margin-bottom:14px"></div>
-
-    <div class="card" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
+    <div class="row2">
       <div>
-        <button class="btn btn-danger" onclick="deleteMeeting()" id="del-btn">🗑️ Delete meeting</button>
+        <label>Meeting title</label>
+        <input id="m-title" placeholder="Board Meeting" oninput="scheduleSave()">
       </div>
+      <div>
+        <label>Date</label>
+        <input id="m-date" type="date" oninput="scheduleSave()">
+      </div>
+    </div>
+    <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional — Pool House, Zoom link, etc.)</span></label>
+    <input id="m-location" placeholder="Pool House" oninput="scheduleSave()">
+
+    <h3 style="margin: 20px 0 4px">Who's here?</h3>
+    <p class="lede" style="margin:0 0 10px">Check off the board members in attendance. Add anyone else (member, guest) at the bottom.</p>
+    <div id="attendance-host"><div style="color:var(--muted);font-size:13px">Loading admins…</div></div>
+    <div id="manual-host" style="margin-top:8px"></div>
+    <button class="btn btn-ghost" onclick="addManualAttendee()" style="margin-top:8px;font-size:13px;padding:8px 14px">+ Add someone not on the admin list</button>
+    <p style="margin:10px 0 0;font-size:12.5px;color:var(--muted)" id="attend-count">No one marked yet.</p>
+
+    <h3 style="margin: 22px 0 4px">Notes</h3>
+    <p class="lede" style="margin:0 0 8px">General meeting discussion — agenda items, updates, anything that doesn't fit a vote or follow-up.</p>
+    <textarea id="m-notes" placeholder="Treasurer's report: $X in operating, $Y reserved…&#10;&#10;Pool opening date confirmed for May 25." oninput="scheduleSave()"></textarea>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:22px 0 4px">
+      <h3 style="margin:0">Motions &amp; votes</h3>
+      <button class="btn btn-primary" onclick="addVote()" style="padding:8px 14px;font-size:13px">+ Add motion</button>
+    </div>
+    <p class="lede" style="margin:0 0 10px">Each motion = one thing the board voted on. <b>Tap Yes / No / Abstain</b> to record vote counts. Click Pass / Fail / Tabled when the vote is decided.</p>
+    <div id="votes-host"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:22px 0 4px">
+      <h3 style="margin:0">Follow-ups</h3>
+      <button class="btn btn-primary" onclick="addFollowUp()" style="padding:8px 14px;font-size:13px">+ Add follow-up</button>
+    </div>
+    <p class="lede" style="margin:0 0 10px">Anything that needs to happen after the meeting. Mark Done when it's handled.</p>
+    <div id="follow-host"></div>
+
+    <h3 style="margin: 22px 0 4px">Visibility</h3>
+    <p class="lede" style="margin:0 0 10px">Choose who can see this meeting's minutes after you finalize them.</p>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <label class="vis-radio">
+        <input type="radio" name="vis" value="private" id="vis-private" onchange="scheduleSave()">
+        <div>
+          <div style="font-weight:700">🔒 Board only</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Only admins can see this. Default.</div>
+        </div>
+      </label>
+      <label class="vis-radio">
+        <input type="radio" name="vis" value="public" id="vis-public" onchange="scheduleSave()">
+        <div>
+          <div style="font-weight:700">🌐 Public</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Visible on the club's governance page.</div>
+        </div>
+      </label>
+    </div>
+
+    <div id="m-err" class="err" style="margin:14px 0 0"></div>
+
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
+      <button class="btn btn-danger" onclick="deleteMeeting()" id="del-btn">🗑️ Delete</button>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" onclick="saveNow()" id="save-btn">💾 Save</button>
         <button class="btn btn-success" onclick="finalize()" id="final-btn" style="display:none">✓ Finalize meeting</button>
@@ -299,7 +342,7 @@
       </div>
     </div>
   </div>
-</main>
+</div>
 
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
@@ -308,10 +351,10 @@ const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const FN_URL  = `${SUPABASE_URL}/functions/v1/board_meetings`;
 const ME_URL  = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
-let MEETING = null;          // currently-edited meeting object
-let ADMINS = [];             // list of active admin users for the attendance checkboxes
+let MEETING = null;
+let ADMINS = [];
 let SAVE_TIMER = null;
-let SAVE_GENERATION = 0;     // monotonically increases; lets us ignore stale autosave responses
+let SAVE_GENERATION = 0;
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -330,7 +373,7 @@ async function call(action, extra = {}) {
   return r.json();
 }
 
-// ── List view ──────────────────────────────────────────────────────────
+// ── List ───────────────────────────────────────────────────────────────
 async function loadList() {
   const host = document.getElementById('list-host');
   try {
@@ -348,7 +391,9 @@ async function loadList() {
       return;
     }
     host.innerHTML = meetings.map(m => {
-      const date = new Date(m.meeting_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const d = new Date(m.meeting_date + 'T00:00:00');
+      const dayMonth = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const year = d.getFullYear();
       const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Completed</span>'
                        : m.status === 'in_progress' ? '<span class="badge badge-progress">In progress</span>'
                        : '<span class="badge badge-draft">Draft</span>';
@@ -358,14 +403,14 @@ async function loadList() {
       const sub = [
         attCount > 0 ? `${attCount} attendee${attCount === 1 ? '' : 's'}` : null,
         voteCount > 0 ? `${voteCount} motion${voteCount === 1 ? '' : 's'}` : null,
-      ].filter(Boolean).join(' · ');
+      ].filter(Boolean).join(' · ') || 'Empty';
       return `
-        <a href="javascript:openMeeting('${m.id}')" class="list-row">
-          <div class="date">${escapeHtml(date)}</div>
-          <div class="title">${escapeHtml(m.title)}${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div>
+        <button class="list-row" onclick="openMeeting('${m.id}')">
+          <div class="date">${escapeHtml(dayMonth)}<small>${year}</small></div>
+          <div class="title">${escapeHtml(m.title)}<small>${escapeHtml(sub)}</small></div>
           ${statusBadge}
           ${visBadge}
-        </a>
+        </button>
       `;
     }).join('');
   } catch (e) {
@@ -378,27 +423,29 @@ async function newMeeting() {
     const r = await call('create');
     if (!r.ok) throw new Error(r.error || 'Could not create');
     openMeeting(r.meeting.id);
+    loadList();
   } catch (e) { alert(e.message); }
 }
 
+// ── Modal open/close ───────────────────────────────────────────────────
 function openMeeting(id) {
-  history.pushState(null, '', `?id=${encodeURIComponent(id)}`);
-  showEditor(id);
+  history.replaceState(null, '', '#m=' + encodeURIComponent(id));
+  document.getElementById('scrim').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  loadEditor(id);
 }
-
-function goList() {
-  history.pushState(null, '', window.location.pathname);
-  document.getElementById('view-editor').style.display = 'none';
-  document.getElementById('view-list').style.display = '';
+function closeModal() {
+  document.getElementById('scrim').classList.remove('open');
+  document.body.style.overflow = '';
+  history.replaceState(null, '', window.location.pathname);
+  // Refresh the list in case status/title/dates changed.
   loadList();
 }
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('scrim').classList.contains('open')) closeModal();
+});
 
-// ── Editor ─────────────────────────────────────────────────────────────
-async function showEditor(id) {
-  document.getElementById('view-list').style.display = 'none';
-  document.getElementById('view-editor').style.display = '';
-
-  // Load admins (for attendance checkboxes) + the meeting in parallel.
+async function loadEditor(id) {
   const [adminsRes, meetingRes] = await Promise.all([
     call('list_active_admins'),
     call('get', { id }),
@@ -415,7 +462,7 @@ async function showEditor(id) {
 
 function paintEditor() {
   const m = MEETING;
-  // Top-of-form fields
+  document.getElementById('modal-title').textContent = m.title || 'Board Meeting';
   document.getElementById('m-title').value = m.title || 'Board Meeting';
   document.getElementById('m-date').value = m.meeting_date;
   document.getElementById('m-location').value = m.location || '';
@@ -437,7 +484,7 @@ function paintStateBanner() {
   if (m.status === 'completed') {
     banner.classList.add('completed');
     const ended = m.ended_at ? new Date(m.ended_at).toLocaleString() : 'just now';
-    text.innerHTML = `<b>✓ Finalized.</b> Locked on ${escapeHtml(ended)}. Click "Re-open" below if you need to edit.`;
+    text.innerHTML = `<b>✓ Finalized</b> · locked on ${escapeHtml(ended)}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = 'none';
     document.getElementById('reopen-btn').style.display = '';
@@ -445,14 +492,14 @@ function paintStateBanner() {
   } else if (m.status === 'in_progress') {
     banner.classList.add('progress');
     const started = m.started_at ? new Date(m.started_at).toLocaleString() : 'just now';
-    text.innerHTML = `<b>📝 Meeting in progress</b> · started ${escapeHtml(started)}. Type away — we autosave every few seconds.`;
+    text.innerHTML = `<b>📝 Meeting in progress</b> · started ${escapeHtml(started)}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = '';
     document.getElementById('reopen-btn').style.display = 'none';
     document.getElementById('save-btn').style.display = '';
   } else {
     banner.classList.add('draft');
-    text.innerHTML = `<b>Draft.</b> Fill in the title and date below, then hit <b>▶ Start meeting now</b> when you're ready to take notes.`;
+    text.innerHTML = `<b>Draft</b> · fill in the title and date, then hit Start meeting`;
     actions.innerHTML = `<button class="btn btn-success btn-big" onclick="startMeeting()">▶ Start meeting now</button>`;
     document.getElementById('final-btn').style.display = 'none';
     document.getElementById('reopen-btn').style.display = 'none';
@@ -460,7 +507,7 @@ function paintStateBanner() {
   }
 }
 
-// ── Attendance ──────────────────────────────────────────────────────────
+// ── Attendance ─────────────────────────────────────────────────────────
 function paintAttendance() {
   const host = document.getElementById('attendance-host');
   const checkedIds = new Set((MEETING.attendees_json || [])
@@ -470,13 +517,18 @@ function paintAttendance() {
   if (!ADMINS.length) {
     host.innerHTML = '<div style="color:var(--muted);font-size:13px">No admins on the team yet — add some via Settings → Co-admins.</div>';
   } else {
-    host.innerHTML = ADMINS.map(a => `
-      <label class="attendee-row ${checkedIds.has(a.id) ? 'checked' : ''}">
-        <input type="checkbox" data-admin-id="${escapeHtml(a.id)}" ${checkedIds.has(a.id) ? 'checked' : ''} onchange="toggleAdminAttendee('${escapeHtml(a.id)}', this.checked, this.parentElement)">
-        <span class="name">${escapeHtml(a.name)}</span>
-        <span class="role">${escapeHtml((a.role || '').replace(/_/g, ' '))}</span>
-      </label>
-    `).join('');
+    host.innerHTML = ADMINS.map(a => {
+      // Show the board title (e.g. "President") if set, else fall back to
+      // the role slug (e.g. "treasurer"). Title is the human label.
+      const titleOrRole = a.board_title || (a.role || '').replace(/_/g, ' ');
+      return `
+        <label class="attendee-row ${checkedIds.has(a.id) ? 'checked' : ''}">
+          <input type="checkbox" data-admin-id="${escapeHtml(a.id)}" ${checkedIds.has(a.id) ? 'checked' : ''} onchange="toggleAdminAttendee('${escapeHtml(a.id)}', this.checked, this.parentElement)">
+          <span class="name">${escapeHtml(a.name)}</span>
+          <span class="role">${escapeHtml(titleOrRole)}</span>
+        </label>
+      `;
+    }).join('');
   }
   paintManualAttendees();
   updateAttendCount();
@@ -513,7 +565,9 @@ function toggleAdminAttendee(adminId, checked, rowEl) {
     if (!list.find(a => a.source === 'admin' && a.admin_user_id === adminId)) {
       const a = ADMINS.find(x => x.id === adminId);
       list.push({
-        admin_user_id: adminId, name: a?.name || 'Admin', role: a?.role || null, source: 'admin',
+        admin_user_id: adminId, name: a?.name || 'Admin',
+        role: a?.board_title || a?.role || null,
+        source: 'admin',
       });
     }
     if (rowEl) rowEl.classList.add('checked');
@@ -535,9 +589,6 @@ function addManualAttendee() {
   scheduleSave();
 }
 
-// Manual attendees are ordered after admins in the array; we filter to find
-// the n-th MANUAL one regardless of admin checkboxes interleaved. updates
-// edit in place + autosave.
 function manualIndexToArrayIndex(manualIdx) {
   const arr = MEETING.attendees_json || [];
   let m = -1;
@@ -552,17 +603,11 @@ function manualIndexToArrayIndex(manualIdx) {
 
 function updateManualName(i, v) {
   const idx = manualIndexToArrayIndex(i);
-  if (idx >= 0) {
-    MEETING.attendees_json[idx].name = v;
-    scheduleSave();
-  }
+  if (idx >= 0) { MEETING.attendees_json[idx].name = v; scheduleSave(); }
 }
 function updateManualRole(i, v) {
   const idx = manualIndexToArrayIndex(i);
-  if (idx >= 0) {
-    MEETING.attendees_json[idx].role = v || null;
-    scheduleSave();
-  }
+  if (idx >= 0) { MEETING.attendees_json[idx].role = v || null; scheduleSave(); }
 }
 function removeManualAttendee(i) {
   const idx = manualIndexToArrayIndex(i);
@@ -574,7 +619,7 @@ function removeManualAttendee(i) {
   }
 }
 
-// ── Votes ───────────────────────────────────────────────────────────────
+// ── Votes — tap-to-increment ───────────────────────────────────────────
 function paintVotes() {
   const host = document.getElementById('votes-host');
   const votes = MEETING.votes_json || [];
@@ -584,35 +629,42 @@ function paintVotes() {
   }
   host.innerHTML = votes.map((v, i) => {
     const cls = v.outcome === 'passed' ? 'passed' : v.outcome === 'failed' ? 'failed' : '';
+    const yesCls = (v.yes || 0) === 0 ? 'zero' : '';
+    const noCls  = (v.no  || 0) === 0 ? 'zero' : '';
+    const absCls = (v.abstain || 0) === 0 ? 'zero' : '';
     return `
       <div class="vote-row ${cls}">
-        <button class="x" onclick="removeVote(${i})" title="Remove">×</button>
+        <button class="x-row" onclick="removeVote(${i})" title="Remove" type="button">×</button>
         <input class="motion-input" placeholder="Motion to…" value="${escapeHtml(v.motion || '')}" oninput="updateVote(${i}, 'motion', this.value)">
         <div class="row2" style="margin-top:8px">
           <input placeholder="Proposed by" value="${escapeHtml(v.proposed_by || '')}" oninput="updateVote(${i}, 'proposed_by', this.value)">
           <input placeholder="Seconded by" value="${escapeHtml(v.seconded_by || '')}" oninput="updateVote(${i}, 'seconded_by', this.value)">
         </div>
-        <div class="vote-counts">
-          <span class="pill yes">Yes
-            <button onclick="bumpVote(${i}, 'yes', -1)">−</button>
-            <span class="count">${v.yes || 0}</span>
-            <button onclick="bumpVote(${i}, 'yes', +1)">+</button>
-          </span>
-          <span class="pill no">No
-            <button onclick="bumpVote(${i}, 'no', -1)">−</button>
-            <span class="count">${v.no || 0}</span>
-            <button onclick="bumpVote(${i}, 'no', +1)">+</button>
-          </span>
-          <span class="pill">Abstain
-            <button onclick="bumpVote(${i}, 'abstain', -1)">−</button>
-            <span class="count">${v.abstain || 0}</span>
-            <button onclick="bumpVote(${i}, 'abstain', +1)">+</button>
-          </span>
+        <div class="vote-buttons">
+          <button type="button" class="vote-btn yes" onclick="bumpVote(${i}, 'yes', 1)">
+            <span class="label">👍 Yes</span>
+            <span class="count ${yesCls}">${v.yes || 0}</span>
+          </button>
+          <button type="button" class="vote-btn no" onclick="bumpVote(${i}, 'no', 1)">
+            <span class="label">👎 No</span>
+            <span class="count ${noCls}">${v.no || 0}</span>
+          </button>
+          <button type="button" class="vote-btn abstain" onclick="bumpVote(${i}, 'abstain', 1)">
+            <span class="label">🤷 Abstain</span>
+            <span class="count ${absCls}">${v.abstain || 0}</span>
+          </button>
+        </div>
+        <div class="reset-row">
+          <span>Tap each button to add 1.</span>
+          <button type="button" onclick="bumpVote(${i}, 'yes', -1)">Yes −1</button>
+          <button type="button" onclick="bumpVote(${i}, 'no', -1)">No −1</button>
+          <button type="button" onclick="bumpVote(${i}, 'abstain', -1)">Abstain −1</button>
+          <button type="button" onclick="resetVote(${i})">↺ Reset</button>
         </div>
         <div class="outcome-row">
-          <button class="${v.outcome === 'passed' ? 'on passed' : ''}" onclick="setOutcome(${i}, 'passed')">✓ Passed</button>
-          <button class="${v.outcome === 'failed' ? 'on failed' : ''}" onclick="setOutcome(${i}, 'failed')">✗ Failed</button>
-          <button class="${v.outcome === 'tabled' ? 'on tabled' : ''}" onclick="setOutcome(${i}, 'tabled')">⏸ Tabled</button>
+          <button type="button" class="${v.outcome === 'passed' ? 'on passed' : ''}" onclick="setOutcome(${i}, 'passed')">✓ Passed</button>
+          <button type="button" class="${v.outcome === 'failed' ? 'on failed' : ''}" onclick="setOutcome(${i}, 'failed')">✗ Failed</button>
+          <button type="button" class="${v.outcome === 'tabled' ? 'on tabled' : ''}" onclick="setOutcome(${i}, 'tabled')">⏸ Tabled</button>
         </div>
         <input style="margin-top:8px" placeholder="Notes (optional)" value="${escapeHtml(v.notes || '')}" oninput="updateVote(${i}, 'notes', this.value)">
       </div>
@@ -623,7 +675,8 @@ function paintVotes() {
 function addVote() {
   if (!MEETING.votes_json) MEETING.votes_json = [];
   MEETING.votes_json.push({
-    id: crypto.randomUUID(), motion: '', proposed_by: null, seconded_by: null,
+    id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'v-' + Date.now(),
+    motion: '', proposed_by: null, seconded_by: null,
     yes: 0, no: 0, abstain: 0, outcome: 'pending', notes: null,
   });
   paintVotes();
@@ -635,8 +688,17 @@ function updateVote(i, key, value) {
   scheduleSave();
 }
 function bumpVote(i, key, delta) {
+  if (!MEETING.votes_json || !MEETING.votes_json[i]) return;
+  const next = Math.max(0, (Number(MEETING.votes_json[i][key]) || 0) + delta);
+  MEETING.votes_json[i][key] = next;
+  paintVotes();
+  scheduleSave();
+}
+function resetVote(i) {
   if (!MEETING.votes_json[i]) return;
-  MEETING.votes_json[i][key] = Math.max(0, (MEETING.votes_json[i][key] || 0) + delta);
+  MEETING.votes_json[i].yes = 0;
+  MEETING.votes_json[i].no = 0;
+  MEETING.votes_json[i].abstain = 0;
   paintVotes();
   scheduleSave();
 }
@@ -653,12 +715,12 @@ function removeVote(i) {
   scheduleSave();
 }
 
-// ── Follow-ups ──────────────────────────────────────────────────────────
+// ── Follow-ups ─────────────────────────────────────────────────────────
 function paintFollowUps() {
   const host = document.getElementById('follow-host');
   const fu = MEETING.follow_ups_json || [];
   if (!fu.length) {
-    host.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0">No follow-ups yet. Click <b>+ Add follow-up</b> for anything that needs to happen after the meeting.</div>';
+    host.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0">No follow-ups yet. Click <b>+ Add follow-up</b> above for anything that needs to happen after the meeting.</div>';
     return;
   }
   const adminNames = ADMINS.map(a => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)}</option>`).join('');
@@ -679,14 +741,14 @@ function paintFollowUps() {
 }
 function addFollowUp() {
   if (!MEETING.follow_ups_json) MEETING.follow_ups_json = [];
-  MEETING.follow_ups_json.push({ id: crypto.randomUUID(), description: '', assigned_to: null, due_date: null, status: 'open' });
+  MEETING.follow_ups_json.push({ id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'f-' + Date.now(), description: '', assigned_to: null, due_date: null, status: 'open' });
   paintFollowUps();
   scheduleSave();
 }
 function updateFollowUp(i, key, value) {
   if (!MEETING.follow_ups_json[i]) return;
   MEETING.follow_ups_json[i][key] = value || null;
-  if (key === 'status') paintFollowUps();      // restyle the row
+  if (key === 'status') paintFollowUps();
   scheduleSave();
 }
 function removeFollowUp(i) {
@@ -697,7 +759,7 @@ function removeFollowUp(i) {
 
 // ── Autosave ────────────────────────────────────────────────────────────
 function scheduleSave() {
-  if (MEETING.status === 'completed') return;     // locked — don't auto-save
+  if (!MEETING || MEETING.status === 'completed') return;
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   setSaveStatus('saving', 'Saving…');
   SAVE_TIMER = setTimeout(() => { saveNow(); }, 1500);
@@ -706,7 +768,6 @@ async function saveNow() {
   if (!MEETING || MEETING.status === 'completed') return;
   const myGen = ++SAVE_GENERATION;
   setSaveStatus('saving', 'Saving…');
-  // Pull current form state into MEETING before sending.
   MEETING.title = document.getElementById('m-title').value.trim() || 'Board Meeting';
   MEETING.meeting_date = document.getElementById('m-date').value || MEETING.meeting_date;
   MEETING.location = document.getElementById('m-location').value.trim() || null;
@@ -724,9 +785,10 @@ async function saveNow() {
       follow_ups: MEETING.follow_ups_json,
       visibility: MEETING.visibility,
     });
-    if (myGen !== SAVE_GENERATION) return;        // a newer save raced ahead
+    if (myGen !== SAVE_GENERATION) return;
     if (!r.ok) throw new Error(r.error || 'Save failed');
     MEETING = r.meeting;
+    document.getElementById('modal-title').textContent = MEETING.title || 'Board Meeting';
     setSaveStatus('saved', '✓ Saved');
   } catch (e) {
     if (myGen !== SAVE_GENERATION) return;
@@ -741,18 +803,8 @@ function setSaveStatus(cls, text) {
   if (cls === 'saved') setTimeout(() => { if (el.textContent === '✓ Saved') el.textContent = ''; }, 2500);
 }
 
-// Save before leaving the page if there's an unsaved change in flight.
-window.addEventListener('beforeunload', (e) => {
-  if (SAVE_TIMER) {
-    // best-effort sync save — modern browsers ignore custom prompts but
-    // we still flush what we can.
-    saveNow();
-  }
-});
-
-// ── Lifecycle actions ───────────────────────────────────────────────────
+// ── Lifecycle ──────────────────────────────────────────────────────────
 async function startMeeting() {
-  // Save current draft fields first so the timestamps reflect actual content.
   await saveNow();
   try {
     const r = await call('start', { id: MEETING.id });
@@ -761,7 +813,6 @@ async function startMeeting() {
     paintEditor();
   } catch (e) { alert(e.message); }
 }
-
 async function finalize() {
   if (!confirm('Finalize this meeting? You can re-open it later if you need to edit, but finalizing locks it for now and makes it visible on the public governance page (if visibility is set to Public).')) return;
   await saveNow();
@@ -772,7 +823,6 @@ async function finalize() {
     paintEditor();
   } catch (e) { alert(e.message); }
 }
-
 async function reopen() {
   try {
     const r = await call('reopen', { id: MEETING.id });
@@ -781,19 +831,17 @@ async function reopen() {
     paintEditor();
   } catch (e) { alert(e.message); }
 }
-
 async function deleteMeeting() {
   if (!confirm(`Delete "${MEETING.title}" (${MEETING.meeting_date})? This can't be undone.`)) return;
   try {
     const r = await call('delete', { id: MEETING.id });
     if (!r.ok) throw new Error(r.error || 'Delete failed');
-    goList();
+    closeModal();
   } catch (e) { alert(e.message); }
 }
 
-// ── Boot ────────────────────────────────────────────────────────────────
+// ── Boot ───────────────────────────────────────────────────────────────
 (async () => {
-  // Identity + brand paint.
   const t = token(); if (!t) { logout(); return; }
   try {
     const r = await fetch(ME_URL, {
@@ -807,11 +855,12 @@ async function deleteMeeting() {
     if (window.PoolsideFlags) PoolsideFlags.apply(d.tenant.features || {}, d.user, d.tenant, d.usage);
   } catch (_) { /* keep going */ }
 
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('id')) {
-    showEditor(params.get('id'));
-  } else {
-    loadList();
+  loadList();
+
+  // Hash deep-link: #m=<id> opens the modal automatically.
+  const hashMatch = (window.location.hash || '').match(/^#m=(.+)$/);
+  if (hashMatch) {
+    openMeeting(decodeURIComponent(hashMatch[1]));
   }
 })();
 </script>

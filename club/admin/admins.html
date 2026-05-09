@@ -265,7 +265,26 @@ function renderRoot() {
               <div><label for="iv-email">Their email</label><input type="email" id="iv-email" placeholder="margaret@example.com" autocomplete="off" required></div>
               <div><label for="iv-name">Their first name (or full name)</label><input type="text" id="iv-name" placeholder="Margaret Kowalski" autocomplete="off" required></div>
             </div>
-            <label style="margin-bottom:10px">What do they help with? <span style="font-weight:500;color:var(--muted)">(pick one or more)</span></label>
+            <div class="grid2">
+              <div>
+                <label for="iv-phone">Their phone <span style="font-weight:500;color:var(--muted)">(easier sign-in via text)</span></label>
+                <input type="tel" id="iv-phone" placeholder="(555) 123-4567" autocomplete="off">
+              </div>
+              <div>
+                <label for="iv-title">Title on the board</label>
+                <select id="iv-title" style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff;width:100%">
+                  <option value="President">President</option>
+                  <option value="Vice President">Vice President</option>
+                  <option value="Treasurer">Treasurer</option>
+                  <option value="Secretary">Secretary</option>
+                  <option value="Membership Chair" selected>Membership Chair</option>
+                  <option value="Volunteer Coord.">Volunteer Coord.</option>
+                  <option value="Communications">Communications</option>
+                  <option value="Member-at-large">Member-at-large</option>
+                </select>
+              </div>
+            </div>
+            <label style="margin-bottom:10px">What do they help with? <span style="font-weight:500;color:var(--muted)">(pick one or more — controls which tabs they see)</span></label>
             <div class="role-pickers" id="role-pickers">
               ${TEMPLATES.filter(t => t.key !== 'custom').map(t => `
                 <label class="role-picker" data-role="${escapeHtml(t.key)}">
@@ -333,13 +352,32 @@ function renderRoot() {
     });
   });
 
-  // Wire up Change role / Remove buttons
+  // Wire up Change role / Change title / Remove buttons
   document.querySelectorAll('[data-action="change-role"]').forEach(b =>
     b.addEventListener('click', () => openRoleEditor(b.dataset.id)));
+  document.querySelectorAll('[data-action="change-title"]').forEach(b =>
+    b.addEventListener('click', () => changeTitle(b.dataset.id, b.dataset.name, b.dataset.title)));
   document.querySelectorAll('[data-action="remove"]').forEach(b =>
     b.addEventListener('click', () => removeAdmin(b.dataset.id)));
   document.querySelectorAll('[data-action="resend"]').forEach(b =>
     b.addEventListener('click', () => alert('Resend invite — not yet implemented (the original temp password is still valid).')));
+}
+
+// Change board_title via prompt() — simple but does the job. Owners only;
+// the API itself enforces the gate. Returns to the list on success.
+async function changeTitle(id, name, currentTitle) {
+  const next = prompt(
+    `Change "${name || 'this admin'}"'s board title:\n\n` +
+    `Common: President · Vice President · Treasurer · Secretary · Membership Chair · Volunteer Coord. · Communications · Member-at-large\n\n` +
+    `(Leave blank to clear.)`,
+    currentTitle || '',
+  );
+  if (next === null) return;     // cancelled
+  try {
+    const r = await api('update_admin_title', { id, board_title: next.trim() });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    await reload();
+  } catch (e) { alert(e.message); }
 }
 
 function renderAdminRow(a) {
@@ -355,20 +393,22 @@ function renderAdminRow(a) {
       <div>
         <div class="nm">
           ${escapeHtml(a.display_name || a.email || 'Admin')}
+          ${a.board_title ? `<span style="font-size:12px;color:var(--blue);font-weight:600;margin-left:6px">· ${escapeHtml(a.board_title)}</span>` : ''}
           ${isYou ? '<span class="you-marker">(you)</span>' : ''}
           ${isPending ? '<span class="pending-pill">Invited</span>' : ''}
         </div>
-        <div class="em">${escapeHtml(a.email || '')}</div>
+        <div class="em">${escapeHtml(a.email || '')}${a.phone_e164 ? ` · ${escapeHtml(a.phone_e164)}` : ''}</div>
         <div class="roles-line">${rolesArr.map(r => `<span class="role-chip ${escapeHtml(r)}">${escapeHtml(roleLabel(r))}</span>`).join('')}</div>
       </div>
       <div class="row-meta">
         ${escapeHtml(lastSeenStr)}
-        ${showActions ? `
-          <div class="row-actions">
+        <div class="row-actions">
+          <button class="ico-btn" data-action="change-title" data-id="${escapeHtml(a.id)}" data-title="${escapeHtml(a.board_title || '')}" data-name="${escapeHtml(a.display_name || a.email || 'Admin')}">Change title</button>
+          ${showActions ? `
             <button class="ico-btn" data-action="change-role" data-id="${escapeHtml(a.id)}">Change role</button>
             <button class="ico-btn danger" data-action="remove" data-id="${escapeHtml(a.id)}" ${isLastOwner ? 'disabled title="Last Board chair — promote someone else first"' : ''}>Remove</button>
-          </div>
-        ` : ''}
+          ` : ''}
+        </div>
       </div>
     </div>
   `;
@@ -382,6 +422,8 @@ async function sendInvite() {
 
   const email = document.getElementById('iv-email').value.trim().toLowerCase();
   const name  = document.getElementById('iv-name').value.trim();
+  const phone = document.getElementById('iv-phone')?.value.trim() || '';
+  const title = document.getElementById('iv-title')?.value || 'Member-at-large';
   const roles = [...document.querySelectorAll('#role-pickers input:checked')].map(c => c.value);
 
   if (!email || !email.includes('@')) { errEl.textContent = 'Please add a valid email address.'; errEl.classList.add('show'); return; }
@@ -391,7 +433,11 @@ async function sendInvite() {
   const btn = document.getElementById('invite-send');
   btn.disabled = true; btn.textContent = 'Sending invite…';
   try {
-    const r = await api('invite_admin', { username: email, email, display_name: name, roles });
+    const r = await api('invite_admin', {
+      username: email, email, display_name: name, roles,
+      board_title: title,
+      phone_e164: phone || undefined,
+    });
     if (!r.ok) throw new Error(r.error || 'Invite failed');
     if (r.invite_email_sent) {
       successEl.innerHTML = `<b>Invite sent to ${escapeHtml(email)}.</b> They'll get an email with a temporary password and a link to sign in.`;

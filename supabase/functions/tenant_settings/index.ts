@@ -234,21 +234,43 @@ Deno.serve(async (req) => {
         fix_label: 'Edit policies',
         why: 'Liability protection — applicants must agree before submitting.',
       },
+      // REQUIRED: at least one payment method. Done if either Stripe or
+      // Venmo is fully set up. Stripe-specific status lives below as a
+      // separate optional item so the user sees the truth: "Venmo is set"
+      // is NOT the same as "Stripe is connected."
       {
         id: 'payment',
-        label: stripeConnected
-          ? 'Payment method connected'
-          : (venmoSet ? 'Add Stripe so members can pay by card' : 'Connect a payment method'),
+        label: (stripeConnected || venmoSet)
+          ? 'Payment method set up'
+          : 'Set up a way for members to pay',
         done: stripeConnected || venmoSet,
         fix_url: '/club/admin/payments.html',
-        fix_label: stripeConnected
-          ? 'Manage payments'
-          : (venmoSet ? 'Connect Stripe' : 'Set up payments'),
+        fix_label: (stripeConnected || venmoSet) ? 'Manage payments' : 'Set up payments',
+        why: stripeConnected && venmoSet
+          ? 'Both Stripe (cards) and Venmo are configured — members can pick either.'
+          : stripeConnected
+            ? 'Stripe is connected. Adding Venmo too is optional but most clubs offer both.'
+            : venmoSet
+              ? 'Venmo is set. Stripe (cards) is below — optional but recommended.'
+              : 'Pick at least one — Stripe (cards, ~3% fee) or Venmo (free, manual).',
+      },
+      // OPTIONAL: Stripe-specific. Distinct from the payment item above so
+      // a club with only Venmo doesn't see "Stripe connected." If the
+      // tenants table says charges_enabled but the account isn't actually
+      // ready (Stripe sometimes lags by a webhook tick), the payments page
+      // will surface that on next visit.
+      {
+        id: 'stripe',
+        label: stripeConnected
+          ? 'Stripe connected — cards work'
+          : 'Connect Stripe (accept credit cards)',
+        done: stripeConnected,
+        fix_url: '/club/admin/payments.html',
+        fix_label: stripeConnected ? 'Stripe dashboard' : 'Connect Stripe',
         why: stripeConnected
-          ? 'Stripe is connected — members can pay with cards.'
-          : (venmoSet
-              ? 'Venmo is set, but adding Stripe means cards/auto-pay work too. Most clubs use both.'
-              : 'Pick at least one — Stripe (cards, ~3% fee) or Venmo (free, manual). Most clubs offer both.'),
+          ? 'Members can pay dues, programs, and donations with their card.'
+          : 'Cards = auto-pay, payment plans, no chasing members. ~3% fee. About 5 minutes to onboard via Stripe.',
+        optional: true,
       },
       {
         id: 'admins',

@@ -42,12 +42,37 @@
     white-space: nowrap;
   }
 
+  /* Each meeting is a <details> so the public page lists compactly
+     and members tap to expand the one they want to read. Date is the
+     prominent summary; the body opens on click. */
   .meeting-card {
     background:#fff; border:1px solid var(--border); border-radius: var(--r-lg);
-    padding: 22px 24px; margin-bottom: 16px;
+    margin-bottom: 10px; overflow: hidden;
   }
-  .meeting-card h3 { font-size: 18px; margin: 0; color: var(--blue); font-family: 'Fraunces', serif; }
-  .meeting-card .when { font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
+  .meeting-card[open] { box-shadow: var(--shadow); border-color: var(--blue-l); }
+  .meeting-card summary {
+    padding: 16px 22px; cursor: pointer; list-style: none;
+    display: flex; align-items: center; gap: 14px;
+    font-family: 'Inter', sans-serif;
+    transition: background .12s;
+  }
+  .meeting-card summary::-webkit-details-marker { display: none; }
+  .meeting-card summary:hover { background: #fafcff; }
+  .meeting-card summary .date {
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 17px;
+    color: var(--blue); min-width: 130px; line-height: 1.1;
+  }
+  .meeting-card summary .date small {
+    display:block; font-family: 'Inter'; font-weight: 500; font-size: 11px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+    margin-top: 3px;
+  }
+  .meeting-card summary .title { flex: 1; font-weight: 600; font-size: 14.5px; min-width: 0; color: var(--text); }
+  .meeting-card summary .title small { display:block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+  .meeting-card summary .chev { color: var(--muted); transition: transform .12s; }
+  .meeting-card[open] summary .chev { transform: rotate(90deg); }
+  .meeting-card .body { padding: 0 22px 22px; }
+  .meeting-card .body section { margin-top: 18px; }
   .meeting-card section { margin-top: 18px; }
   .meeting-card section h4 {
     font-size: 12px; font-weight: 700; text-transform: uppercase;
@@ -188,11 +213,19 @@ function getSlug() {
     `;
     return;
   }
-  meetHost.innerHTML = meetings.map(m => {
-    const date = new Date(m.meeting_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  meetHost.innerHTML = meetings.map((m, idx) => {
+    const dObj = new Date(m.meeting_date + 'T00:00:00');
+    const dayMonth = dObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const year = dObj.getFullYear();
+    const fullDate = dObj.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
     const attendees = (m.attendees_json || []).filter(a => a && a.name);
     const votes = (m.votes_json || []);
     const fu = (m.follow_ups_json || []).filter(f => f && f.description);
+    const summarySub = [
+      attendees.length ? `${attendees.length} attendee${attendees.length === 1 ? '' : 's'}` : null,
+      votes.length ? `${votes.length} motion${votes.length === 1 ? '' : 's'}` : null,
+      m.location || null,
+    ].filter(Boolean).join(' · ');
 
     const attBlock = attendees.length ? `
       <section>
@@ -245,11 +278,17 @@ function getSlug() {
     ` : '';
 
     return `
-      <div class="meeting-card">
-        <h3>${escapeHtml(m.title || 'Board Meeting')}</h3>
-        <div class="when">${escapeHtml(date)}${m.location ? ` · ${escapeHtml(m.location)}` : ''}</div>
-        ${attBlock}${notesBlock}${votesBlock}${fuBlock}
-      </div>
+      <details class="meeting-card" ${idx === 0 ? 'open' : ''}>
+        <summary>
+          <div class="date">${escapeHtml(dayMonth)}<small>${year}</small></div>
+          <div class="title">${escapeHtml(m.title || 'Board Meeting')}<small>${escapeHtml(summarySub || 'Click to read')}</small></div>
+          <span class="chev">›</span>
+        </summary>
+        <div class="body">
+          <div style="font-size:12.5px;color:var(--muted);margin:4px 0 0">${escapeHtml(fullDate)}${m.location ? ` · ${escapeHtml(m.location)}` : ''}</div>
+          ${attBlock}${notesBlock}${votesBlock}${fuBlock}
+        </div>
+      </details>
     `;
   }).join('');
 })();

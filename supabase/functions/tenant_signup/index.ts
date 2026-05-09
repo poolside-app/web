@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
     is_default_pw: false,  // they just typed the password themselves
     active: true,
     role_template: 'owner',
+    board_title: 'President',  // sensible default — admins.html lets them rename
   }).select('id').single();
 
   if (uErr || !admin) {

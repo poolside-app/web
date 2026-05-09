@@ -397,7 +397,7 @@ Deno.serve(async (req) => {
   if (action === 'me') {
     const [{ data: user }, { data: tenant }, { data: settings }] = await Promise.all([
       sb.from('admin_users')
-        .select('id, email, display_name, is_super, is_default_pw, active, scopes, role_template, roles, linked_member_id, member_apply_dismissed, phone_e164')
+        .select('id, email, display_name, is_super, is_default_pw, active, scopes, role_template, roles, linked_member_id, member_apply_dismissed, phone_e164, board_title')
         .eq('id', payload.sub).maybeSingle(),
       sb.from('tenants')
         .select('slug, display_name, status, plan')
@@ -491,7 +491,7 @@ Deno.serve(async (req) => {
 
   if (action === 'list_admins') {
     const { data, error } = await sb.from('admin_users')
-      .select('id, username, email, display_name, notify_pref, is_default_pw, is_super, active, last_login_at, created_at, scopes, role_template, roles, linked_member_id, phone_e164')
+      .select('id, username, email, display_name, notify_pref, is_default_pw, is_super, active, last_login_at, created_at, scopes, role_template, roles, linked_member_id, phone_e164, board_title')
       .eq('tenant_id', payload.tid)
       .order('created_at', { ascending: true });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
@@ -592,6 +592,13 @@ Deno.serve(async (req) => {
     const tempPw = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '').slice(0, 12);
     const hash = await bcrypt.hash(tempPw, 10);
 
+    // board_title — display-only label distinct from role_template
+    // (permissions). Free text but the UI provides a dropdown of common
+    // pool-club titles. Falls back to the role_template label if not set.
+    const board_title = (() => {
+      const s = String(body.board_title ?? '').trim();
+      return s ? s.slice(0, 60) : null;
+    })();
     const { data, error } = await sb.from('admin_users').insert({
       tenant_id: payload.tid,
       username, email: email || username, display_name,
@@ -599,6 +606,7 @@ Deno.serve(async (req) => {
       notify_pref: 'email',
       is_default_pw: true, active: true,
       scopes, role_template, roles, phone_e164: phone,
+      board_title,
     }).select('id, username, display_name, email').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
@@ -625,6 +633,25 @@ Deno.serve(async (req) => {
       invite_email_sent: inviteEmail.sent,
       invite_email_error: inviteEmail.sent ? null : inviteEmail.error,
     });
+  }
+
+  // Update just the board_title (display label). No permission impact;
+  // any owner can change. Lighter-weight than update_admin_role since
+  // it doesn't touch scopes.
+  if (action === 'update_admin_title') {
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can change titles' }, 403);
+    }
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const board_title = (() => {
+      const s = String(body.board_title ?? '').trim();
+      return s ? s.slice(0, 60) : null;
+    })();
+    const { error } = await sb.from('admin_users').update({ board_title })
+      .eq('id', id).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true });
   }
 
   if (action === 'update_admin_role') {

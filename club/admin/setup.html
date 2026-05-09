@@ -52,6 +52,28 @@
   }
   .item.done { background: var(--green-l); border-color: #86efac; }
   .item.optional { border-style: dashed; }
+  /* Strong visual emphasis for required-but-missing items so they pop
+     against done rows. Amber background, thick amber left bar, soft
+     glow, and the fix-btn pulses to invite a click. */
+  .item.todo {
+    background: #fffbeb;
+    border: 1.5px solid #fbbf24;
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, .12);
+    border-left-width: 6px;
+    border-left-color: #f59e0b;
+    padding-left: 18px;
+  }
+  .item.todo .item-label { color: #78350f; }
+  .item.todo .item-why { color: #92400e; }
+  .item.todo .check { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
+  .item.todo .fix-btn { animation: pulse-cta 1.6s ease-in-out infinite; }
+  @keyframes pulse-cta {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(10,59,92,.4); }
+    50%      { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(10,59,92,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .item.todo .fix-btn { animation: none; }
+  }
   .check {
     width:32px; height:32px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
@@ -216,9 +238,13 @@ async function load() {
     return 0;
   });
 
-  host.innerHTML = items.map(i => `
-    <div class="item ${i.done ? 'done' : ''} ${i.optional ? 'optional' : ''}">
-      <div class="check">${i.done ? '✓' : ''}</div>
+  host.innerHTML = items.map(i => {
+    // todo = required-but-missing → highlighted amber + pulsing CTA so
+    // grandma-Betty can't miss it. done = green. optional = dashed.
+    const cls = i.done ? 'done' : (i.optional ? 'optional' : 'todo');
+    return `
+    <div class="item ${cls}">
+      <div class="check">${i.done ? '✓' : (i.optional ? '○' : '!')}</div>
       <div class="item-body">
         <div class="item-label">
           ${escapeHtml(i.label)}
@@ -228,7 +254,7 @@ async function load() {
       </div>
       <a class="fix-btn" href="${escapeHtml(i.fix_url)}">${escapeHtml(i.done ? 'Edit' : (i.fix_label || 'Set up'))} →</a>
     </div>
-  `).join('');
+  `;}).join('');
 }
 
 load();

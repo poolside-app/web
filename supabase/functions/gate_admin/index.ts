@@ -385,17 +385,21 @@ Deno.serve(async (req) => {
     }, { onConflict: 'tenant_id' });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
-    // Mirror the gate_panels.status into settings.value.features.gate so
-    // the existing tenant_public + member home + admin nav pick up the
-    // change. 'active' = gate features ON; anything else = OFF. Done via
-    // shallow merge so we don't clobber other settings keys.
+    // Mirror gate_panels.status into settings.value.features.gate AND
+    // settings.value.features.keyfobs so the existing tenant_public +
+    // member home + admin nav pick up the change. 'active' = both ON;
+    // anything else = both OFF. Keyfob check-in is conceptually a
+    // sub-feature of gate access — clubs without gate hardware never
+    // need keyfob tracking. Done via shallow merge so we don't clobber
+    // other settings keys.
     {
-      const featureGateOn = newStatus === 'active';
+      const on = newStatus === 'active';
       const { data: existing } = await sb.from('settings')
         .select('value').eq('tenant_id', targetTenant).maybeSingle();
       const value = ((existing?.value as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
       const features = ((value.features as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
-      features.gate = featureGateOn;
+      features.gate = on;
+      features.keyfobs = on;
       const merged = { ...value, features };
       if (existing) {
         await sb.from('settings').update({ value: merged }).eq('tenant_id', targetTenant);
