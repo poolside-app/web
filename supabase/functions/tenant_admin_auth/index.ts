@@ -83,14 +83,25 @@ async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUr
 // suggestion bar — far better UX than asking users to copy/paste a long URL.
 async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string }) {
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
-  const sid = TWILIO_SID, tok = TWILIO_TOKEN, from = TWILIO_FROM_N;
-  if (!sid || !tok || !from) return { sent: false, error: 'TWILIO_* env vars not set' };
+  const sid = TWILIO_SID, tok = TWILIO_TOKEN;
+  // Prefer MessagingServiceSid when set — it routes the send through our
+  // registered A2P 10DLC Campaign so US carriers don't drop the message
+  // with error 30034. Falls back to raw From number for setups that
+  // haven't completed 10DLC registration yet.
+  const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
+  const from = TWILIO_FROM_N;
+  if (!sid || !tok || (!messagingServiceSid && !from)) {
+    return { sent: false, error: 'TWILIO_* env vars not set' };
+  }
   const smsBody = `Your ${args.tenantName} sign-in code is ${args.code}. Expires in 10 min. If you didn't ask for it, ignore this message.`;
+  const params: Record<string, string> = { To: args.to, Body: smsBody };
+  if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
+  else if (from) params.From = from;
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
       headers: { 'Authorization': 'Basic ' + btoa(`${sid}:${tok}`), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ To: args.to, From: from, Body: smsBody }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
     if (!res.ok) { const t = await res.text(); return { sent: false, error: `Twilio ${res.status}: ${t.slice(0, 200)}` }; }
     return { sent: true };

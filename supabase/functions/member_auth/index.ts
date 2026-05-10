@@ -75,8 +75,14 @@ async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLi
   const sid    = Deno.env.get('TWILIO_ACCOUNT_SID');
   const token  = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromN  = Deno.env.get('TWILIO_FROM_NUMBER');
-  if (!sid || !token || !fromN) return { sent: false, error: 'TWILIO_* env vars not set' };
+  // MessagingServiceSid takes precedence — routes through registered A2P
+  // 10DLC Campaign so US carriers accept the message (error 30034 fix).
+  const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
+  if (!sid || !token || (!messagingServiceSid && !fromN)) return { sent: false, error: 'TWILIO_* env vars not set' };
   const body = `Sign in to ${args.tenantName}: ${args.verifyLink}\n(Link expires in 15 minutes.)`;
+  const params: Record<string, string> = { To: args.to, Body: body };
+  if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
+  else if (fromN) params.From = fromN;
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
@@ -84,7 +90,7 @@ async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLi
         'Authorization': 'Basic ' + btoa(`${sid}:${token}`),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ To: args.to, From: fromN, Body: body }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
     if (!res.ok) {
       const txt = await res.text();

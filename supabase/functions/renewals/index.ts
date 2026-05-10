@@ -145,9 +145,13 @@ async function sendRenewalSms(args: {
   const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
   const tok = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromN = Deno.env.get('TWILIO_FROM_NUMBER');
-  if (!sid || !tok || !fromN) return { sent: false, error: 'TWILIO_* env vars not set' };
+  const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
+  if (!sid || !tok || (!messagingServiceSid && !fromN)) return { sent: false, error: 'TWILIO_* env vars not set' };
   const eb = args.earlyBirdLine ? ` ${args.earlyBirdLine}` : '';
   const body = `${args.tenantName}: time to renew!${eb} Sign in & pay: ${args.verifyLink} (link good 7 days)`;
+  const params: Record<string, string> = { To: args.to, Body: body };
+  if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
+  else if (fromN) params.From = fromN;
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
@@ -155,7 +159,7 @@ async function sendRenewalSms(args: {
         'Authorization': 'Basic ' + btoa(`${sid}:${tok}`),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ To: args.to, From: fromN, Body: body }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
     if (!res.ok) {
       const txt = await res.text();
