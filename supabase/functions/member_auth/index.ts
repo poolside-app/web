@@ -504,20 +504,24 @@ Deno.serve(async (req) => {
     }).select('id, title, starts_at, ends_at, status, price_cents, created_at').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
-    // Fire admin_task so the board sees the request without polling.
+    // Fire admin_task so the board sees the request without polling. We
+    // load the family name from the household so the admin task summary
+    // tells the board WHO is requesting at a glance, not just the title.
     try {
       const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-      const familyName = (b.family_name as string | undefined) ?? '';
+      const { data: hh } = await sb.from('households')
+        .select('family_name').eq('id', member.household_id as string).maybeSingle();
+      const familyName = hh?.family_name ? `the ${hh.family_name}` : '';
       const dateLabel = startsDate.toLocaleDateString(undefined, { dateStyle: 'medium' });
       await enqueueAdminTask(sb, {
         tenant_id: payload.tid as string,
         target_scopes: ['parties', 'operations'],
         kind: 'party.requested',
-        summary: `Party request: ${title}${familyName ? ` (${familyName})` : ''} — ${dateLabel}`,
+        summary: `Party request: ${title}${familyName ? ` from ${familyName}` : ''} — ${dateLabel}`,
         link_url: '/club/admin/parties.html',
         source_kind: 'party_booking', source_id: data.id,
         push_title: `🎉 Party request: ${title}`,
-        push_body: `${dateLabel}${expected_guests ? ` · ${expected_guests} guests` : ''}. Tap to review.`,
+        push_body: `${dateLabel}${expected_guests ? ` · ${expected_guests} guests` : ''}${familyName ? ' · ' + familyName : ''}. Tap to review.`,
       });
     } catch { /* best-effort */ }
 
@@ -612,6 +616,12 @@ Deno.serve(async (req) => {
         active: false, updated_at: new Date().toISOString(),
       }).eq('id', bk.event_id);
     }
+    // Clear any lingering admin tasks for this party — member cancelled,
+    // no need for the board to act on a request or venmo claim anymore.
+    await sb.from('admin_tasks')
+      .update({ completed_at: new Date().toISOString() })
+      .eq('tenant_id', payload.tid as string).eq('source_kind', 'party_booking').eq('source_id', id)
+      .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
     return jsonResponse({ ok: true });
   }
 

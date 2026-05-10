@@ -314,7 +314,7 @@ function openModal(id, rows) {
   } else if (b.status === 'approved' && b.payment_status !== 'paid') {
     banner.style.display = 'block';
     banner.style.background = '#fef3c7'; banner.style.color = '#78350f';
-    banner.innerHTML = `<b>Approved, awaiting payment.</b> The host has been emailed payment instructions. The date is held but NOT officially booked until they pay.`;
+    banner.innerHTML = `<b>Approved, awaiting payment.</b> The host has been emailed payment instructions. The date is held but NOT officially booked until they pay.<br><span style="font-size:12px">If you've already received the Venmo, click the green "Verify Venmo + book" button below to lock the date now.</span>`;
   } else if (b.status === 'approved' && b.payment_status === 'paid') {
     banner.style.display = 'block';
     banner.style.background = '#dcfce7'; banner.style.color = '#14532d';

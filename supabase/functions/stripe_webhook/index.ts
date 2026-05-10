@@ -308,9 +308,10 @@ Deno.serve(async (req) => {
     // Race-safe: the partial unique index on (tenant_id, starts_at::date)
     // where status='approved' AND payment_status='paid' is the last-line
     // defense if two parties race to confirm the same day.
+    // Idempotent: re-deliveries hit `payment_status === 'paid'` and no-op.
     if (kind === 'party_booking' && md.party_id && tenantId) {
       const { data: party } = await sb.from('party_bookings')
-        .select('id, tenant_id, household_id, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id')
+        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id')
         .eq('id', md.party_id).eq('tenant_id', tenantId).maybeSingle();
       if (party && party.payment_status !== 'paid') {
         // Day-block check (in case another party paid between approve and now).
@@ -322,16 +323,34 @@ Deno.serve(async (req) => {
           .eq('status', 'approved').eq('payment_status', 'paid')
           .gte('starts_at', dayStart).lt('starts_at', dayEnd).limit(1);
         if (collisions && collisions.length > 0) {
-          // Day collision — refund unwound separately by admin. Mark paid_at
-          // but flag an admin task to investigate. Skip event materialization.
+          // Race lost: someone else's payment confirmed first. We mark this
+          // payment as paid but leave the party cancelled (no calendar event).
+          // Fire an admin task so the board can manually refund this member —
+          // they paid for a date that's now double-booked.
           console.error('party_booking webhook: date collision after payment', md.party_id);
           await sb.from('party_bookings').update({
             payment_status: 'paid', payment_method: 'stripe',
+            status: 'cancelled',
             paid_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+            admin_notes: 'Auto-cancelled: another party paid for this date first. REFUND THIS MEMBER.',
           }).eq('id', md.party_id).eq('tenant_id', tenantId);
+          try {
+            const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+            await enqueueAdminTask(sb, {
+              tenant_id: tenantId,
+              target_scopes: ['parties', 'payments'],
+              kind: 'party.refund_needed',
+              summary: `⚠ Refund needed: ${party.title} — date got double-booked`,
+              link_url: '/club/admin/parties.html',
+              source_kind: 'party_booking', source_id: party.id as string,
+              push_title: `⚠ Party refund needed`,
+              push_body: `${party.title} got double-booked. Refund the host via Stripe dashboard.`,
+            });
+          } catch { /* best-effort */ }
         } else {
           // Materialize calendar event + mark paid + close any open admin tasks.
-          if (!party.event_id) {
+          let eventId = party.event_id as string | null;
+          if (!eventId) {
             const { data: hh } = await sb.from('households')
               .select('family_name').eq('id', party.household_id as string).maybeSingle();
             const guestStr = party.expected_guests ? `${party.expected_guests} expected guests` : null;
@@ -342,23 +361,40 @@ Deno.serve(async (req) => {
               location: party.location, starts_at: party.starts_at, ends_at: party.ends_at,
               all_day: false,
             }).select('id').single();
-            if (ev) {
-              await sb.from('party_bookings').update({
-                payment_status: 'paid', payment_method: 'stripe',
-                paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
-                event_id: ev.id, updated_at: new Date().toISOString(),
-              }).eq('id', md.party_id).eq('tenant_id', tenantId);
-            }
-          } else {
-            await sb.from('party_bookings').update({
-              payment_status: 'paid', payment_method: 'stripe',
-              paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }).eq('id', md.party_id).eq('tenant_id', tenantId);
+            if (ev) eventId = ev.id;
           }
+          await sb.from('party_bookings').update({
+            payment_status: 'paid', payment_method: 'stripe',
+            paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
+            event_id: eventId, updated_at: new Date().toISOString(),
+          }).eq('id', md.party_id).eq('tenant_id', tenantId);
           await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
             .eq('tenant_id', tenantId).eq('source_kind', 'party_booking').eq('source_id', md.party_id)
             .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
+
+          // Confirmation email to the host. Mirrors what parties_admin.verify_payment
+          // sends on the Venmo path — single email when the date officially locks.
+          try {
+            const { data: requester } = await sb.from('household_members')
+              .select('name, email').eq('id', party.requested_by as string).maybeSingle();
+            if (requester?.email) {
+              const { renderAndSend } = await import('../_shared/email_template.ts');
+              const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
+              const startsDate = new Date(party.starts_at as string);
+              await renderAndSend(sb, {
+                tenantId, templateKey: 'party_confirmed',
+                to: requester.email as string,
+                variables: {
+                  tenant_name: tenant?.display_name || 'Your club',
+                  primary_name: requester.name as string,
+                  party_title: party.title as string,
+                  party_date: startsDate.toLocaleDateString(undefined, { dateStyle: 'full' }),
+                  party_time: startsDate.toLocaleTimeString(undefined, { timeStyle: 'short' }),
+                  club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
+                },
+              });
+            }
+          } catch (e) { console.error('party_booking confirmed email (non-fatal):', (e as Error).message); }
         }
       }
     }

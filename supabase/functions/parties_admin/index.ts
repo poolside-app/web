@@ -314,9 +314,10 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
     const decided_by = payload.synthetic ? null : payload.sub;
+    const adminNotes = strOrNull(body.admin_notes);
     const { data, error } = await sb.from('party_bookings').update({
       status: 'rejected',
-      admin_notes: strOrNull(body.admin_notes),
+      admin_notes: adminNotes,
       decided_at: new Date().toISOString(),
       decided_by,
       updated_at: new Date().toISOString(),
@@ -324,6 +325,36 @@ Deno.serve(async (req) => {
       .select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     if (!data) return jsonResponse({ ok: false, error: 'Booking not pending' }, 409);
+
+    // Close the party.requested admin task — board has decided.
+    await sb.from('admin_tasks')
+      .update({ completed_at: new Date().toISOString(), completed_by: decided_by })
+      .eq('tenant_id', TID).eq('source_kind', 'party_booking').eq('source_id', id)
+      .eq('kind', 'party.requested').is('completed_at', null);
+
+    // Email the member so they're not left wondering. Even minimal admin
+    // notes are useful — the template falls back gracefully if blank.
+    try {
+      const { data: requester } = await sb.from('household_members')
+        .select('name, email').eq('id', data.requested_by).maybeSingle();
+      if (requester?.email) {
+        const { renderAndSend } = await import('../_shared/email_template.ts');
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', TID).maybeSingle();
+        await renderAndSend(sb, {
+          tenantId: TID, templateKey: 'party_rejected',
+          to: requester.email as string,
+          variables: {
+            tenant_name: tenant?.display_name || 'Your club',
+            primary_name: requester.name as string,
+            party_title: data.title,
+            party_date: new Date(data.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'full' }),
+            admin_notes: adminNotes || 'No reason was provided. Reach out to the board if you have questions.',
+            club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
+          },
+        });
+      }
+    } catch { /* non-fatal */ }
+
     return jsonResponse({ ok: true, booking: data });
   }
 
@@ -332,15 +363,20 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
 
-    const { data: bk } = await sb.from('party_bookings')
-      .select('id, status, event_id').eq('id', id).eq('tenant_id', TID).maybeSingle();
+    // Need full booking row for admin_notes preservation + event cleanup +
+    // member email after cancel. The previous selection of just (id, status,
+    // event_id) caused admin_notes to silently null out on cancel.
+    const { data: bk } = await sb.from('party_bookings').select(FIELDS)
+      .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!bk) return jsonResponse({ ok: false, error: 'Booking not found' }, 404);
 
+    const decided_by = payload.synthetic ? null : payload.sub;
+    const newAdminNotes = strOrNull(body.admin_notes) ?? (bk.admin_notes as string | null) ?? null;
     await sb.from('party_bookings').update({
       status: 'cancelled',
-      admin_notes: strOrNull(body.admin_notes) ?? bk['admin_notes' as keyof typeof bk] ?? null,
+      admin_notes: newAdminNotes,
       decided_at: new Date().toISOString(),
-      decided_by: payload.synthetic ? null : payload.sub,
+      decided_by,
       updated_at: new Date().toISOString(),
     }).eq('id', id).eq('tenant_id', TID);
 
@@ -350,6 +386,13 @@ Deno.serve(async (req) => {
         active: false, updated_at: new Date().toISOString(),
       }).eq('id', bk.event_id).eq('tenant_id', TID);
     }
+
+    // Close any open admin tasks for this party — the board already acted.
+    await sb.from('admin_tasks')
+      .update({ completed_at: new Date().toISOString(), completed_by: decided_by })
+      .eq('tenant_id', TID).eq('source_kind', 'party_booking').eq('source_id', id)
+      .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
+
     return jsonResponse({ ok: true });
   }
 

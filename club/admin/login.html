@@ -358,21 +358,41 @@ async function doMagic() {
       errEl.textContent = e.message;
       errEl.style.background = ''; errEl.style.color = '';
       errEl.classList.add('show');
+      // Re-arm auto-submit so the user can correct and re-fire without
+      // having to manually click Verify after a Wrong-code response.
+      __codeAutoSubmitted = false;
+      codeInput.select();
     } finally {
       submitBtn.disabled = false; submitBtn.textContent = orig;
     }
   }
   submitBtn.addEventListener('click', doVerify);
   codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doVerify(); } });
-  // Auto-submit when 6 digits entered (matches OS-level autofill UX)
+  // Strip non-digits as the user types or pastes — handles cases like
+  // pasting "Your code is 123456" from SMS preview, or international keyboards
+  // that produce stray characters. Also auto-submit when exactly 6 digits
+  // are present (matches iOS/Android one-tap autofill UX).
+  let __codeAutoSubmitted = false;
   codeInput.addEventListener('input', () => {
-    if (codeInput.value.replace(/\D/g, '').length === 6) doVerify();
+    const digits = codeInput.value.replace(/\D/g, '').slice(0, 6);
+    if (codeInput.value !== digits) codeInput.value = digits;
+    if (digits.length === 6 && !__codeAutoSubmitted) {
+      __codeAutoSubmitted = true;
+      doVerify();
+    } else if (digits.length < 6) {
+      // user is editing — re-arm so a corrected 6-digit value triggers auto-submit
+      __codeAutoSubmitted = false;
+    }
   });
 
   resendLink.addEventListener('click', (e) => {
     e.preventDefault();
     if (!__PENDING_PHONE) return;
     document.getElementById('m-id').value = __PENDING_PHONE;
+    // Clear the code field + re-arm auto-submit — fresh code is incoming.
+    codeInput.value = '';
+    __codeAutoSubmitted = false;
+    errEl.classList.remove('show');
     doMagic();
   });
   backLink.addEventListener('click', (e) => {

@@ -361,27 +361,27 @@ Deno.serve(async (req) => {
       // (every bank app does this). Resilient to brute-force via single-use
       // + short window; rate limit via existing sms_log + per-phone cap if
       // we see abuse later.
-      const code = generateOtpCode();
-      const codeHash = await sha256Hex(code);
       // Insert with a tiny retry on the unique-token collision (1-in-1M
-      // chance with random 6-digit codes; in practice never hits, but
-      // safe to handle): if first insert fails, regenerate.
-      let inserted = false, lastErr: string | null = null;
-      for (let attempt = 0; attempt < 3 && !inserted; attempt++) {
-        const tryCode = attempt === 0 ? code : generateOtpCode();
-        const tryHash = attempt === 0 ? codeHash : await sha256Hex(tryCode);
+      // chance with random 6-digit codes; in practice never hits, but safe
+      // to handle): if first insert fails, regenerate AND track which code
+      // actually got stored so we send THAT one in the SMS.
+      let finalCode: string | null = null;
+      let lastErr: string | null = null;
+      for (let attempt = 0; attempt < 3 && !finalCode; attempt++) {
+        const tryCode = generateOtpCode();
+        const tryHash = await sha256Hex(tryCode);
         const { error } = await sb.from('admin_magic_links').insert({
           tenant_id: tenant.id, admin_user_id: admin.id, token_hash: tryHash,
           expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
         });
-        if (!error) { inserted = true; if (attempt > 0) Object.assign({ code: tryCode }); break; }
+        if (!error) { finalCode = tryCode; break; }
         lastErr = error.message;
       }
-      if (!inserted) {
+      if (!finalCode) {
         return jsonResponse({ ok: false, error: 'Could not create sign-in code', detail: lastErr }, 500);
       }
 
-      const send = await sendAdminSmsCode({ to: phone_e164, tenantName: tenant.display_name, code });
+      const send = await sendAdminSmsCode({ to: phone_e164, tenantName: tenant.display_name, code: finalCode });
       await sb.from('sms_log').insert({
         tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
         success: send.sent, error: send.error ?? null, source: 'tenant_admin_auth.start_link',
@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
       // Dev-mode fallback: surface the code so the developer can sign in
       // even when Twilio isn't configured (testing, local). NEVER exposed
       // in production paths once Twilio is set up.
-      return jsonResponse({ ok: true, sent: false, channel, message: 'SMS not configured. Use the code below.', dev_code: code, dev_error: send.error });
+      return jsonResponse({ ok: true, sent: false, channel, message: 'SMS not configured. Use the code below.', dev_code: finalCode, dev_error: send.error });
     }
 
     // Email path: long random magic-link token (15-min expiry, one-tap
