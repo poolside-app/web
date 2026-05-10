@@ -312,6 +312,36 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, url: session.url });
   }
 
+  if (action === 'party_booking') {
+    const id = String(body.party_id ?? body.booking_id ?? '');
+    const { data: party } = await sb.from('party_bookings')
+      .select('id, tenant_id, household_id, title, status, payment_status, price_cents, starts_at')
+      .eq('id', id).maybeSingle();
+    if (!party || party.tenant_id !== TID) return jsonResponse({ ok: false, error: 'Party not found' }, 404);
+    if (party.status !== 'approved') return jsonResponse({ ok: false, error: 'Party must be approved before payment' }, 409);
+    if (party.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    const amountCents = (party.price_cents as number) || 0;
+    if (amountCents <= 0) return jsonResponse({ ok: false, error: 'Party fee not set — ask the board' }, 400);
+    // The 2.0% platform fee is taken out of the member's payment as a Stripe
+    // Connect application_fee. Stripe's own 2.9%+30¢ is on top of that — by
+    // billing the member the gross amount, the club nets the full party fee.
+    // Caller can opt to pass `gross_up: true` (default) to include both fees
+    // in the displayed price; otherwise the member pays exactly amountCents.
+    const dateLabel = new Date(party.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'medium' });
+    const session = await stripeCheckout({
+      tenantStripeAccount: tenant.stripe_account_id,
+      amountCents,
+      productName: `Party fee — ${party.title} (${dateLabel})`,
+      successUrl: `${clubUrl}/m/index.html?paid=1#parties`,
+      cancelUrl: `${clubUrl}/m/index.html?paid=0#parties`,
+      metadata: { kind: 'party_booking', party_id: party.id, tenant_id: TID },
+      feeBps: FEE_BPS_PROGRAMS,    // 1.5% — parties bucket
+    });
+    if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
+    await sb.from('party_bookings').update({ stripe_session_id: session.session_id }).eq('id', party.id);
+    return jsonResponse({ ok: true, url: session.url });
+  }
+
   if (action === 'guest_pass_pack') {
     const id = String(body.pack_id ?? '');
     const { data: pack } = await sb.from('guest_pass_packs')

@@ -146,8 +146,16 @@
     <label>New location</label>
     <input id="ov-location" placeholder="The clubhouse / Side lawn / etc.">
 
+    <label>Party fee <span style="color:var(--muted);font-weight:500;font-size:11px">(in dollars; leave blank for no fee)</span></label>
+    <input id="ov-price" type="number" min="0" step="1" placeholder="200">
+
     <label>Note to the member <span style="color:var(--muted);font-weight:500;font-size:11px">(they'll see this)</span></label>
     <input id="m-admin_notes" placeholder="Optional — explain any changes or add party reminders">
+
+    <!-- Payment status banner — shown when this party is approved and
+         awaiting / pending verification. Same plain-English UX as the
+         applications modal. -->
+    <div id="m-payment-banner" style="display:none;margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5"></div>
 
     <div class="err" id="m-err"></div>
     <div class="modal-foot">
@@ -155,6 +163,7 @@
       <button class="btn-ghost btn" onclick="closeM()">Close</button>
       <button class="btn-danger btn" id="m-reject" onclick="rej()">Reject</button>
       <button class="btn-success btn" id="m-approve" onclick="appr()">Approve →</button>
+      <button class="btn-success btn" id="m-verify-venmo" style="display:none;background:#0284c7" onclick="verifyVenmo()">✓ Verify Venmo + book</button>
     </div>
   </div>
 </div>
@@ -287,15 +296,47 @@ function openModal(id, rows) {
   document.getElementById('ov-starts_at').value = '';
   document.getElementById('ov-ends_at').value = '';
   document.getElementById('ov-location').value = '';
+  // Pre-fill the price input with the snapshotted price (member sees what
+  // the request was made under). Admin can edit before approve.
+  document.getElementById('ov-price').value = b.price_cents ? String(b.price_cents / 100) : '';
   document.getElementById('m-err').classList.remove('show');
 
-  // Hide buttons that aren't applicable for the current status
-  const apprBtn = document.getElementById('m-approve');
-  const rejBtn  = document.getElementById('m-reject');
-  const cnclBtn = document.getElementById('m-cancel-admin');
+  // Show payment-status banner with plain-English next-action copy.
+  const banner = document.getElementById('m-payment-banner');
+  if (b.status === 'pending') {
+    banner.style.display = 'block';
+    banner.style.background = '#fef3c7'; banner.style.color = '#78350f';
+    banner.innerHTML = `<b>New party request — awaiting your decision.</b> Approving sends the host an email with payment instructions. The party isn't on the calendar until they pay.`;
+  } else if (b.status === 'approved' && b.payment_status !== 'paid' && b.payment_status === 'pending_verify') {
+    banner.style.display = 'block';
+    banner.style.background = '#fef3c7'; banner.style.color = '#78350f';
+    banner.innerHTML = `<b>Member says they paid via Venmo — verify it landed in your account.</b> Click the green button below once you see the payment. That officially books the date.`;
+  } else if (b.status === 'approved' && b.payment_status !== 'paid') {
+    banner.style.display = 'block';
+    banner.style.background = '#fef3c7'; banner.style.color = '#78350f';
+    banner.innerHTML = `<b>Approved, awaiting payment.</b> The host has been emailed payment instructions. The date is held but NOT officially booked until they pay.`;
+  } else if (b.status === 'approved' && b.payment_status === 'paid') {
+    banner.style.display = 'block';
+    banner.style.background = '#dcfce7'; banner.style.color = '#14532d';
+    banner.innerHTML = `✓ <b>Officially booked + paid.</b> On the calendar.`;
+  } else if (b.status === 'rejected') {
+    banner.style.display = 'block';
+    banner.style.background = '#fee2e2'; banner.style.color = '#7f1d1d';
+    banner.innerHTML = `<b>Rejected.</b> No further action.`;
+  } else {
+    banner.style.display = 'none';
+  }
+
+  // Show only the buttons relevant to the current state. The Verify-Venmo
+  // button is the primary action when payment is pending verification.
+  const apprBtn  = document.getElementById('m-approve');
+  const rejBtn   = document.getElementById('m-reject');
+  const cnclBtn  = document.getElementById('m-cancel-admin');
+  const verifyBtn = document.getElementById('m-verify-venmo');
   apprBtn.style.display = b.status === 'pending' ? 'inline-block' : 'none';
   rejBtn.style.display  = b.status === 'pending' ? 'inline-block' : 'none';
   cnclBtn.style.display = (b.status === 'approved' || b.status === 'pending') ? 'inline-block' : 'none';
+  verifyBtn.style.display = (b.status === 'approved' && b.payment_status !== 'paid') ? 'inline-block' : 'none';
 
   document.getElementById('scrim').classList.add('open');
 }
@@ -307,15 +348,29 @@ async function appr() {
   const s = fromLocalInput(document.getElementById('ov-starts_at').value);
   const e = fromLocalInput(document.getElementById('ov-ends_at').value);
   const loc = document.getElementById('ov-location').value.trim();
+  const priceVal = document.getElementById('ov-price').value.trim();
   if (s) override.starts_at = s;
   if (e) override.ends_at = e;
   if (loc) override.location = loc;
+  if (priceVal !== '') override.price_cents = Math.max(0, Math.round(Number(priceVal) * 100));
   const admin_notes = document.getElementById('m-admin_notes').value.trim() || null;
   const errEl = document.getElementById('m-err');
   errEl.classList.remove('show');
   try {
     const data = await call('approve', { id: SELECTED.id, admin_notes, override });
     if (!data.ok) throw new Error(data.error || 'Approve failed');
+    closeM();
+    await refresh();
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+}
+async function verifyVenmo() {
+  if (!SELECTED) return;
+  if (!confirm(`Confirm you saw the Venmo payment for "${SELECTED.title}" land in your account?\n\nThis officially books the date on the calendar and emails the host.`)) return;
+  const errEl = document.getElementById('m-err');
+  errEl.classList.remove('show');
+  try {
+    const data = await call('verify_payment', { id: SELECTED.id, method: 'venmo' });
+    if (!data.ok) throw new Error(data.error || 'Verify failed');
     closeM();
     await refresh();
   } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }

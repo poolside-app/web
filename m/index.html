@@ -253,7 +253,7 @@
 <div class="scrim" id="party-scrim" onclick="if (event.target === this) closePartyModal()">
   <div class="pmodal">
     <h2 style="margin:0">Request a party</h2>
-    <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Your club's admin reviews requests and approves them. Once approved, the party shows up on the calendar.</p>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Your club's admin reviews requests and approves them. Once approved + payment is received, the party officially books that day on the calendar.</p>
 
     <label>Title</label>
     <input id="p-title" placeholder="Smith Family birthday party" maxlength="140">
@@ -265,10 +265,35 @@
     <input type="number" id="p-guests" min="0" placeholder="20">
     <label>Anything the admin should know? <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
     <textarea id="p-body" maxlength="2000" placeholder="What it's for, kids/adults, anything special you'll need."></textarea>
+
+    <!-- Party rules acceptance — same legal-evidence pattern as apply.html.
+         Member must read and accept BEFORE the Send button enables. -->
+    <div id="p-policy-row" style="margin-top:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-2)">
+      <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:8px">Party rules</div>
+      <button type="button" id="p-policy-open" onclick="openPartyPolicy()" style="display:block;width:100%;padding:10px 14px;background:#fff;border:1.5px solid var(--border);border-radius:8px;font:600 13px Inter,sans-serif;color:var(--blue);cursor:pointer;text-align:left">
+        <span id="p-policy-icon">📜</span> <span id="p-policy-label">Read &amp; accept party rules →</span>
+      </button>
+      <div id="p-policy-help" style="font-size:11.5px;color:var(--muted);margin-top:6px">Required — you must accept before submitting.</div>
+    </div>
+
     <div class="perr" id="p-err"></div>
     <div class="pmodal-foot">
       <button class="btn btn-ghost" onclick="closePartyModal()">Cancel</button>
-      <button class="btn" id="p-submit" onclick="submitParty()" style="background:var(--blue);color:#fff">Send request</button>
+      <button class="btn" id="p-submit" onclick="submitParty()" style="background:var(--blue);color:#fff;opacity:.5;pointer-events:none" disabled>Send request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Party policy modal — shows the tenant's "party" policy text. Member
+     reads, then clicks "I accept" — that closes this modal and unlocks
+     the Send button on the request modal above. -->
+<div class="scrim" id="party-policy-scrim" onclick="if (event.target === this) closePartyPolicy()">
+  <div class="pmodal" style="max-width:560px">
+    <h2 style="margin:0 0 6px;font-family:'Fraunces',Georgia,serif">Party rules</h2>
+    <div id="party-policy-body" style="white-space:pre-wrap;font-size:14px;line-height:1.55;color:#0f172a;max-height:50vh;overflow-y:auto;padding:10px 12px;background:var(--bg-2);border-radius:10px;border:1.5px solid var(--border)">Loading…</div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" onclick="closePartyPolicy()">Cancel</button>
+      <button class="btn" id="p-policy-accept" onclick="acceptPartyPolicy()" style="background:var(--green,#16a34a);color:#fff">✓ I accept</button>
     </div>
   </div>
 </div>
@@ -678,12 +703,84 @@ function openPartyModal() {
   document.getElementById('p-guests').value = '';
   document.getElementById('p-body').value = '';
   document.getElementById('p-err').classList.remove('show');
+  // Reset policy acceptance every time the modal opens — fresh consent for
+  // each booking so we have legal evidence per request.
+  __PARTY_POLICY_ACCEPTED = false;
+  const policyBtn = document.getElementById('p-policy-open');
+  const policyIcon = document.getElementById('p-policy-icon');
+  const policyLabel = document.getElementById('p-policy-label');
+  const policyHelp = document.getElementById('p-policy-help');
+  if (policyBtn) {
+    policyBtn.style.background = '#fff';
+    policyBtn.style.borderColor = 'var(--border)';
+    policyBtn.style.color = 'var(--blue)';
+  }
+  if (policyIcon) policyIcon.textContent = '📜';
+  if (policyLabel) policyLabel.textContent = 'Read & accept party rules →';
+  if (policyHelp) policyHelp.textContent = 'Required — you must accept before submitting.';
+  const submitBtn = document.getElementById('p-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '.5';
+    submitBtn.style.pointerEvents = 'none';
+  }
   document.getElementById('party-scrim').classList.add('open');
+  loadPartyPolicy();   // pre-warm so the modal opens fast on click
 }
 function closePartyModal() { document.getElementById('party-scrim').classList.remove('open'); }
+// Party policy state. Once member has clicked "I accept" we set a flag
+// and unlock the Send button on the request modal.
+let __PARTY_POLICY_ACCEPTED = false;
+let __PARTY_POLICY_LOADED = null;
+async function loadPartyPolicy() {
+  if (__PARTY_POLICY_LOADED) return __PARTY_POLICY_LOADED;
+  try {
+    const slug = getSlug();
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/policies`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'list_public', slug }),
+    });
+    const data = await r.json();
+    if (!data.ok) return null;
+    __PARTY_POLICY_LOADED = (data.policies || []).find(p => p.slug === 'party') || null;
+    return __PARTY_POLICY_LOADED;
+  } catch { return null; }
+}
+async function openPartyPolicy() {
+  const bodyEl = document.getElementById('party-policy-body');
+  bodyEl.textContent = 'Loading…';
+  document.getElementById('party-policy-scrim').classList.add('open');
+  const p = await loadPartyPolicy();
+  if (!p) {
+    bodyEl.textContent = 'No party rules are configured for your club yet — ask the board to add them under Admin → Policies.';
+    return;
+  }
+  bodyEl.textContent = p.body || '(empty)';
+}
+function closePartyPolicy() { document.getElementById('party-policy-scrim').classList.remove('open'); }
+function acceptPartyPolicy() {
+  __PARTY_POLICY_ACCEPTED = true;
+  document.getElementById('party-policy-icon').textContent = '✓';
+  document.getElementById('p-policy-label').textContent = 'Party rules accepted — thanks';
+  document.getElementById('p-policy-open').style.background = '#dcfce7';
+  document.getElementById('p-policy-open').style.borderColor = '#86efac';
+  document.getElementById('p-policy-open').style.color = '#14532d';
+  document.getElementById('p-policy-help').textContent = 'You can re-read them by clicking again.';
+  const btn = document.getElementById('p-submit');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.style.pointerEvents = 'auto';
+  closePartyPolicy();
+}
+
 async function submitParty() {
   const errEl = document.getElementById('p-err');
   errEl.classList.remove('show');
+  if (!__PARTY_POLICY_ACCEPTED) {
+    errEl.textContent = 'Please read and accept the party rules first.';
+    errEl.classList.add('show');
+    return;
+  }
   const title = document.getElementById('p-title').value.trim();
   const starts_at = fromLocalInput(document.getElementById('p-starts').value);
   const ends_at_v = document.getElementById('p-ends').value;
@@ -699,12 +796,26 @@ async function submitParty() {
       title, starts_at, ends_at,
       expected_guests: guests || null,
       body: body || null,
+      policies_accepted: true,
     });
     if (!data.ok) throw new Error(data.error || 'Could not submit');
     closePartyModal();
     await refreshParties();
   } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
   finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+// "I paid via Venmo" button on approved-but-unpaid parties → fires
+// claim_party_paid which marks payment_status=pending_verify and creates
+// an admin task for the treasurer.
+async function claimPartyPaid(id) {
+  if (!confirm('Mark this party as paid via Venmo?\n\nThe treasurer will verify the payment landed and officially confirm your booking.')) return;
+  try {
+    const data = await callMember('claim_party_paid', { id });
+    if (!data.ok) throw new Error(data.error || 'Could not record');
+    alert('✓ Treasurer notified. They\'ll confirm your booking once they verify the Venmo payment.');
+    await refreshParties();
+  } catch (e) { alert(e.message); }
 }
 
 async function cancelParty(id) {
@@ -729,16 +840,31 @@ async function refreshParties() {
     }
     card.innerHTML = `<h2>Your party requests</h2>${rows.map(b => {
       const fmt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' }) : '';
-      const cancellable = ['pending','approved'].includes(b.status);
+      const cancellable = ['pending','approved'].includes(b.status) && b.payment_status !== 'paid';
+      // Status copy for member: "approved" alone is misleading because the
+      // date isn't locked until payment lands. Surface payment state plainly.
+      let statusLabel, statusClass;
+      if (b.status === 'pending') { statusLabel = 'Awaiting board approval'; statusClass = 'party-pending'; }
+      else if (b.status === 'rejected') { statusLabel = 'Not approved'; statusClass = 'party-rejected'; }
+      else if (b.status === 'cancelled') { statusLabel = 'Cancelled'; statusClass = 'party-cancelled'; }
+      else if (b.status === 'approved' && b.payment_status === 'paid') { statusLabel = '✓ Officially booked'; statusClass = 'party-approved'; }
+      else if (b.status === 'approved' && b.payment_status === 'pending_verify') { statusLabel = 'Payment pending verify'; statusClass = 'party-pending'; }
+      else { statusLabel = 'Approved — pay to confirm'; statusClass = 'party-pending'; }
+      // Pay button shows when approved AND not yet paid AND not pending verify.
+      const showPay = b.status === 'approved' && (b.payment_status === 'unpaid' || !b.payment_status);
+      const priceLabel = b.price_cents ? `$${(b.price_cents / 100).toFixed(0)}` : '';
       return `
         <div class="party-row">
           <div style="flex:1;min-width:0">
-            <div class="ptitle">${escapeHtml(b.title)}</div>
+            <div class="ptitle">${escapeHtml(b.title)}${priceLabel ? ` <span style="font-weight:500;color:var(--muted);font-size:12px">· ${escapeHtml(priceLabel)}</span>` : ''}</div>
             <div class="pmeta">${escapeHtml(fmt(b.starts_at))}${b.ends_at ? ' → ' + escapeHtml(new Date(b.ends_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})) : ''}${b.expected_guests ? ' · ' + b.expected_guests + ' guests' : ''}</div>
             ${b.admin_notes ? `<div class="pnote">📝 ${escapeHtml(b.admin_notes)}</div>` : ''}
+            ${showPay ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff;border:0;border-radius:8px;cursor:pointer;font-weight:600" onclick="claimPartyPaid('${b.id}')">💵 I paid via Venmo</button>
+            </div>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <span class="pill party-${escapeHtml(b.status)}">${escapeHtml(b.status)}</span>
+            <span class="pill ${statusClass}" style="white-space:nowrap">${escapeHtml(statusLabel)}</span>
             ${cancellable ? `<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="cancelParty('${b.id}')">Cancel</button>` : ''}
           </div>
         </div>

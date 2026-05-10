@@ -283,6 +283,80 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       <p style="margin:0;color:#64748b;font-size:13px">Common reasons: card expired, address changed, or daily limit reached. Replying to this email is the fastest way to reach us.</p>
     `),
   },
+
+  // ─── Party booking lifecycle ──────────────────────────────────────────
+  {
+    key: 'party_request_received',
+    label: 'Party request received',
+    description: 'Sent when a member submits a party booking request. The board still needs to approve.',
+    audience: 'member',
+    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'party_time', 'club_url'],
+    default_subject: 'Party request received — {{tenant_name}}',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Got your party request</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — thanks for booking <b>{{party_title}}</b> for <b>{{party_date}}</b> at {{party_time}}. The board will review and get back to you shortly.</p>
+      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.55">
+        <b>What happens next:</b> a board member will approve or reject your request. If approved, you'll get a follow-up email with payment instructions. The party is officially on the calendar only after payment is received.
+      </div>
+      <p style="margin:0;color:#94a3b8;font-size:12px">Hosting at <a href="{{club_url}}" style="color:#0a3b5c">{{tenant_name}}</a></p>
+    `),
+  },
+  {
+    key: 'party_approved_pay',
+    label: 'Party approved — payment needed',
+    description: 'Sent when the board approves a party request. The member completes payment to officially book the date.',
+    audience: 'member',
+    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'party_time', 'price', 'venmo_handle', 'club_url', 'member_url'],
+    default_subject: 'Your party is approved — pay to confirm',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Party approved — last step is payment</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — the board approved <b>{{party_title}}</b> for <b>{{party_date}}</b> at {{party_time}}. To officially lock in the date, please complete the {{price}} party fee.</p>
+      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
+        <div style="font-weight:700;color:#0a3b5c;margin-bottom:6px">How to pay</div>
+        <div><b>Venmo:</b> send {{price}} to <b>@{{venmo_handle}}</b>, then sign in and tap "I paid" so the treasurer can verify.</div>
+        <div style="margin-top:6px"><b>Card / Stripe:</b> sign in below and click "Pay with card" — the date locks instantly when payment clears (small processing fee added).</div>
+      </div>
+      <p style="margin:18px 0">
+        <a href="{{member_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to pay →</a>
+      </p>
+      <p style="margin:0;color:#94a3b8;font-size:12px">Until payment is received the date is held but not officially booked. If another member pays for the same day first, you'd need to pick a different date.</p>
+    `),
+  },
+  {
+    key: 'party_confirmed',
+    label: 'Party officially booked',
+    description: 'Sent when payment is verified (Venmo) or auto-confirmed (Stripe). Party is now on the calendar.',
+    audience: 'member',
+    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'party_time', 'club_url'],
+    default_subject: '🎉 Your party is officially booked',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Officially booked!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — payment received. <b>{{party_title}}</b> is locked in for <b>{{party_date}}</b> at {{party_time}}.</p>
+      <div style="margin:18px 0;padding:14px 16px;background:#dcfce7;border-radius:10px;font-size:13px;color:#14532d;line-height:1.55">
+        Your party is now on the {{tenant_name}} calendar — visible to members so everyone knows the pool's reserved that day.
+      </div>
+      <p style="margin:18px 0">
+        <a href="{{club_url}}/m/index.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Open member home →</a>
+      </p>
+      <p style="margin:0;color:#64748b;font-size:13px">If anything changes, reply to this email or message the board directly.</p>
+    `),
+  },
+  {
+    key: 'party_rejected',
+    label: 'Party request not approved',
+    description: 'Sent when the board rejects a party request (date conflict, capacity, policy issue, etc.).',
+    audience: 'member',
+    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'admin_notes', 'club_url'],
+    default_subject: 'Update on your party request — {{tenant_name}}',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">Party request not approved</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — unfortunately we can't approve <b>{{party_title}}</b> for {{party_date}}.</p>
+      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12;line-height:1.55">
+        <b>Note from the board:</b> {{admin_notes}}
+      </div>
+      <p style="margin:0;color:#475569;line-height:1.55">Pick a different date and submit a new request — sign in at <a href="{{club_url}}/m/login.html" style="color:#0a3b5c">{{club_url}}</a>.</p>
+    `),
+  },
 ];
 
 // Lookup helper

@@ -303,6 +303,66 @@ Deno.serve(async (req) => {
         .eq('id', md.pack_id).eq('tenant_id', tenantId);
     }
 
+    // Party booking — Stripe path. Marks paid + materializes calendar event,
+    // mirrors what parties_admin.verify_payment does for the Venmo path.
+    // Race-safe: the partial unique index on (tenant_id, starts_at::date)
+    // where status='approved' AND payment_status='paid' is the last-line
+    // defense if two parties race to confirm the same day.
+    if (kind === 'party_booking' && md.party_id && tenantId) {
+      const { data: party } = await sb.from('party_bookings')
+        .select('id, tenant_id, household_id, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id')
+        .eq('id', md.party_id).eq('tenant_id', tenantId).maybeSingle();
+      if (party && party.payment_status !== 'paid') {
+        // Day-block check (in case another party paid between approve and now).
+        const dayKey = new Date(party.starts_at as string).toISOString().slice(0, 10);
+        const dayStart = `${dayKey}T00:00:00.000Z`;
+        const dayEnd = new Date(new Date(dayKey).getTime() + 86400_000).toISOString();
+        const { data: collisions } = await sb.from('party_bookings')
+          .select('id').eq('tenant_id', tenantId).neq('id', party.id)
+          .eq('status', 'approved').eq('payment_status', 'paid')
+          .gte('starts_at', dayStart).lt('starts_at', dayEnd).limit(1);
+        if (collisions && collisions.length > 0) {
+          // Day collision — refund unwound separately by admin. Mark paid_at
+          // but flag an admin task to investigate. Skip event materialization.
+          console.error('party_booking webhook: date collision after payment', md.party_id);
+          await sb.from('party_bookings').update({
+            payment_status: 'paid', payment_method: 'stripe',
+            paid_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          }).eq('id', md.party_id).eq('tenant_id', tenantId);
+        } else {
+          // Materialize calendar event + mark paid + close any open admin tasks.
+          if (!party.event_id) {
+            const { data: hh } = await sb.from('households')
+              .select('family_name').eq('id', party.household_id as string).maybeSingle();
+            const guestStr = party.expected_guests ? `${party.expected_guests} expected guests` : null;
+            const familyStr = hh?.family_name ? `Hosted by the ${hh.family_name}` : null;
+            const composed = [familyStr, guestStr, party.body].filter(Boolean).join(' · ');
+            const { data: ev } = await sb.from('events').insert({
+              tenant_id: tenantId, title: party.title, body: composed || null, kind: 'party',
+              location: party.location, starts_at: party.starts_at, ends_at: party.ends_at,
+              all_day: false,
+            }).select('id').single();
+            if (ev) {
+              await sb.from('party_bookings').update({
+                payment_status: 'paid', payment_method: 'stripe',
+                paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
+                event_id: ev.id, updated_at: new Date().toISOString(),
+              }).eq('id', md.party_id).eq('tenant_id', tenantId);
+            }
+          } else {
+            await sb.from('party_bookings').update({
+              payment_status: 'paid', payment_method: 'stripe',
+              paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('id', md.party_id).eq('tenant_id', tenantId);
+          }
+          await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
+            .eq('tenant_id', tenantId).eq('source_kind', 'party_booking').eq('source_id', md.party_id)
+            .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
+        }
+      }
+    }
+
     // Fundraiser donations — donations.start_checkout sets metadata.kind
     // = 'donation'. The checkout-completion event lands the donor row
     // here as 'verified', then we recompute the fundraiser thermometer

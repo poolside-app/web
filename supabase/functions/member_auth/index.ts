@@ -399,7 +399,7 @@ Deno.serve(async (req) => {
   // ── list_my_parties ────────────────────────────────────────────────────
   if (action === 'list_my_parties') {
     const { data, error } = await sb.from('party_bookings')
-      .select('id, title, body, starts_at, ends_at, expected_guests, location, status, admin_notes, decided_at, event_id, created_at')
+      .select('id, title, body, starts_at, ends_at, expected_guests, location, status, payment_method, payment_status, price_cents, admin_notes, decided_at, event_id, created_at')
       .eq('tenant_id', payload.tid as string)
       .eq('household_id', payload.hid as string)
       .order('created_at', { ascending: false });
@@ -408,10 +408,17 @@ Deno.serve(async (req) => {
   }
 
   // ── request_party ──────────────────────────────────────────────────────
+  // Full booking-request flow:
+  //   • Validates the member can book parties at all
+  //   • Requires policy/rules acceptance (legal evidence — captured at submit)
+  //   • Day-blocks against any already-confirmed party on the same calendar day
+  //   • Snapshots the tenant's current party_price_cents into the booking
+  //     (price freezes at request time — admin price changes later don't apply)
+  //   • Enqueues an admin task so the board sees a "party.requested" item
+  //   • Emails the member confirming the request was received
   if (action === 'request_party') {
-    // Verify the requesting member can_book_parties before accepting.
     const { data: member } = await sb.from('household_members')
-      .select('id, can_book_parties, household_id, active')
+      .select('id, name, email, can_book_parties, household_id, active')
       .eq('id', payload.sub as string).maybeSingle();
     if (!member || !member.active) {
       return jsonResponse({ ok: false, error: 'Member not found' }, 401);
@@ -420,8 +427,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Your household admin hasn\'t given you party-booking access' }, 403);
     }
 
-    const title = String((body as Record<string, unknown>).title ?? '').trim();
-    const startsAtRaw = String((body as Record<string, unknown>).starts_at ?? '').trim();
+    const b = body as Record<string, unknown>;
+    const title = String(b.title ?? '').trim();
+    const startsAtRaw = String(b.starts_at ?? '').trim();
     if (!title) return jsonResponse({ ok: false, error: 'Title is required' }, 400);
     if (title.length > 140) return jsonResponse({ ok: false, error: 'Title too long' }, 400);
     if (!startsAtRaw) return jsonResponse({ ok: false, error: 'Date / time is required' }, 400);
@@ -430,7 +438,7 @@ Deno.serve(async (req) => {
     if (startsDate < new Date()) {
       return jsonResponse({ ok: false, error: 'Pick a date in the future' }, 400);
     }
-    const endsAtRaw = (body as Record<string, unknown>).ends_at;
+    const endsAtRaw = b.ends_at;
     let endsAt: string | null = null;
     if (endsAtRaw) {
       const e = new Date(String(endsAtRaw));
@@ -438,13 +446,45 @@ Deno.serve(async (req) => {
       if (e < startsDate) return jsonResponse({ ok: false, error: 'End time must be after start' }, 400);
       endsAt = e.toISOString();
     }
-    const guests = (body as Record<string, unknown>).expected_guests;
+    const guests = b.expected_guests;
     const expected_guests = guests === undefined || guests === null || guests === ''
       ? null
       : Math.max(0, Math.trunc(Number(guests) || 0));
 
-    const bodyText = String((body as Record<string, unknown>).body ?? '').trim();
+    const bodyText = String(b.body ?? '').trim();
     if (bodyText.length > 2000) return jsonResponse({ ok: false, error: 'Notes too long' }, 400);
+
+    // Policy acceptance is a must — same legal-evidence pattern as apply.html.
+    // The member-side UI shows the policy text + a checkbox; submit requires
+    // both the boolean and (optionally) a typed-name signature.
+    const policiesAccepted = b.policies_accepted === true;
+    const signature = String(b.signature ?? '').trim().slice(0, 200) || null;
+    if (!policiesAccepted) {
+      return jsonResponse({ ok: false, error: 'You must accept the party policies before submitting' }, 400);
+    }
+
+    // Day-blocking: reject if there's already a confirmed party on the same
+    // calendar day. Members shouldn't be able to even REQUEST a date that's
+    // already locked — saves them from filling out a form for nothing.
+    // Confirmed = status=approved AND payment_status=paid. Pending/unpaid
+    // requests don't lock the date (board can decide which to approve).
+    const dayKey = startsDate.toISOString().slice(0, 10);  // YYYY-MM-DD UTC
+    const dayStart = `${dayKey}T00:00:00.000Z`;
+    const dayEnd = new Date(new Date(dayKey).getTime() + 86400_000).toISOString();
+    const { data: collisions } = await sb.from('party_bookings')
+      .select('id, title, starts_at')
+      .eq('tenant_id', payload.tid as string)
+      .eq('status', 'approved').eq('payment_status', 'paid')
+      .gte('starts_at', dayStart).lt('starts_at', dayEnd)
+      .limit(1);
+    if (collisions && collisions.length > 0) {
+      return jsonResponse({ ok: false, error: 'That day already has a confirmed party — pick another date.' }, 409);
+    }
+
+    // Snapshot price from tenant settings at request time.
+    const { data: settings } = await sb.from('settings')
+      .select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+    const priceCents = Number(((settings?.value as Record<string, unknown> | undefined)?.party_price_cents ?? 0)) || 0;
 
     const { data, error } = await sb.from('party_bookings').insert({
       tenant_id: payload.tid as string,
@@ -456,9 +496,97 @@ Deno.serve(async (req) => {
       ends_at: endsAt,
       expected_guests,
       status: 'pending',
-    }).select('id, title, starts_at, ends_at, status, created_at').single();
+      price_cents: priceCents > 0 ? priceCents : null,
+      payment_status: 'unpaid',
+      policies_accepted: true,
+      accepted_at: new Date().toISOString(),
+      signature,
+    }).select('id, title, starts_at, ends_at, status, price_cents, created_at').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    // Fire admin_task so the board sees the request without polling.
+    try {
+      const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+      const familyName = (b.family_name as string | undefined) ?? '';
+      const dateLabel = startsDate.toLocaleDateString(undefined, { dateStyle: 'medium' });
+      await enqueueAdminTask(sb, {
+        tenant_id: payload.tid as string,
+        target_scopes: ['parties', 'operations'],
+        kind: 'party.requested',
+        summary: `Party request: ${title}${familyName ? ` (${familyName})` : ''} — ${dateLabel}`,
+        link_url: '/club/admin/parties.html',
+        source_kind: 'party_booking', source_id: data.id,
+        push_title: `🎉 Party request: ${title}`,
+        push_body: `${dateLabel}${expected_guests ? ` · ${expected_guests} guests` : ''}. Tap to review.`,
+      });
+    } catch { /* best-effort */ }
+
+    // Confirmation email to the requesting member.
+    if (member.email) {
+      try {
+        const { renderAndSend } = await import('../_shared/email_template.ts');
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', payload.tid as string).maybeSingle();
+        await renderAndSend(sb, {
+          tenantId: payload.tid as string,
+          templateKey: 'party_request_received',
+          to: member.email as string,
+          variables: {
+            tenant_name: tenant?.display_name || 'Your club',
+            primary_name: member.name as string,
+            party_title: title,
+            party_date: startsDate.toLocaleDateString(undefined, { dateStyle: 'full' }),
+            party_time: startsDate.toLocaleTimeString(undefined, { timeStyle: 'short' }),
+            club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
+          },
+        });
+      } catch { /* email failure never blocks the request */ }
+    }
+
     return jsonResponse({ ok: true, party: data });
+  }
+
+  // ── claim_party_paid (Venmo path: member-side "I paid Venmo") ─────────
+  // Mirrors claim_venmo_paid for applications. Fires a 'party.venmo_claim'
+  // admin_task so the treasurer can verify the payment landed.
+  if (action === 'claim_party_paid') {
+    const id = String((body as Record<string, unknown>).id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: party } = await sb.from('party_bookings')
+      .select('id, tenant_id, household_id, title, status, payment_status, starts_at')
+      .eq('id', id).eq('tenant_id', payload.tid as string).maybeSingle();
+    if (!party) return jsonResponse({ ok: false, error: 'Party not found' }, 404);
+    if (party.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Not yours' }, 403);
+    if (party.status !== 'approved') return jsonResponse({ ok: false, error: 'Party isn\'t approved yet — wait for board approval' }, 409);
+    if (party.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already marked paid' }, 409);
+
+    await sb.from('party_bookings').update({
+      payment_status: 'pending_verify',
+      payment_method: 'venmo',
+      updated_at: new Date().toISOString(),
+    }).eq('id', id);
+
+    // Dedupe — don't fire a second claim if one is already open.
+    const { data: existing } = await sb.from('admin_tasks')
+      .select('id').eq('tenant_id', party.tenant_id as string)
+      .eq('source_kind', 'party_booking').eq('source_id', id).eq('kind', 'party.venmo_claim')
+      .is('completed_at', null).is('dismissed_at', null).maybeSingle();
+    if (!existing) {
+      try {
+        const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+        const dateLabel = new Date(party.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'medium' });
+        await enqueueAdminTask(sb, {
+          tenant_id: party.tenant_id as string,
+          target_scopes: ['parties', 'payments', 'operations'],
+          kind: 'party.venmo_claim',
+          summary: `Venmo party payment to verify: ${party.title} (${dateLabel})`,
+          link_url: '/club/admin/parties.html',
+          source_kind: 'party_booking', source_id: id,
+          push_title: `💵 Venmo party payment to verify`,
+          push_body: `${party.title} on ${dateLabel}. Open Venmo, confirm, then mark paid.`,
+        });
+      } catch { /* best-effort */ }
+    }
+    return jsonResponse({ ok: true });
   }
 
   // ── cancel_my_party ────────────────────────────────────────────────────
