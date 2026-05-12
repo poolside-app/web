@@ -251,6 +251,8 @@
     </div>
   </div>
 
+  <!-- Color-coded legend, populated after external feeds + native events load -->
+  <div id="cal-legend" style="padding:8px 22px 12px;line-height:1.6;display:none"></div>
   <div id="month-view"></div>
   <div id="list" style="display:none">
     <div class="empty">Loading…</div>
@@ -554,70 +556,72 @@ let LIST_CACHE = [];
 // feed's label is in ev.source_label.
 async function fetchExternalCalendarEvents() {
   try {
-    const d = await callAt(EXT_URL, 'list_feeds');
-    if (!d.ok || !Array.isArray(d.feeds)) return [];
-    // list_feeds omits cached_events from payload to keep it light — we have
-    // to call list_public to get the actual events for render.
     const me = await fetch(ME_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
       body: JSON.stringify({ action: 'me' }),
     }).then(r => r.json());
-    if (!me.ok) return [];
+    if (!me.ok) return { flat: [], feeds: [] };
     const pub = await fetch(EXT_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'list_public', slug: me.tenant.slug }),
     }).then(r => r.json());
-    if (!pub.ok) return [];
+    if (!pub.ok) return { flat: [], feeds: [] };
     const flat = [];
     for (const f of (pub.feeds || [])) {
       for (const e of (f.events || [])) {
         flat.push({
           id: `ext_${f.id}_${e.uid}_${e.starts_at}`,
-          title: e.summary,
-          body: e.description || '',
-          location: e.location || '',
-          starts_at: e.starts_at,
-          ends_at: e.ends_at,
-          all_day: !!e.all_day,
-          kind: 'event',
-          color: f.color,
-          external: true,
-          source_label: f.label,
-          source_url: e.source_url || null,
+          title: e.summary, body: e.description || '', location: e.location || '',
+          starts_at: e.starts_at, ends_at: e.ends_at, all_day: !!e.all_day,
+          kind: 'event', color: f.color, external: true,
+          source_label: f.label, source_url: e.source_url || null,
         });
       }
     }
-    return flat;
-  } catch { return []; }
+    return { flat, feeds: pub.feeds || [] };
+  } catch { return { flat: [], feeds: [] }; }
+}
+
+function renderCalendarLegend(externalFeeds) {
+  const el = document.getElementById('cal-legend');
+  if (!el) return;
+  if (!externalFeeds || !externalFeeds.length) { el.style.display = 'none'; return; }
+  const items = externalFeeds.map(f =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;color:var(--muted)">` +
+    `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color}"></span>${escapeHtml(f.label)}</span>`
+  ).join('');
+  el.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;color:var(--muted)"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0a3b5c"></span>Poolside events</span>${items}`;
+  el.style.display = 'block';
 }
 
 async function refresh() {
   try {
     if (VIEW === 'month') {
-      const [data, ext] = await Promise.all([
+      const [data, extResp] = await Promise.all([
         call('list', { range: 'all' }),
         fetchExternalCalendarEvents(),
       ]);
       if (!data.ok) throw new Error(data.error || 'Failed to load');
-      CACHE_ALL = [...(data.events || []), ...ext];
+      CACHE_ALL = [...(data.events || []), ...(extResp.flat || [])];
+      renderCalendarLegend(extResp.feeds);
       renderMonth();
     } else {
-      const [data, ext] = await Promise.all([
+      const [data, extResp] = await Promise.all([
         call('list', { range: RANGE }),
         fetchExternalCalendarEvents(),
       ]);
       if (!data.ok) throw new Error(data.error || 'Failed to load');
-      // For the list view, filter external events to match the RANGE filter.
       const now = Date.now();
-      const extFiltered = ext.filter(e => {
+      const extFiltered = (extResp.flat || []).filter(e => {
         const t = new Date(e.starts_at).getTime();
         if (RANGE === 'upcoming') return t >= now;
         if (RANGE === 'past') return t < now;
         return true;
       });
       LIST_CACHE = [...(data.events || []), ...extFiltered];
+      renderCalendarLegend(extResp.feeds);
       render(searchFilter(LIST_CACHE));
     }
   } catch (e) {
@@ -975,17 +979,24 @@ async function refreshExtFeeds() {
       return;
     }
     list.innerHTML = EXT_FEEDS_CACHE.map(f => {
-      const lastSync = f.last_synced_at
-        ? new Date(f.last_synced_at).toLocaleString(undefined, { dateStyle:'short', timeStyle:'short' })
-        : 'never';
+      const lastSyncMs = f.last_synced_at ? new Date(f.last_synced_at).getTime() : 0;
+      const ageMs = lastSyncMs ? (Date.now() - lastSyncMs) : null;
+      const stale = ageMs !== null && ageMs > 2 * 3600_000;       // >2 hours = stale
+      const neverSynced = !lastSyncMs;
+      const lastSync = neverSynced
+        ? 'never'
+        : new Date(f.last_synced_at).toLocaleString(undefined, { dateStyle:'short', timeStyle:'short' });
       const errBlurb = f.last_error
         ? `<div style="margin-top:4px;font-size:12px;color:#7f1d1d"><b>⚠ Last fetch failed:</b> ${escapeHtml(f.last_error)}</div>`
+        : '';
+      const staleBadge = (stale && !f.last_error)
+        ? `<span style="margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#92400e;background:#fef3c7;padding:2px 6px;border-radius:999px">⚠ stale</span>`
         : '';
       return `
         <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff">
           <div style="width:18px;height:18px;border-radius:50%;background:${escapeAttr(f.color)};flex-shrink:0;box-shadow:0 0 0 2px rgba(0,0,0,.04)"></div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:14px">${escapeHtml(f.label)} ${f.enabled ? '' : '<span style="font-weight:500;color:var(--muted);font-size:11px">(hidden)</span>'}</div>
+            <div style="font-weight:600;font-size:14px">${escapeHtml(f.label)} ${f.enabled ? '' : '<span style="font-weight:500;color:var(--muted);font-size:11px">(hidden)</span>'}${staleBadge}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${f.events_count} events · last sync ${escapeHtml(lastSync)}</div>
             ${errBlurb}
           </div>

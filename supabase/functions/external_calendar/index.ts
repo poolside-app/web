@@ -133,8 +133,9 @@ function splitProp(line: string): { name: string; params: Record<string, string>
 
 // Expand a recurring event into individual instances within [windowStart, windowEnd].
 // Handles FREQ=DAILY/WEEKLY/MONTHLY/YEARLY with INTERVAL, COUNT, UNTIL, BYDAY,
-// BYMONTHDAY. Conservative — if RRULE has fields we don't handle, return just
-// the base event so the admin still sees something.
+// BYMONTHDAY, and BYSETPOS for monthly patterns ("third Tuesday", "last Friday").
+// EXDATE exclusions are handled by the caller (parseIcal) since they live on
+// the VEVENT, not the RRULE.
 function expandRrule(
   rrule: string,
   baseStart: Date,
@@ -160,29 +161,66 @@ function expandRrule(
   const byday = (fields.BYDAY || '').split(',').filter(Boolean);
   const dayMap: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
   const targetDays = byday.map(d => dayMap[d.slice(-2).toUpperCase()]).filter(d => d !== undefined);
+  const bySetPos = (fields.BYSETPOS || '').split(',').map(s => parseInt(s, 10)).filter(n => !isNaN(n));
 
   const out: Array<{ start: Date; end: Date | null }> = [];
   let cur = new Date(baseStart);
   let safetyCounter = 0;
+
+  // Helper: build an instance Date with cur's clock time (hours/minutes/seconds)
+  // but a fresh day. Used by the BYDAY/BYSETPOS expansion below.
+  const withTimeOf = (target: Date, ref: Date): Date => {
+    const d = new Date(target);
+    d.setHours(ref.getHours(), ref.getMinutes(), ref.getSeconds(), 0);
+    return d;
+  };
+
   while (cur.getTime() <= windowEnd.getTime() && safetyCounter < 500) {
     safetyCounter++;
     if (until && cur > until) break;
     if (count !== null && out.length >= count) break;
+
     if (cur.getTime() >= windowStart.getTime() - 86400_000) {
-      // For WEEKLY+BYDAY, emit one instance per matching day of week in the
-      // current week-interval. For other freqs, emit cur directly.
       if (freq === 'WEEKLY' && targetDays.length > 0) {
-        // Find start of week (Sunday)
+        // WEEKLY+BYDAY: emit each matching day of THIS week.
         const weekStart = new Date(cur);
         weekStart.setDate(weekStart.getDate() - weekStart.getDay());
         for (const d of targetDays) {
           const inst = new Date(weekStart);
           inst.setDate(weekStart.getDate() + d);
-          inst.setHours(cur.getHours(), cur.getMinutes(), cur.getSeconds(), 0);
-          if (inst.getTime() >= baseStart.getTime() && inst.getTime() <= windowEnd.getTime()) {
-            if (!until || inst <= until) {
+          const i2 = withTimeOf(inst, cur);
+          if (i2.getTime() >= baseStart.getTime() && i2.getTime() <= windowEnd.getTime()) {
+            if (!until || i2 <= until) {
               if (count === null || out.length < count) {
-                out.push({ start: inst, end: duration ? new Date(inst.getTime() + duration) : null });
+                out.push({ start: i2, end: duration ? new Date(i2.getTime() + duration) : null });
+              }
+            }
+          }
+        }
+      } else if (freq === 'MONTHLY' && targetDays.length > 0) {
+        // MONTHLY+BYDAY (+optional BYSETPOS): find every matching day in
+        // this month, then pick the BYSETPOS-th one (1-indexed, or -1 for
+        // last). Default (no BYSETPOS) emits all matching days.
+        const year = cur.getFullYear();
+        const month = cur.getMonth();
+        const matches: Date[] = [];
+        for (let day = 1; day <= 31; day++) {
+          const d = new Date(year, month, day);
+          if (d.getMonth() !== month) break;  // overflowed
+          if (targetDays.includes(d.getDay())) matches.push(d);
+        }
+        let picked: Date[] = matches;
+        if (bySetPos.length > 0) {
+          picked = bySetPos
+            .map(p => p > 0 ? matches[p - 1] : matches[matches.length + p])
+            .filter((d): d is Date => d instanceof Date);
+        }
+        for (const inst of picked) {
+          const i2 = withTimeOf(inst, cur);
+          if (i2.getTime() >= baseStart.getTime() && i2.getTime() <= windowEnd.getTime()) {
+            if (!until || i2 <= until) {
+              if (count === null || out.length < count) {
+                out.push({ start: i2, end: duration ? new Date(i2.getTime() + duration) : null });
               }
             }
           }
@@ -191,13 +229,12 @@ function expandRrule(
         out.push({ start: new Date(cur), end: duration ? new Date(cur.getTime() + duration) : null });
       }
     }
-    // Advance cursor by interval
     switch (freq) {
       case 'DAILY':   cur.setDate(cur.getDate() + interval); break;
       case 'WEEKLY':  cur.setDate(cur.getDate() + 7 * interval); break;
       case 'MONTHLY': cur.setMonth(cur.getMonth() + interval); break;
       case 'YEARLY':  cur.setFullYear(cur.getFullYear() + interval); break;
-      default: return out;  // unknown FREQ — bail
+      default: return out;
     }
   }
   return out;
@@ -210,15 +247,19 @@ function parseIcal(text: string, windowStart: Date, windowEnd: Date): ParsedEven
   let cur: Record<string, string> = {};
   let rrule: string | null = null;
   let dtstartParams: Record<string, string> = {};
+  // Collect EXDATE values per VEVENT — these are individual instances that
+  // were explicitly cancelled from a recurring series (e.g. "every Friday
+  // except July 4th"). Stored as a Set of YYYY-MM-DD UTC dates for cheap
+  // membership testing against expanded instances.
+  let exDates: Set<string> = new Set();
 
   for (const line of lines) {
     if (line === 'BEGIN:VEVENT') {
-      inEvent = true; cur = {}; rrule = null; dtstartParams = {};
+      inEvent = true; cur = {}; rrule = null; dtstartParams = {}; exDates = new Set();
       continue;
     }
     if (line === 'END:VEVENT') {
       inEvent = false;
-      // Reject cancelled events
       if ((cur.STATUS || '').toUpperCase() === 'CANCELLED') continue;
       const isDateOnly = (dtstartParams.VALUE || '').toUpperCase() === 'DATE';
       const dtstart = parseIcalDate(cur.DTSTART, isDateOnly);
@@ -240,9 +281,12 @@ function parseIcal(text: string, windowStart: Date, windowEnd: Date): ParsedEven
 
       if (rrule) {
         const instances = expandRrule(rrule, baseStart, baseEnd, windowStart, windowEnd);
-        for (const inst of instances) events.push(buildEvent(inst.start, inst.end));
+        for (const inst of instances) {
+          // Skip instances explicitly excluded via EXDATE
+          if (exDates.has(inst.start.toISOString().slice(0, 10))) continue;
+          events.push(buildEvent(inst.start, inst.end));
+        }
       } else {
-        // Only include if it falls in the window
         if (baseStart.getTime() >= windowStart.getTime() && baseStart.getTime() <= windowEnd.getTime()) {
           events.push(buildEvent(baseStart, baseEnd));
         }
@@ -254,6 +298,14 @@ function parseIcal(text: string, windowStart: Date, windowEnd: Date): ParsedEven
     if (!prop) continue;
     if (prop.name === 'RRULE') rrule = prop.value;
     else if (prop.name === 'DTSTART') { cur.DTSTART = prop.value; dtstartParams = prop.params; }
+    else if (prop.name === 'EXDATE') {
+      // EXDATE can be a comma-separated list. Each entry parsed same as DTSTART.
+      const isDateOnly = (prop.params.VALUE || '').toUpperCase() === 'DATE';
+      for (const v of prop.value.split(',')) {
+        const parsed = parseIcalDate(v.trim(), isDateOnly);
+        if (parsed) exDates.add(parsed.iso.slice(0, 10));
+      }
+    }
     else cur[prop.name] = prop.value;
   }
   return events;
@@ -291,24 +343,86 @@ async function fetchAndParse(icalUrl: string): Promise<{ events: ParsedEvent[]; 
 
 async function refreshFeed(sb: ReturnType<typeof createClient>, feedId: string): Promise<{ ok: boolean; events_count?: number; error?: string }> {
   const { data: feed } = await sb.from('external_calendar_feeds')
-    .select('id, ical_url').eq('id', feedId).maybeSingle();
+    .select('id, tenant_id, label, ical_url, consecutive_failures, last_alert_sent_at')
+    .eq('id', feedId).maybeSingle();
   if (!feed) return { ok: false, error: 'Feed not found' };
   const { events, error } = await fetchAndParse(feed.ical_url as string);
   if (error) {
+    const newFailures = ((feed.consecutive_failures as number | null) ?? 0) + 1;
     await sb.from('external_calendar_feeds').update({
       last_synced_at: new Date().toISOString(),
       last_error: error.slice(0, 500),
+      consecutive_failures: newFailures,
       updated_at: new Date().toISOString(),
     }).eq('id', feedId);
+    // Alert the admins once when failures hit 3 — and not more than once
+    // per 24h after that, to avoid spamming if the feed stays broken.
+    if (newFailures >= 3) {
+      const lastAlert = feed.last_alert_sent_at ? new Date(feed.last_alert_sent_at as string).getTime() : 0;
+      if (Date.now() - lastAlert > 86400_000) {
+        await sendFeedFailureAlert(sb, feed.tenant_id as string, feed.label as string, feed.ical_url as string, error, newFailures);
+        await sb.from('external_calendar_feeds').update({
+          last_alert_sent_at: new Date().toISOString(),
+        }).eq('id', feedId);
+      }
+    }
     return { ok: false, error };
   }
   await sb.from('external_calendar_feeds').update({
     cached_events: events,
     last_synced_at: new Date().toISOString(),
     last_error: null,
+    consecutive_failures: 0,
     updated_at: new Date().toISOString(),
   }).eq('id', feedId);
   return { ok: true, events_count: events.length };
+}
+
+// Notify owner admins when a feed has failed 3+ times in a row. Plain-English
+// — Linda doesn't know what "iCal" or "HTTP 401" means, so we translate.
+async function sendFeedFailureAlert(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  label: string,
+  icalUrl: string,
+  error: string,
+  failures: number,
+): Promise<void> {
+  try {
+    const [{ data: tenant }, { data: owners }] = await Promise.all([
+      sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle(),
+      sb.from('admin_users').select('email').eq('tenant_id', tenantId).eq('active', true)
+        .or('role_template.eq.owner,is_super.eq.true'),
+    ]);
+    if (!tenant || !owners || !owners.length) return;
+    const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+    const clubName = (tenant.display_name as string) || 'Your club';
+    const slug = tenant.slug as string;
+    // Plain-English translation of the most common failures
+    let plainEnglish = 'We couldn\'t reach the calendar.';
+    if (/404|not found/i.test(error)) plainEnglish = 'The URL doesn\'t exist anymore — the source calendar may have been deleted or its share link reset.';
+    else if (/401|403|unauthorized|forbidden/i.test(error)) plainEnglish = 'The calendar URL is no longer accessible — most likely the source was changed from public to private (or the secret URL was rotated).';
+    else if (/timeout|abort|aborted/i.test(error)) plainEnglish = 'The calendar source kept timing out. It might be temporarily down.';
+    else if (/dns|name|resolve/i.test(error)) plainEnglish = 'We couldn\'t look up the calendar host. Check the URL for typos.';
+    const html = `
+      <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
+        <h2 style="font-family:Georgia,serif;color:#7c2d12;margin:0 0 8px">⚠ Calendar feed failed ${failures} times</h2>
+        <p style="margin:0 0 12px;line-height:1.55">Hi — the <b>${escHtml(label)}</b> calendar at <b>${escHtml(clubName)}</b> hasn't loaded successfully in a while.</p>
+        <div style="margin:14px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#78350f;line-height:1.55">
+          <b>What's going on:</b> ${escHtml(plainEnglish)}<br>
+          <b>Technical detail:</b> <code style="font-size:12px">${escHtml(error)}</code>
+        </div>
+        <p style="margin:0 0 12px;line-height:1.55">Members won't see any new events from <b>${escHtml(label)}</b> until this is fixed.</p>
+        <p style="margin:18px 0">
+          <a href="https://${escHtml(slug)}.poolsideapp.com/club/admin/events.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Fix in admin →</a>
+        </p>
+        <p style="margin:0;color:#64748b;font-size:12px">We'll keep trying every 15 minutes. We won't email you again about this calendar for 24 hours.</p>
+      </div>
+    `;
+    for (const o of owners) {
+      if (o.email) await sendEmail({ to: o.email as string, subject: `Calendar feed broken — ${label}`, html });
+    }
+  } catch { /* never fatal */ }
 }
 
 // ─── HTTP handler ─────────────────────────────────────────────────────────
@@ -320,6 +434,26 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // ─ Cron action: refresh ALL enabled feeds across ALL tenants ───────────
+  // Called by pg_cron every 15 min (see migration 20260512000100). Gated by
+  // x-cron-secret header (same secret as payment_plans cron, in Supabase
+  // Vault as 'cron_secret').
+  if (action === 'cron_sync_all') {
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const headerSecret = req.headers.get('x-cron-secret') || '';
+    if (!cronSecret || headerSecret !== cronSecret) {
+      return jsonResponse({ ok: false, error: 'Forbidden' }, 403);
+    }
+    const { data: feeds } = await sb.from('external_calendar_feeds')
+      .select('id').eq('enabled', true);
+    let ok = 0, failed = 0;
+    for (const f of (feeds ?? [])) {
+      const r = await refreshFeed(sb, f.id as string);
+      if (r.ok) ok++; else failed++;
+    }
+    return jsonResponse({ ok: true, refreshed: ok, failed });
+  }
 
   // ─ Public action: member-facing calendar render ─────────────────────────
   // No auth — anyone with the tenant slug can fetch the enabled feeds'
