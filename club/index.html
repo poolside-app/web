@@ -917,15 +917,57 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
   `;
 
   // Render the shared month-grid widget after the HTML is in place.
+  // Fetches external iCal feeds (Google Calendar, Swimtopia, etc. that the
+  // admin connected) and merges them into the native event list with per-feed
+  // color. Re-renders once external data lands so the page doesn't block on it.
   const calOpens  = fmtHourLabel(ps?.pool?.opens_at);
   const calCloses = fmtHourLabel(ps?.pool?.closes_at);
   const openHoursLabel = (calOpens && calCloses) ? `${calOpens}–${calCloses}` : null;
   if (window.PoolsideCalendar) {
-    PoolsideCalendar.render({
-      rootEl: document.getElementById('public-calendar'),
-      events: events || [],
-      openHoursLabel,
-    });
+    const calRoot = document.getElementById('public-calendar');
+    // First-pass render with native events only — instant.
+    PoolsideCalendar.render({ rootEl: calRoot, events: events || [], openHoursLabel });
+    // Then async-augment with external feeds.
+    (async () => {
+      try {
+        const slug = (window.location.hostname.match(/^([a-z0-9-]+)\.poolsideapp\.com$/) || [])[1];
+        if (!slug) return;
+        const SUPA = 'https://sdewylbddkcvidwosgxo.supabase.co';
+        const r = await fetch(`${SUPA}/functions/v1/external_calendar`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'list_public', slug }),
+        });
+        const data = await r.json();
+        if (!data.ok || !Array.isArray(data.feeds) || !data.feeds.length) return;
+        const flat = [];
+        for (const f of data.feeds) {
+          for (const e of (f.events || [])) {
+            flat.push({
+              id: `ext_${f.id}_${e.uid}_${e.starts_at}`,
+              title: e.summary, body: e.description || '', location: e.location || '',
+              starts_at: e.starts_at, ends_at: e.ends_at, all_day: !!e.all_day,
+              kind: 'event', color: f.color, external: true,
+              source_label: f.label, source_url: e.source_url || null,
+            });
+          }
+        }
+        if (!flat.length) return;
+        PoolsideCalendar.render({
+          rootEl: calRoot,
+          events: [...(events || []), ...flat],
+          openHoursLabel,
+        });
+        // Color-coded legend above the calendar so members can tell at a
+        // glance which color comes from which calendar.
+        const legend = data.feeds.map(f =>
+          `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;color:var(--muted)"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color}"></span>${f.label}</span>`
+        ).join('');
+        const legendEl = document.createElement('div');
+        legendEl.style.cssText = 'padding:8px 0 12px;line-height:1.6';
+        legendEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;color:var(--muted)"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0a3b5c"></span>${ps?.public?.club_label || 'Club events'}</span>${legend}`;
+        calRoot.insertAdjacentElement('beforebegin', legendEl);
+      } catch { /* non-fatal — calendar still renders without externals */ }
+    })();
   }
 
   // Snapshots auto-scroll carousel — fades between slides every 5 seconds,

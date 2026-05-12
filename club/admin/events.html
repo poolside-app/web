@@ -255,7 +255,62 @@
   <div id="list" style="display:none">
     <div class="empty">Loading…</div>
   </div>
+
+  <!-- ── External calendars (Google, Swimtopia, etc.) ─────────────────── -->
+  <!-- Read-only iCal feeds the admin pulls IN. Each feed gets a color and
+       its events render alongside native Poolside events. -->
+  <section style="margin-top:42px;padding:24px;background:#fff;border:1px solid var(--border);border-radius:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <h2 style="margin:0;font-family:'Fraunces',Georgia,serif">📥 Pull other calendars in</h2>
+        <p style="margin:6px 0 0;color:var(--muted);font-size:13.5px;max-width:640px;line-height:1.5">Add a Google Calendar, Swimtopia schedule, or any iCal feed. Events appear on this calendar with the color you pick. Read-only — edit in the source tool, refreshes every ~15 min.</p>
+      </div>
+      <button class="btn" onclick="openAddExternal()">+ Add a calendar</button>
+    </div>
+    <div id="ext-feeds-list"><div class="empty" style="padding:18px 0;font-size:13.5px">Loading…</div></div>
+  </section>
 </main>
+
+<!-- External calendar add/edit modal -->
+<div class="scrim" id="ext-scrim">
+  <div class="modal">
+    <h2 id="ext-heading">Add a calendar</h2>
+    <input type="hidden" id="ext-id">
+
+    <label>Label <span style="color:var(--muted);font-weight:500;font-size:11px">(shown in the calendar legend)</span></label>
+    <input id="ext-label" maxlength="60" placeholder="Board Meetings · Swim Team · Town Events">
+
+    <label>iCal feed URL <span style="color:var(--muted);font-weight:500;font-size:11px">(starts with https://)</span></label>
+    <input id="ext-url" type="url" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
+    <details style="margin:6px 0 0">
+      <summary style="cursor:pointer;font-size:12px;color:var(--blue);font-weight:600">How do I find this URL? →</summary>
+      <div style="margin:8px 0 0;padding:10px 14px;background:var(--bg-2);border-radius:8px;font-size:13px;line-height:1.6;color:var(--text)">
+        <b>Google Calendar:</b> open Google Calendar on a computer → three-dot menu next to the calendar name → Settings and sharing → scroll to "Integrate calendar" → copy <b>Secret address in iCal format</b> (private events) or <b>Public address in iCal format</b> (only-public events).<br>
+        <b>Swimtopia:</b> open your team page → Schedule → "Subscribe" button → copy the URL.<br>
+        <b>Apple iCloud:</b> calendar sidebar → hover → 📡 share icon → make "Public" → copy.<br>
+        Any iCal-providing tool works (Outlook, Microsoft 365, sports schedule sites).
+      </div>
+    </details>
+
+    <label>Color <span style="color:var(--muted);font-weight:500;font-size:11px">(used to color events in the calendar)</span></label>
+    <input id="ext-color" type="color" value="#0a3b5c" style="width:80px;height:42px;padding:4px;border:1.5px solid var(--border);border-radius:8px;background:#fff;cursor:pointer">
+
+    <div class="check-row" style="margin-top:14px">
+      <input type="checkbox" id="ext-enabled" checked>
+      <label for="ext-enabled" style="margin:0;font-weight:500">Show events from this calendar</label>
+    </div>
+
+    <div class="err" id="ext-err"></div>
+    <div id="ext-test-result" style="display:none;margin-top:10px;padding:10px 14px;background:#dcfce7;color:#14532d;border:1.5px solid #86efac;border-radius:8px;font-size:13px;line-height:1.5"></div>
+
+    <div class="modal-foot">
+      <button class="btn-ghost btn" onclick="closeExtModal()">Cancel</button>
+      <button class="btn-ghost btn" id="ext-test-btn" onclick="testExtFetch()">🔍 Test fetch</button>
+      <button class="btn-danger btn" id="ext-delete-btn" onclick="deleteExtFeed()" style="display:none">Delete</button>
+      <button class="btn btn-success" id="ext-save-btn" onclick="saveExtFeed()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- Create / edit modal -->
 <div class="scrim" id="scrim">
@@ -363,6 +418,7 @@ const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
 const IMPORT_URL = `${SUPABASE_URL}/functions/v1/events_import`;
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const EXT_URL   = `${SUPABASE_URL}/functions/v1/external_calendar`;
 let SETTINGS = {};
 
 let RANGE = 'upcoming';
@@ -492,17 +548,76 @@ function searchFilter(events) {
 }
 
 let LIST_CACHE = [];
+// External-feed events get flattened into calendar-widget shape and concat'd
+// with native events. ev.color (hex) drives chip styling; ev.external=true
+// makes the chip show the "imported" border + tooltip prefix; the source
+// feed's label is in ev.source_label.
+async function fetchExternalCalendarEvents() {
+  try {
+    const d = await callAt(EXT_URL, 'list_feeds');
+    if (!d.ok || !Array.isArray(d.feeds)) return [];
+    // list_feeds omits cached_events from payload to keep it light — we have
+    // to call list_public to get the actual events for render.
+    const me = await fetch(ME_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'me' }),
+    }).then(r => r.json());
+    if (!me.ok) return [];
+    const pub = await fetch(EXT_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'list_public', slug: me.tenant.slug }),
+    }).then(r => r.json());
+    if (!pub.ok) return [];
+    const flat = [];
+    for (const f of (pub.feeds || [])) {
+      for (const e of (f.events || [])) {
+        flat.push({
+          id: `ext_${f.id}_${e.uid}_${e.starts_at}`,
+          title: e.summary,
+          body: e.description || '',
+          location: e.location || '',
+          starts_at: e.starts_at,
+          ends_at: e.ends_at,
+          all_day: !!e.all_day,
+          kind: 'event',
+          color: f.color,
+          external: true,
+          source_label: f.label,
+          source_url: e.source_url || null,
+        });
+      }
+    }
+    return flat;
+  } catch { return []; }
+}
+
 async function refresh() {
   try {
     if (VIEW === 'month') {
-      const data = await call('list', { range: 'all' });
+      const [data, ext] = await Promise.all([
+        call('list', { range: 'all' }),
+        fetchExternalCalendarEvents(),
+      ]);
       if (!data.ok) throw new Error(data.error || 'Failed to load');
-      CACHE_ALL = data.events || [];
+      CACHE_ALL = [...(data.events || []), ...ext];
       renderMonth();
     } else {
-      const data = await call('list', { range: RANGE });
+      const [data, ext] = await Promise.all([
+        call('list', { range: RANGE }),
+        fetchExternalCalendarEvents(),
+      ]);
       if (!data.ok) throw new Error(data.error || 'Failed to load');
-      LIST_CACHE = data.events || [];
+      // For the list view, filter external events to match the RANGE filter.
+      const now = Date.now();
+      const extFiltered = ext.filter(e => {
+        const t = new Date(e.starts_at).getTime();
+        if (RANGE === 'upcoming') return t >= now;
+        if (RANGE === 'past') return t < now;
+        return true;
+      });
+      LIST_CACHE = [...(data.events || []), ...extFiltered];
       render(searchFilter(LIST_CACHE));
     }
   } catch (e) {
@@ -619,6 +734,19 @@ function openCreate() {
   document.getElementById('scrim').classList.add('open');
 }
 function openEdit(ev) {
+  // External (iCal-fed) events are read-only — open the source URL if there
+  // is one, else show a brief read-only popover via the calendar widget's
+  // own showEvent. The admin edits the event in the source tool (Google,
+  // Swimtopia, etc.) — Poolside re-fetches every ~15 min and reflects it.
+  if (ev && ev.external) {
+    if (ev.source_url) {
+      window.open(ev.source_url, '_blank', 'noopener');
+    } else {
+      const src = ev.source_label || 'External calendar';
+      alert(`${ev.title}\n\nFrom: ${src}\n${ev.starts_at ? new Date(ev.starts_at).toLocaleString() : ''}${ev.location ? '\nLocation: ' + ev.location : ''}${ev.body ? '\n\n' + ev.body : ''}\n\nThis event is imported and read-only. Edit it in ${src}.`);
+    }
+    return;
+  }
   document.getElementById('m-heading').textContent = 'Edit event';
   document.getElementById('m-id').value = ev.id;
   document.getElementById('m-title').value = ev.title || '';
@@ -830,7 +958,149 @@ async function removeSub(encUrl, name) {
     if (s.ok) SETTINGS = s.settings || {};
   } catch { SETTINGS = {}; }
   await refresh();
+  await refreshExtFeeds();
 })();
+
+// ── External calendars (Google, Swimtopia, etc.) ──────────────────────────
+let EXT_FEEDS_CACHE = [];
+async function refreshExtFeeds() {
+  const list = document.getElementById('ext-feeds-list');
+  if (!list) return;
+  try {
+    const d = await callAt(EXT_URL, 'list_feeds');
+    if (!d.ok) throw new Error(d.error || 'Failed to load');
+    EXT_FEEDS_CACHE = d.feeds || [];
+    if (!EXT_FEEDS_CACHE.length) {
+      list.innerHTML = `<div class="empty" style="padding:18px 0;font-size:13.5px;color:var(--muted)">No external calendars yet. Add one to show Google or Swimtopia events alongside your Poolside events.</div>`;
+      return;
+    }
+    list.innerHTML = EXT_FEEDS_CACHE.map(f => {
+      const lastSync = f.last_synced_at
+        ? new Date(f.last_synced_at).toLocaleString(undefined, { dateStyle:'short', timeStyle:'short' })
+        : 'never';
+      const errBlurb = f.last_error
+        ? `<div style="margin-top:4px;font-size:12px;color:#7f1d1d"><b>⚠ Last fetch failed:</b> ${escapeHtml(f.last_error)}</div>`
+        : '';
+      return `
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff">
+          <div style="width:18px;height:18px;border-radius:50%;background:${escapeAttr(f.color)};flex-shrink:0;box-shadow:0 0 0 2px rgba(0,0,0,.04)"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${escapeHtml(f.label)} ${f.enabled ? '' : '<span style="font-weight:500;color:var(--muted);font-size:11px">(hidden)</span>'}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${f.events_count} events · last sync ${escapeHtml(lastSync)}</div>
+            ${errBlurb}
+          </div>
+          <button class="btn-ghost btn" style="font-size:12px;padding:6px 10px" onclick="syncExtFeed('${f.id}')">↻ Refresh</button>
+          <button class="btn-ghost btn" style="font-size:12px;padding:6px 10px" onclick="openEditExternal('${f.id}')">Edit</button>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty" style="padding:18px 0;font-size:13.5px;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function openAddExternal() {
+  document.getElementById('ext-heading').textContent = 'Add a calendar';
+  document.getElementById('ext-id').value = '';
+  document.getElementById('ext-label').value = '';
+  document.getElementById('ext-url').value = '';
+  document.getElementById('ext-color').value = '#0a3b5c';
+  document.getElementById('ext-enabled').checked = true;
+  document.getElementById('ext-err').classList.remove('show');
+  document.getElementById('ext-test-result').style.display = 'none';
+  document.getElementById('ext-delete-btn').style.display = 'none';
+  document.getElementById('ext-scrim').classList.add('open');
+}
+function openEditExternal(id) {
+  const f = EXT_FEEDS_CACHE.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('ext-heading').textContent = 'Edit calendar';
+  document.getElementById('ext-id').value = f.id;
+  document.getElementById('ext-label').value = f.label;
+  document.getElementById('ext-url').value = f.ical_url;
+  document.getElementById('ext-color').value = f.color;
+  document.getElementById('ext-enabled').checked = !!f.enabled;
+  document.getElementById('ext-err').classList.remove('show');
+  document.getElementById('ext-test-result').style.display = 'none';
+  document.getElementById('ext-delete-btn').style.display = 'inline-block';
+  document.getElementById('ext-scrim').classList.add('open');
+}
+function closeExtModal() { document.getElementById('ext-scrim').classList.remove('open'); }
+
+async function testExtFetch() {
+  const url = document.getElementById('ext-url').value.trim();
+  const errEl = document.getElementById('ext-err');
+  const resEl = document.getElementById('ext-test-result');
+  errEl.classList.remove('show');
+  resEl.style.display = 'none';
+  if (!url) { errEl.textContent = 'Paste the iCal URL first'; errEl.classList.add('show'); return; }
+  const btn = document.getElementById('ext-test-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Fetching…';
+  try {
+    const d = await callAt(EXT_URL, 'test_fetch', { ical_url: url });
+    if (!d.ok) throw new Error(d.error || 'Test failed');
+    resEl.style.display = 'block';
+    const previewList = (d.preview || []).map(e => {
+      const dt = new Date(e.starts_at).toLocaleString(undefined, { dateStyle:'short', timeStyle:'short' });
+      return `<li><b>${escapeHtml(e.summary)}</b> · ${escapeHtml(dt)}</li>`;
+    }).join('');
+    resEl.innerHTML = `✓ <b>Found ${d.events_count} event${d.events_count===1?'':'s'} in the next 6 months.</b>${previewList ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${previewList}</ul>` : ''}`;
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function saveExtFeed() {
+  const id = document.getElementById('ext-id').value;
+  const label = document.getElementById('ext-label').value.trim();
+  const ical_url = document.getElementById('ext-url').value.trim();
+  const color = document.getElementById('ext-color').value;
+  const enabled = document.getElementById('ext-enabled').checked;
+  const errEl = document.getElementById('ext-err');
+  errEl.classList.remove('show');
+  if (!label) { errEl.textContent = 'Label is required'; errEl.classList.add('show'); return; }
+  if (!ical_url) { errEl.textContent = 'iCal URL is required'; errEl.classList.add('show'); return; }
+  const btn = document.getElementById('ext-save-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const action = id ? 'update_feed' : 'add_feed';
+    const payload = id
+      ? { id, label, ical_url, color, enabled }
+      : { label, ical_url, color };
+    const d = await callAt(EXT_URL, action, payload);
+    if (!d.ok) throw new Error(d.error || 'Save failed');
+    closeExtModal();
+    await refreshExtFeeds();
+    await refresh();   // re-render calendar with new feed
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function deleteExtFeed() {
+  const id = document.getElementById('ext-id').value;
+  if (!id) return;
+  if (!confirm('Remove this external calendar? Events from it will disappear from your calendar. (The source calendar is untouched.)')) return;
+  try {
+    const d = await callAt(EXT_URL, 'delete_feed', { id });
+    if (!d.ok) throw new Error(d.error || 'Delete failed');
+    closeExtModal();
+    await refreshExtFeeds();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function syncExtFeed(id) {
+  try {
+    const d = await callAt(EXT_URL, 'sync_feed', { id });
+    if (!d.ok) alert(d.error || 'Refresh failed');
+    await refreshExtFeeds();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
 </script>
 </body>
 </html>

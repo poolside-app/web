@@ -170,11 +170,19 @@
                data-day="${dayDataAttr}">
             <div class="pcal-num">${cur.getDate()}</div>
             ${hours}
-            ${visible.map(ev => `
-              <div class="pcal-chip pcal-${escapeHtml(ev.kind)} ${ev.source_url ? 'pcal-imported' : ''}" data-k="${k}" data-id="${escapeHtml(ev.id)}" title="${escapeHtml(ev.title)}${ev.source_url ? ' (imported)' : ''}">
-                ${escapeHtml(KIND_ICON[ev.kind] || '')} ${escapeHtml(ev.title)}
+            ${visible.map(ev => {
+              // Per-event color override (used by external/iCal feeds — Google
+              // Calendar, Swimtopia, etc. — so each feed's events render in the
+              // admin-picked color regardless of kind).
+              const inlineStyle = ev.color
+                ? ` style="background:${ev.color}22;color:${ev.color};border-left:3px solid ${ev.color};padding-left:5px"`
+                : '';
+              const kindCls = ev.kind ? `pcal-${escapeHtml(ev.kind)}` : '';
+              return `
+              <div class="pcal-chip ${kindCls} ${ev.source_url || ev.external ? 'pcal-imported' : ''}" data-k="${k}" data-id="${escapeHtml(ev.id)}" title="${escapeHtml(ev.title)}${ev.source_url || ev.external ? ' (' + escapeHtml(ev.source_label || 'imported') + ')' : ''}"${inlineStyle}>
+                ${escapeHtml(KIND_ICON[ev.kind] || (ev.external ? '🔗' : ''))} ${escapeHtml(ev.title)}
               </div>
-            `).join('')}
+            `;}).join('')}
             ${overflow > 0 ? `<div class="pcal-more" data-k="${k}">+ ${overflow} more</div>` : ''}
           </div>`;
         cur.setDate(cur.getDate() + 1);
