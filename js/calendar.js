@@ -173,10 +173,19 @@
             ${visible.map(ev => {
               // Per-event color override (used by external/iCal feeds — Google
               // Calendar, Swimtopia, etc. — so each feed's events render in the
-              // admin-picked color regardless of kind).
-              const inlineStyle = ev.color
-                ? ` style="background:${ev.color}22;color:${ev.color};border-left:3px solid ${ev.color};padding-left:5px"`
-                : '';
+              // admin-picked color regardless of kind). Compute a readable
+              // foreground from the picked color's luminance: light colors
+              // (yellow, cream) get dark text; dark colors get the color
+              // itself (still legible on the ~13% tinted background).
+              let inlineStyle = '';
+              if (ev.color && /^#[0-9a-fA-F]{6}$/.test(ev.color)) {
+                const hex = ev.color;
+                const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+                // Relative luminance approx (0.299R + 0.587G + 0.114B) — perceived brightness 0..255
+                const lum = (0.299*r + 0.587*g + 0.114*b);
+                const textColor = lum > 170 ? '#1f2937' : hex;     // dark slate for light bgs
+                inlineStyle = ` style="background:${hex}22;color:${textColor};border-left:3px solid ${hex};padding-left:5px"`;
+              }
               const kindCls = ev.kind ? `pcal-${escapeHtml(ev.kind)}` : '';
               return `
               <div class="pcal-chip ${kindCls} ${ev.source_url || ev.external ? 'pcal-imported' : ''}" data-k="${k}" data-id="${escapeHtml(ev.id)}" title="${escapeHtml(ev.title)}${ev.source_url || ev.external ? ' (' + escapeHtml(ev.source_label || 'imported') + ')' : ''}"${inlineStyle}>

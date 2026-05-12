@@ -103,7 +103,11 @@ function parseIcalDate(value: string, isDateOnly = false): { iso: string; all_da
   if (isDateOnly || /^\d{8}$/.test(value)) {
     const m = value.match(/^(\d{4})(\d{2})(\d{2})$/);
     if (!m) return null;
-    return { iso: `${m[1]}-${m[2]}-${m[3]}T00:00:00.000Z`, all_day: true };
+    // Anchor all-day events at noon UTC so the date is stable in every US
+    // timezone. T00:00:00.000Z would shift to the previous day for any
+    // observer west of UTC (most of the US), so May 15 would render as
+    // May 14 5pm Pacific. Noon UTC = May 15 4-7am US-time → same calendar day.
+    return { iso: `${m[1]}-${m[2]}-${m[3]}T12:00:00.000Z`, all_day: true };
   }
   const m = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
   if (!m) return null;
@@ -258,9 +262,14 @@ function parseIcal(text: string, windowStart: Date, windowEnd: Date): ParsedEven
 // ─── Fetch + cache helper ─────────────────────────────────────────────────
 async function fetchAndParse(icalUrl: string): Promise<{ events: ParsedEvent[]; error?: string }> {
   try {
+    // 10s ceiling — Google iCal usually responds in <1s but occasionally
+    // stalls. Don't let one slow feed hang the whole function.
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 10_000);
     const res = await fetch(icalUrl, {
       headers: { 'User-Agent': 'Poolside/1.0 (external-calendar-feed)' },
-    });
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timeout));
     if (!res.ok) {
       return { events: [], error: `Fetch failed: ${res.status} ${res.statusText}` };
     }

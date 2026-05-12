@@ -2151,11 +2151,55 @@ async function submitProfile() {
   const calCloses = fmtHr(publicData.public_settings?.pool?.closes_at);
   const calLabel  = (calOpens && calCloses) ? `${calOpens}–${calCloses}` : null;
   if (window.PoolsideCalendar) {
+    const calRoot = document.getElementById('member-calendar');
+    // First render: native events only — instant.
     PoolsideCalendar.render({
-      rootEl: document.getElementById('member-calendar'),
-      events: publicData.events || [],
-      openHoursLabel: calLabel,
+      rootEl: calRoot, events: publicData.events || [], openHoursLabel: calLabel,
     });
+    // Async-augment with admin-connected external iCal feeds (Google,
+    // Swimtopia, etc.). Mirrors the same logic on club/index.html.
+    (async () => {
+      try {
+        const slug = getSlug();
+        if (!slug) return;
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/external_calendar`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'list_public', slug }),
+        });
+        const d = await r.json();
+        if (!d.ok || !Array.isArray(d.feeds) || !d.feeds.length) return;
+        const flat = [];
+        for (const f of d.feeds) {
+          for (const e of (f.events || [])) {
+            flat.push({
+              id: `ext_${f.id}_${e.uid}_${e.starts_at}`,
+              title: e.summary, body: e.description || '', location: e.location || '',
+              starts_at: e.starts_at, ends_at: e.ends_at, all_day: !!e.all_day,
+              kind: 'event', color: f.color, external: true,
+              source_label: f.label, source_url: e.source_url || null,
+            });
+          }
+        }
+        if (!flat.length) return;
+        PoolsideCalendar.render({
+          rootEl: calRoot,
+          events: [...(publicData.events || []), ...flat],
+          openHoursLabel: calLabel,
+        });
+        // Legend — idempotent on re-render.
+        const legendHtml = d.feeds.map(f =>
+          `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;color:var(--muted)"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${f.color}"></span>${f.label}</span>`
+        ).join('');
+        let legendEl = document.getElementById('member-calendar-legend');
+        if (!legendEl) {
+          legendEl = document.createElement('div');
+          legendEl.id = 'member-calendar-legend';
+          legendEl.style.cssText = 'padding:8px 0 12px;line-height:1.6';
+          calRoot.insertAdjacentElement('beforebegin', legendEl);
+        }
+        legendEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;color:var(--muted)"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0a3b5c"></span>Club events</span>${legendHtml}`;
+      } catch { /* non-fatal */ }
+    })();
   }
 
   // Snapshots carousel auto-scroll. Cross-fade every 5s, pause on hover.
