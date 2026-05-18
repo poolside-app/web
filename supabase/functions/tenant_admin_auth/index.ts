@@ -26,6 +26,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireOwner } from '../_shared/auth.ts';
+import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -81,8 +82,10 @@ async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUr
 // SMS sign-in body: short, code-prominent. iOS + Android auto-detect the
 // "code is XXXXXX" pattern and offer one-tap autofill from the keyboard
 // suggestion bar — far better UX than asking users to copy/paste a long URL.
-async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string }) {
+async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string; sb: ReturnType<typeof createClient> }) {
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
+  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
+  if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };
   const sid = TWILIO_SID, tok = TWILIO_TOKEN;
   // Prefer MessagingServiceSid when set — it routes the send through our
   // registered A2P 10DLC Campaign so US carriers don't drop the message
@@ -289,6 +292,8 @@ Deno.serve(async (req) => {
     const ok = await bcrypt.compare(password, user.password_hash || '');
     if (!ok) return jsonResponse({ ok: false, error: 'Invalid credentials' }, 401);
 
+    await sb.from('admin_users').update({ last_login_at: new Date().toISOString() }).eq('id', user.id);
+
     const token = await signToken(user.id, tenant.id, tenant.slug, {
       role_template: user.role_template ?? 'owner',
       scopes: user.scopes ?? [],
@@ -381,7 +386,7 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: false, error: 'Could not create sign-in code', detail: lastErr }, 500);
       }
 
-      const send = await sendAdminSmsCode({ to: phone_e164, tenantName: tenant.display_name, code: finalCode });
+      const send = await sendAdminSmsCode({ to: phone_e164, tenantName: tenant.display_name, code: finalCode, sb });
       await sb.from('sms_log').insert({
         tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
         success: send.sent, error: send.error ?? null, source: 'tenant_admin_auth.start_link',

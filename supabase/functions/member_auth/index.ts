@@ -21,6 +21,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 
 const SUPABASE_URL    = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -68,10 +69,12 @@ function escapeHtml(s: string): string {
 
 // Twilio SMS sender — returns { sent, error? } so callers can fall back
 // to a dev_link when keys aren't set.
-async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string }): Promise<{ sent: boolean; error?: string }> {
+async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string; sb: ReturnType<typeof createClient> }): Promise<{ sent: boolean; error?: string }> {
   // SMS_DEV_MODE forces dev_link fallback for testing while waiting for
   // A2P 10DLC approval. The function does NOT call Twilio when set.
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
+  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
+  if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };
   const sid    = Deno.env.get('TWILIO_ACCOUNT_SID');
   const token  = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromN  = Deno.env.get('TWILIO_FROM_NUMBER');
@@ -225,7 +228,7 @@ Deno.serve(async (req) => {
 
     if (phone_e164) {
       const send = await sendMagicLinkSms({
-        to: phone_e164, tenantName: tenant.display_name, verifyLink,
+        to: phone_e164, tenantName: tenant.display_name, verifyLink, sb,
       });
       // Auth-category SMS — uncapped per project_sms_caps memory, but
       // logged for audit + visibility in admin dashboards.

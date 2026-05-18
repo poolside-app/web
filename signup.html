@@ -111,6 +111,13 @@
     <input id="pw" type="password" minlength="10" autocomplete="new-password" required>
     <p class="field-help">10 characters minimum. You can change it any time.</p>
 
+    <!-- Honeypot — hidden from real users, harvested by bots. tenant_signup
+         silent-rejects any request where this is non-empty. -->
+    <div style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true">
+      <label for="hp_website">Website (leave blank)</label>
+      <input id="hp_website" name="website" type="text" tabindex="-1" autocomplete="off">
+    </div>
+
     <button class="btn" id="submit-btn" type="submit">Create my club →</button>
 
     <div id="signup-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
@@ -246,6 +253,7 @@ async function fakeSubmit() {
         // When Google-signup, we forward the verified sub so tenant_signup
         // can link this admin to it (skip-password path on the server).
         google_sub: GOOGLE_SUB || undefined,
+        website: document.getElementById('hp_website').value,
       }),
     });
     const data = await res.json();

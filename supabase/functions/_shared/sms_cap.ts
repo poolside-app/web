@@ -88,6 +88,61 @@ function daysUntilReset(): number {
   return Math.ceil((next.getTime() - now.getTime()) / 86400_000);
 }
 
+// =============================================================================
+// Global kill-switch caps — apply to EVERY category (auth + transactional
+// included). The per-tenant cap above intentionally lets auth/transactional
+// through because they're load-bearing for the app working. These extra
+// global limits exist as a safety net against runaway loops, compromised
+// keys, or accidental test blasts. They are deliberately low during early
+// production so a bug can't spend $$ before we notice.
+//
+// Both caps are configurable via Supabase secrets:
+//   SMS_GLOBAL_DAILY_CAP        (default 25) — total successful sends/24h
+//   SMS_PER_RECIPIENT_HOUR_CAP  (default 5)  — successful sends/hour to one #
+// =============================================================================
+
+export type GlobalCapStatus = {
+  blocked: boolean;
+  reason?: 'global_daily' | 'per_recipient_hour';
+  used: number;
+  cap: number;
+};
+
+export async function checkGlobalSmsKillSwitch(
+  sb: SupabaseClient,
+  toPhone: string,
+): Promise<GlobalCapStatus> {
+  const dailyCap = Number(Deno.env.get('SMS_GLOBAL_DAILY_CAP') ?? '25');
+  const hourCap  = Number(Deno.env.get('SMS_PER_RECIPIENT_HOUR_CAP') ?? '5');
+
+  if (dailyCap > 0) {
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { count } = await sb.from('sms_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('success', true)
+      .gte('sent_at', since);
+    const used = count ?? 0;
+    if (used >= dailyCap) {
+      return { blocked: true, reason: 'global_daily', used, cap: dailyCap };
+    }
+  }
+
+  if (hourCap > 0 && toPhone) {
+    const since = new Date(Date.now() - 3600_000).toISOString();
+    const { count } = await sb.from('sms_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('success', true)
+      .eq('to_phone', toPhone)
+      .gte('sent_at', since);
+    const used = count ?? 0;
+    if (used >= hourCap) {
+      return { blocked: true, reason: 'per_recipient_hour', used, cap: hourCap };
+    }
+  }
+
+  return { blocked: false, used: 0, cap: dailyCap };
+}
+
 // Insert one row into sms_log. Caller is expected to call this AFTER each
 // Twilio attempt (success or failure). Failures are logged so admins can
 // see Twilio errors in their audit trail without inflating the cap counter

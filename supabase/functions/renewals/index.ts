@@ -27,7 +27,7 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
-import { checkSmsCap, recordSms } from '../_shared/sms_cap.ts';
+import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -139,9 +139,11 @@ async function sendRenewalEmail(args: {
 }
 
 async function sendRenewalSms(args: {
-  to: string; tenantName: string; verifyLink: string; earlyBirdLine: string;
+  to: string; tenantName: string; verifyLink: string; earlyBirdLine: string; sb: SupabaseClient;
 }): Promise<{ sent: boolean; error?: string }> {
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
+  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
+  if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };
   const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
   const tok = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromN = Deno.env.get('TWILIO_FROM_NUMBER');
@@ -331,7 +333,7 @@ Deno.serve(async (req) => {
           smsCappedHit = true;        // skip remaining SMS but keep emailing
         } else {
           const r = await sendRenewalSms({
-            to: recipient.phone_e164, tenantName: tenant.display_name, verifyLink, earlyBirdLine,
+            to: recipient.phone_e164, tenantName: tenant.display_name, verifyLink, earlyBirdLine, sb,
           });
           if (r.sent) { smsSent++; smsDone = true; smsRemaining--; }
           else if (!Deno.env.get('TWILIO_ACCOUNT_SID')) {

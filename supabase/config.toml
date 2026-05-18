@@ -219,3 +219,8 @@ verify_jwt = false
 # admin actions require the 'meetings' scope.
 [functions.board_meetings]
 verify_jwt = false
+
+# Internal smoke utility — fires a one-off test SMS via Twilio. Gated by
+# SMOKE_SECRET header so anon-key alone cannot trigger sends.
+[functions.smoke_sms]
+verify_jwt = false

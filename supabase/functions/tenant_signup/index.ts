@@ -151,6 +151,22 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Invalid plan' });
   }
 
+  // Honeypot — real users never fill these hidden fields, bots do.
+  // Return a fake success so the bot thinks it worked and moves on.
+  const honeypot = String(body.website ?? body.url ?? body.fax ?? '').trim();
+  if (honeypot) {
+    await new Promise(r => setTimeout(r, 800));
+    return jsonResponse({ ok: true, slug, display_name });
+  }
+
+  // Gibberish-slug heuristic — bots tend to use random-character slugs with
+  // few vowels. Real clubs use word-like names. Block low-vowel-ratio slugs
+  // when 8+ chars (short slugs like "kpc" can be legitimate acronyms).
+  const vowels = (slug.match(/[aeiou]/g) || []).length;
+  if (slug.length >= 8 && (vowels / slug.length) < 0.15) {
+    return jsonResponse({ ok: false, error: `"${slug}" doesn't look like a real club name — try something readable (e.g. "bishopestates", "oakhillpool")` });
+  }
+
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   // ── Pre-check: slug must not already be taken (cheaper than catching the
