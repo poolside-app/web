@@ -428,7 +428,7 @@ Deno.serve(async (req) => {
     if (!slugIn || !phoneIn || codeIn.length !== 6) {
       return jsonResponse({ ok: false, error: 'slug + phone + 6-digit code required' }, 400);
     }
-    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, status, plan, trial_ends_at, custom_domain, plan_label_override, household_cap_override, features, stripe_account_id, stripe_charges_enabled')
+    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, status, plan, trial_ends_at, custom_domain, plan_label_override, household_cap_override, stripe_account_id, stripe_charges_enabled')
       .eq('slug', slugIn).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
 
