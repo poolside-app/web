@@ -188,10 +188,10 @@ document.getElementById('signout').addEventListener('click', logout);
     founderBanner.innerHTML = `
       <div style="flex:1;min-width:240px">
         <div style="font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18px;color:#7c2d12;margin-bottom:4px">🏊 Are you (or your family) using the pool too?</div>
-        <div style="font-size:13.5px;color:#78350f;line-height:1.5">Fill out the application so you're on the gate list, signed up for the season, and your family shows up in the member directory — same form your members use.</div>
+        <div style="font-size:13.5px;color:#78350f;line-height:1.55"><b>Finish setting up your club first</b> — tiers, policies, and payments — then come back here and fill out the application as a member. Same form your members use. Skip with "I'm just an admin" if you don't swim here.</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com/apply.html?prefill=admin" target="_blank" rel="noopener" style="padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;background:#0a3b5c;color:#fff;text-decoration:none;white-space:nowrap">Set up my membership →</a>
+        <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com/apply.html?prefill=admin" target="_blank" rel="noopener" style="padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;background:#0a3b5c;color:#fff;text-decoration:none;white-space:nowrap">Sign up my family →</a>
         <button id="founder-dismiss" style="padding:9px 14px;border-radius:8px;font:600 13px Inter,sans-serif;background:transparent;border:1.5px solid #fde68a;color:#7c2d12;cursor:pointer;white-space:nowrap">I'm just an admin</button>
       </div>
     `;

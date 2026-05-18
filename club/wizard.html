@@ -338,31 +338,9 @@
         </div>
         <div class="summary" id="summary"></div>
 
-        <!-- Admin-as-member question. Defaults to "yes" since most pool-club
-             founders ARE board members who use the pool. Replaces the
-             post-wizard "founder banner" that nagged users until dismissed. -->
-        <div style="background:#f0f6fb;border:1px solid #cfe1f0;border-radius:14px;padding:16px 18px;margin-top:18px">
-          <div style="font-weight:700;color:#0a3b5c;margin-bottom:8px;font-size:14.5px">One quick question — are you using the pool too?</div>
-          <div style="font-size:12.5px;color:#475569;line-height:1.5;margin-bottom:12px">Most pool clubs are run by people who are also members. If your family swims here, we'll set you up as a household so you're on the gate list.</div>
-          <label class="feature" style="margin:6px 0">
-            <input type="radio" name="admin_is_member" value="yes" id="adm-mem-yes" checked>
-            <div>
-              <div class="ftitle">Yes — set up my family as a member household</div>
-              <div class="fsub">After the wizard, we'll open the apply form with your name + email pre-filled.</div>
-            </div>
-          </label>
-          <label class="feature" style="margin:6px 0">
-            <input type="radio" name="admin_is_member" value="no" id="adm-mem-no">
-            <div>
-              <div class="ftitle">No — I just run the club admin</div>
-              <div class="fsub">Bookkeeper, gate manager, board secretary, etc. — not a swimmer.</div>
-            </div>
-          </label>
-        </div>
-
-        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:14px;padding:16px 18px;margin-top:14px;text-align:left">
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:14px;padding:16px 18px;margin-top:18px;text-align:left">
           <div style="font-weight:700;color:#78350f;margin-bottom:6px;font-size:14.5px">⚠️ Your club isn't open for business yet</div>
-          <div style="font-size:13px;color:#78350f;line-height:1.5">Membership tiers, policies, and a payment method still need to be set up before applicants can submit and pay. We'll walk you through them next.</div>
+          <div style="font-size:13px;color:#78350f;line-height:1.55">Membership tiers, policies, and a payment method still need to be set up before applicants can submit and pay. We'll walk you through them next — <b>finish setting those up before you (or anyone in your family) signs up as a member.</b></div>
         </div>
 
         <p class="help" style="margin-top:18px;line-height:1.5;text-align:center">
@@ -783,16 +761,16 @@ function show(n) {
 function next() { if (step < TOTAL) { step++; show(step); } }
 function prev() { if (step > 1) { step--; show(step); } }
 
-// On the final wizard step the admin picks "I'm also a member" or "I'm
-// just an admin." We also bulk-fire the board-roster invites collected on
-// step 6 here — invites are deferred until this final click so backing
-// out of the wizard mid-flow can't accidentally email half the board.
+// On the final wizard step we bulk-fire the board-roster invites collected
+// on step 6 — deferred until this final click so backing out of the wizard
+// mid-flow can't accidentally email half the board. The admin-as-member
+// prompt lives on the admin dashboard now (not here) — admins finish setup
+// (policies, tiers, payments) FIRST, then sign their own family up via the
+// dismissible banner on /club/admin/.
 async function onWizardDoneNext() {
   const nb = document.getElementById('nextBtn');
   nb.disabled = true; const orig = nb.textContent;
 
-  // 1. Fire board invites (one at a time so we can build a per-person
-  //    summary; small N = ≤10 typical, no need for parallelism).
   const filled = (BOARD_ROWS || []).filter(r => (r.name || '').trim() && (r.email || '').trim());
   let inviteSummary = null;
   if (filled.length > 0) {
@@ -812,25 +790,7 @@ async function onWizardDoneNext() {
     }
   }
 
-  // 2. Apply the admin-as-member radio choice
-  const isMember = document.getElementById('adm-mem-yes')?.checked;
-  if (!isMember) {
-    try { await fetch(AUTH_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
-      body: JSON.stringify({ action: 'dismiss_member_apply' }),
-    }); } catch (_) { /* harmless if it fails */ }
-  }
-
-  // 3. Surface the invite summary (alert is loud-but-simple; preserves
-  //    the existing single-click flow without a separate confirmation page)
   if (inviteSummary) alert(inviteSummary);
-
-  // 4. Open apply form for member admins, then redirect to setup checklist.
-  if (isMember) {
-    const slug = TENANT?.slug;
-    if (slug) window.open(`https://${slug}.poolsideapp.com/apply.html?prefill=admin`, '_blank', 'noopener');
-  }
   window.location.href = '/club/admin/setup.html';
 }
 
