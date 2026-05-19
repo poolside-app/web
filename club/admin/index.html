@@ -164,6 +164,16 @@ document.getElementById('signout').addEventListener('click', logout);
   if (!data.ok) { logout(); return; }
 
   const { user, tenant } = data;
+
+  // Gate-attendant role only has 'check_in' scope — the rest of the
+  // dashboard would be empty for them. Bounce straight to the check-in
+  // page so the iPad lands somewhere useful. Impersonating admins
+  // bypass this so Doug can support from within.
+  if (!user.impersonated && user.role_template === 'gate_attendant') {
+    window.location.replace('/club/admin/checkin.html');
+    return;
+  }
+
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
     if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant, data.usage);

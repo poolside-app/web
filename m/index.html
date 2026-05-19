@@ -230,6 +230,36 @@
   <div class="card"><p>Loading…</p></div>
 </main>
 
+<!-- Floating "Show pool pass" button — only painted when the tenant has
+     member_pass enabled in their access_methods. Big tap target, sticky
+     bottom-right, opens the full-screen pass overlay. -->
+<button id="pool-pass-fab" type="button" onclick="openPoolPass()" style="display:none;position:fixed;right:20px;bottom:22px;z-index:9500;background:var(--blue);color:#fff;border:0;border-radius:999px;padding:14px 22px;font:700 15px 'Inter',sans-serif;box-shadow:0 8px 24px rgba(10,59,92,.35),0 2px 6px rgba(0,0,0,.18);cursor:pointer;display:none;align-items:center;gap:8px">
+  🏊 <span>Show pool pass</span>
+</button>
+
+<!-- Pool pass full-screen overlay. Live ticking clock + today's date +
+     household photo + paid pill make screenshot fraud easy to spot. -->
+<div id="pool-pass-scrim" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,59,92,.96);backdrop-filter:blur(6px);align-items:center;justify-content:center">
+  <div style="width:100%;max-width:460px;padding:24px;text-align:center;color:#fff">
+    <div id="pp-club-name" style="font-family:'Fraunces',serif;font-size:18px;font-weight:600;opacity:.85;margin-bottom:8px">Your club</div>
+    <div id="pp-photo" style="width:140px;height:140px;border-radius:50%;background:#fff;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:4px solid #fff;box-shadow:0 8px 28px rgba(0,0,0,.3);font-size:56px;color:var(--blue)">👤</div>
+    <h1 id="pp-family-name" style="font-family:'Fraunces',serif;font-size:30px;font-weight:600;letter-spacing:-.015em;margin:0 0 6px;color:#fff">Family</h1>
+    <div id="pp-member-name" style="font-size:15px;opacity:.85;margin-bottom:18px">Member name</div>
+    <div id="pp-paid-pill" style="display:inline-block;padding:10px 22px;border-radius:999px;background:#22c55e;color:#fff;font-weight:700;font-size:16px;letter-spacing:.02em;margin-bottom:22px">✓ PAID — 2026 SEASON</div>
+    <div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px 18px;margin-bottom:18px">
+      <div id="pp-date" style="font-size:14px;font-weight:600;opacity:.95">Today</div>
+      <div id="pp-clock" style="font-family:'Fraunces',serif;font-size:34px;font-weight:600;letter-spacing:.02em;margin-top:2px;font-variant-numeric:tabular-nums">--:--:--</div>
+      <div style="font-size:11px;opacity:.7;margin-top:6px"><span id="pp-pulse" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:4px;vertical-align:middle"></span>Live — refreshing every second</div>
+    </div>
+    <p style="font-size:13px;opacity:.7;margin:0 0 16px">Show this screen to the gate attendant or lifeguard.</p>
+    <button type="button" onclick="closePoolPass()" style="background:#fff;color:var(--blue);border:0;border-radius:10px;padding:12px 24px;font:700 14px 'Inter',sans-serif;cursor:pointer">Close</button>
+  </div>
+</div>
+<style>
+  @keyframes pp-pulse { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.4); opacity: .55 } }
+  #pp-pulse { animation: pp-pulse 1.4s ease-in-out infinite; }
+</style>
+
 <!-- Photo upload modal -->
 <div class="scrim" id="photo-scrim" onclick="if (event.target === this) closePhotoUpload()">
   <div class="pmodal">
@@ -637,6 +667,40 @@ function openPhotoUpload() {
   document.getElementById('photo-scrim').classList.add('open');
 }
 function closePhotoUpload() { document.getElementById('photo-scrim').classList.remove('open'); }
+
+// Pool pass — full-screen overlay, live ticking clock. Showing this screen
+// to a gate attendant is the universal "I'm a paid member" check. The live
+// clock + today's date make basic screenshot fraud easy to spot — a frozen
+// time-of-day is suspicious for a "live" pass.
+let __POOL_PASS_TICK = null;
+function tickPoolPassClock() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const el = document.getElementById('pp-clock');
+  if (el) el.textContent = `${hh}:${mm}:${ss}`;
+  const dateEl = document.getElementById('pp-date');
+  if (dateEl) dateEl.textContent = now.toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+}
+function openPoolPass() {
+  const scrim = document.getElementById('pool-pass-scrim');
+  if (!scrim) return;
+  scrim.style.display = 'flex';
+  tickPoolPassClock();
+  if (__POOL_PASS_TICK) clearInterval(__POOL_PASS_TICK);
+  __POOL_PASS_TICK = setInterval(tickPoolPassClock, 1000);
+  // Hint Android/iOS that we want full-bright for a few minutes so the
+  // lifeguard can read it in sunlight. Wake Lock falls back gracefully.
+  if ('wakeLock' in navigator) {
+    try { navigator.wakeLock.request('screen').catch(() => {}); } catch (_) {}
+  }
+}
+function closePoolPass() {
+  const scrim = document.getElementById('pool-pass-scrim');
+  if (scrim) scrim.style.display = 'none';
+  if (__POOL_PASS_TICK) { clearInterval(__POOL_PASS_TICK); __POOL_PASS_TICK = null; }
+}
 document.addEventListener('change', (e) => {
   if (e.target && e.target.id === 'photo-file') {
     const f = e.target.files && e.target.files[0];
@@ -1924,6 +1988,27 @@ async function submitProfile() {
 
   const { user, household, tenant } = me;
   const venmo = publicData.public_settings?.payments?.venmo_handle;
+
+  // Pool-pass FAB — only show when the tenant has 'member_pass' in their
+  // access_methods (configured during onboarding). Wire the overlay with
+  // this household's info; a live-ticking clock makes screenshot fraud
+  // easy for the lifeguard to spot.
+  const access = publicData.public_settings?.access || {};
+  if (access.show_member_pool_pass) {
+    const fab = document.getElementById('pool-pass-fab');
+    if (fab) fab.style.display = 'inline-flex';
+    document.getElementById('pp-club-name').textContent = tenant.display_name || 'Your club';
+    document.getElementById('pp-family-name').textContent = household.family_name || 'Your household';
+    document.getElementById('pp-member-name').textContent = user.name || user.email || '';
+    const pill = document.getElementById('pp-paid-pill');
+    if (household.dues_paid_for_year) {
+      pill.textContent = `✓ PAID — ${household.paid_until_year ?? new Date().getFullYear()} SEASON`;
+      pill.style.background = '#22c55e';
+    } else {
+      pill.textContent = '⚠ DUES UNPAID';
+      pill.style.background = '#dc2626';
+    }
+  }
   const dueText = household.dues_paid_for_year
     ? `<span class="pill paid">Dues paid${household.paid_until_year ? ' · ' + household.paid_until_year : ''}</span>`
     : `<span class="pill unpaid">Dues unpaid</span>`;

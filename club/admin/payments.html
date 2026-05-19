@@ -206,6 +206,26 @@
     </div>
   </details>
 
+  <!-- Pool access / gate config — outside the collapsed setup section because
+       it's a frequently-revisited section (lifeguard accounts, capacity, etc.) -->
+  <div class="card" id="access-card" style="margin-bottom:18px">
+    <h2>🏊 How members get into the pool</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
+    <div id="access-methods" style="display:grid;gap:8px"></div>
+    <label style="margin-top:14px;display:block">Pool capacity <span class="opt">(optional — used by the lifeguard app for "in pool now" counter)</span></label>
+    <input type="number" id="pool_capacity" min="0" max="2000" step="1" placeholder="e.g. 80" style="width:160px">
+    <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+      <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
+      <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
+    </div>
+    <div class="err" id="access-err"></div>
+
+    <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px">
+      <b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.<br>
+      <a class="btn btn-ghost" href="/club/admin/checkin.html" style="margin-top:10px;font-size:12.5px">Open the check-in page →</a>
+    </div>
+  </div>
+
   <!-- Drive card — moved out of the collapsed setup block so users can
        find it. Settings page also has an "Integrations" pointer that
        deep-links here with ?focus=drive. -->
@@ -466,9 +486,60 @@ async function loadPaymentMethods() {
     document.getElementById('paypal_link').value  = (p.paypal_link  ?? '');
     document.getElementById('offline_verify_window_days').value = (p.offline_verify_window_days ?? 3);
     document.getElementById('pass_stripe_fee').checked = !!p.pass_stripe_fee;
+    paintAccessMethods(r.settings || {});
   } catch (e) {
     const errEl = document.getElementById('pm-err');
     errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+
+const ACCESS_METHODS = [
+  { key: 'paper_roster',     label: 'Paper roster',                desc: 'A lifeguard or gate attendant checks a printed list. We can generate a fresh PDF every morning.' },
+  { key: 'member_pass',      label: 'Member shows phone pass',     desc: 'Members open the app at the gate and show a screen with their photo, family name, paid status, and a live ticking clock. No hardware.' },
+  { key: 'lifeguard_tablet', label: 'Lifeguard tablet check-in',   desc: 'A shared iPad at the gate. Lifeguard searches by name, sees the family + paid status, taps "Check in". Invite the lifeguard as a scoped admin from Co-admins.' },
+  { key: 'keyfob',           label: 'Keyfob / RFID gate',          desc: 'Hardware integration with a panel like MENGQI. $250 setup + $25/mo as an add-on. Best for 24/7 unattended access.' },
+  { key: 'pin_codes',        label: 'PIN codes at a keypad',       desc: 'A 4-digit code per household. Cheaper than keyfobs but code-sharing is a real risk. Coming soon.', disabled: true },
+  { key: 'printable_cards',  label: 'Printable membership cards',  desc: 'Generate PDF cards (photo + QR) for members without smartphones. Coming soon.', disabled: true },
+  { key: 'self_kiosk',       label: 'Self check-in kiosk',         desc: 'Shared iPad at the gate — members tap their own name. No lifeguard needed. Coming soon.', disabled: true },
+];
+
+function paintAccessMethods(settings) {
+  const current = new Set(Array.isArray(settings.access_methods) ? settings.access_methods : ['paper_roster']);
+  const host = document.getElementById('access-methods');
+  host.innerHTML = ACCESS_METHODS.map(m => `
+    <label style="display:flex;gap:10px;padding:11px 14px;border:1.5px solid ${current.has(m.key) ? 'var(--blue)' : 'var(--border)'};border-radius:12px;cursor:${m.disabled ? 'not-allowed' : 'pointer'};opacity:${m.disabled ? '.55' : '1'};background:${current.has(m.key) ? 'var(--blue-l)' : '#fff'}">
+      <input type="checkbox" data-method="${m.key}" ${current.has(m.key) ? 'checked' : ''} ${m.disabled ? 'disabled' : ''} style="margin-top:3px">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:14px">${m.label}${m.disabled ? ' <span style="font-size:11px;color:var(--muted);font-weight:500">(coming soon)</span>' : ''}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45">${m.desc}</div>
+      </div>
+    </label>`).join('');
+  document.getElementById('pool_capacity').value = settings.pool_capacity ?? '';
+}
+
+async function saveAccess() {
+  const btn = document.getElementById('access-save');
+  const errEl = document.getElementById('access-err');
+  const savedEl = document.getElementById('access-saved');
+  errEl.classList.remove('show'); savedEl.style.display = 'none';
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const methods = [...document.querySelectorAll('#access-methods input[type=checkbox]:checked')].map(el => el.dataset.method);
+    if (methods.length === 0) methods.push('paper_roster');
+    const cap = parseInt(document.getElementById('pool_capacity').value, 10);
+    const value = {
+      access_methods: methods,
+      pool_capacity:  Number.isFinite(cap) && cap > 0 ? cap : null,
+    };
+    const r = await api(SETTINGS_URL, 'save', { value });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    savedEl.style.display = 'inline';
+    setTimeout(() => { savedEl.style.display = 'none'; }, 1800);
+    paintAccessMethods(r.settings || value);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 // ── Setup: Payment plans ────────────────────────────────────────────────

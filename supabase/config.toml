@@ -228,3 +228,8 @@ verify_jwt = false
 # Households CSV importer — auth verified inside via tenant_admin JWT
 [functions.households_import]
 verify_jwt = false
+
+# Pool-entry check-in (lifeguard PWA + member pool-pass entry log). Auth
+# verified inside via tenant_admin JWT + check_in scope.
+[functions.checkins]
+verify_jwt = false

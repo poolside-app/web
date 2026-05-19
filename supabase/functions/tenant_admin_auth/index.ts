@@ -183,6 +183,11 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
     description: 'Takes board meeting minutes. Manages bylaws and other governance documents.',
     scopes: ['meetings', 'documents', 'impact'],
   },
+  gate_attendant: {
+    label: 'Gate attendant / lifeguard',
+    description: 'Only sees the member check-in page (search + photos + paid status). Designed for a shared iPad at the gate — log in once, stays logged in.',
+    scopes: ['check_in'],
+  },
   custom: {
     label: 'Custom',
     description: 'Pick exactly what this person can see and change. For unusual cases — most boards don\'t need this.',
@@ -195,6 +200,7 @@ const ALL_SCOPES = [
   'announcements', 'campaigns', 'volunteer', 'passes', 'photos', 'documents',
   'policies', 'directory', 'impact', 'audit',
   'meetings',
+  'check_in',
 ];
 
 function templateScopes(name: string): string[] {

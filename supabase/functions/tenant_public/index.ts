@@ -105,6 +105,18 @@ Deno.serve(async (req) => {
       keyfobs:      !!v.features?.keyfobs,
       gate:         !!v.features?.gate,
     },
+    // How members get into the pool. Drives:
+    //  - Whether the member app shows a "Show pool pass" button on /m/
+    //  - Whether the admin nav has a Check-in tab
+    //  - The onboarding checklist surface
+    //  Set during the setup wizard. Multiple methods can be active at once.
+    access: {
+      methods:                Array.isArray((v as Record<string, unknown>).access_methods)
+                                ? (v as Record<string, unknown>).access_methods
+                                : ['paper_roster'],
+      show_member_pool_pass:  ((v as Record<string, unknown>).access_methods as string[] | undefined)?.includes('member_pass') ?? false,
+      pool_capacity:          Number((v as Record<string, unknown>).pool_capacity ?? 0) || null,
+    },
     // Early-bird renewal discount surfaced so member home + apply form can
     // show the deadline + savings copy. Honor system for Venmo; Stripe
     // checkout enforces the math server-side.
