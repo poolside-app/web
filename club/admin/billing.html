@@ -95,6 +95,15 @@
     <div id="upgrade-actions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     <p style="margin-top:14px;font-size:12px;color:var(--muted)">Stuck or need a custom arrangement? Email <a href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">hello@poolsideapp.com</a>.</p>
   </div>
+
+  <div class="card" id="manage-card" style="display:none">
+    <h2>Manage subscription</h2>
+    <p style="font-size:14px;line-height:1.6">Update your payment method, download past invoices, change your billing email, or cancel — all self-serve through Stripe's secure portal.</p>
+    <p style="margin-top:14px">
+      <button class="btn" id="manage-btn" type="button">Open billing portal →</button>
+    </p>
+    <div id="manage-err" style="display:none;margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;background:#fee2e2;color:#7f1d1d;border:1px solid #fecaca"></div>
+  </div>
 </main>
 
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
@@ -205,6 +214,35 @@ const TIERS = [
         }
       });
     }
+  }
+
+  // Self-serve billing portal — only useful when the tenant already has a
+  // Stripe customer (i.e. they've upgraded at least once). me.tenant doesn't
+  // expose stripe_customer_id, so we just attempt the call and show errors
+  // inline. Owners only. Hide entirely for non-owners.
+  if (isOwner) {
+    const manageCard = document.getElementById('manage-card');
+    if (planKey !== 'free') manageCard.style.display = '';
+    const manageBtn = document.getElementById('manage-btn');
+    const manageErr = document.getElementById('manage-err');
+    manageBtn.addEventListener('click', async () => {
+      manageErr.style.display = 'none';
+      manageBtn.disabled = true; const orig = manageBtn.textContent; manageBtn.textContent = 'Opening Stripe…';
+      try {
+        const r = await fetch(ME_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+          body: JSON.stringify({ action: 'open_billing_portal' }),
+        });
+        const d = await r.json();
+        if (!d.ok || !d.url) throw new Error(d.error || 'Could not open billing portal');
+        window.location.href = d.url;
+      } catch (err) {
+        manageErr.textContent = err.message;
+        manageErr.style.display = 'block';
+        manageBtn.disabled = false; manageBtn.textContent = orig;
+      }
+    });
   }
 })();
 </script>

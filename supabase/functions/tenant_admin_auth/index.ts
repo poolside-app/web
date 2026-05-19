@@ -1031,6 +1031,50 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, temp_password: tempPw });
   }
 
+  // ── open_billing_portal: owner — generate a Stripe-hosted Customer Portal
+  //    URL so they can self-manage their subscription: change payment method,
+  //    download invoices, cancel, etc. Eliminates the "how do I update my
+  //    card?" and "how do I cancel?" tickets that would otherwise all land
+  //    in Doug's inbox. Requires the tenant to have a stripe_customer_id
+  //    (set when they first upgraded out of Free).
+  if (action === 'open_billing_portal') {
+    const payload = await verifyAdmin(token);
+    if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
+    if (payload.role_template !== 'owner') {
+      return jsonResponse({ ok: false, error: 'Only the club owner can open the billing portal' }, 403);
+    }
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) return jsonResponse({ ok: false, error: 'Stripe not configured' }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, plan, stripe_customer_id')
+      .eq('id', payload.tid).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    if (!tenant.stripe_customer_id) {
+      return jsonResponse({ ok: false, error: 'You\'re on the Free plan — no subscription to manage yet. Upgrade to access the billing portal.' }, 400);
+    }
+
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const params = new URLSearchParams();
+    params.append('customer', tenant.stripe_customer_id);
+    params.append('return_url', `${clubUrl}/club/admin/billing.html`);
+
+    const res = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${stripeKey}:`),
+        'Content-Type':  'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return jsonResponse({ ok: false, error: `Stripe ${res.status}: ${t.slice(0, 300)}` }, 502);
+    }
+    const session = await res.json();
+    return jsonResponse({ ok: true, url: session.url });
+  }
+
   // ── start_plan_upgrade: owner — open Stripe Checkout (subscription) for
   //    a new tier. Returns { url } for the client to redirect to. On payment
   //    success Stripe fires customer.subscription.created → webhook handler

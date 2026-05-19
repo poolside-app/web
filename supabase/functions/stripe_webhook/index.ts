@@ -458,6 +458,34 @@ Deno.serve(async (req) => {
     return new Response('ok', { status: 200 });
   }
 
+  // ── customer.subscription.updated — admin changed plan via the Stripe
+  //    Customer Portal, OR Doug updated a subscription manually in the
+  //    Stripe dashboard. Map the price ID back to our plan slug and flip
+  //    tenants.plan to match. No-op if nothing actually changed.
+  if (type === 'customer.subscription.updated') {
+    const sub = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
+    const items = (sub?.items as Record<string, unknown>)?.data as Array<Record<string, unknown>> | undefined;
+    const priceId = items?.[0]?.price ? ((items[0].price as Record<string, unknown>).id as string) : '';
+    const customerId = String(sub?.customer || '');
+    const md = (sub?.metadata as Record<string, string> | undefined) || {};
+
+    const PRICE_TO_PLAN: Record<string, string> = {};
+    const sK = Deno.env.get('STRIPE_PRICE_STARTER');    if (sK)  PRICE_TO_PLAN[sK]  = 'starter';
+    const pK = Deno.env.get('STRIPE_PRICE_PRO');        if (pK)  PRICE_TO_PLAN[pK]  = 'pro';
+    const eK = Deno.env.get('STRIPE_PRICE_ENTERPRISE'); if (eK)  PRICE_TO_PLAN[eK]  = 'enterprise';
+    const newPlan = PRICE_TO_PLAN[priceId];
+
+    let tenantId = md.tenant_id || '';
+    if (!tenantId && customerId) {
+      const { data: t } = await sb.from('tenants').select('id, plan').eq('stripe_customer_id', customerId).maybeSingle();
+      if (t) tenantId = t.id as string;
+    }
+    if (tenantId && newPlan) {
+      await sb.from('tenants').update({ plan: newPlan, updated_at: new Date().toISOString() }).eq('id', tenantId);
+    }
+    return new Response('ok', { status: 200 });
+  }
+
   // ── customer.subscription.deleted — tenant cancelled their subscription
   //    (either via Stripe billing portal or admin tools). Demote them back
   //    to Free Forever; the next renewal cycle won't bill. Grace period is
