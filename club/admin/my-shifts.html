@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My shifts — Poolside</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="My shifts">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; min-height:100vh; display:flex; flex-direction:column; -webkit-font-smoothing:antialiased }
+  a { color: var(--blue); }
+  header { padding:14px 20px; background:var(--blue); color:#fff; display:flex; justify-content:space-between; align-items:center }
+  header h1 { margin:0; font-family:'Fraunces',Georgia,serif; font-weight:600; font-size:20px }
+  header .signout { color:#fff; opacity:.7; font-size:12px; cursor:pointer; text-decoration:underline }
+  main { flex:1; padding:18px 16px 100px; max-width:760px; width:100%; margin:0 auto }
+  .sub-tabs { display:flex; gap:4px; border-bottom:2px solid var(--border); margin-bottom:18px; overflow-x:auto }
+  .sub-tabs button { padding:11px 16px; font:700 14px Inter,sans-serif; border:0; background:transparent; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; white-space:nowrap }
+  .sub-tabs button.on { color:var(--blue); border-bottom-color:var(--blue) }
+  .panel { display:none }
+  .panel.on { display:block }
+  .shift-card { background:#fff; border:1.5px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:10px; display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap }
+  .shift-card.mine { border-color:var(--green); border-width:2px; background:#f0fdf4 }
+  .shift-date { font-family:'Fraunces',serif; font-size:18px; font-weight:600; color:var(--blue); min-width:120px }
+  .shift-meta { flex:1; min-width:180px; font-size:13.5px; color:var(--muted) }
+  .shift-meta .time { color:var(--text); font-weight:600; font-size:15px; margin-bottom:3px }
+  .btn { padding:12px 22px; border-radius:11px; font:700 14px Inter,sans-serif; cursor:pointer; border:0; background:var(--blue); color:#fff }
+  .btn.danger { background:transparent; color:var(--red); border:1.5px solid #fecaca }
+  .btn.success { background:var(--green) }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font:700 11px Inter }
+  .pill.spots { background:#fef3c7; color:#92400e }
+  .pill.full  { background:#dcfce7; color:#14532d }
+  .lg-chip { display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:999px; background:var(--bg-2); font:600 11px Inter; margin:2px 4px 2px 0 }
+  .lg-dot { width:7px; height:7px; border-radius:50% }
+  .empty { padding:36px 22px; text-align:center; color:var(--muted); border:1.5px dashed var(--border); border-radius:14px }
+  .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); padding:14px 26px; background:var(--green); color:#fff; border-radius:14px; font:700 15px Inter; box-shadow:0 8px 28px rgba(22,163,74,.5); z-index:1000; opacity:0; transition:opacity .25s }
+  .toast.show { opacity:1 }
+  .nav-action { font-size:12px; opacity:.85; color:#fff; text-decoration:underline; cursor:pointer; margin-left:14px }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="club-name">My shifts</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <a href="/club/admin/checkin.html" class="nav-action">Gate check-in →</a>
+    <span class="signout" id="signout">Sign out</span>
+  </div>
+</header>
+
+<main>
+  <div class="sub-tabs">
+    <button class="on" data-panel="mine">🏊 My shifts</button>
+    <button data-panel="open">📅 Open shifts</button>
+    <button data-panel="team">👥 Team schedule</button>
+  </div>
+  <div id="err" style="display:none;padding:12px 14px;border-radius:10px;background:#fee2e2;color:#7f1d1d;border:1px solid #fecaca;font-size:14px;margin-bottom:10px"></div>
+  <div class="panel on" id="panel-mine"><div class="empty">Loading…</div></div>
+  <div class="panel" id="panel-open"><div class="empty">Loading…</div></div>
+  <div class="panel" id="panel-team"><div class="empty">Loading…</div></div>
+</main>
+
+<div id="toast" class="toast">✓ Signed up</div>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const LG_URL   = `${SUPABASE_URL}/functions/v1/lifeguards`;
+const AUTH_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(iso) { const d = new Date(iso); return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }); }
+function fmtTime(iso) { const d = new Date(iso); return d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }); }
+document.getElementById('signout').addEventListener('click', logout);
+function showErr(msg) { const el = document.getElementById('err'); el.textContent = msg; el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 6000); }
+function showToast(msg, ok = true) { const t = document.getElementById('toast'); t.textContent = msg; t.style.background = ok ? 'var(--green)' : 'var(--red)'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+
+async function call(action, body) {
+  const r = await fetch(LG_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body: JSON.stringify({ action, ...(body || {}) }) });
+  return r.json();
+}
+
+document.querySelectorAll('.sub-tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.sub-tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  document.getElementById('panel-' + b.dataset.panel).classList.add('on');
+  if (b.dataset.panel === 'open' && !window.__OPEN_LOADED) { loadOpen(); window.__OPEN_LOADED = true; }
+  if (b.dataset.panel === 'team' && !window.__TEAM_LOADED) { loadTeam(); window.__TEAM_LOADED = true; }
+}));
+
+async function loadMine() {
+  const host = document.getElementById('panel-mine');
+  try {
+    const r = await call('my_shifts');
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    const shifts = (r.shifts || []).map(s => ({ ...s.shift, signup_id: s.id }));
+    if (!shifts.length) { host.innerHTML = '<div class="empty">You\'re not signed up for any upcoming shifts. Check the <b>Open shifts</b> tab to claim one.</div>'; return; }
+    host.innerHTML = shifts.map(s => `
+      <div class="shift-card mine">
+        <div class="shift-date">${escapeHtml(fmtDate(s.starts_at))}</div>
+        <div class="shift-meta">
+          <div class="time">${escapeHtml(fmtTime(s.starts_at))} – ${escapeHtml(fmtTime(s.ends_at))}</div>
+          <div>${escapeHtml(s.position || 'Lifeguard')}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</div>
+        </div>
+        <button class="btn danger" onclick="releaseShift('${s.id}')">Release</button>
+      </div>`).join('');
+  } catch (e) { showErr(e.message); host.innerHTML = '<div class="empty">Couldn\'t load. Try again.</div>'; }
+}
+
+async function loadOpen() {
+  const host = document.getElementById('panel-open');
+  try {
+    const r = await call('open_shifts');
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    const shifts = r.shifts || [];
+    if (!shifts.length) { host.innerHTML = '<div class="empty">No open shifts right now. Check back later — your manager will post new ones soon.</div>'; return; }
+    host.innerHTML = shifts.map(s => {
+      const remaining = (s.spots_needed || 1) - (s.spots_filled || 0);
+      return `
+      <div class="shift-card">
+        <div class="shift-date">${escapeHtml(fmtDate(s.starts_at))}</div>
+        <div class="shift-meta">
+          <div class="time">${escapeHtml(fmtTime(s.starts_at))} – ${escapeHtml(fmtTime(s.ends_at))}</div>
+          <div>${escapeHtml(s.position || 'Lifeguard')}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</div>
+          <div style="margin-top:4px"><span class="pill spots">${remaining} of ${s.spots_needed} spot${s.spots_needed === 1 ? '' : 's'} left</span></div>
+        </div>
+        <button class="btn success" onclick="signupShift('${s.id}')">Sign up</button>
+      </div>`;
+    }).join('');
+  } catch (e) { showErr(e.message); host.innerHTML = '<div class="empty">Couldn\'t load. Try again.</div>'; }
+}
+
+async function loadTeam() {
+  const host = document.getElementById('panel-team');
+  try {
+    const r = await call('team_schedule');
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    const shifts = r.shifts || [];
+    if (!shifts.length) { host.innerHTML = '<div class="empty">No shifts scheduled in the next 2 weeks.</div>'; return; }
+    const byDay = new Map();
+    shifts.forEach(s => {
+      const k = fmtDate(s.starts_at);
+      if (!byDay.has(k)) byDay.set(k, []);
+      byDay.get(k).push(s);
+    });
+    const out = [];
+    for (const [day, list] of byDay) {
+      out.push(`<h3 style="font-family:'Fraunces',serif;font-size:16px;margin:14px 0 6px;color:var(--blue)">${escapeHtml(day)}</h3>`);
+      list.forEach(s => {
+        const lgs = (s.lifeguards || []).map(l => `<span class="lg-chip"><span class="lg-dot" style="background:${escapeHtml(l.color || '#0a3b5c')}"></span>${escapeHtml(l.name)}</span>`).join('');
+        out.push(`
+          <div class="shift-card">
+            <div class="shift-meta" style="flex:1">
+              <div class="time">${escapeHtml(fmtTime(s.starts_at))} – ${escapeHtml(fmtTime(s.ends_at))} · ${escapeHtml(s.position || 'Lifeguard')}</div>
+              <div style="margin-top:4px">${lgs || '<span style="color:var(--muted);font-size:12px">— unfilled —</span>'}</div>
+            </div>
+          </div>`);
+      });
+    }
+    host.innerHTML = out.join('');
+  } catch (e) { showErr(e.message); host.innerHTML = '<div class="empty">Couldn\'t load.</div>'; }
+}
+
+window.signupShift = async function(id) {
+  const r = await call('signup', { shift_id: id });
+  if (!r.ok) { showToast(r.error || 'Sign up failed', false); return; }
+  showToast('✓ Signed up');
+  window.__OPEN_LOADED = false;
+  document.querySelector('.sub-tabs button[data-panel="mine"]').click();
+  await loadMine();
+};
+window.releaseShift = async function(id) {
+  if (!confirm('Release this shift? Someone else will be able to claim it. If it\'s within 24 hours, please also tell your manager.')) return;
+  const r = await call('release', { shift_id: id });
+  if (!r.ok) { showToast(r.error || 'Release failed', false); return; }
+  showToast('Released');
+  await loadMine();
+  window.__OPEN_LOADED = false; window.__TEAM_LOADED = false;
+};
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
+    const d = await r.json();
+    if (!d.ok) { logout(); return; }
+    document.title = `My shifts — ${d.tenant.display_name}`;
+    document.getElementById('club-name').textContent = `🏊 ${d.tenant.display_name}`;
+  } catch { logout(); return; }
+  await loadMine();
+})();
+</script>
+</body>
+</html>

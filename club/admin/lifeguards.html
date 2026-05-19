@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lifeguard schedule — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size:26px; }
+  h2 { font-size:18px; margin-bottom:12px; }
+  h3 { font-size:14px; margin: 0 0 8px; font-weight:600; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  main { flex:1; padding:24px 22px; max-width:1100px; width:100%; margin:0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  .sub-tabs { display:flex; gap:4px; border-bottom:2px solid var(--border); margin-bottom:18px }
+  .sub-tabs button { padding:9px 14px; font:600 13px Inter,sans-serif; border:0; background:transparent; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px }
+  .sub-tabs button.on { color:var(--blue); border-bottom-color:var(--blue) }
+  .panel { display:none }
+  .panel.on { display:block }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; box-shadow:var(--shadow); margin-bottom:12px; }
+  .btn { padding:9px 16px; border-radius:10px; font:600 13px Inter,sans-serif; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; text-decoration:none; display:inline-block; }
+  .btn:hover { background: var(--blue-2); }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  input, select { padding:9px 12px; border:1px solid var(--border); border-radius:8px; font:14px Inter; width:100%; max-width:300px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; font-weight:600 }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top }
+  th { background:var(--bg-2); font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700 }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font:600 11px Inter; }
+  .pill.full     { background:#dcfce7; color:#14532d }
+  .pill.partial  { background:#fef3c7; color:#92400e }
+  .pill.open     { background:#fee2e2; color:#7f1d1d }
+  .pill.cancelled{ background:#e5e7eb; color:#4b5563 }
+  .empty { padding:36px 22px; text-align:center; color:var(--muted); border:1.5px dashed var(--border); border-radius:var(--r-md); }
+  .lg-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; background:var(--bg-2); font:600 11.5px Inter; margin:2px 4px 2px 0 }
+  .lg-dot { width:8px; height:8px; border-radius:50% }
+  .err { padding:10px 14px; border-radius:10px; background:#fee2e2; color:#7f1d1d; border:1px solid #fecaca; font-size:13px; margin:8px 0; display:none }
+  .err.show { display:block }
+  .row { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:10px; align-items:end }
+  .scrim { display:none; position:fixed; inset:0; background:rgba(10,59,92,.45); backdrop-filter:blur(4px); align-items:flex-start; justify-content:center; z-index:9999; padding:60px 16px 20px; overflow-y:auto }
+  .scrim.open { display:flex }
+  .modal { background:#fff; border-radius:var(--r-lg); max-width:520px; width:100%; padding:22px; box-shadow:0 24px 60px rgba(10,59,92,.3) }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/club/admin/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/lifeguards.html" class="on">Lifeguards</a>
+  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+
+<main>
+  <h1>Lifeguard scheduling</h1>
+  <p style="color:var(--muted);font-size:14px;margin:6px 0 14px">Manage your roster and post open shifts. Lifeguards see them on their own login + can claim spots.</p>
+
+  <div class="sub-tabs">
+    <button class="on" data-panel="schedule">📅 Schedule</button>
+    <button data-panel="roster">👥 Roster</button>
+  </div>
+
+  <!-- ── SCHEDULE PANEL ── -->
+  <div class="panel on" id="panel-schedule">
+    <div class="toolbar">
+      <div></div>
+      <button class="btn" onclick="openCreateShift()">+ Add shift</button>
+    </div>
+    <div id="schedule"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ── ROSTER PANEL ── -->
+  <div class="panel" id="panel-roster">
+    <div class="toolbar">
+      <div></div>
+      <button class="btn" onclick="openCreateLifeguard()">+ Add lifeguard</button>
+    </div>
+    <div id="roster"><div class="empty">Loading…</div></div>
+    <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+      <b>For lifeguards to claim their own shifts</b>, each one needs a Poolside login. After adding a lifeguard to the roster, go to <a href="/club/admin/admins.html">Co-admins</a> and invite them with the <b>"Gate attendant / lifeguard"</b> role — use the same email. Then come back here and click "Link login" next to their roster row.
+    </div>
+  </div>
+</main>
+
+<!-- Shift modal -->
+<div class="scrim" id="shift-scrim" onclick="if (event.target === this) closeShiftModal()">
+  <div class="modal">
+    <h2 id="shift-modal-title">Add shift</h2>
+    <input type="hidden" id="shift-id">
+    <label>Date</label>
+    <input type="date" id="shift-date">
+    <div class="row">
+      <div><label>Start time</label><input type="time" id="shift-start"></div>
+      <div><label>End time</label><input type="time" id="shift-end"></div>
+    </div>
+    <div class="row">
+      <div><label>Position</label><input type="text" id="shift-position" placeholder="Lifeguard / Head / Junior"></div>
+      <div><label>Spots needed</label><input type="number" id="shift-spots" min="1" max="10" value="1"></div>
+    </div>
+    <label>Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+    <input type="text" id="shift-notes" placeholder="Swim meet, party, etc." style="max-width:none">
+    <div class="err" id="shift-err"></div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between;gap:10px">
+      <button class="btn btn-ghost" id="shift-cancel-shift" type="button" onclick="cancelShift()" style="display:none;color:var(--red);border-color:#fecaca">Cancel this shift</button>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-ghost" type="button" onclick="closeShiftModal()">Close</button>
+        <button class="btn" type="button" onclick="saveShift()" id="shift-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lifeguard modal -->
+<div class="scrim" id="lg-scrim" onclick="if (event.target === this) closeLifeguardModal()">
+  <div class="modal">
+    <h2 id="lg-modal-title">Add lifeguard</h2>
+    <input type="hidden" id="lg-id">
+    <label>Name</label>
+    <input type="text" id="lg-name" placeholder="Alex Smith" style="max-width:none">
+    <div class="row">
+      <div><label>Email <span style="font-weight:400;color:var(--muted)">(for login)</span></label><input type="email" id="lg-email" placeholder="alex@example.com"></div>
+      <div><label>Phone <span style="font-weight:400;color:var(--muted)">(SMS reminders later)</span></label><input type="tel" id="lg-phone" placeholder="(555) 123-4567"></div>
+    </div>
+    <label>Color (schedule visualization)</label>
+    <input type="color" id="lg-color" value="#0a3b5c" style="width:80px;height:40px;padding:2px">
+    <label>Notes <span style="font-weight:400;color:var(--muted)">(certifications, restrictions, etc.)</span></label>
+    <input type="text" id="lg-notes" style="max-width:none" placeholder='e.g. "Red Cross certified through Sep 2027 · only available weekends"'>
+    <div class="err" id="lg-err"></div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between;gap:10px">
+      <button class="btn btn-ghost" id="lg-deactivate" type="button" onclick="deactivateLg()" style="display:none;color:var(--red);border-color:#fecaca">Remove from roster</button>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-ghost" type="button" onclick="closeLifeguardModal()">Close</button>
+        <button class="btn" type="button" onclick="saveLifeguard()" id="lg-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const LG_URL   = `${SUPABASE_URL}/functions/v1/lifeguards`;
+const AUTH_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(iso) { const d = new Date(iso); return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }); }
+function fmtTime(iso) { const d = new Date(iso); return d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }); }
+function fmtRange(a, b) { return `${fmtTime(a)} – ${fmtTime(b)}`; }
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, body) {
+  const r = await fetch(LG_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body: JSON.stringify({ action, ...(body || {}) }) });
+  return r.json();
+}
+
+let ROSTER = [];
+let SHIFTS = [];
+
+document.querySelectorAll('.sub-tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.sub-tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  document.getElementById('panel-' + b.dataset.panel).classList.add('on');
+  if (b.dataset.panel === 'roster' && ROSTER.length === 0) loadRoster();
+}));
+
+async function loadSchedule() {
+  const host = document.getElementById('schedule');
+  try {
+    const r = await call('list_shifts');
+    if (!r.ok) throw new Error(r.error || 'Failed to load schedule');
+    SHIFTS = r.shifts || [];
+    renderSchedule();
+  } catch (e) {
+    host.innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderSchedule() {
+  const host = document.getElementById('schedule');
+  if (!SHIFTS.length) {
+    host.innerHTML = '<div class="empty">No shifts yet. Click "+ Add shift" to post your first one — lifeguards will be able to claim it.</div>';
+    return;
+  }
+  const byDay = new Map();
+  SHIFTS.forEach(s => {
+    const day = fmtDate(s.starts_at);
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(s);
+  });
+  const out = [];
+  for (const [day, shifts] of byDay) {
+    out.push(`<h3 style="margin-top:18px">${escapeHtml(day)}</h3>`);
+    out.push('<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Time</th><th>Position</th><th>Filled</th><th>Lifeguards</th><th>Notes</th><th></th></tr></thead><tbody>');
+    shifts.forEach(s => {
+      const filled = s.spots_filled || 0;
+      const needed = s.spots_needed || 1;
+      const cls = s.status === 'cancelled' ? 'cancelled' : (filled === 0 ? 'open' : (filled < needed ? 'partial' : 'full'));
+      const lgs = (s.signups || []).map(su => `<span class="lg-chip"><span class="lg-dot" style="background:${escapeHtml((su.lifeguard && su.lifeguard.color) || '#0a3b5c')}"></span>${escapeHtml(su.lifeguard ? su.lifeguard.name : '')}</span>`).join('');
+      out.push(`<tr>
+        <td><b>${fmtRange(s.starts_at, s.ends_at)}</b></td>
+        <td>${escapeHtml(s.position || 'Lifeguard')}</td>
+        <td><span class="pill ${cls}">${s.status === 'cancelled' ? 'Cancelled' : `${filled} / ${needed}`}</span></td>
+        <td>${lgs || '<span style="color:var(--muted);font-size:12px">— no one yet —</span>'}</td>
+        <td style="color:var(--muted);font-size:12.5px">${escapeHtml(s.notes || '')}</td>
+        <td><button class="btn btn-ghost" onclick="openEditShift('${s.id}')">Edit</button></td>
+      </tr>`);
+    });
+    out.push('</tbody></table></div>');
+  }
+  host.innerHTML = out.join('');
+}
+
+async function loadRoster() {
+  const host = document.getElementById('roster');
+  try {
+    const r = await call('list_roster');
+    if (!r.ok) throw new Error(r.error || 'Failed to load roster');
+    ROSTER = r.lifeguards || [];
+    if (!ROSTER.length) {
+      host.innerHTML = '<div class="empty">No lifeguards on the roster yet. Click "+ Add lifeguard" to add your first one.</div>';
+      return;
+    }
+    host.innerHTML = `<div class="card" style="padding:0;overflow:hidden"><table>
+      <thead><tr><th></th><th>Name</th><th>Email</th><th>Phone</th><th>Has login?</th><th>Active</th><th></th></tr></thead>
+      <tbody>${ROSTER.map(l => `<tr>
+        <td style="width:6px;background:${escapeHtml(l.color || '#0a3b5c')}"></td>
+        <td><b>${escapeHtml(l.name)}</b>${l.notes ? `<div style="color:var(--muted);font-size:12px;margin-top:2px">${escapeHtml(l.notes)}</div>` : ''}</td>
+        <td style="color:var(--muted)">${escapeHtml(l.email || '—')}</td>
+        <td style="color:var(--muted)">${escapeHtml(l.phone_e164 || '—')}</td>
+        <td>${l.admin_user_id ? '<span class="pill full">✓ Linked</span>' : '<span class="pill open">No login</span>'}</td>
+        <td>${l.active ? '<span style="color:var(--green);font-weight:600">Active</span>' : '<span style="color:var(--muted)">Inactive</span>'}</td>
+        <td><button class="btn btn-ghost" onclick="openEditLifeguard('${l.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  } catch (e) {
+    host.innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ── Shift modal ──────────────────────────────────────────────────
+function openCreateShift() {
+  document.getElementById('shift-modal-title').textContent = 'Add shift';
+  document.getElementById('shift-id').value = '';
+  document.getElementById('shift-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('shift-start').value = '08:00';
+  document.getElementById('shift-end').value = '12:00';
+  document.getElementById('shift-position').value = 'Lifeguard';
+  document.getElementById('shift-spots').value = '1';
+  document.getElementById('shift-notes').value = '';
+  document.getElementById('shift-cancel-shift').style.display = 'none';
+  document.getElementById('shift-err').classList.remove('show');
+  document.getElementById('shift-scrim').classList.add('open');
+}
+function openEditShift(id) {
+  const s = SHIFTS.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('shift-modal-title').textContent = 'Edit shift';
+  document.getElementById('shift-id').value = id;
+  const d = new Date(s.starts_at);
+  document.getElementById('shift-date').value = d.toISOString().slice(0,10);
+  document.getElementById('shift-start').value = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const e = new Date(s.ends_at);
+  document.getElementById('shift-end').value = `${String(e.getHours()).padStart(2,'0')}:${String(e.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('shift-position').value = s.position || 'Lifeguard';
+  document.getElementById('shift-spots').value = s.spots_needed || 1;
+  document.getElementById('shift-notes').value = s.notes || '';
+  document.getElementById('shift-cancel-shift').style.display = s.status === 'cancelled' ? 'none' : '';
+  document.getElementById('shift-err').classList.remove('show');
+  document.getElementById('shift-scrim').classList.add('open');
+}
+function closeShiftModal() { document.getElementById('shift-scrim').classList.remove('open'); }
+
+async function saveShift() {
+  const id = document.getElementById('shift-id').value;
+  const date  = document.getElementById('shift-date').value;
+  const start = document.getElementById('shift-start').value;
+  const end   = document.getElementById('shift-end').value;
+  if (!date || !start || !end) { showErr('shift-err', 'Date + start + end required'); return; }
+  const starts_at = new Date(`${date}T${start}:00`).toISOString();
+  const ends_at   = new Date(`${date}T${end}:00`).toISOString();
+  if (new Date(ends_at) <= new Date(starts_at)) { showErr('shift-err', 'End time must be after start time'); return; }
+  const body = {
+    starts_at, ends_at,
+    position: document.getElementById('shift-position').value.trim() || 'Lifeguard',
+    spots_needed: Number(document.getElementById('shift-spots').value) || 1,
+    notes: document.getElementById('shift-notes').value.trim() || null,
+  };
+  const action = id ? 'update_shift' : 'create_shift';
+  if (id) body.id = id;
+  const r = await call(action, body);
+  if (!r.ok) { showErr('shift-err', r.error || 'Save failed'); return; }
+  closeShiftModal();
+  await loadSchedule();
+}
+async function cancelShift() {
+  const id = document.getElementById('shift-id').value;
+  if (!id) return;
+  if (!confirm('Cancel this shift? Anyone signed up will be auto-released and notified later (no notification today — manual heads-up for v1).')) return;
+  const r = await call('cancel_shift', { id });
+  if (!r.ok) { showErr('shift-err', r.error || 'Cancel failed'); return; }
+  closeShiftModal();
+  await loadSchedule();
+}
+
+// ── Lifeguard modal ──────────────────────────────────────────────
+function openCreateLifeguard() {
+  document.getElementById('lg-modal-title').textContent = 'Add lifeguard';
+  document.getElementById('lg-id').value = '';
+  document.getElementById('lg-name').value = '';
+  document.getElementById('lg-email').value = '';
+  document.getElementById('lg-phone').value = '';
+  document.getElementById('lg-color').value = '#0a3b5c';
+  document.getElementById('lg-notes').value = '';
+  document.getElementById('lg-deactivate').style.display = 'none';
+  document.getElementById('lg-err').classList.remove('show');
+  document.getElementById('lg-scrim').classList.add('open');
+}
+function openEditLifeguard(id) {
+  const l = ROSTER.find(x => x.id === id);
+  if (!l) return;
+  document.getElementById('lg-modal-title').textContent = 'Edit lifeguard';
+  document.getElementById('lg-id').value = id;
+  document.getElementById('lg-name').value = l.name || '';
+  document.getElementById('lg-email').value = l.email || '';
+  document.getElementById('lg-phone').value = l.phone_e164 || '';
+  document.getElementById('lg-color').value = l.color || '#0a3b5c';
+  document.getElementById('lg-notes').value = l.notes || '';
+  document.getElementById('lg-deactivate').style.display = l.active ? '' : 'none';
+  document.getElementById('lg-err').classList.remove('show');
+  document.getElementById('lg-scrim').classList.add('open');
+}
+function closeLifeguardModal() { document.getElementById('lg-scrim').classList.remove('open'); }
+
+async function saveLifeguard() {
+  const id = document.getElementById('lg-id').value;
+  const name = document.getElementById('lg-name').value.trim();
+  if (!name) { showErr('lg-err', 'Name required'); return; }
+  const body = {
+    name,
+    email: document.getElementById('lg-email').value.trim() || null,
+    phone_e164: document.getElementById('lg-phone').value.trim() || null,
+    color: document.getElementById('lg-color').value,
+    notes: document.getElementById('lg-notes').value.trim() || null,
+  };
+  const action = id ? 'update_lifeguard' : 'create_lifeguard';
+  if (id) body.id = id;
+  const r = await call(action, body);
+  if (!r.ok) { showErr('lg-err', r.error || 'Save failed'); return; }
+  closeLifeguardModal();
+  await loadRoster();
+}
+async function deactivateLg() {
+  const id = document.getElementById('lg-id').value;
+  if (!id) return;
+  if (!confirm('Remove this lifeguard from the active roster? Their shift history stays — they just won\'t appear when creating new shifts.')) return;
+  const r = await call('deactivate', { id });
+  if (!r.ok) { showErr('lg-err', r.error || 'Failed'); return; }
+  closeLifeguardModal();
+  await loadRoster();
+}
+
+function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('show'); }
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
+    const d = await r.json();
+    if (!d.ok) { logout(); return; }
+    document.title = `Lifeguards — ${d.tenant.display_name}`;
+    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
+  } catch { logout(); return; }
+  await loadSchedule();
+})();
+</script>
+</body>
+</html>

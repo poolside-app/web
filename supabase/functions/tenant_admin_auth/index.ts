@@ -185,8 +185,8 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
   },
   gate_attendant: {
     label: 'Gate attendant / lifeguard',
-    description: 'Only sees the member check-in page (search + photos + paid status). Designed for a shared iPad at the gate — log in once, stays logged in.',
-    scopes: ['check_in'],
+    description: 'Only sees the member check-in page + their own lifeguard shift schedule. Designed for a shared iPad at the gate — log in once, stays logged in.',
+    scopes: ['check_in', 'shifts'],
   },
   custom: {
     label: 'Custom',
@@ -201,6 +201,7 @@ const ALL_SCOPES = [
   'policies', 'directory', 'impact', 'audit',
   'meetings',
   'check_in',
+  'shifts',
 ];
 
 function templateScopes(name: string): string[] {

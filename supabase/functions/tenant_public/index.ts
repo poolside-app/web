@@ -100,10 +100,11 @@ Deno.serve(async (req) => {
       plan_signup_cutoff_date:  ((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.plan_signup_cutoff_date as string | null) ?? null,
     },
     features: {
-      swim_lessons: !!v.features?.swim_lessons,
-      parties:      !!v.features?.parties,
-      keyfobs:      !!v.features?.keyfobs,
-      gate:         !!v.features?.gate,
+      swim_lessons:         !!v.features?.swim_lessons,
+      parties:              !!v.features?.parties,
+      keyfobs:              !!v.features?.keyfobs,
+      gate:                 !!v.features?.gate,
+      lifeguard_scheduling: !!v.features?.lifeguard_scheduling,
     },
     // How members get into the pool. Drives:
     //  - Whether the member app shows a "Show pool pass" button on /m/

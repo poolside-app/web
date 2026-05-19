@@ -233,3 +233,8 @@ verify_jwt = false
 # verified inside via tenant_admin JWT + check_in scope.
 [functions.checkins]
 verify_jwt = false
+
+# Lifeguard scheduling — roster + shifts + signups. Auth verified inside
+# (admin-level scopes for management; 'shifts' scope for lifeguard self-service).
+[functions.lifeguards]
+verify_jwt = false

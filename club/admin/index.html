@@ -92,6 +92,7 @@
   <a href="/club/admin/members.html">Members</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/lifeguards.html">Lifeguards</a>
   <a href="/club/admin/impact.html">Insights</a>
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
@@ -165,12 +166,18 @@ document.getElementById('signout').addEventListener('click', logout);
 
   const { user, tenant } = data;
 
-  // Gate-attendant role only has 'check_in' scope — the rest of the
-  // dashboard would be empty for them. Bounce straight to the check-in
-  // page so the iPad lands somewhere useful. Impersonating admins
-  // bypass this so Doug can support from within.
+  // Gate-attendant role only has 'check_in' + 'shifts' scopes — the rest
+  // of the dashboard would be empty for them. Bounce to whichever feature
+  // the club actually uses: scheduling first (more useful to the lifeguard
+  // personally), check-in as fallback. Impersonators bypass this so Doug
+  // can support from within.
   if (!user.impersonated && user.role_template === 'gate_attendant') {
-    window.location.replace('/club/admin/checkin.html');
+    const features = (tenant && tenant.features) || {};
+    if (features.lifeguard_scheduling) {
+      window.location.replace('/club/admin/my-shifts.html');
+    } else {
+      window.location.replace('/club/admin/checkin.html');
+    }
     return;
   }
 

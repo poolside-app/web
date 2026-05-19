@@ -75,10 +75,11 @@
 
   // Feature → nav selector (tenant-level toggles from settings.value.features)
   const FEATURE_NAV = {
-    parties:       'a[href="/club/admin/parties.html"]',
-    programs:      'a[href="/club/admin/programs.html"]',
-    volunteer:     'a[href="/club/admin/volunteer.html"]',
-    campaigns:     'a[href="/club/admin/campaigns.html"]',
+    parties:               'a[href="/club/admin/parties.html"]',
+    programs:              'a[href="/club/admin/programs.html"]',
+    volunteer:             'a[href="/club/admin/volunteer.html"]',
+    campaigns:             'a[href="/club/admin/campaigns.html"]',
+    lifeguard_scheduling:  'a[href="/club/admin/lifeguards.html"]',
     // guest_passes removed 2026-05-08
   };
 
