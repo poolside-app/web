@@ -102,9 +102,9 @@
 <script src="/js/members-subtabs.js"></script>
 
 <main>
-  <details id="setup-section" style="margin-bottom:18px">
+  <details id="setup-section" open style="margin-bottom:18px">
     <summary style="font-size:13px;color:var(--muted);font-weight:600;padding:6px 0">
-      <span class="chev">▶</span> Payment options setup <span style="font-weight:400">(Venmo, PayPal, Stripe)</span>
+      <span class="chev">▶</span> Payment options setup <span style="font-weight:400">(Venmo, PayPal, Stripe)</span> — click to collapse
     </summary>
     <div style="margin-top:12px">
       <div class="card" data-owner-only data-focus="stripe">
@@ -208,13 +208,11 @@
   </details>
 
   <!-- Pool access / gate config — outside the collapsed setup section because
-       it's a frequently-revisited section (lifeguard accounts, capacity, etc.) -->
+       it's a frequently-revisited section (lifeguard accounts, etc.) -->
   <div class="card" id="access-card" style="margin-bottom:18px">
     <h2>🏊 How members get into the pool</h2>
     <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
     <div id="access-methods" style="display:grid;gap:8px"></div>
-    <label style="margin-top:14px;display:block">Pool capacity <span class="opt">(optional — used by the lifeguard app for "in pool now" counter)</span></label>
-    <input type="number" id="pool_capacity" min="0" max="2000" step="1" placeholder="e.g. 80" style="width:160px">
     <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
       <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
       <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
@@ -515,7 +513,6 @@ function paintAccessMethods(settings) {
         <div style="font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45">${m.desc}</div>
       </div>
     </label>`).join('');
-  document.getElementById('pool_capacity').value = settings.pool_capacity ?? '';
 }
 
 async function saveAccess() {
@@ -527,10 +524,8 @@ async function saveAccess() {
   try {
     const methods = [...document.querySelectorAll('#access-methods input[type=checkbox]:checked')].map(el => el.dataset.method);
     if (methods.length === 0) methods.push('paper_roster');
-    const cap = parseInt(document.getElementById('pool_capacity').value, 10);
     const value = {
       access_methods: methods,
-      pool_capacity:  Number.isFinite(cap) && cap > 0 ? cap : null,
     };
     const r = await api(SETTINGS_URL, 'save', { value });
     if (!r.ok) throw new Error(r.error || 'Save failed');

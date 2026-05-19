@@ -113,9 +113,17 @@ function redirectUri(_req: Request): string {
   return GOOGLE_DRIVE_REDIRECT_URI;
 }
 
-// Kick off the OAuth flow with drive.file scope (least-privilege — only
-// files Poolside creates). We also include offline access + prompt=consent
-// so we always get a refresh_token (Google omits it on subsequent grants).
+// Kick off the OAuth flow with drive.file ONLY (least-privilege — only
+// files Poolside creates or opens). We deliberately do NOT request the
+// broad 'spreadsheets' scope: it triggers the scary "see, edit, create,
+// and delete ALL your spreadsheets" copy on Google's consent screen.
+// The Sheets API works fine through drive.file for sheets we create
+// ourselves (which is our entire use case — Poolside creates the roster
+// spreadsheet, then writes to it). Google's recommended pattern for new
+// apps in 2024+.
+//
+// Offline access + prompt=consent guarantees we always get a refresh_token
+// (Google omits it on subsequent grants without prompt=consent).
 function buildAuthUrl(state: string, redirect: string): string {
   const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   u.searchParams.set('client_id', GOOGLE_ID!);
@@ -126,7 +134,6 @@ function buildAuthUrl(state: string, redirect: string): string {
   u.searchParams.set('include_granted_scopes', 'true');
   u.searchParams.set('scope', [
     'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/userinfo.email',
   ].join(' '));
   u.searchParams.set('state', state);

@@ -116,7 +116,6 @@ Deno.serve(async (req) => {
                                 ? (v as Record<string, unknown>).access_methods
                                 : ['paper_roster'],
       show_member_pool_pass:  ((v as Record<string, unknown>).access_methods as string[] | undefined)?.includes('member_pass') ?? false,
-      pool_capacity:          Number((v as Record<string, unknown>).pool_capacity ?? 0) || null,
     },
     // Early-bird renewal discount surfaced so member home + apply form can
     // show the deadline + savings copy. Honor system for Venmo; Stripe
