@@ -172,6 +172,20 @@
         <input type="text" id="venmo_handle" placeholder="yourclub">
         <label>PayPal link</label>
         <input type="text" id="paypal_link" placeholder="https://paypal.me/yourclub">
+
+        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Offline-payment verification</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">How long the apply form tells members it takes for you to verify their Venmo / check / cash payment.</p>
+        <label>Verify offline payments within <span class="opt">(business days)</span></label>
+        <input type="number" id="offline_verify_window_days" min="1" max="30" step="1" placeholder="3" style="width:120px">
+
+        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Card-processing surcharge</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">When on, members who pay by card see a slightly higher total that covers Stripe's processing fee (~2.9% + 30¢). Venmo / check / cash pricing stays exactly the base price. Disclosure is shown to the member at checkout so the choice is explicit.</p>
+        <label class="checkbox-row" style="margin:0 0 6px;display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="pass_stripe_fee">
+          <span>Pass the Stripe processing fee to members who pay by card</span>
+        </label>
+        <p style="font-size:11.5px;color:var(--muted);margin:0">On a $600 dues bill, members would see <b>$618.23</b> for card vs <b>$600.00</b> for Venmo. The exact pass-through is computed from the rates Stripe charges your club.</p>
+
         <div style="margin-top:14px;display:flex;align-items:center">
           <button class="btn btn-primary" id="pm-save" type="button" onclick="savePaymentMethods()" style="background:var(--blue)">Save</button>
           <span class="saved" id="pm-saved" style="display:none">✓ Saved</span>
@@ -312,13 +326,23 @@ function render() {
     return;
   }
   list.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;padding:10px 14px;background:var(--bg-2);border-radius:10px;font-size:13px">
+      <label style="display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="bulk-all" onchange="toggleAll(this.checked)" style="cursor:pointer">
+        <span>Select all visible</span>
+      </label>
+      <span style="flex:1"></span>
+      <span id="bulk-count" style="color:var(--muted)">0 selected</span>
+      <button class="btn" id="bulk-verify-btn" type="button" onclick="bulkVerify()" disabled style="opacity:.5">✓ Verify selected</button>
+    </div>
     <table>
-      <thead><tr><th>Household</th><th>What</th><th>Source</th><th>Amount</th><th>Waiting</th><th></th></tr></thead>
+      <thead><tr><th style="width:36px"></th><th>Household</th><th>What</th><th>Source</th><th>Amount</th><th>Waiting</th><th></th></tr></thead>
       <tbody>
         ${filtered.map(i => {
           const aged = (i.age_days ?? 0) >= 14;
           return `
-            <tr data-id="${escapeHtml(i.source_id)}">
+            <tr data-id="${escapeHtml(i.source_id)}" data-source="${escapeHtml(i.source)}">
+              <td><input type="checkbox" class="bulk-row" data-source="${escapeHtml(i.source)}" data-id="${escapeHtml(i.source_id)}" onchange="updateBulkCount()" style="cursor:pointer"></td>
               <td><b>${escapeHtml(i.family_name || '—')}</b></td>
               <td>${escapeHtml(i.label)}</td>
               <td><span class="pill ${escapeHtml(i.source)}">${escapeHtml(sourceLabel(i.source))}</span></td>
@@ -330,7 +354,41 @@ function render() {
       </tbody>
     </table>
   `;
+  updateBulkCount();
 }
+
+window.toggleAll = function(checked) {
+  document.querySelectorAll('.bulk-row').forEach(cb => cb.checked = checked);
+  updateBulkCount();
+};
+window.updateBulkCount = function() {
+  const n = document.querySelectorAll('.bulk-row:checked').length;
+  const lbl = document.getElementById('bulk-count');
+  const btn = document.getElementById('bulk-verify-btn');
+  if (lbl) lbl.textContent = `${n} selected`;
+  if (btn) { btn.disabled = n === 0; btn.style.opacity = n === 0 ? '.5' : '1'; }
+};
+window.bulkVerify = async function() {
+  const cbs = [...document.querySelectorAll('.bulk-row:checked')];
+  if (!cbs.length) return;
+  if (!confirm(`Mark ${cbs.length} offline payment${cbs.length === 1 ? '' : 's'} as verified? Make sure the money actually arrived for each one — this writes "paid" against every selected row.`)) return;
+  const btn = document.getElementById('bulk-verify-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Verifying…';
+  const items = cbs.map(cb => ({ source: cb.dataset.source, source_id: cb.dataset.id }));
+  try {
+    const r = await call('bulk_mark_paid', { items });
+    if (!r.ok) throw new Error(r.error || 'Bulk verify failed');
+    let msg = `Verified ${r.verified}.`;
+    if (r.failed) {
+      msg += ` ${r.failed} failed:\n` + r.failures.map(f => `  - ${f.source_id}: ${f.error}`).join('\n');
+    }
+    alert(msg);
+    await refresh();
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false; btn.textContent = orig;
+  }
+};
 
 async function refresh() {
   try {
@@ -403,8 +461,11 @@ async function loadPaymentMethods() {
   try {
     const r = await api(SETTINGS_URL, 'get');
     if (!r.ok) throw new Error(r.error || 'Settings load failed');
-    document.getElementById('venmo_handle').value = (r.settings?.payments?.venmo_handle ?? '');
-    document.getElementById('paypal_link').value  = (r.settings?.payments?.paypal_link  ?? '');
+    const p = r.settings?.payments || {};
+    document.getElementById('venmo_handle').value = (p.venmo_handle ?? '');
+    document.getElementById('paypal_link').value  = (p.paypal_link  ?? '');
+    document.getElementById('offline_verify_window_days').value = (p.offline_verify_window_days ?? 3);
+    document.getElementById('pass_stripe_fee').checked = !!p.pass_stripe_fee;
   } catch (e) {
     const errEl = document.getElementById('pm-err');
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -700,8 +761,15 @@ async function savePaymentMethods() {
   try {
     const venmo  = document.getElementById('venmo_handle').value.trim().replace(/^@+/, '');
     const paypal = document.getElementById('paypal_link').value.trim();
+    const verifyDays = Math.max(1, Math.min(30, Number(document.getElementById('offline_verify_window_days').value) || 3));
+    const passFee = document.getElementById('pass_stripe_fee').checked;
     const r = await api(SETTINGS_URL, 'save', {
-      value: { payments: { venmo_handle: venmo || null, paypal_link: paypal || null } },
+      value: { payments: {
+        venmo_handle: venmo || null,
+        paypal_link: paypal || null,
+        offline_verify_window_days: verifyDays,
+        pass_stripe_fee: passFee,
+      } },
     });
     if (!r.ok) throw new Error(r.error || 'Save failed');
     savedEl.style.display = 'inline';

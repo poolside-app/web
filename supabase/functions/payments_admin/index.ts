@@ -249,5 +249,64 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: `Unknown source: ${source}` }, 400);
   }
 
+  // Bulk version of mark_paid — accepts an array of { source, source_id,
+  // household_id? } and processes each independently. One round-trip from
+  // the bulk-verify queue view; per-item failures don't roll the others
+  // back, but every failure is reported so the admin can re-try.
+  if (action === 'bulk_mark_paid') {
+    const items = Array.isArray(body.items) ? (body.items as Array<{ source: string; source_id: string; household_id?: string }>) : [];
+    if (!items.length) return jsonResponse({ ok: false, error: 'items required' }, 400);
+
+    const ok: string[] = [];
+    const failed: Array<{ source_id: string; error: string }> = [];
+    for (const it of items) {
+      try {
+        if (it.source === 'dues') {
+          const { error } = await sb.from('households').update({ dues_paid_for_year: true, updated_at: new Date().toISOString() })
+            .eq('id', it.source_id).eq('tenant_id', TID);
+          if (error) throw new Error(error.message);
+        } else if (it.source === 'application') {
+          const { error } = await sb.from('applications').update({
+            payment_status: 'paid', paid_at: new Date().toISOString(),
+            verified_at: new Date().toISOString(), verified_by: payload.sub,
+          }).eq('id', it.source_id).eq('tenant_id', TID);
+          if (error) throw new Error(error.message);
+          const { data: app } = await sb.from('applications').select('household_id').eq('id', it.source_id).maybeSingle();
+          if (app?.household_id) {
+            await sb.from('households').update({ dues_paid_for_year: true }).eq('id', app.household_id).eq('tenant_id', TID);
+          }
+        } else if (it.source === 'program') {
+          const { error } = await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString() })
+            .eq('id', it.source_id).eq('tenant_id', TID);
+          if (error) throw new Error(error.message);
+        } else if (it.source === 'guest_pass') {
+          const { error } = await sb.from('guest_pass_packs').update({ paid: true, updated_at: new Date().toISOString() })
+            .eq('id', it.source_id).eq('tenant_id', TID);
+          if (error) throw new Error(error.message);
+        } else if (it.source === 'party') {
+          const { error } = await sb.from('party_bookings').update({
+            payment_status: 'paid', paid_at: new Date().toISOString(),
+            verified_at: new Date().toISOString(), verified_by: payload.sub,
+          }).eq('id', it.source_id).eq('tenant_id', TID);
+          if (error) throw new Error(error.message);
+        } else {
+          throw new Error(`Unknown source: ${it.source}`);
+        }
+        ok.push(it.source_id);
+      } catch (e) {
+        failed.push({ source_id: it.source_id, error: (e as Error).message });
+      }
+    }
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'payments.bulk_verify',
+        entity_type: 'tenant', entity_id: TID,
+        summary: `Bulk-verified ${ok.length} offline payment${ok.length === 1 ? '' : 's'}${failed.length ? `, ${failed.length} failed` : ''}`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+      });
+    } catch { /* audit failure non-fatal */ }
+    return jsonResponse({ ok: true, verified: ok.length, failed: failed.length, failures: failed });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

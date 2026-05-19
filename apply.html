@@ -215,9 +215,22 @@
 
       <h2 style="margin-top:24px">Payment</h2>
       <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
-      <label class="pay-opt"><input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()"> 💸 Venmo — admin verifies, then you're set</label>
-      <label class="pay-opt" id="pay-opt-stripe" style="display:none"><input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()"> 💳 Credit card via Stripe — instant approval</label>
-      <label class="pay-opt" id="pay-opt-stripe-plan" style="display:none"><input type="radio" name="payment_method" value="stripe_plan" onchange="paintVenmoQR()"> 🗓️ <span id="plan-label">Pay in 2 installments via Stripe</span></label>
+      <label class="pay-opt">
+        <input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()">
+        💸 <b>Venmo</b> <span id="venmo-price" style="color:var(--muted);font-weight:500"></span>
+        <div id="venmo-verify-line" style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400"></div>
+      </label>
+      <label class="pay-opt" id="pay-opt-stripe" style="display:none">
+        <input type="radio" name="payment_method" value="stripe" onchange="paintVenmoQR()">
+        💳 <b>Credit card via Stripe</b> <span id="stripe-price" style="color:var(--muted);font-weight:500"></span>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Instant verification — you're paid up the moment you click.</div>
+        <div id="stripe-surcharge-line" style="font-size:11px;color:#92400e;margin-top:2px;font-weight:400;display:none"></div>
+      </label>
+      <label class="pay-opt" id="pay-opt-stripe-plan" style="display:none">
+        <input type="radio" name="payment_method" value="stripe_plan" onchange="paintVenmoQR()">
+        🗓️ <b><span id="plan-label">Pay in 2 installments via Stripe</span></b>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Two card charges. Card saved for the second one.</div>
+      </label>
       <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't fully wired — we'll email you a payment link after the board approves.</p>
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
@@ -284,8 +297,47 @@ function paintPlanLabel() {
 }
 // Re-paint when tier choice changes
 document.addEventListener('change', (e) => {
-  if (e.target && e.target.name === 'tier_slug') paintPlanLabel();
+  if (e.target && e.target.name === 'tier_slug') { paintPlanLabel(); paintPaymentChoices(); }
 });
+
+// Per-tier price display on each payment option, with optional Stripe
+// surcharge (when admin enabled pass_stripe_fee in settings). Venmo/check/
+// cash always show the base price. "Verifies in N business days" copy
+// pulled from tenant settings (default 3).
+function paintPaymentChoices() {
+  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  const checked = document.querySelector('input[name="tier_slug"]:checked')?.value;
+  const tier = tiers.find(t => t.slug === checked) || tiers[0];
+  const baseCents = (tier && typeof tier.price_cents === 'number' && tier.price_cents > 0) ? tier.price_cents : 0;
+  const pay = TENANT_PUBLIC?.public_settings?.payments || {};
+  const passFee = !!pay.pass_stripe_fee;
+  const pct   = Number(pay.stripe_pct ?? 2.9) / 100;
+  const fixed = Number(pay.stripe_fixed_cents ?? 30);
+  const days  = Math.max(1, Math.min(30, Number(pay.offline_verify_window_days ?? 3)));
+
+  const fmt = c => '$' + (c / 100).toFixed(2);
+  const venmoPriceEl  = document.getElementById('venmo-price');
+  const stripePriceEl = document.getElementById('stripe-price');
+  const surchargeEl   = document.getElementById('stripe-surcharge-line');
+  const verifyLineEl  = document.getElementById('venmo-verify-line');
+
+  if (baseCents > 0) {
+    venmoPriceEl.textContent  = '— ' + fmt(baseCents);
+    const stripeCents = passFee ? Math.ceil((baseCents + fixed) / (1 - pct)) : baseCents;
+    stripePriceEl.textContent = '— ' + fmt(stripeCents);
+    if (passFee && stripeCents > baseCents) {
+      surchargeEl.style.display = '';
+      surchargeEl.textContent = `+ ${fmt(stripeCents - baseCents)} card processing fee (Venmo / check / cash stays at ${fmt(baseCents)}).`;
+    } else {
+      surchargeEl.style.display = 'none';
+    }
+  } else {
+    venmoPriceEl.textContent = '';
+    stripePriceEl.textContent = '';
+    surchargeEl.style.display = 'none';
+  }
+  verifyLineEl.textContent = `Admin verifies within ${days} business day${days === 1 ? '' : 's'}, then you're set.`;
+}
 
 function paintTiers() {
   const box = document.getElementById('tiers-box');
@@ -1120,6 +1172,7 @@ function appendAdminContinueIfNeeded() {
   rebuildPeople();
   await loadPolicies();
   paintTiers();
+  paintPaymentChoices();
   paintVenmoQR();
 
   // Referral capture: ?ref=CODE in URL means a current member sent this

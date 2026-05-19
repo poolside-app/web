@@ -129,16 +129,31 @@ Deno.serve(async (req) => {
 
     // Resolve tier price from settings
     const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
-    const tiers = ((settings?.value as Record<string, unknown> | undefined)?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+    const sv = (settings?.value as Record<string, unknown> | undefined);
+    const tiers = (sv?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
     const tier = tiers.find(t => t.slug === app.tier_slug) || tiers[0];
-    const amountCents = (tier?.price_cents as number) || 0;
-    if (amountCents <= 0) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+    const baseCents = (tier?.price_cents as number) || 0;
+    if (baseCents <= 0) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+
+    // Surcharge: if the club has opted to pass the Stripe processing fee to
+    // the member, gross up so they net the base price. Net-up formula:
+    //   gross = (base + fixed_fee) / (1 - pct_fee)
+    // Stripe US default = 2.9% + $0.30. Apply ONLY for the Stripe path
+    // (Venmo/check/cash members continue to see the base price).
+    const pay = (sv?.payments as Record<string, unknown> | undefined);
+    const passFee = !!(pay?.pass_stripe_fee);
+    const pct  = Number(pay?.stripe_pct ?? 2.9) / 100;
+    const fixed = Number(pay?.stripe_fixed_cents ?? 30);
+    let amountCents = baseCents;
+    if (passFee) {
+      amountCents = Math.ceil((baseCents + fixed) / (1 - pct));
+    }
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const session = await stripeCheckout({
       tenantStripeAccount: tenant.stripe_account_id,
       amountCents,
-      productName: `${tenant.display_name} — Annual membership (${(tier?.label as string) || 'family'})`,
+      productName: `${tenant.display_name} — Annual membership (${(tier?.label as string) || 'family'})${passFee ? ' + processing fee' : ''}`,
       description: `Application from ${app.family_name} (${app.primary_name})`,
       // app_id in the success URL lets the success page issue a fresh
       // magic-link sign-in token immediately (instead of "watch for email").

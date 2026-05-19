@@ -78,6 +78,17 @@ Deno.serve(async (req) => {
     payments: {
       venmo_handle: v.payments?.venmo_handle ?? null,
       paypal_link:  v.payments?.paypal_link  ?? null,
+      // Pass Stripe processing fee through to the member? When true, the
+      // apply form shows a higher total for Stripe than for Venmo/check,
+      // and the actual Checkout session is created with the grossed-up
+      // amount so the club nets the base price. Defaults to false.
+      pass_stripe_fee:           !!(v.payments as Record<string, unknown> | undefined)?.pass_stripe_fee,
+      // Surcharge math (US Stripe standard, editable for international/etc.).
+      stripe_pct:                Number((v.payments as Record<string, unknown> | undefined)?.stripe_pct                ?? 2.9),
+      stripe_fixed_cents:        Number((v.payments as Record<string, unknown> | undefined)?.stripe_fixed_cents        ?? 30),
+      // Customizable verify-window copy on member-facing surfaces. Default
+      // 3 business days; admins can edit per their treasurer's cadence.
+      offline_verify_window_days: Number((v.payments as Record<string, unknown> | undefined)?.offline_verify_window_days ?? 3),
     },
     // Payment plan public surface: minimal config fields needed by the apply
     // form to decide whether to show the 'Pay in 2 installments' option and
