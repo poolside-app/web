@@ -90,10 +90,10 @@
 
   <div class="card">
     <h2>Upgrade</h2>
-    <p style="font-size:14px;line-height:1.6">We're hand-onboarding our first batch of clubs to make sure every customer is happy. To upgrade your plan, email us at <a href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">hello@poolsideapp.com</a> and we'll send back a one-click upgrade link the same day. Self-serve upgrades are coming soon.</p>
-    <p style="margin-top:14px">
-      <a class="btn" href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">📧 Email to upgrade</a>
-    </p>
+    <p style="font-size:14px;line-height:1.6" id="upgrade-blurb">Pick a tier and we'll take you to Stripe to set up your subscription. Your plan changes the moment Stripe confirms the payment — no waiting.</p>
+    <div id="upgrade-banner" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
+    <div id="upgrade-actions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <p style="margin-top:14px;font-size:12px;color:var(--muted)">Stuck or need a custom arrangement? Email <a href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">hello@poolsideapp.com</a>.</p>
   </div>
 </main>
 
@@ -108,10 +108,10 @@ function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_te
 document.getElementById('signout').addEventListener('click', logout);
 
 const TIERS = [
-  { key: 'free',       name: 'Free Forever', price: 0,    cap: 30,         caption: 'For tiny HOA pools' },
-  { key: 'starter',    name: 'Starter',      price: 199,  cap: 100,        caption: 'Small neighborhood clubs' },
-  { key: 'pro',        name: 'Pro',          price: 599,  cap: 300,        caption: 'Most popular', featured: true },
-  { key: 'enterprise', name: 'Enterprise',   price: 1199, cap: Infinity,   caption: 'Multi-pool / large clubs' },
+  { key: 'free',       name: 'Free Forever', price: 0,    cap: 20,         caption: 'For tiny HOA pools' },
+  { key: 'starter',    name: 'Starter',      price: 299,  cap: 100,        caption: 'Small neighborhood clubs' },
+  { key: 'pro',        name: 'Pro',          price: 799,  cap: 300,        caption: 'Most popular', featured: true },
+  { key: 'enterprise', name: 'Enterprise',   price: 1499, cap: Infinity,   caption: 'Multi-pool / large clubs' },
 ];
 
 (async () => {
@@ -156,6 +156,56 @@ const TIERS = [
         <div class="cap">Up to ${t.cap === Infinity ? '∞' : t.cap} households</div>
       </div>`;
   }).join('');
+
+  // Surface upgrade-result banners from the Stripe Checkout redirect.
+  const params = new URLSearchParams(window.location.search);
+  const banner = document.getElementById('upgrade-banner');
+  if (params.get('upgraded') === '1') {
+    banner.style.display = 'block';
+    banner.style.background = '#dcfce7'; banner.style.color = '#14532d'; banner.style.border = '1px solid #86efac';
+    banner.innerHTML = '✓ Payment confirmed. Stripe is finalizing your subscription — your new plan will appear here within a minute.';
+  } else if (params.get('upgraded') === '0') {
+    banner.style.display = 'block';
+    banner.style.background = '#fef3c7'; banner.style.color = '#92400e'; banner.style.border = '1px solid #fcd34d';
+    banner.innerHTML = 'Upgrade cancelled. No charges were made. Pick a plan below when you\'re ready.';
+  }
+
+  // Upgrade buttons: only owners can self-upgrade. Other admins see a note.
+  const actions = document.getElementById('upgrade-actions');
+  const isOwner = (me.user.role_template || '') === 'owner';
+  if (!isOwner) {
+    document.getElementById('upgrade-blurb').textContent = 'Only the club owner can change the plan. Ask your owner to upgrade from this page.';
+  } else {
+    const upgradeableTiers = TIERS.filter(t => t.key !== 'free' && t.key !== planKey);
+    if (upgradeableTiers.length === 0) {
+      document.getElementById('upgrade-blurb').textContent = "You're on the top tier — nothing to upgrade to. Need custom limits? Email hello@poolsideapp.com.";
+    } else {
+      actions.innerHTML = upgradeableTiers.map(t => `
+        <button class="btn" data-plan="${t.key}" style="background:${t.featured ? 'var(--sun)' : 'var(--blue)'};color:${t.featured ? '#422006' : '#fff'}">
+          Upgrade to ${escapeHtml(t.name)} — $${t.price}/yr
+        </button>`).join('');
+      actions.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-plan]');
+        if (!btn) return;
+        btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Opening Stripe…';
+        try {
+          const r = await fetch(ME_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+            body: JSON.stringify({ action: 'start_plan_upgrade', new_plan: btn.dataset.plan }),
+          });
+          const d = await r.json();
+          if (!d.ok || !d.url) throw new Error(d.error || 'Could not start upgrade');
+          window.location.href = d.url;
+        } catch (err) {
+          banner.style.display = 'block';
+          banner.style.background = '#fee2e2'; banner.style.color = '#7f1d1d'; banner.style.border = '1px solid #fecaca';
+          banner.textContent = err.message;
+          btn.disabled = false; btn.textContent = orig;
+        }
+      });
+    }
+  }
 })();
 </script>
 </body>

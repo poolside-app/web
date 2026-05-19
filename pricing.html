@@ -16,6 +16,15 @@
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
     --r-md: 12px; --r-lg: 18px; --max: 760px;
   }
+  .tier-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 28px; }
+  .tier-card { padding: 18px; border: 1.5px solid var(--border); border-radius: var(--r-md); background: #fff; position: relative; }
+  .tier-card.featured { border-color: var(--sun); box-shadow: 0 4px 16px rgba(245,158,11,.12); }
+  .tier-card .badge { position: absolute; top: -10px; right: 12px; background: var(--sun); color: #422006; font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 999px; letter-spacing: .04em; }
+  .tier-card .name { font-family: 'Fraunces', serif; font-size: 20px; color: var(--blue); margin: 0 0 4px; font-weight: 600; }
+  .tier-card .price { font-size: 26px; font-weight: 700; color: var(--text); margin: 4px 0 2px; }
+  .tier-card .price small { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .tier-card .cap { font-size: 13px; color: var(--muted); margin: 4px 0 10px; }
+  .tier-card .desc { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
   *,*::before,*::after { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   a { color: var(--blue); }
@@ -60,11 +69,42 @@
     <h1>Why we charge what we charge</h1>
     <p class="lede">A real, no-bullshit breakdown of what your fee covers, how we compare to Wild Apricot &amp; the others, and where every dollar goes.</p>
 
+    <h2>The plans</h2>
+    <p>Every tier gets every feature. The only thing that changes is how many households you can manage.</p>
+
+    <div class="tier-grid">
+      <div class="tier-card">
+        <div class="name">Free Forever</div>
+        <div class="price">$0<small> / year</small></div>
+        <div class="cap">Up to 20 households</div>
+        <div class="desc">HOA pools, micro-clubs, and anyone testing things out. No card, no time limit.</div>
+      </div>
+      <div class="tier-card">
+        <div class="name">Starter</div>
+        <div class="price">$299<small> / year</small></div>
+        <div class="cap">Up to 100 households</div>
+        <div class="desc">Small neighborhood clubs. Same features as Pro, half the headcount.</div>
+      </div>
+      <div class="tier-card featured">
+        <span class="badge">Most popular</span>
+        <div class="name">Pro</div>
+        <div class="price">$799<small> / year</small></div>
+        <div class="cap">Up to 300 households</div>
+        <div class="desc">The typical pool club. Memberships, dues, programs, parties, gate, archive — all of it.</div>
+      </div>
+      <div class="tier-card">
+        <div class="name">Enterprise</div>
+        <div class="price">$1,499<small> / year</small></div>
+        <div class="cap">Unlimited households</div>
+        <div class="desc">Multi-pool clubs, large community centers, or anything past 300 households.</div>
+      </div>
+    </div>
+
     <h2>The short version</h2>
     <p>Pool clubs are run by volunteers. Volunteers don't have time. Volunteer time is worth real money — even if no one's writing them a check. So pricing should reflect the hours you save, not the cost of writing the code.</p>
 
     <div class="callout">
-      <p><b>Our pricing rule:</b> capture roughly 5-10% of the value we create. A typical 150-household neighborhood club saves 200+ board hours per year. That's $5,000+ of volunteer time at $25/hour. We charge $599/year for that. Cheap.</p>
+      <p><b>Our pricing rule:</b> capture roughly 5-10% of the value we create. A typical 150-household neighborhood club saves 200+ board hours per year. That's $5,000+ of volunteer time at $25/hour. We charge $799/year for that. Still cheap.</p>
     </div>
 
     <h2>How we compare</h2>
@@ -75,7 +115,7 @@
         <tr><th>Product</th><th class="right">Annual cost</th><th>What you get</th></tr>
       </thead>
       <tbody>
-        <tr><td><b>Poolside Pro</b></td><td class="right win">$599</td><td>Memberships, dues, payments, programs, parties, gate, archive — all of it.</td></tr>
+        <tr><td><b>Poolside Pro</b></td><td class="right win">$799</td><td>Memberships, dues, payments, programs, parties, gate, archive — all of it.</td></tr>
         <tr><td>Wild Apricot</td><td class="right lose">$1,200-1,800</td><td>Memberships + events + payments. No pool-specific features.</td></tr>
         <tr><td>Member365</td><td class="right lose">$1,500-3,600</td><td>Memberships + events. Generic.</td></tr>
         <tr><td>TeamUnify (swim clubs)</td><td class="right lose">$700-2,000</td><td>Swim team + memberships. Aimed at competitive teams.</td></tr>
@@ -87,28 +127,28 @@
     <p>We're 3-6× cheaper than direct competitors at every tier — without skimping on features. The reason isn't "we're underpriced." It's: <b>we built this for pool clubs specifically</b>, so we don't carry the bloat of a generic membership platform built for chambers of commerce + dog rescues + alumni associations.</p>
 
     <h2>Where the money actually goes</h2>
-    <p>Out of every $599 Pro subscription:</p>
+    <p>Out of every $799 Pro subscription:</p>
 
     <table>
       <thead>
         <tr><th>Where</th><th class="right">Approx</th></tr>
       </thead>
       <tbody>
-        <tr><td>Stripe processing fee on your subscription</td><td class="right">$18 (3%)</td></tr>
+        <tr><td>Stripe processing fee on your subscription</td><td class="right">$24 (3%)</td></tr>
         <tr><td>Supabase (database + auth + storage)</td><td class="right">$5</td></tr>
         <tr><td>Resend (your members' sign-in link emails)</td><td class="right">$2</td></tr>
         <tr><td>Twilio (your members' sign-in code texts)</td><td class="right">$15</td></tr>
         <tr><td>Vercel (hosting)</td><td class="right">$3</td></tr>
         <tr><td>Domain + cert + back-end ops</td><td class="right">$8</td></tr>
-        <tr><td><b>Subtotal — what it costs us to run your club</b></td><td class="right"><b>~$50</b></td></tr>
-        <tr><td><b>What's left to keep developing the product</b></td><td class="right"><b>~$549</b></td></tr>
+        <tr><td><b>Subtotal — what it costs us to run your club</b></td><td class="right"><b>~$57</b></td></tr>
+        <tr><td><b>What's left to keep developing the product</b></td><td class="right"><b>~$742</b></td></tr>
       </tbody>
     </table>
 
     <p>That margin is what funds the next thing you'll ask us to build. Customer service. Dunning. Two-installment payment plans. A keyfob integration. The Drive auto-archive. Things you didn't ask for that you'll be glad we built when you need them.</p>
 
     <h2>Why there's a Free Forever tier</h2>
-    <p>Some pool clubs are 18 households. An HOA pool with 16 homes shouldn't have to pay $199/year for a membership system. They should be able to use Poolside as a Saturday volunteer's tool, not a budget line. So Free Forever is real — no card required, no time limit, every feature included, capped at 20 households.</p>
+    <p>Some pool clubs are 18 households. An HOA pool with 16 homes shouldn't have to pay $299/year for a membership system. They should be able to use Poolside as a Saturday volunteer's tool, not a budget line. So Free Forever is real — no card required, no time limit, every feature included, capped at 20 households.</p>
     <p>It costs us about $5/year to keep a Free club running. We eat that cost because (a) those clubs become loyal advocates and (b) when they grow past 20 households, we want them to upgrade with us instead of starting over with a competitor.</p>
 
     <h2>Why no feature paywalls</h2>

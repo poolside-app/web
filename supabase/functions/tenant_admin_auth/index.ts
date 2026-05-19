@@ -1031,5 +1031,70 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, temp_password: tempPw });
   }
 
+  // ── start_plan_upgrade: owner — open Stripe Checkout (subscription) for
+  //    a new tier. Returns { url } for the client to redirect to. On payment
+  //    success Stripe fires customer.subscription.created → webhook handler
+  //    flips tenants.plan. Until that webhook lands, the tenant stays on
+  //    their current plan (atomic upgrade — never half-upgraded state).
+  if (action === 'start_plan_upgrade') {
+    const payload = await verifyAdmin(token);
+    if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
+    if (payload.role_template !== 'owner') {
+      return jsonResponse({ ok: false, error: 'Only the club owner can change the plan' }, 403);
+    }
+    const newPlan = String(body.new_plan ?? '').trim().toLowerCase();
+    const PRICE_IDS: Record<string, string | undefined> = {
+      starter:    Deno.env.get('STRIPE_PRICE_STARTER'),
+      pro:        Deno.env.get('STRIPE_PRICE_PRO'),
+      enterprise: Deno.env.get('STRIPE_PRICE_ENTERPRISE'),
+    };
+    const priceId = PRICE_IDS[newPlan];
+    if (!priceId) {
+      return jsonResponse({ ok: false, error: `Plan "${newPlan}" not available for self-serve upgrade yet — email hello@poolsideapp.com.` }, 400);
+    }
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) return jsonResponse({ ok: false, error: 'Stripe not configured' }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name, plan, stripe_customer_id')
+      .eq('id', payload.tid).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    if (tenant.plan === newPlan) {
+      return jsonResponse({ ok: false, error: `Already on the ${newPlan} plan.` }, 400);
+    }
+
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const params = new URLSearchParams();
+    params.append('mode', 'subscription');
+    params.append('line_items[0][price]', priceId);
+    params.append('line_items[0][quantity]', '1');
+    params.append('success_url', `${clubUrl}/club/admin/billing.html?upgraded=1`);
+    params.append('cancel_url',  `${clubUrl}/club/admin/billing.html?upgraded=0`);
+    if (tenant.stripe_customer_id) {
+      params.append('customer', tenant.stripe_customer_id);
+    }
+    params.append('client_reference_id', `plan_upgrade:${tenant.id}:${newPlan}`);
+    params.append('metadata[tenant_id]', tenant.id);
+    params.append('metadata[new_plan]',  newPlan);
+    params.append('metadata[kind]',      'plan_upgrade');
+    params.append('subscription_data[metadata][tenant_id]', tenant.id);
+    params.append('subscription_data[metadata][new_plan]',  newPlan);
+
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${stripeKey}:`),
+        'Content-Type':  'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return jsonResponse({ ok: false, error: `Stripe ${res.status}: ${t.slice(0, 300)}` }, 502);
+    }
+    const session = await res.json();
+    return jsonResponse({ ok: true, url: session.url, session_id: session.id });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

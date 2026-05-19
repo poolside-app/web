@@ -442,6 +442,38 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── plan_upgrade: tenant just paid for a new subscription tier. Flip
+    //    tenants.plan immediately + record the Stripe customer for future
+    //    billing-portal access. The subscription itself is tracked by
+    //    Stripe; we just mirror the plan name locally so plan_caps.ts
+    //    enforces the new cap. Downgrade/cancel handled in
+    //    customer.subscription.deleted below.
+    if (kind === 'plan_upgrade' && tenantId && md.new_plan) {
+      const customerId = (session.customer as string) || null;
+      const updates: Record<string, unknown> = { plan: md.new_plan, updated_at: new Date().toISOString() };
+      if (customerId) updates.stripe_customer_id = customerId;
+      await sb.from('tenants').update(updates).eq('id', tenantId);
+    }
+
+    return new Response('ok', { status: 200 });
+  }
+
+  // ── customer.subscription.deleted — tenant cancelled their subscription
+  //    (either via Stripe billing portal or admin tools). Demote them back
+  //    to Free Forever; the next renewal cycle won't bill. Grace period is
+  //    handled by Stripe (subscription stays active until current_period_end).
+  if (type === 'customer.subscription.deleted') {
+    const sub = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
+    const md  = (sub?.metadata as Record<string, string> | undefined) || {};
+    const customerId = String(sub?.customer || '');
+    let tenantId = md.tenant_id || '';
+    if (!tenantId && customerId) {
+      const { data: t } = await sb.from('tenants').select('id').eq('stripe_customer_id', customerId).maybeSingle();
+      if (t) tenantId = t.id as string;
+    }
+    if (tenantId) {
+      await sb.from('tenants').update({ plan: 'free', updated_at: new Date().toISOString() }).eq('id', tenantId);
+    }
     return new Response('ok', { status: 200 });
   }
 
