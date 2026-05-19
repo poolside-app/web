@@ -1031,6 +1031,46 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, temp_password: tempPw });
   }
 
+  // ── start_setup_service: any admin — buy Premium Setup ($500 one-time).
+  //    Charge goes to the Poolside platform account (not via Connect — this
+  //    is the club paying us, not a member paying the club). On success,
+  //    stripe_webhook fires emails to Doug + the club and the white-glove
+  //    work begins outside the app.
+  if (action === 'start_setup_service') {
+    const payload = await verifyAdmin(token);
+    if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) return jsonResponse({ ok: false, error: 'Stripe not configured' }, 500);
+
+    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, stripe_customer_id').eq('id', payload.tid).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const params = new URLSearchParams();
+    params.append('mode', 'payment');
+    params.append('line_items[0][price_data][currency]', 'usd');
+    params.append('line_items[0][price_data][product_data][name]', 'Poolside Premium Setup');
+    params.append('line_items[0][price_data][product_data][description]', 'White-glove onboarding: data import, payments wiring, kickoff + follow-up calls.');
+    params.append('line_items[0][price_data][unit_amount]', '50000');   // $500.00
+    params.append('line_items[0][quantity]', '1');
+    params.append('success_url', `${clubUrl}/club/admin/billing.html?setup_service=1`);
+    params.append('cancel_url',  `${clubUrl}/club/admin/billing.html?setup_service=0`);
+    if (tenant.stripe_customer_id) params.append('customer', tenant.stripe_customer_id);
+    params.append('metadata[kind]',         'setup_service');
+    params.append('metadata[tenant_id]',    tenant.id);
+    params.append('metadata[tenant_slug]',  tenant.slug);
+    params.append('metadata[admin_id]',     payload.sub);
+
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa(`${stripeKey}:`), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    if (!res.ok) { const t = await res.text(); return jsonResponse({ ok: false, error: `Stripe ${res.status}: ${t.slice(0, 300)}` }, 502); }
+    const session = await res.json();
+    return jsonResponse({ ok: true, url: session.url });
+  }
+
   // ── open_billing_portal: owner — generate a Stripe-hosted Customer Portal
   //    URL so they can self-manage their subscription: change payment method,
   //    download invoices, cancel, etc. Eliminates the "how do I update my

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Import households — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626; --amber:#92400e;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+  a { color:var(--blue); }
+  h1, h2 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size:26px; }
+  h2 { font-size:18px; margin-bottom:12px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:1000px; width:100%; margin:0 auto; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; box-shadow:var(--shadow); margin-bottom:14px; }
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; text-decoration:none; display:inline-block; }
+  .btn:hover { background:var(--blue-2); }
+  .btn:disabled { opacity:.6; cursor:not-allowed; }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .drop { padding:32px; border:2px dashed var(--border); border-radius:var(--r-lg); text-align:center; background:#fafafa; cursor:pointer; transition:background .15s, border-color .15s; }
+  .drop:hover, .drop.drag { background:var(--blue-l); border-color:var(--blue); }
+  .drop p { margin:8px 0; color:var(--muted); }
+  table.map { width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.map th, table.map td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+  table.map th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; }
+  table.map .sample { font-size:11.5px; color:var(--muted); }
+  select.field { padding:6px 8px; font:500 13px 'Inter'; border:1px solid var(--border); border-radius:6px; background:#fff; min-width:240px; }
+  select.field.req { border-color:var(--green); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font:600 11px Inter; }
+  .badge.ok { background:#dcfce7; color:#14532d; }
+  .badge.bad { background:#fee2e2; color:#7f1d1d; }
+  .err { padding:10px 14px; border-radius:10px; background:#fee2e2; color:#7f1d1d; border:1px solid #fecaca; font-size:13.5px; margin:8px 0; display:none; }
+  .err.show { display:block; }
+  .ok { padding:10px 14px; border-radius:10px; background:#dcfce7; color:#14532d; border:1px solid #86efac; font-size:13.5px; margin:8px 0; display:none; }
+  .ok.show { display:block; }
+  .invalid-row { padding:8px 12px; border-left:3px solid var(--red); background:#fff5f5; margin:6px 0; border-radius:6px; font-size:13px; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+
+<main>
+  <h1>Import households from a spreadsheet</h1>
+  <p style="color:var(--muted);font-size:14px;margin:6px 0 18px">Upload your existing roster (CSV). We'll match your columns to ours — you confirm the mapping, then we import.</p>
+
+  <!-- STEP 1: Upload -->
+  <div class="card" id="step-upload">
+    <h2>1. Upload your spreadsheet</h2>
+    <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Export your existing roster (Google Sheets / Excel / Wild Apricot / Member Splash) as a <b>.csv file</b>. Don't worry about column names — we'll map them in the next step.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".csv,text/csv" style="display:none">
+      <div style="font-size:34px">📄</div>
+      <p><b style="color:var(--blue)">Click to choose a CSV file</b> or drag one here</p>
+      <p style="font-size:12px">Max 5MB. Most clubs have 50-300 rows.</p>
+    </label>
+    <div id="up-err" class="err"></div>
+  </div>
+
+  <!-- STEP 2: Mapping -->
+  <div class="card" id="step-map" style="display:none">
+    <h2>2. Match your columns to Poolside fields</h2>
+    <p style="font-size:13.5px;color:var(--muted);margin:0 0 4px">We've guessed where we can. <b style="color:var(--green)">Required:</b> Family name + primary member name. Override anything wrong with the dropdown.</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px"><b id="row-count">0</b> rows in your file.</p>
+    <table class="map">
+      <thead><tr><th>Your column</th><th>Sample value</th><th>Maps to →</th></tr></thead>
+      <tbody id="map-body"></tbody>
+    </table>
+    <p style="margin-top:16px"><button class="btn" id="preview-btn">Preview import →</button> <button class="btn btn-ghost" id="cancel1">Cancel</button></p>
+    <div id="map-err" class="err"></div>
+  </div>
+
+  <!-- STEP 3: Preview -->
+  <div class="card" id="step-preview" style="display:none">
+    <h2>3. Review what we'll import</h2>
+    <div id="preview-summary"></div>
+    <div id="preview-invalid" style="margin-top:14px"></div>
+    <p style="margin-top:18px"><button class="btn" id="commit-btn">Import valid rows →</button> <button class="btn btn-ghost" id="back-to-map">← Back to mapping</button></p>
+    <div id="commit-err" class="err"></div>
+    <div id="commit-ok" class="ok"></div>
+  </div>
+
+  <!-- STEP 4: Done -->
+  <div class="card" id="step-done" style="display:none">
+    <h2>4. Done</h2>
+    <div id="done-msg"></div>
+    <p style="margin-top:18px">
+      <a class="btn" href="/club/admin/members.html#households">View imported households →</a>
+      <a class="btn btn-ghost" href="/club/admin/import.html">Import another file</a>
+    </p>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const IMPORT_URL   = `${SUPABASE_URL}/functions/v1/households_import`;
+const AUTH_URL     = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const MAX_BYTES    = 5 * 1024 * 1024;
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+document.getElementById('signout').addEventListener('click', logout);
+
+let PARSED = null;   // { headers, sample_rows, total_rows, suggested_mapping, target_fields, all_rows }
+let MAPPING = {};
+
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
+    const d = await r.json();
+    if (!d.ok) { logout(); return; }
+    document.title = `Import — ${d.tenant.display_name}`;
+    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
+  } catch { logout(); }
+})();
+
+const drop = document.getElementById('drop');
+const fileIn = document.getElementById('file');
+drop.addEventListener('click', () => fileIn.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileIn.addEventListener('change', () => { if (fileIn.files[0]) handleFile(fileIn.files[0]); });
+
+async function handleFile(file) {
+  const errEl = document.getElementById('up-err');
+  errEl.classList.remove('show');
+  if (file.size > MAX_BYTES) { errEl.textContent = 'File too large — keep it under 5MB.'; errEl.classList.add('show'); return; }
+  const text = await file.text();
+  // Stash full data so commit can use ALL rows, not just sample.
+  const fullRows = text;
+  try {
+    const r = await fetch(IMPORT_URL, {
+      method:'POST',
+      headers:{'content-type':'application/json','authorization':`Bearer ${token()}`},
+      body: JSON.stringify({ action:'parse_csv', csv_text: text }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Could not parse the file');
+    PARSED = d;
+    MAPPING = { ...d.suggested_mapping };
+    PARSED.csv_text = text;   // we'll re-send on preview/commit so the server re-parses (canonical)
+    renderMapping();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  }
+}
+
+function renderMapping() {
+  document.getElementById('step-upload').style.display = 'none';
+  document.getElementById('step-map').style.display = '';
+  document.getElementById('row-count').textContent = PARSED.total_rows.toLocaleString();
+  const body = document.getElementById('map-body');
+  const opts = PARSED.target_fields.map(f => `<option value="${f.key}">${escapeHtml(f.label)}${f.required ? ' *' : ''}</option>`).join('');
+  body.innerHTML = PARSED.headers.map((h, i) => {
+    const sample = (PARSED.sample_rows[0] || [])[i] || '';
+    const sample2 = (PARSED.sample_rows[1] || [])[i] || '';
+    const current = MAPPING[h] || '__skip__';
+    const target = PARSED.target_fields.find(f => f.key === current);
+    const isReq = target && target.required;
+    return `<tr>
+      <td><b>${escapeHtml(h)}</b></td>
+      <td class="sample">${escapeHtml((sample || '').slice(0, 40))}${sample2 ? `<br>${escapeHtml((sample2 || '').slice(0, 40))}` : ''}</td>
+      <td><select class="field ${isReq ? 'req' : ''}" data-header="${escapeHtml(h)}">
+        ${PARSED.target_fields.map(f => `<option value="${f.key}" ${f.key === current ? 'selected' : ''}>${escapeHtml(f.label)}${f.required ? ' *' : ''}</option>`).join('')}
+      </select></td>
+    </tr>`;
+  }).join('');
+  body.querySelectorAll('select.field').forEach(sel => {
+    sel.addEventListener('change', () => {
+      MAPPING[sel.dataset.header] = sel.value;
+      const target = PARSED.target_fields.find(f => f.key === sel.value);
+      sel.classList.toggle('req', !!(target && target.required));
+    });
+  });
+}
+
+document.getElementById('cancel1').addEventListener('click', () => location.reload());
+document.getElementById('back-to-map').addEventListener('click', () => {
+  document.getElementById('step-preview').style.display = 'none';
+  document.getElementById('step-map').style.display = '';
+});
+
+document.getElementById('preview-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('map-err');
+  errEl.classList.remove('show');
+  // Validate required mappings
+  const targets = new Set(Object.values(MAPPING));
+  if (!targets.has('family_name'))  { errEl.textContent = 'You must map a column to "Family / household name".';  errEl.classList.add('show'); return; }
+  if (!targets.has('primary_name')) { errEl.textContent = 'You must map a column to "Primary member — full name".'; errEl.classList.add('show'); return; }
+  // Re-parse the whole file server-side then preview — keeps client small
+  const btn = document.getElementById('preview-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Checking…';
+  try {
+    // We need to send rows. Re-parse client-side using the same CSV from earlier.
+    const allRows = clientParseCSV(PARSED.csv_text);
+    const headers = allRows[0];
+    const rows    = allRows.slice(1).filter(r => r.some(c => (c || '').trim() !== ''));
+    const r = await fetch(IMPORT_URL, {
+      method:'POST',
+      headers:{'content-type':'application/json','authorization':`Bearer ${token()}`},
+      body: JSON.stringify({ action:'preview', headers, rows, mapping: MAPPING }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Preview failed');
+    PARSED.preview = d;
+    PARSED.committed_headers = headers;
+    PARSED.committed_rows    = rows;
+    renderPreview(d);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
+
+function renderPreview(d) {
+  document.getElementById('step-map').style.display = 'none';
+  document.getElementById('step-preview').style.display = '';
+  const sum = document.getElementById('preview-summary');
+  sum.innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:140px;padding:14px;border:1px solid #86efac;border-radius:10px;background:#dcfce7"><div style="font-size:11px;text-transform:uppercase;color:#14532d;font-weight:700">Ready to import</div><div style="font:600 24px Fraunces;color:#14532d">${d.valid}</div></div>
+      <div style="flex:1;min-width:140px;padding:14px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2"><div style="font-size:11px;text-transform:uppercase;color:#7f1d1d;font-weight:700">Needs fixing</div><div style="font:600 24px Fraunces;color:#7f1d1d">${d.invalid}</div></div>
+      <div style="flex:1;min-width:140px;padding:14px;border:1px solid var(--border);border-radius:10px"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700">Total rows</div><div style="font:600 24px Fraunces;color:var(--text)">${d.total}</div></div>
+    </div>
+  `;
+  if (d.sample_invalid && d.sample_invalid.length) {
+    const html = ['<h2 style="font-size:14px;margin-top:10px">Rows we can\'t import (you can fix the file and re-upload, or just skip them)</h2>'];
+    d.sample_invalid.forEach(r => {
+      html.push(`<div class="invalid-row"><b>Row ${r.row}:</b> ${escapeHtml(r.family_name || '(no family name)')} / ${escapeHtml(r.primary_name || '(no primary)')}<br><span style="color:var(--red);font-size:12px">${r.errors.map(escapeHtml).join(' · ')}</span></div>`);
+    });
+    document.getElementById('preview-invalid').innerHTML = html.join('');
+  } else {
+    document.getElementById('preview-invalid').innerHTML = '';
+  }
+}
+
+document.getElementById('commit-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('commit-btn');
+  const errEl = document.getElementById('commit-err');
+  const okEl  = document.getElementById('commit-ok');
+  errEl.classList.remove('show'); okEl.classList.remove('show');
+  if (!confirm(`Import ${PARSED.preview.valid} households into your club? This adds real records — there\'s no one-click undo yet, so make sure the preview looks right.`)) return;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = `Importing ${PARSED.preview.valid}…`;
+  try {
+    const r = await fetch(IMPORT_URL, {
+      method:'POST',
+      headers:{'content-type':'application/json','authorization':`Bearer ${token()}`},
+      body: JSON.stringify({ action:'commit', headers: PARSED.committed_headers, rows: PARSED.committed_rows, mapping: MAPPING }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Import failed');
+    document.getElementById('step-preview').style.display = 'none';
+    document.getElementById('step-done').style.display = '';
+    let msg = `<p><b style="color:var(--green)">Imported ${d.created} households.</b></p>`;
+    if (d.skipped_invalid) msg += `<p style="color:var(--muted)">${d.skipped_invalid} rows were skipped because of errors flagged in the preview.</p>`;
+    if (d.failed) {
+      msg += `<p style="color:var(--red)">${d.failed} rows failed at insert time:</p><ul style="font-size:13px;color:var(--red)">`;
+      d.failures.forEach(f => { msg += `<li>Row ${f.row}: ${escapeHtml(f.error)}</li>`; });
+      msg += '</ul>';
+    }
+    document.getElementById('done-msg').innerHTML = msg;
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
+
+// Client-side CSV parser — mirrors server logic so preview/commit share state
+function clientParseCSV(text) {
+  const rows = []; let row = []; let field = ''; let inQ = false; let i = 0;
+  const t = (text || '').replace(/\r\n?/g, '\n');
+  while (i < t.length) {
+    const c = t[i];
+    if (inQ) {
+      if (c === '"' && t[i+1] === '"') { field += '"'; i += 2; continue; }
+      if (c === '"') { inQ = false; i++; continue; }
+      field += c; i++; continue;
+    }
+    if (c === '"')  { inQ = true; i++; continue; }
+    if (c === ',')  { row.push(field); field = ''; i++; continue; }
+    if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+    field += c; i++;
+  }
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''));
+}
+</script>
+</body>
+</html>

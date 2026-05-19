@@ -242,10 +242,36 @@
     }
   }
 
+  // Sticky banner shown on every admin page when Doug is impersonating a
+  // tenant via the provider /admin tools. Clicking "Exit" wipes the local
+  // token + returns to /admin/. Banner is intentionally bright + unmissable
+  // so Doug never accidentally makes destructive changes thinking he's in
+  // his own tools.
+  function paintImpersonationBanner(user, tenant) {
+    if (!user || !user.impersonated) return;
+    if (document.getElementById('poolside-impersonation-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'poolside-impersonation-banner';
+    banner.style.cssText = 'background:#fef3c7;color:#78350f;padding:8px 22px;font-size:13px;text-align:center;border-bottom:1px solid #fde68a;display:flex;justify-content:center;align-items:center;gap:14px;position:sticky;top:0;z-index:10000';
+    const safeName = String(tenant && tenant.display_name || 'this club').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    banner.innerHTML = '<span>🔑 You\'re impersonating <b>' + safeName + '</b>. Token expires in ≤1 hour.</span>'
+      + ' <button type="button" id="poolside-exit-impersonation" style="padding:4px 12px;border-radius:6px;font:600 12px Inter,sans-serif;background:#78350f;color:#fff;border:0;cursor:pointer">Exit impersonation</button>';
+    document.body.insertBefore(banner, document.body.firstChild);
+    document.getElementById('poolside-exit-impersonation').addEventListener('click', function () {
+      ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(function (k) {
+        try { localStorage.removeItem(k); } catch (_) {}
+      });
+      // Provider always lives on the apex/www host, never on a tenant
+      // subdomain — bounce there so Doug lands back in his tools.
+      window.location.href = 'https://www.poolsideapp.com/admin/';
+    });
+  }
+
   function apply(features, user, tenant, usage) {
     features = features || {};
     if (tenant) brandHeader(tenant);
     if (usage) paintUsageTicker(usage);
+    paintImpersonationBanner(user, tenant);
     // Fire-and-forget: banner paints async; don't block page render.
     try {
       const tok = localStorage.getItem('poolside_tenant_token');
@@ -304,5 +330,5 @@
     catch (_) { /* storage may be disabled — ignore */ }
   }
 
-  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker, paintSetupBanner, persistRenewedToken };
+  window.PoolsideFlags = { apply, brandHeader, paintUsageTicker, paintSetupBanner, paintImpersonationBanner, persistRenewedToken };
 })();

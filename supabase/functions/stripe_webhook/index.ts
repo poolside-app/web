@@ -442,6 +442,69 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── setup_service: club just paid $500 for Premium Setup. Notify
+    //    Doug + the club; the actual onboarding work happens outside the
+    //    app (kickoff Zoom, data import, etc.). No status column on
+    //    tenants — Doug treats his inbox as the queue for v1.
+    if (kind === 'setup_service' && tenantId) {
+      const RESEND_KEY  = Deno.env.get('RESEND_API_KEY');
+      const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+      const PROVIDER    = Deno.env.get('PROVIDER_NOTIFY_EMAIL') || 'doug.frevele@gmail.com';
+      const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
+      const adminId = md.admin_id;
+      let adminEmail = '';
+      if (adminId) {
+        const { data: a } = await sb.from('admin_users').select('email, display_name').eq('id', adminId).maybeSingle();
+        adminEmail = (a?.email as string) || '';
+      }
+      const clubName = (tenant?.display_name as string) || 'A club';
+      const slug     = (tenant?.slug as string) || '';
+
+      if (RESEND_KEY) {
+        // Notify Doug
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to:   [PROVIDER],
+            subject: `🎉 Premium Setup booking — ${clubName}`,
+            html: `<p><b>${clubName}</b> just paid $500 for Premium Setup.</p>
+                   <ul>
+                     <li>Tenant: <code>${slug}</code></li>
+                     <li>Buyer admin: ${adminEmail || '(unknown)'}</li>
+                     <li>Stripe session: ${session.id || ''}</li>
+                   </ul>
+                   <p>Reach out within 1 business day to schedule the kickoff call.</p>`,
+          }),
+        }).catch((e) => console.error('setup_service Doug notify failed:', (e as Error).message));
+
+        // Confirm to the buying admin
+        if (adminEmail) {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: RESEND_FROM,
+              to:   [adminEmail],
+              subject: `Premium Setup confirmed — ${clubName}`,
+              html: `<p>Thanks for booking Poolside Premium Setup. Here's what happens next:</p>
+                     <ol>
+                       <li><b>Within 1 business day</b> — Doug emails you to schedule a 60-min kickoff Zoom.</li>
+                       <li><b>On the call</b> — we import your existing roster, set up tiers, customize policies, wire up payments, invite your board.</li>
+                       <li><b>5 business days</b> — your club is fully set up and ready to accept the first member application.</li>
+                       <li><b>7 days later</b> — a 30-min follow-up call to fix anything broken.</li>
+                     </ol>
+                     <p>If anything's urgent in the meantime, reply to this email.</p>
+                     <p>— Doug, Poolside</p>`,
+            }),
+          }).catch((e) => console.error('setup_service buyer confirm failed:', (e as Error).message));
+        }
+      } else {
+        console.warn('setup_service: RESEND_API_KEY not set — skipping notification emails');
+      }
+    }
+
     // ── plan_upgrade: tenant just paid for a new subscription tier. Flip
     //    tenants.plan immediately + record the Stripe customer for future
     //    billing-portal access. The subscription itself is tracked by

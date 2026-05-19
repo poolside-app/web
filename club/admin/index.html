@@ -168,12 +168,8 @@ document.getElementById('signout').addEventListener('click', logout);
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
     if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant, data.usage);
 
-  if (user.impersonated) {
-    const banner = document.createElement('div');
-    banner.style.cssText = 'background:#fef3c7;color:#78350f;padding:8px 22px;font-size:13px;text-align:center;border-bottom:1px solid #fde68a';
-    banner.innerHTML = `🔑 You're signed in as <b>${escapeHtml(tenant.display_name)}</b> via provider impersonation. Token expires in ≤1 hour.`;
-    document.body.insertBefore(banner, document.body.firstChild);
-  }
+  // Impersonation banner now painted globally by PoolsideFlags.apply()
+  // above so it appears on every admin page, not just the dashboard.
 
   // Founder banner: this admin signed up the club but their family isn't
   // in the system as members yet. Show until they either fill out the

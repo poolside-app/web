@@ -10,8 +10,8 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export const PLAN_HOUSEHOLD_CAPS: Record<string, number> = {
   free:       20,    // matches pricing memory ("Free Forever ≤20 households")
-  starter:    100,
-  pro:        300,
+  starter:    75,    // tightened 100->75 (2026-05-18) so median 100-150 cluster lands in Pro
+  pro:        200,   // dropped 300->200 (2026-05-18) — clubs actually cluster at 100-150
   enterprise: Number.POSITIVE_INFINITY,
 };
 
