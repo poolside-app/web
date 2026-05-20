@@ -21,10 +21,10 @@
     // Donations + thermometer — moved here from Members 2026-05-08 because
     // it's a public-facing fundraising surface, not a member-roster thing.
     { key: 'donations',     label: 'Donations',     href: '/club/admin/donations.html',      scope: 'payments'      },
-    // Documents (bylaws, handbook, forms) and Board minutes are governance
-    // CONTENT — they live here, not under Members. Moved 2026-05-08 after
-    // user feedback that "Members" should be people-focused.
-    { key: 'documents',     label: 'Documents',     href: '/club/admin/documents.html',      scope: 'documents'     },
+    // Documents removed from the Content strip 2026-05-21 (Doug's call).
+    // documents.html still exists for direct access / bookmarks; just not
+    // surfaced in nav. If we drop it entirely later, also remove the
+    // edge function + admin-flags SCOPE_NAV entry.
     { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: 'meetings'      },
   ];
 
@@ -36,7 +36,6 @@
     if (path.endsWith('/feedback.html'))        return 'feedback';
     if (path.endsWith('/photos.html'))          return 'photos';
     if (path.endsWith('/donations.html'))       return 'donations';
-    if (path.endsWith('/documents.html'))       return 'documents';
     if (path.endsWith('/board-meetings.html'))  return 'meetings';
     return null;
   }
