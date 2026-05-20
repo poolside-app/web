@@ -23,7 +23,7 @@
     { key: 'households',   label: 'Households',   href: '/club/admin/members.html#households',   scope: 'households'   },
     { key: 'applications', label: 'Pipeline',     href: '/club/admin/members.html#applications', scope: 'applications' },
     { key: 'apply-form',   label: 'Application form', href: '/club/admin/application.html',      scope: 'applications' },
-    { key: 'renewals',     label: 'Renewals',     href: '/club/admin/members.html#renewals',     scope: 'renewals'     },
+    { key: 'renewals',     label: 'Renew season', href: '/club/admin/members.html#renewals',     scope: 'renewals'     },
     { key: 'tiers',        label: 'Tiers',        href: '/club/admin/members.html#tiers',        scope: 'tiers'        },
     { key: 'payments',     label: 'Payments',     href: '/club/admin/payments.html',             scope: 'payments'     },
     { key: 'admins',       label: 'Admins',       href: '/club/admin/admins.html',               scope: 'admins'       },

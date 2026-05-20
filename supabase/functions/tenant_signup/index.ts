@@ -211,13 +211,23 @@ Deno.serve(async (req) => {
   // for SMS-based sign-in via tenant_admin_auth.start_link. google_sub
   // links this admin to a Google identity for instant "Sign in with Google"
   // on subsequent visits.
+  // Admin display_name preference: their_name field > email-local-part (legacy).
+  // Email-local-part was a hack — clubs that signed up via club-email-as-admin
+  // ended up with display_name="bishopestatescabanaclub" which pre-fills weirdly
+  // in the apply form. New signups should pass an explicit `admin_name` field
+  // from signup.html.
+  const adminNameRaw = String((body as Record<string, unknown>).admin_name ?? '').trim();
+  const adminDisplayName = adminNameRaw && adminNameRaw.length >= 2
+    ? adminNameRaw.slice(0, 100)
+    : email.split('@')[0];
+
   const { data: admin, error: uErr } = await sb.from('admin_users').insert({
     tenant_id: tenant.id,
     username: email,
     email,
     phone_e164,
     password_hash,
-    display_name: email.split('@')[0],
+    display_name: adminDisplayName,
     is_super: true,        // first admin of a fresh tenant is the org owner
     is_default_pw: !!google_sub,  // if Google-signup, mark default-pw so we prompt to set a real one if they ever want
     active: true,

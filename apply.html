@@ -864,10 +864,15 @@ async function submitApplication() {
     if (data.self_signup_complete) {
       const clubName = data.tenant_display_name || 'your club';
       const familyName = (document.getElementById('family_name')?.value || '').trim() || 'Your family';
+      const paidByVenmo = (document.querySelector('input[name="payment_method"]:checked')?.value || '') === 'venmo';
       document.getElementById('form').className = 'card ok';
       document.getElementById('form').innerHTML = `
-        <h1 style="color:var(--blue)">✓ You're in!</h1>
-        <p class="lede"><b>${escapeHtml(familyName)}</b> is now an active member of <b>${escapeHtml(clubName)}</b>. Your dues are marked paid and your gate access (if you have a gate) is on.</p>
+        <h1 style="color:var(--blue)">✓ Signed up as a member</h1>
+        <p class="lede"><b>${escapeHtml(familyName)}</b> is now linked to your admin account as a member household of <b>${escapeHtml(clubName)}</b>.</p>
+        ${paidByVenmo ? `
+        <div style="margin-top:14px;padding:12px 16px;border-left:3px solid var(--sun);background:#fffbeb;border-radius:8px;font-size:13px;line-height:1.55">
+          <b style="color:#92400e">⚠ About your Venmo payment:</b> because you're the club admin, we auto-marked your dues as paid. <b>Make sure you actually sent the Venmo</b> — there's no one else to verify it for you. For everyone else who pays by Venmo, the treasurer manually verifies before dues are marked paid.
+        </div>` : ''}
         <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Next: finish your club setup</div>
           <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Pick up where you left off — set membership levels, share your apply link with members, invite your treasurer, and so on.</div>
@@ -1225,14 +1230,24 @@ function appendAdminContinueIfNeeded() {
         }).then(r => r.json());
         if (me.ok && me.user) {
           const u = me.user;
-          // family_name = last word of display_name (best-effort)
-          if (u.display_name) {
-            const parts = String(u.display_name).trim().split(/\s+/);
+          // Skip the auto-fill if display_name looks like the email's
+          // local part (legacy tenant_signup default before 2026-05-20)
+          // or like a slug. Those weren't real human names and pre-filling
+          // them produces nonsense like "bishopestatescabanaclub" as the
+          // primary applicant. Better to leave the fields blank so the
+          // admin types their actual name.
+          const dn = (u.display_name || '').trim();
+          const tenantSlugMatch = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+          const tenantSlug = tenantSlugMatch ? tenantSlugMatch[1].toLowerCase() : '';
+          const emailLocal = u.email ? u.email.split('@')[0].toLowerCase() : '';
+          const looksLikeRealName = dn && !/^[a-z0-9_.-]+$/.test(dn) && dn !== emailLocal && dn.toLowerCase() !== tenantSlug;
+          if (looksLikeRealName) {
+            const parts = dn.split(/\s+/);
             const lastName = parts[parts.length - 1];
             const fn = document.getElementById('family_name');
             if (fn && !fn.value) fn.value = lastName;
             const pn = document.getElementById('primary_name');
-            if (pn && !pn.value) pn.value = u.display_name;
+            if (pn && !pn.value) pn.value = dn;
           }
           if (u.email) {
             const e = document.getElementById('primary_email');

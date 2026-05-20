@@ -99,7 +99,11 @@
     </div>
     <p class="field-help" id="slug-preview" style="font-size:12px;color:var(--muted);margin-top:6px">Your members will visit <b id="slug-preview-url" style="color:var(--blue)">yourclub.poolsideapp.com</b> — auto-suggests from club name above.</p>
 
-    <label for="email">Your email</label>
+    <label for="admin_name">Your name</label>
+    <input id="admin_name" type="text" placeholder="Doug Frevele" autocomplete="name" required>
+    <p class="field-help">Used on internal admin messages + pre-fills the apply form if you sign up your own family as a member.</p>
+
+    <label for="email" style="margin-top:14px">Your email</label>
     <input id="email" type="email" placeholder="you@yourclub.org" autocomplete="email" required>
     <p class="field-help">Required — we send signed application PDFs, payment receipts, and official board messages here.</p>
 
@@ -250,6 +254,7 @@ async function fakeSubmit() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         display_name, slug, email, password, phone_e164, plan: 'free',
+        admin_name: (document.getElementById('admin_name')?.value || '').trim(),
         // When Google-signup, we forward the verified sub so tenant_signup
         // can link this admin to it (skip-password path on the server).
         google_sub: GOOGLE_SUB || undefined,

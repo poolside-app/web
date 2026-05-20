@@ -219,9 +219,9 @@
     </div>
     <div class="err" id="access-err"></div>
 
-    <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px">
-      <b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.<br>
-      <a class="btn btn-ghost" href="/club/admin/checkin.html" style="margin-top:10px;font-size:12.5px">Open the check-in page →</a>
+    <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+      <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
+      <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
     </div>
   </div>
 
@@ -679,23 +679,14 @@ async function loadDriveStatus() {
       return;
     }
     if (!r.connected) {
-      // Drive access is gated on a one-time approval while Google's OAuth
-      // verification is in progress (4–6 weeks). Tenant requests access →
-      // Doug adds them to Test Users in Google Cloud Console → tenant gets
-      // an email and can connect without seeing the unverified-app warning.
-      // Once verification clears, this gate goes away for everyone.
-      const reqStatus = r.access_request && r.access_request.status;
-      if (reqStatus === 'approved') {
-        box.innerHTML = '<b>You\'re approved to connect.</b> Click <i>Connect Google Drive</i> below — you won\'t see any "this app is being tested" warning.';
-        connectBtn.style.display = 'inline-block';
-      } else if (reqStatus === 'pending') {
-        box.innerHTML = '<b>Drive access request pending.</b> We\'re adding your email to our Google approved-testers list — usually under 24 hours. We\'ll email you when it\'s ready. <span style="color:var(--muted)">If it\'s been longer, email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</span>';
-      } else if (reqStatus === 'denied') {
-        box.innerHTML = '<b>Drive access wasn\'t approved.</b> Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a> to follow up.';
-      } else {
-        box.innerHTML = '<b>Connect Google Drive</b> to auto-archive every new application as a PDF + roster spreadsheet row in your own Drive. Click below to request access — we\'ll add you to our testers list and email you when you can connect (usually within a day).';
-        requestBtn.style.display = 'inline-block';
-      }
+      // Drive uses Google's drive.file scope only (non-sensitive). Once
+      // Doug publishes the OAuth app in Google Cloud Console, anyone can
+      // connect directly — no request flow needed. Until publish, Google
+      // shows the "this app is being tested" warning, which the connect
+      // button passes through to. Skip-and-show button is always available
+      // as an escape hatch for clubs that don't want Drive backup.
+      box.innerHTML = '<b>Connect Google Drive</b> to auto-archive every new application as a PDF + roster spreadsheet row in your own Drive. Poolside only ever touches files it creates inside your Drive — nothing else.';
+      connectBtn.style.display = 'inline-block';
       return;
     }
     const lastSync = r.last_sync_at
