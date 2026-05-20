@@ -390,15 +390,12 @@ async function deactivateLg() {
 function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('show'); }
 
 (async () => {
-  if (!token()) { logout(); return; }
-  try {
-    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
-    const d = await r.json();
-    if (!d.ok) { logout(); return; }
-    document.title = `Lifeguards — ${d.tenant.display_name}`;
-    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
-  } catch { logout(); return; }
+  let d;
+  try { d = await PoolsideAuth.meOrLogout(); } catch (e) { document.getElementById('schedule').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">Couldn't load — ${e.message === 'NETWORK' ? 'check your connection and refresh' : 'try refreshing'}.</div>`; return; }
+  if (!d) return;
+  document.title = `Lifeguards — ${d.tenant.display_name}`;
+  document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+  if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
   await loadSchedule();
 })();
 </script>

@@ -188,14 +188,11 @@ window.releaseShift = async function(id) {
 };
 
 (async () => {
-  if (!token()) { logout(); return; }
-  try {
-    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
-    const d = await r.json();
-    if (!d.ok) { logout(); return; }
-    document.title = `My shifts — ${d.tenant.display_name}`;
-    document.getElementById('club-name').textContent = `🏊 ${d.tenant.display_name}`;
-  } catch { logout(); return; }
+  let d;
+  try { d = await PoolsideAuth.meOrLogout(); } catch (e) { showErr(e.message === 'NETWORK' ? 'Network issue — please refresh' : 'Could not load — please refresh'); return; }
+  if (!d) return;
+  document.title = `My shifts — ${d.tenant.display_name}`;
+  document.getElementById('club-name').textContent = `🏊 ${d.tenant.display_name}`;
   await loadMine();
 })();
 </script>

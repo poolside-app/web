@@ -147,22 +147,17 @@ document.getElementById('signout').addEventListener('click', logout);
 })();
 
 (async () => {
-  const token = localStorage.getItem('poolside_tenant_token');
-  if (!token) { logout(); return; }
-
-  let res, data;
-  try {
-    res = await fetch(AUTH_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'me' }),
-    });
-    data = await res.json();
-  } catch (e) {
-    document.getElementById('main').innerHTML = `<div class="card"><h2>Network error</h2><p>${escapeHtml(e.message)}</p></div>`;
+  // Use the shared PoolsideAuth.meOrLogout — only fires logout on a real
+  // 401 or session-fatal error, not on every network blip. Random logouts
+  // Doug hit during the 2026-05-20 test were caused by the old aggressive
+  // catch-all logout pattern.
+  let data;
+  try { data = await PoolsideAuth.meOrLogout(); }
+  catch (e) {
+    document.getElementById('main').innerHTML = `<div class="card"><h2>Network error</h2><p>${e.message === 'NETWORK' ? 'Could not reach the server. Check your connection and refresh.' : escapeHtml(e.message)}</p></div>`;
     return;
   }
-  if (!data.ok) { logout(); return; }
+  if (!data) return;  // already redirected to login.html
 
   const { user, tenant } = data;
 

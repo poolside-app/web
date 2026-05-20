@@ -179,17 +179,13 @@ document.getElementById('q').addEventListener('input', () => {
 });
 
 (async () => {
-  if (!token()) { logout(); return; }
-  try {
-    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
-    const d = await r.json();
-    if (!d.ok) { logout(); return; }
-    document.title = `Check-in — ${d.tenant.display_name}`;
-    document.getElementById('club-name').textContent = `🏊 ${d.tenant.display_name}`;
-  } catch { logout(); }
+  let d;
+  try { d = await PoolsideAuth.meOrLogout(); } catch (e) { document.getElementById('err').textContent = e.message === 'NETWORK' ? 'Network issue — refresh to try again' : 'Could not load — refresh to try again'; document.getElementById('err').classList.add('show'); return; }
+  if (!d) return;
+  document.title = `Check-in — ${d.tenant.display_name}`;
+  document.getElementById('club-name').textContent = `🏊 ${d.tenant.display_name}`;
   await refreshCapacity();
   await search('');
-  // Refresh capacity every 60s in case multiple lifeguards are checking in
   setInterval(refreshCapacity, 60_000);
 })();
 </script>

@@ -342,4 +342,73 @@
   }
 
   window.PoolsideFlags = { apply, brandHeader, paintUsageTicker, paintSetupBanner, paintImpersonationBanner, persistRenewedToken };
+
+  // ── PoolsideAuth.meOrLogout ─────────────────────────────────────────────
+  // Single robust "fetch /me and decide what to do" helper. Replaces the
+  // aggressive `catch { logout(); }` pattern that was firing on every
+  // network blip + every JSON parse failure + every non-200 response,
+  // causing the "random logouts" Doug hit during the 2026-05-20 test.
+  //
+  // Logout fires ONLY when:
+  //   • No token in localStorage (legit — there's nothing to do)
+  //   • HTTP 401 (real auth failure — token bad or expired)
+  //   • Error message explicitly mentions "auth" / "session" / "invalid"
+  //
+  // For network errors, 5xx, parse failures, or 200-with-unknown-error,
+  // we throw a SessionError instead — the calling page decides whether to
+  // show a retry button, render an inline error, or just continue.
+  //
+  // Usage on each admin page:
+  //   const me = await PoolsideAuth.meOrLogout();
+  //   if (!me) return;   // page already redirected to /login.html
+  //   // use me.user, me.tenant, me.usage, me.renewed_token (already persisted)
+  function poolsideLogout() {
+    try {
+      localStorage.removeItem('poolside_tenant_token');
+      localStorage.removeItem('poolside_tenant_user');
+      localStorage.removeItem('poolside_tenant_tenant');
+    } catch (_) {}
+    window.location.href = '/club/admin/login.html';
+  }
+
+  async function meOrLogout() {
+    let tok;
+    try { tok = localStorage.getItem('poolside_tenant_token'); } catch (_) { tok = null; }
+    if (!tok) { poolsideLogout(); return null; }
+
+    const SUPABASE_URL_LOCAL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+    const AUTH = `${SUPABASE_URL_LOCAL}/functions/v1/tenant_admin_auth`;
+
+    let res;
+    try {
+      res = await fetch(AUTH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tok}` },
+        body: JSON.stringify({ action: 'me' }),
+      });
+    } catch (e) {
+      // Pure network failure (offline, DNS, CORS preflight, etc.). Do NOT
+      // log the user out — the token may be fine, the network just hiccupped.
+      throw new Error('NETWORK');
+    }
+
+    if (res.status === 401) { poolsideLogout(); return null; }
+
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* malformed response */ }
+    if (!data) throw new Error('PARSE');
+
+    if (data.ok === false) {
+      const msg = String(data.error || '').toLowerCase();
+      // Specific session-fatal errors mean the token is genuinely useless.
+      if (/auth|session|invalid|expired|not found/.test(msg)) {
+        poolsideLogout();
+        return null;
+      }
+      throw new Error(data.error || 'me returned ok=false');
+    }
+    return data;
+  }
+
+  window.PoolsideAuth = { meOrLogout, logout: poolsideLogout };
 })();

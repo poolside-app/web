@@ -137,15 +137,12 @@ let PARSED = null;   // { headers, sample_rows, total_rows, suggested_mapping, t
 let MAPPING = {};
 
 (async () => {
-  if (!token()) { logout(); return; }
-  try {
-    const r = await fetch(AUTH_URL, { method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${token()}`}, body:JSON.stringify({action:'me'}) });
-    const d = await r.json();
-    if (!d.ok) { logout(); return; }
-    document.title = `Import — ${d.tenant.display_name}`;
-    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
-  } catch { logout(); }
+  let d;
+  try { d = await PoolsideAuth.meOrLogout(); } catch (e) { document.getElementById('up-err').textContent = e.message === 'NETWORK' ? 'Network issue — please refresh' : 'Could not load — please refresh'; document.getElementById('up-err').classList.add('show'); return; }
+  if (!d) return;
+  document.title = `Import — ${d.tenant.display_name}`;
+  document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+  if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
 })();
 
 const drop = document.getElementById('drop');
