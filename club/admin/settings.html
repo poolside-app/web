@@ -98,6 +98,27 @@
     width: 100%; max-height: 180px; object-fit: cover;
     border-radius: var(--r-md); border: 1px solid var(--border);
   }
+  /* Collapsible settings section. Summary is a compact card header; the
+     full card appears below when open. Doug's request 2026-05-21 — every
+     section collapsible so the page isn't a 1700-line scroll. */
+  .set-section { margin-bottom: 14px; }
+  .set-section > summary {
+    cursor: pointer; list-style: none;
+    padding: 14px 18px;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-lg); box-shadow: var(--shadow);
+    font-size: 14px; font-weight: 600; color: var(--text);
+  }
+  .set-section > summary::-webkit-details-marker { display: none; }
+  .set-section > summary .chev {
+    display: inline-block; transition: transform .15s;
+    color: var(--muted); margin-right: 4px;
+  }
+  .set-section[open] > summary .chev { transform: rotate(90deg); }
+  .set-section > summary .sub {
+    font-weight: 400; color: var(--muted); font-size: 12.5px; margin-left: 6px;
+  }
+  .set-section > .card { margin-top: 8px; }
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -132,11 +153,11 @@
 
   <!-- Pool access methods (moved from /club/admin/payments.html 2026-05-21
        — set-once config, belongs in Settings not on the Payments daily-use page) -->
-  <details id="access-card" style="margin-bottom:14px">
-    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
-      <span class="chev">▶</span> 🏊 How members get into the pool <span style="font-weight:400;color:var(--muted);font-size:12.5px">— paper roster / phone pass / lifeguard tablet / keyfob</span>
+  <details id="access-card" class="set-section">
+    <summary>
+      <span class="chev">▶</span> 🏊 How members get into the pool <span class="sub">— paper roster / phone pass / lifeguard tablet / keyfob</span>
     </summary>
-    <div class="card" style="margin-top:8px">
+    <div class="card">
       <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
       <div id="access-methods" style="display:grid;gap:8px"></div>
       <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
@@ -153,11 +174,11 @@
   </details>
 
   <!-- Drive backup (moved from /club/admin/payments.html 2026-05-21) -->
-  <details id="drive-card" data-focus="drive" style="margin-bottom:14px">
-    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
-      <span class="chev">▶</span> 📁 Backups &amp; archive <span style="font-weight:400;color:var(--muted);font-size:12.5px">— Google Drive auto-archive of every application</span>
+  <details id="drive-card" data-focus="drive" class="set-section">
+    <summary>
+      <span class="chev">▶</span> 📁 Backups &amp; archive <span class="sub">— Google Drive auto-archive of every application</span>
     </summary>
-    <div class="card" style="margin-top:8px">
+    <div class="card">
       <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
       <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -178,44 +199,53 @@
        here because it's a one-time setup, not daily content). admin-push.js
        wires the buttons + auto-hides the card when the admin has already
        enabled or dismissed. Browsers without Web Push hide it entirely. -->
-  <div class="card" id="push-card" style="display:none; background:linear-gradient(135deg, #fff7ed, #fef3c7); border-color:#fde68a">
-    <h2 style="display:flex;align-items:center;gap:8px">📲 Get a buzz on your phone when something needs you</h2>
-    <p style="font-size:13.5px;color:#78350f;line-height:1.5;margin:6px 0 14px">Install this site on your phone (Add to Home Screen), then turn on alerts here. We'll notify the membership coordinator the moment a Venmo payment is claimed, a new application comes in, or a party is requested. <b>No alerts for routine stuff</b> — only things that need a board member to act.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button id="push-on-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn on phone alerts</button>
-      <button id="push-test-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Send test notification</button>
-      <button id="push-off-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:#7f1d1d;border:1.5px solid #fecaca;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn off</button>
-      <button id="push-dismiss-btn" type="button" style="margin-left:auto;padding:10px 14px;background:transparent;color:#92400e;border:0;font:500 13px Inter,sans-serif;cursor:pointer">Not now</button>
+  <details id="push-card" class="set-section" style="display:none" open>
+    <summary style="background:linear-gradient(135deg, #fff7ed, #fef3c7);border-color:#fde68a">
+      <span class="chev">▶</span> 📲 Get a buzz on your phone when something needs you
+    </summary>
+    <div class="card" style="background:linear-gradient(135deg, #fff7ed, #fef3c7);border-color:#fde68a">
+      <p style="font-size:13.5px;color:#78350f;line-height:1.5;margin:0 0 14px">Install this site on your phone (Add to Home Screen), then turn on alerts here. We'll notify the membership coordinator the moment a Venmo payment is claimed, a new application comes in, or a party is requested. <b>No alerts for routine stuff</b> — only things that need a board member to act.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="push-on-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn on phone alerts</button>
+        <button id="push-test-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Send test notification</button>
+        <button id="push-off-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:#7f1d1d;border:1.5px solid #fecaca;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn off</button>
+        <button id="push-dismiss-btn" type="button" style="margin-left:auto;padding:10px 14px;background:transparent;color:#92400e;border:0;font:500 13px Inter,sans-serif;cursor:pointer">Not now</button>
+      </div>
+      <p id="push-status" style="font-size:12px;color:#92400e;margin:10px 0 0;min-height:14px"></p>
     </div>
-    <p id="push-status" style="font-size:12px;color:#92400e;margin:10px 0 0;min-height:14px"></p>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Club info</h2>
-    <label>Club name</label>
-    <input id="display_name">
-    <label>Location <span class="opt">(shown on the home page)</span></label>
-    <input id="location" placeholder="Concord, California">
-    <div class="row2" style="margin-top:6px">
-      <div><label>Default city <span class="opt">(prefills new households)</span></label><input id="default_city"></div>
-      <div><label>Default zip</label><input id="default_zip"></div>
+  <details class="set-section">
+    <summary><span class="chev">▶</span> 🏷️ Club info <span class="sub">— name, location, swim team</span></summary>
+    <div class="card">
+      <label>Club name</label>
+      <input id="display_name">
+      <label>Location <span class="opt">(shown on the home page)</span></label>
+      <input id="location" placeholder="Concord, California">
+      <div class="row2" style="margin-top:6px">
+        <div><label>Default city <span class="opt">(prefills new households)</span></label><input id="default_city"></div>
+        <div><label>Default zip</label><input id="default_zip"></div>
+      </div>
+      <label>Swim team name <span class="opt">(if you have one)</span></label>
+      <input id="swim_team_name">
     </div>
-    <label>Swim team name <span class="opt">(if you have one)</span></label>
-    <input id="swim_team_name">
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Front-page intro</h2>
-    <label>Eyebrow <span class="opt">(small uppercase line above the headline)</span></label>
-    <input id="hero_eyebrow" placeholder="Summer 2026">
-    <label>Headline <span class="opt">(big serif line — leave blank to use club name)</span></label>
-    <input id="hero_headline">
-    <label>Tagline</label>
-    <input id="hero_tagline" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
-  </div>
+  <details class="set-section">
+    <summary><span class="chev">▶</span> ✨ Front-page intro <span class="sub">— headline + tagline on your public home page</span></summary>
+    <div class="card">
+      <label>Eyebrow <span class="opt">(small uppercase line above the headline)</span></label>
+      <input id="hero_eyebrow" placeholder="Summer 2026">
+      <label>Headline <span class="opt">(big serif line — leave blank to use club name)</span></label>
+      <input id="hero_headline">
+      <label>Tagline</label>
+      <input id="hero_tagline" placeholder="Family memberships from $600/yr · Open Memorial Day → Labor Day">
+    </div>
+  </details>
 
-  <div class="card" data-focus="logo">
-    <h2>Branding</h2>
+  <details class="set-section" data-focus="logo">
+    <summary><span class="chev">▶</span> 🎨 Branding <span class="sub">— background photo, logo, primary color, app icon</span></summary>
+    <div class="card">
 
     <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:6px 0 8px">Background photo <span style="color:var(--muted);font-weight:500;font-size:12px">— shown behind the public hero</span></h3>
     <div id="bg-preview" class="bg-preview" style="display:none;margin-bottom:12px">
@@ -356,10 +386,12 @@
         </div>
       </div>
     </div>
-  </div>
+    </div>
+  </details>
 
-  <div class="card">
-    <h2>Season &amp; memberships</h2>
+  <details class="set-section">
+    <summary><span class="chev">▶</span> 📅 Season &amp; memberships <span class="sub">— open/closed banner, freeze applications</span></summary>
+    <div class="card">
     <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Toggle the season open/closed banner and freeze new applications for the off-season. Photo uploads + member features stay available either way.</p>
     <div class="row2">
       <div>
@@ -383,7 +415,8 @@
       <div><label>Season start <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="date" id="season_start_date"></div>
       <div><label>Season end <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="date" id="season_end_date"></div>
     </div>
-  </div>
+    </div>
+  </details>
 
   <!-- Fundraiser thermometer card moved 2026-05-08 to Content > Donations
        (donations.html). It's a fundraising/content surface, not Settings. -->
@@ -391,8 +424,9 @@
   <!-- "Public page extras" card removed 2026-05-08 — clutter; defaults are fine.
        Apply-page heading still editable on Members → Apply form > General. -->
 
-  <div class="card">
-    <h2>Pool location &amp; hours</h2>
+  <details class="set-section">
+    <summary><span class="chev">▶</span> 📍 Pool location &amp; hours <span class="sub">— map pin + open/close times</span></summary>
+    <div class="card">
     <div class="row2">
       <div><label>Latitude</label><input type="number" id="lat" step="0.000001" placeholder="37.978900"></div>
       <div><label>Longitude</label><input type="number" id="lng" step="0.000001" placeholder="-121.969300"></div>
@@ -402,13 +436,15 @@
       <div><label>Opens at</label><input type="time" id="opens_at"></div>
       <div><label>Closes at</label><input type="time" id="closes_at"></div>
     </div>
-  </div>
+    </div>
+  </details>
 
   <!-- Integrations card — central place for "connect to a 3rd party tool".
        Currently only Google Drive (auto-archive of applications + roster
        spreadsheet). Future: QuickBooks export, Mailchimp sync, etc. -->
-  <div class="card" data-focus="integrations">
-    <h2>Integrations</h2>
+  <details class="set-section" data-focus="integrations">
+    <summary><span class="chev">▶</span> 🔌 Integrations <span class="sub">— Google Drive auto-archive</span></summary>
+    <div class="card">
     <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Optional plug-ins that connect Poolside to other tools your club already uses.</p>
     <div style="display:flex;gap:14px;align-items:center;padding:14px 16px;background:var(--bg-2);border-radius:12px">
       <div style="font-size:24px;flex-shrink:0">📁</div>
@@ -418,7 +454,8 @@
       </div>
       <a class="btn-ghost btn" href="/club/admin/payments.html?focus=drive" style="text-decoration:none;font-size:13px;white-space:nowrap">Connect / manage →</a>
     </div>
-  </div>
+    </div>
+  </details>
 
   <!-- Payment options card removed 2026-05-08 — full setup lives at
        /club/admin/payments.html (Members → Payments). Stub cards on
@@ -426,8 +463,9 @@
   <!-- Membership tiers card removed 2026-05-08 — tier setup lives at
        /club/admin/members.html#tiers (Members → Tiers). -->
 
-  <div class="card">
-    <h2>Features</h2>
+  <details class="set-section">
+    <summary><span class="chev">▶</span> 🧩 Features <span class="sub">— which modules show up in the admin nav</span></summary>
+    <div class="card">
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Tick what applies — admin tabs reveal accordingly.</p>
     <label class="feature">
       <input type="checkbox" id="feat_programs">
@@ -467,7 +505,8 @@
     <input type="hidden" id="feat_keyfobs">
     <input type="hidden" id="feat_gate">
     <input type="hidden" id="fob_activation_day" value="Wednesday">
-  </div>
+    </div>
+  </details>
 
   <div id="err" class="err"></div>
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
@@ -482,11 +521,13 @@
        The anchor name="gate" lets the dashboard "Keyfob / gate access"
        quick-action and the setup checklist deep-link straight to it. -->
   <a id="gate" name="gate"></a>
-  <div class="card" id="gate-card" data-focus="gate" data-owner-only style="margin-top:18px;display:none">
-    <h2 id="gate-h2">🔐 Remote keyfob access</h2>
-    <div id="gate-body" style="font-size:13.5px;color:var(--text);line-height:1.55"></div>
-    <div class="err" id="gate-err"></div>
-  </div>
+  <details id="gate-card" class="set-section" data-focus="gate" data-owner-only style="display:none;margin-top:18px">
+    <summary><span class="chev">▶</span> <span id="gate-h2">🔐 Remote keyfob access</span></summary>
+    <div class="card">
+      <div id="gate-body" style="font-size:13.5px;color:var(--text);line-height:1.55"></div>
+      <div class="err" id="gate-err"></div>
+    </div>
+  </details>
 </main>
 
 <div class="toast" id="toast">Saved.</div>

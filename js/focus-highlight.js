@@ -45,6 +45,17 @@
     }
     if (!nodes.length) return;
     const target = nodes[0];
+    // If we're focusing a collapsed <details>, open it (and any details
+    // ancestors) so the highlighted content is actually visible. Without
+    // this, a setup-checklist deep-link to a folded settings section would
+    // pulse-highlight a closed accordion header.
+    nodes.forEach(n => {
+      let cur = n;
+      while (cur) {
+        if (cur.tagName === 'DETAILS') cur.open = true;
+        cur = cur.parentElement;
+      }
+    });
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     nodes.forEach(n => {
       n.classList.add('focus-highlight');
