@@ -74,12 +74,18 @@
   } catch (e) { /* defensive only */ }
 
   // Feature → nav selector (tenant-level toggles from settings.value.features)
+  // Feature → nav-selector map. Each entry declares the default state when
+  // the flag is missing from settings (most features default ON since they
+  // were the baseline before feature-flagging was added; newer opt-in
+  // features default OFF). Without the explicit default, a missing key
+  // would leave the nav visible — bug Doug hit 2026-05-20 with lifeguard
+  // scheduling staying available after he unchecked it in the wizard.
   const FEATURE_NAV = {
-    parties:               'a[href="/club/admin/parties.html"]',
-    programs:              'a[href="/club/admin/programs.html"]',
-    volunteer:             'a[href="/club/admin/volunteer.html"]',
-    campaigns:             'a[href="/club/admin/campaigns.html"]',
-    lifeguard_scheduling:  'a[href="/club/admin/lifeguards.html"]',
+    parties:               { selector: 'a[href="/club/admin/parties.html"]',    defaultOn: true  },
+    programs:              { selector: 'a[href="/club/admin/programs.html"]',   defaultOn: true  },
+    volunteer:             { selector: 'a[href="/club/admin/volunteer.html"]',  defaultOn: true  },
+    campaigns:             { selector: 'a[href="/club/admin/campaigns.html"]',  defaultOn: true  },
+    lifeguard_scheduling:  { selector: 'a[href="/club/admin/lifeguards.html"]', defaultOn: false },
     // guest_passes removed 2026-05-08
   };
 
@@ -280,8 +286,12 @@
     } catch (_) { /* defensive */ }
 
     // Layer 1: feature flags (hide entire features tenants didn't enable)
-    for (const [flag, selector] of Object.entries(FEATURE_NAV)) {
-      if (features[flag] === false) {
+    for (const [flag, { selector, defaultOn }] of Object.entries(FEATURE_NAV)) {
+      const val = features[flag];
+      // Hide when explicitly OFF, OR when the value is missing AND the
+      // feature defaults to OFF (opt-in features like lifeguard_scheduling).
+      const hide = val === false || (val === undefined && !defaultOn);
+      if (hide) {
         document.querySelectorAll(selector).forEach(el => { el.style.display = 'none'; });
       }
     }

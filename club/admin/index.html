@@ -166,6 +166,15 @@ document.getElementById('signout').addEventListener('click', logout);
 
   const { user, tenant } = data;
 
+  // First-login forced password change. An invited admin lands here with
+  // is_default_pw=true and no other surface to change it. Force them through
+  // /change-password.html before they can do anything else.
+  // Impersonators bypass (Doug supports without password rituals).
+  if (!user.impersonated && user.is_default_pw) {
+    window.location.replace('/club/admin/change-password.html');
+    return;
+  }
+
   // Gate-attendant role only has 'check_in' + 'shifts' scopes — the rest
   // of the dashboard would be empty for them. Bounce to whichever feature
   // the club actually uses: scheduling first (more useful to the lifeguard
