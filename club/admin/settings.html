@@ -117,6 +117,7 @@
 </nav>
 <script src="/js/admin-flags.js"></script>
 <script src="/js/focus-highlight.js"></script>
+<script src="/js/admin-push.js" defer></script>
 <script src="/js/admin-help-fab.js" defer></script>
 
 <main>
@@ -127,6 +128,22 @@
       <button class="btn-ghost btn" onclick="window.location.href='/club/wizard.html'">Re-run wizard</button>
       <button class="btn" id="save-btn" onclick="save()">Save changes</button>
     </div>
+  </div>
+
+  <!-- Phone-alert opt-in (was on the dashboard until 2026-05-21 — moved
+       here because it's a one-time setup, not daily content). admin-push.js
+       wires the buttons + auto-hides the card when the admin has already
+       enabled or dismissed. Browsers without Web Push hide it entirely. -->
+  <div class="card" id="push-card" style="display:none; background:linear-gradient(135deg, #fff7ed, #fef3c7); border-color:#fde68a">
+    <h2 style="display:flex;align-items:center;gap:8px">📲 Get a buzz on your phone when something needs you</h2>
+    <p style="font-size:13.5px;color:#78350f;line-height:1.5;margin:6px 0 14px">Install this site on your phone (Add to Home Screen), then turn on alerts here. We'll notify the membership coordinator the moment a Venmo payment is claimed, a new application comes in, or a party is requested. <b>No alerts for routine stuff</b> — only things that need a board member to act.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="push-on-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn on phone alerts</button>
+      <button id="push-test-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Send test notification</button>
+      <button id="push-off-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:#7f1d1d;border:1.5px solid #fecaca;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn off</button>
+      <button id="push-dismiss-btn" type="button" style="margin-left:auto;padding:10px 14px;background:transparent;color:#92400e;border:0;font:500 13px Inter,sans-serif;cursor:pointer">Not now</button>
+    </div>
+    <p id="push-status" style="font-size:12px;color:#92400e;margin:10px 0 0;min-height:14px"></p>
   </div>
 
   <div class="card">

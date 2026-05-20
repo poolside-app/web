@@ -97,7 +97,6 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <script src="/js/admin-flags.js"></script>
-<script src="/js/admin-push.js" defer></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
@@ -274,45 +273,18 @@ document.getElementById('signout').addEventListener('click', logout);
       </div>
     </div>
 
-    <!-- Apply-link card — answers the most-asked volunteer question
-         ("where do I send members to apply?") right on the dashboard. -->
-    <div class="card" id="apply-link-card" data-focus="apply-link">
-      <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 6px">🔗 Your apply link</h2>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5">Send this to families who want to join. Paste it in an email blast, on Facebook, or on your existing club website.</p>
-      <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
-        <input id="apply-link-input" type="text" readonly value="" onclick="this.select()" style="flex:1;min-width:240px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-2);color:var(--blue);font:600 13px 'Inter';user-select:all">
-        <button id="apply-link-copy" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px 'Inter';cursor:pointer;white-space:nowrap">📋 Copy link</button>
-      </div>
-      <details style="font-size:13px;color:var(--muted)">
-        <summary style="cursor:pointer;color:var(--blue);font-weight:600;padding:4px 0">How to share this →</summary>
-        <div style="padding:10px 14px;margin-top:8px;background:var(--bg-2);border-radius:10px;line-height:1.55">
-          <b>Email blast:</b> "Memberships for [year] are open — apply at [link]."<br>
-          <b>Facebook post:</b> Pin a post with the link to your club's group.<br>
-          <b>Existing website:</b> Add a "Join us →" button linking to the apply page.<br>
-          <b>SMS / text:</b> Forward the link directly to a friend.<br>
-          <b>Flyer / printed:</b> A QR code generator (Google "QR code from URL") will turn this link into a scannable square.
-        </div>
-      </details>
-    </div>
+    <!-- Order rationale (Doug 2026-05-21):
+         1. Stats card (above)              — passive: what IS
+         2. What needs your attention       — active: what to DO
+         3. Your tasks                      — active: my queue
+         4. Quick actions                   — utility: common nav
+         5. Apply link                      — utility: share-me URL (rarely needed)
+         "Get a buzz" push card moved to settings.html — it's a one-time
+         setup, doesn't belong on the daily dashboard. -->
 
     <div class="card" id="activity-card">
       <h2>What needs your attention</h2>
       <div class="placeholder">Loading…</div>
-    </div>
-
-    <!-- Phone alerts opt-in. Only renders for browsers that support Web Push
-         and only when the admin hasn't already enabled it. Hidden once the
-         admin enables, dismisses, or runs in an unsupported browser. -->
-    <div class="card" id="push-card" style="display:none; background:linear-gradient(135deg, #fff7ed, #fef3c7); border-color:#fde68a">
-      <h2 style="display:flex;align-items:center;gap:8px">📲 Get a buzz on your phone when something needs you</h2>
-      <p style="font-size:13.5px;color:#78350f;line-height:1.5;margin:6px 0 14px">Install this site on your phone (Add to Home Screen), then turn on alerts here. We'll notify the membership coordinator the moment a Venmo payment is claimed, a new application comes in, or a party is requested. <b>No alerts for routine stuff</b> — only things that need a board member to act.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button id="push-on-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn on phone alerts</button>
-        <button id="push-test-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Send test notification</button>
-        <button id="push-off-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:#7f1d1d;border:1.5px solid #fecaca;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn off</button>
-        <button id="push-dismiss-btn" type="button" style="margin-left:auto;padding:10px 14px;background:transparent;color:#92400e;border:0;font:500 13px Inter,sans-serif;cursor:pointer">Not now</button>
-      </div>
-      <p id="push-status" style="font-size:12px;color:#92400e;margin:10px 0 0;min-height:14px"></p>
     </div>
 
     <div class="card" id="tasks-card" style="display:none">
@@ -333,6 +305,28 @@ document.getElementById('signout').addEventListener('click', logout);
         <a class="qa" href="/club/admin/settings.html#gate" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🚪 <b>Keyfob / gate access</b><br><span style="color:var(--muted);font-size:12px">Paid add-on — request integration</span></a>
         <a class="qa" href="/club/admin/settings.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">⚙️ <b>Club settings</b><br><span style="color:var(--muted);font-size:12px">Branding, hours, contact</span></a>
       </div>
+    </div>
+
+    <!-- Apply-link card moved to the bottom 2026-05-21 — it's the answer
+         to the FAQ "where do I send members to apply?" but it's not
+         daily-use info. Pushed below the action-oriented content. -->
+    <div class="card" id="apply-link-card" data-focus="apply-link">
+      <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 6px">🔗 Your apply link</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5">Send this to families who want to join. Paste it in an email blast, on Facebook, or on your existing club website.</p>
+      <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
+        <input id="apply-link-input" type="text" readonly value="" onclick="this.select()" style="flex:1;min-width:240px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-2);color:var(--blue);font:600 13px 'Inter';user-select:all">
+        <button id="apply-link-copy" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px 'Inter';cursor:pointer;white-space:nowrap">📋 Copy link</button>
+      </div>
+      <details style="font-size:13px;color:var(--muted)">
+        <summary style="cursor:pointer;color:var(--blue);font-weight:600;padding:4px 0">How to share this →</summary>
+        <div style="padding:10px 14px;margin-top:8px;background:var(--bg-2);border-radius:10px;line-height:1.55">
+          <b>Email blast:</b> "Memberships for [year] are open — apply at [link]."<br>
+          <b>Facebook post:</b> Pin a post with the link to your club's group.<br>
+          <b>Existing website:</b> Add a "Join us →" button linking to the apply page.<br>
+          <b>SMS / text:</b> Forward the link directly to a friend.<br>
+          <b>Flyer / printed:</b> A QR code generator (Google "QR code from URL") will turn this link into a scannable square.
+        </div>
+      </details>
     </div>
   `;
 
