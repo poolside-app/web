@@ -102,9 +102,34 @@
 <script src="/js/members-subtabs.js"></script>
 
 <main>
-  <details id="setup-section" open style="margin-bottom:18px">
-    <summary style="font-size:13px;color:var(--muted);font-weight:600;padding:6px 0">
-      <span class="chev">▶</span> Payment options setup <span style="font-weight:400">(Venmo, PayPal, Stripe)</span> — click to collapse
+  <!-- 2026-05-21: Renew season + Tiers moved under the Payments tab so
+       admins find them where they expect (next to dues + payment setup).
+       Sections are collapsible <details> wrappers; the actual config
+       UIs still live on members.html for now, accessed via the buttons.
+       Future: inline the panels here. -->
+  <details style="margin-bottom:14px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 📅 Renew season <span style="font-weight:400;color:var(--muted);font-size:12.5px">— blast past members when the pool opens for a new year</span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <p style="font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px">When your pool opens for a new season, send your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues. Configure an early-bird discount and pick which group gets the blast.</p>
+      <a class="btn btn-primary" href="/club/admin/members.html#renewals" style="background:var(--blue)">Open Renew season →</a>
+    </div>
+  </details>
+
+  <details style="margin-bottom:18px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 💳 Membership tiers <span style="font-weight:400;color:var(--muted);font-size:12.5px">— levels applicants pick from at signup (Family / Single / Senior / etc.)</span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <p style="font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px">Define the membership levels your apply form offers (with prices, if any). Set "Family — $600/yr" and "Senior — $300/yr" — applicants pick one when applying.</p>
+      <a class="btn btn-primary" href="/club/admin/members.html#tiers" style="background:var(--blue)">Open Tiers →</a>
+    </div>
+  </details>
+
+  <details id="setup-section" style="margin-bottom:18px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 💸 Payment options setup <span style="font-weight:400;color:var(--muted);font-size:12.5px">— Venmo, PayPal, Stripe, payment plans</span>
     </summary>
     <div style="margin-top:12px">
       <div class="card" data-owner-only data-focus="stripe">
@@ -209,41 +234,46 @@
 
   <!-- Pool access / gate config — outside the collapsed setup section because
        it's a frequently-revisited section (lifeguard accounts, etc.) -->
-  <div class="card" id="access-card" style="margin-bottom:18px">
-    <h2>🏊 How members get into the pool</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
-    <div id="access-methods" style="display:grid;gap:8px"></div>
-    <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
-      <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
-      <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
-    </div>
-    <div class="err" id="access-err"></div>
+  <details id="access-card" style="margin-bottom:18px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 🏊 How members get into the pool <span style="font-weight:400;color:var(--muted);font-size:12.5px">— paper roster / phone pass / lifeguard tablet / keyfob</span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
+      <div id="access-methods" style="display:grid;gap:8px"></div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+        <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
+        <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
+      </div>
+      <div class="err" id="access-err"></div>
 
-    <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
-      <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
-      <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
+      <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+        <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
+        <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
+      </div>
     </div>
-  </div>
+  </details>
 
-  <!-- Drive card — moved out of the collapsed setup block so users can
-       find it. Settings page also has an "Integrations" pointer that
-       deep-links here with ?focus=drive. -->
-  <div class="card" id="drive-card" data-focus="drive" style="margin-bottom:18px">
-    <h2>📁 Backups &amp; archive (Google Drive)</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
-    <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
-      <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
-      <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
-      <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
-      <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
-      <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
-      <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
-      <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
+  <details id="drive-card" data-focus="drive" style="margin-bottom:18px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 📁 Backups &amp; archive <span style="font-weight:400;color:var(--muted);font-size:12.5px">— Google Drive auto-archive of every application</span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
+      <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
+        <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
+        <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
+        <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
+        <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
+        <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
+        <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
+        <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
+      </div>
+      <div class="err" id="drive-err"></div>
     </div>
-    <div class="err" id="drive-err"></div>
-  </div>
+  </details>
 
   <div class="toolbar">
     <div>

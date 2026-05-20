@@ -19,15 +19,23 @@
   // Tiers + Apply form (was a top-tab "Application") fold in here so
   // the apply-pipeline workflow lives in one place: edit the form,
   // see the queue, manage tiers, track renewals, see admins.
+  // Members sub-tabs reordered + simplified 2026-05-21:
+  //   • Pipeline first (the daily inflow surface)
+  //   • Households next (the operational roster)
+  //   • Payments (now also houses Renew season + Tiers as collapsible
+  //     sections — see /club/admin/payments.html)
+  //   • Admins last (manage co-admins)
+  //
+  // Dropped from the strip (still reachable from elsewhere):
+  //   • Application form → /club/admin/application.html (linked from
+  //     Pipeline's "Edit the form →" CTA)
+  //   • Renew season + Tiers → folded under Payments tab
+  //   • Emails → linked from /club/admin/settings.html
   const SUBTABS = [
-    { key: 'households',   label: 'Households',   href: '/club/admin/members.html#households',   scope: 'households'   },
-    { key: 'applications', label: 'Pipeline',     href: '/club/admin/members.html#applications', scope: 'applications' },
-    { key: 'apply-form',   label: 'Application form', href: '/club/admin/application.html',      scope: 'applications' },
-    { key: 'renewals',     label: 'Renew season', href: '/club/admin/members.html#renewals',     scope: 'renewals'     },
-    { key: 'tiers',        label: 'Tiers',        href: '/club/admin/members.html#tiers',        scope: 'tiers'        },
-    { key: 'payments',     label: 'Payments',     href: '/club/admin/payments.html',             scope: 'payments'     },
-    { key: 'admins',       label: 'Admins',       href: '/club/admin/admins.html',               scope: 'admins'       },
-    { key: 'emails',       label: 'Emails',       href: '/club/admin/emails.html?audience=member', scope: 'settings'   },
+    { key: 'applications', label: 'Pipeline',   href: '/club/admin/members.html#applications', scope: 'applications' },
+    { key: 'households',   label: 'Households', href: '/club/admin/members.html#households',   scope: 'households'   },
+    { key: 'payments',     label: 'Payments',   href: '/club/admin/payments.html',             scope: 'payments'     },
+    { key: 'admins',       label: 'Admins',     href: '/club/admin/admins.html',               scope: 'admins'       },
   ];
 
   function detectActive() {
