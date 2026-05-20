@@ -225,6 +225,15 @@ verify_jwt = false
 [functions.smoke_sms]
 verify_jwt = false
 
+# External iCal feed sync (Google Calendar, Swimtopia, etc.). Auth verified
+# inside via tenant_admin JWT — admin's token uses ADMIN_JWT_SECRET (HS256),
+# not Supabase's gateway key, so we MUST opt out of the gateway's JWT check
+# or every call returns 401 before the function runs. Symptom: "could not
+# load that section" or "session expired" on the calendar page when adding
+# an iCal feed (Doug 2026-05-21).
+[functions.external_calendar]
+verify_jwt = false
+
 # Households CSV importer — auth verified inside via tenant_admin JWT
 [functions.households_import]
 verify_jwt = false
