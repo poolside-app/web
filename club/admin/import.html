@@ -33,9 +33,9 @@
   .btn:hover { background:var(--blue-2); }
   .btn:disabled { opacity:.6; cursor:not-allowed; }
   .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
-  .drop { padding:32px; border:2px dashed var(--border); border-radius:var(--r-lg); text-align:center; background:#fafafa; cursor:pointer; transition:background .15s, border-color .15s; }
+  .drop { display:block; width:100%; padding:36px 24px; border:2px dashed var(--border); border-radius:var(--r-lg); text-align:center; background:#fafafa; cursor:pointer; transition:background .15s, border-color .15s; box-sizing:border-box; }
   .drop:hover, .drop.drag { background:var(--blue-l); border-color:var(--blue); }
-  .drop p { margin:8px 0; color:var(--muted); }
+  .drop p { margin:6px 0; color:var(--muted); }
   table.map { width:100%; border-collapse:collapse; font-size:13.5px; }
   table.map th, table.map td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
   table.map th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; }
