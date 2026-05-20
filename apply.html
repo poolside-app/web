@@ -867,11 +867,13 @@ async function submitApplication() {
       const paidByVenmo = (document.querySelector('input[name="payment_method"]:checked')?.value || '') === 'venmo';
       document.getElementById('form').className = 'card ok';
       document.getElementById('form').innerHTML = `
-        <h1 style="color:var(--blue)">✓ Signed up as a member</h1>
+        <h1 style="color:var(--blue)">✓ Application approved</h1>
         <p class="lede"><b>${escapeHtml(familyName)}</b> is now linked to your admin account as a member household of <b>${escapeHtml(clubName)}</b>.</p>
         ${paidByVenmo ? `
-        <div style="margin-top:14px;padding:12px 16px;border-left:3px solid var(--sun);background:#fffbeb;border-radius:8px;font-size:13px;line-height:1.55">
-          <b style="color:#92400e">⚠ About your Venmo payment:</b> because you're the club admin, we auto-marked your dues as paid. <b>Make sure you actually sent the Venmo</b> — there's no one else to verify it for you. For everyone else who pays by Venmo, the treasurer manually verifies before dues are marked paid.
+        <div style="margin-top:14px;padding:14px 16px;border:1.5px solid #fde68a;background:#fffbeb;border-radius:10px;font-size:13.5px;line-height:1.55">
+          <div style="font-weight:600;color:#92400e;margin-bottom:6px">⏳ One more step — verify your Venmo payment</div>
+          <div style="color:#78350f;margin-bottom:10px">Your dues are marked <b>pending</b> until someone confirms the Venmo arrived. Even admins go through the verify workflow — it builds the habit and keeps the audit trail clean.</div>
+          <a href="/club/admin/payments.html" style="display:inline-block;padding:9px 16px;background:#92400e;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px">Go verify your payment →</a>
         </div>` : ''}
         <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Next: finish your club setup</div>

@@ -425,9 +425,13 @@ Deno.serve(async (req) => {
     if (payment_method === 'venmo') {
       // Self-signup detection: if the applicant's email or phone matches an
       // active admin on this tenant, they're an admin signing up their own
-      // family — there's no third party for the admin to "verify the Venmo
-      // payment landed from". Auto-verify the payment so the application
-      // ends fully paid and no stale venmo.claim task lingers.
+      // family. We auto-approve their APPLICATION (no one else needs to
+      // approve membership for the admin) but we explicitly do NOT
+      // auto-verify the PAYMENT — even admins go through the standard
+      // Venmo verify workflow. Symbolic but valuable: every paid record
+      // in the audit trail has a real "verified by X at Y" timestamp,
+      // and admins build the habit of using the verify queue. Decision
+      // from Doug 2026-05-20 onboarding test.
       try {
         const orParts: string[] = [];
         if (email) orParts.push(`email.ilike.${email}`);
@@ -448,8 +452,7 @@ Deno.serve(async (req) => {
             action: 'approve',
             id: data.id,
             tenant_id: tenant.id,
-            verify_venmo_payment: isAdminSelfSignup,
-            venmo_note: isAdminSelfSignup ? 'Auto-verified — admin self-signup' : undefined,
+            verify_venmo_payment: false,   // never auto-verify — admins verify their own payment too
           }),
         });
         const ar = await r.json().catch(() => ({ ok: false }));
