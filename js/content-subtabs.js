@@ -12,20 +12,18 @@
 (function () {
   'use strict';
 
+  // Order set by Doug 2026-05-21: announcements → campaigns → donations →
+  // sponsors → photos → board minutes → feedback. Donations sits next to
+  // campaigns since both are fundraising surfaces; feedback last since
+  // it's a maintenance/listening surface, not a publishing one.
   const SUBTABS = [
     { key: 'announcements', label: 'Announcements', href: '/club/admin/announcements.html',  scope: 'announcements' },
     { key: 'campaigns',     label: 'Campaigns',     href: '/club/admin/campaigns.html',      scope: 'campaigns'     },
-    { key: 'sponsors',      label: 'Sponsors',      href: '/club/admin/sponsors.html',       scope: 'announcements' },
-    { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
-    { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
-    // Donations + thermometer — moved here from Members 2026-05-08 because
-    // it's a public-facing fundraising surface, not a member-roster thing.
     { key: 'donations',     label: 'Donations',     href: '/club/admin/donations.html',      scope: 'payments'      },
-    // Documents removed from the Content strip 2026-05-21 (Doug's call).
-    // documents.html still exists for direct access / bookmarks; just not
-    // surfaced in nav. If we drop it entirely later, also remove the
-    // edge function + admin-flags SCOPE_NAV entry.
+    { key: 'sponsors',      label: 'Sponsors',      href: '/club/admin/sponsors.html',       scope: 'announcements' },
+    { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
     { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: 'meetings'      },
+    { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
   ];
 
   function detectActive() {
