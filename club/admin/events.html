@@ -462,7 +462,16 @@ async function callAt(url, action, extra = {}) {
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
     body: JSON.stringify({ action, ...extra }),
   });
-  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  if (res.status === 401) {
+    // Self-healing logout (admin-flags.js loaded on every page) validates
+    // the token before destroying the session. If the token is actually
+    // fine, logout() silently no-ops and we land here with the session
+    // still alive. Translate the 401 into a generic "couldn't load" so
+    // the user doesn't see a scary "Session expired" toast on every
+    // transient blip.
+    logout();
+    throw new Error('Could not load that section — refresh if it persists.');
+  }
   return res.json();
 }
 
@@ -1050,18 +1059,46 @@ function openEditExternal(id) {
 }
 function closeExtModal() { document.getElementById('ext-scrim').classList.remove('open'); }
 
+// Detect the most common Google Calendar URL mistake before the server
+// even tries to fetch. The web URL ("calendar.google.com/calendar/u/0/r")
+// and the share URL ("calendar.google.com/calendar/u/0/embed") are NOT
+// iCal feeds — Google only serves iCal at /calendar/ical/.../basic.ics
+// (or .../public/basic.ics for fully-public calendars). Catch this here
+// so the user gets a helpful message instead of a cryptic server error.
+function checkIcalUrlShape(url) {
+  const u = url.trim();
+  if (!u) return 'Paste the iCal URL first.';
+  if (!/^https?:\/\//.test(u)) return 'URL must start with http:// or https://.';
+  if (/calendar\.google\.com/.test(u) && !/\/calendar\/ical\//.test(u)) {
+    return 'That looks like the Google Calendar web URL, not the iCal feed. In Google Calendar, click the three dots next to your calendar → Settings and sharing → scroll to "Integrate calendar" → copy "Secret address in iCal format" (ends in /basic.ics). Paste THAT URL here.';
+  }
+  // Any URL ending in obvious non-ical things
+  if (/\.html?(\?|#|$)/i.test(u) || /\/(view|embed|web)\b/.test(u)) {
+    return 'That URL points to a web page, not an iCal feed. iCal URLs end in .ics — look for "iCal format" in your calendar source\'s sharing settings.';
+  }
+  return null;
+}
+
 async function testExtFetch() {
   const url = document.getElementById('ext-url').value.trim();
   const errEl = document.getElementById('ext-err');
   const resEl = document.getElementById('ext-test-result');
   errEl.classList.remove('show');
   resEl.style.display = 'none';
-  if (!url) { errEl.textContent = 'Paste the iCal URL first'; errEl.classList.add('show'); return; }
+  const shapeErr = checkIcalUrlShape(url);
+  if (shapeErr) { errEl.innerHTML = shapeErr; errEl.classList.add('show'); return; }
   const btn = document.getElementById('ext-test-btn');
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Fetching…';
   try {
     const d = await callAt(EXT_URL, 'test_fetch', { ical_url: url });
-    if (!d.ok) throw new Error(d.error || 'Test failed');
+    if (!d.ok) {
+      // Translate cryptic fetch errors into actionable hints.
+      let msg = d.error || 'Test failed';
+      if (/404|not found/i.test(msg))         msg = 'Google says that URL doesn\'t exist (404). Double-check you copied the full URL.';
+      else if (/403|forbidden/i.test(msg))    msg = 'Google blocked the fetch (403). The calendar might be private — make sure you copied the "Secret address" (not the public one) or share the calendar publicly.';
+      else if (/BEGIN:VCALENDAR/i.test(msg))  msg = 'That URL returned an HTML page, not an iCal feed. Re-copy from the "Integrate calendar" section of Google Calendar settings — look for the "iCal format" URLs (ends in /basic.ics).';
+      throw new Error(msg);
+    }
     resEl.style.display = 'block';
     const previewList = (d.preview || []).map(e => {
       const dt = new Date(e.starts_at).toLocaleString(undefined, { dateStyle:'short', timeStyle:'short' });
@@ -1069,7 +1106,7 @@ async function testExtFetch() {
     }).join('');
     resEl.innerHTML = `✓ <b>Found ${d.events_count} event${d.events_count===1?'':'s'} in the next 6 months.</b>${previewList ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${previewList}</ul>` : ''}`;
   } catch (e) {
-    errEl.textContent = e.message; errEl.classList.add('show');
+    errEl.innerHTML = e.message; errEl.classList.add('show');
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }
@@ -1085,6 +1122,8 @@ async function saveExtFeed() {
   errEl.classList.remove('show');
   if (!label) { errEl.textContent = 'Label is required'; errEl.classList.add('show'); return; }
   if (!ical_url) { errEl.textContent = 'iCal URL is required'; errEl.classList.add('show'); return; }
+  const shapeErr = checkIcalUrlShape(ical_url);
+  if (shapeErr) { errEl.innerHTML = shapeErr; errEl.classList.add('show'); return; }
   const btn = document.getElementById('ext-save-btn');
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
   try {
