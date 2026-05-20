@@ -143,7 +143,24 @@ let ROSTER_OPP = null;
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function logout() { ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k)); window.location.href = '/club/admin/login.html'; }
+async function logout() {
+  // Self-healing: don't nuke a valid session on transient errors. Validate
+  // the token first; only really log out if it's confirmed bad. Random
+  // logouts Doug hit 2026-05-20 came from catch blocks calling logout()
+  // on network blips / parse errors / non-200s where the token was fine.
+  try {
+    const t = localStorage.getItem('poolside_tenant_token');
+    if (t) {
+      const vr = await fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_admin_auth', {
+        method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+        body: JSON.stringify({ action: 'me' }),
+      });
+      if (vr.status !== 401) return;  // token still good - caller had a transient bug
+    }
+  } catch (_) { return; }  // network blip during validation - assume token is fine
+  ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/club/admin/login.html';
+}
 document.getElementById('signout').addEventListener('click', logout);
 
 async function call(action, extra = {}) {
