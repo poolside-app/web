@@ -130,6 +130,50 @@
     </div>
   </div>
 
+  <!-- Pool access methods (moved from /club/admin/payments.html 2026-05-21
+       — set-once config, belongs in Settings not on the Payments daily-use page) -->
+  <details id="access-card" style="margin-bottom:14px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 🏊 How members get into the pool <span style="font-weight:400;color:var(--muted);font-size:12.5px">— paper roster / phone pass / lifeguard tablet / keyfob</span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
+      <div id="access-methods" style="display:grid;gap:8px"></div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+        <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
+        <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
+      </div>
+      <div class="err" id="access-err"></div>
+
+      <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+        <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
+        <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
+      </div>
+    </div>
+  </details>
+
+  <!-- Drive backup (moved from /club/admin/payments.html 2026-05-21) -->
+  <details id="drive-card" data-focus="drive" style="margin-bottom:14px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
+      <span class="chev">▶</span> 📁 Backups &amp; archive <span style="font-weight:400;color:var(--muted);font-size:12.5px">— Google Drive auto-archive of every application</span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
+      <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
+        <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
+        <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
+        <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
+        <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
+        <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
+        <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
+        <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
+      </div>
+      <div class="err" id="drive-err"></div>
+    </div>
+  </details>
+
   <!-- Phone-alert opt-in (was on the dashboard until 2026-05-21 — moved
        here because it's a one-time setup, not daily content). admin-push.js
        wires the buttons + auto-hides the card when the admin has already
@@ -1486,9 +1530,212 @@ async function loadRecentUnlocks() {
     if (!data.ok) throw new Error(data.error || 'Load failed');
     LAST_SETTINGS = data.settings || {};
     populate(LAST_SETTINGS);
+    // Paint the access methods card from the same settings payload — the
+    // card was moved here from /club/admin/payments.html on 2026-05-21.
+    paintAccessMethods(LAST_SETTINGS);
   } catch (e) { showErr(e.message); }
   loadGate();
+  loadDriveStatus();
 })();
+
+// ════════════════════════════════════════════════════════════════════════
+// Access methods + Drive backup
+// ════════════════════════════════════════════════════════════════════════
+// Both moved from /club/admin/payments.html on 2026-05-21. Payments was
+// becoming a junk drawer — these are one-time configs, they belong in
+// Settings.
+
+const DRIVE_URL = `${SUPABASE_URL}/functions/v1/google_drive_sync`;
+
+const ACCESS_METHODS = [
+  { key: 'paper_roster',     label: 'Paper roster',                desc: 'A lifeguard or gate attendant checks a printed list. We can generate a fresh PDF every morning.' },
+  { key: 'member_pass',      label: 'Member shows phone pass',     desc: 'Members open the app at the gate and show a screen with their photo, family name, paid status, and a live ticking clock. No hardware.' },
+  { key: 'lifeguard_tablet', label: 'Lifeguard tablet check-in',   desc: 'A shared iPad at the gate. Lifeguard searches by name, sees the family + paid status, taps "Check in". Invite the lifeguard as a scoped admin from Co-admins.' },
+  { key: 'keyfob',           label: 'Keyfob / RFID gate',          desc: 'Hardware integration with a panel like MENGQI. $250 setup + $25/mo as an add-on. Best for 24/7 unattended access.' },
+  { key: 'pin_codes',        label: 'PIN codes at a keypad',       desc: 'A 4-digit code per household. Cheaper than keyfobs but code-sharing is a real risk. Coming soon.', disabled: true },
+  { key: 'printable_cards',  label: 'Printable membership cards',  desc: 'Generate PDF cards (photo + QR) for members without smartphones. Coming soon.', disabled: true },
+  { key: 'self_kiosk',       label: 'Self check-in kiosk',         desc: 'Shared iPad at the gate — members tap their own name. No lifeguard needed. Coming soon.', disabled: true },
+];
+
+function paintAccessMethods(settings) {
+  const current = new Set(Array.isArray(settings.access_methods) ? settings.access_methods : ['paper_roster']);
+  const host = document.getElementById('access-methods');
+  if (!host) return;
+  host.innerHTML = ACCESS_METHODS.map(m => `
+    <label style="display:flex;gap:10px;padding:11px 14px;border:1.5px solid ${current.has(m.key) ? 'var(--blue)' : 'var(--border)'};border-radius:12px;cursor:${m.disabled ? 'not-allowed' : 'pointer'};opacity:${m.disabled ? '.55' : '1'};background:${current.has(m.key) ? 'var(--blue-l)' : '#fff'}">
+      <input type="checkbox" data-method="${m.key}" ${current.has(m.key) ? 'checked' : ''} ${m.disabled ? 'disabled' : ''} style="margin-top:3px">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:14px">${m.label}${m.disabled ? ' <span style="font-size:11px;color:var(--muted);font-weight:500">(coming soon)</span>' : ''}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45">${m.desc}</div>
+      </div>
+    </label>`).join('');
+}
+
+async function saveAccess() {
+  const btn = document.getElementById('access-save');
+  const errEl = document.getElementById('access-err');
+  const savedEl = document.getElementById('access-saved');
+  errEl.classList.remove('show'); savedEl.style.display = 'none';
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    const methods = [...document.querySelectorAll('#access-methods input[type=checkbox]:checked')].map(el => el.dataset.method);
+    if (methods.length === 0) methods.push('paper_roster');
+    const value = { access_methods: methods };
+    const r = await call(SETTINGS_URL, 'save', { value });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    savedEl.style.display = 'inline';
+    setTimeout(() => { savedEl.style.display = 'none'; }, 1800);
+    paintAccessMethods(r.settings || value);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function loadDriveStatus() {
+  const box       = document.getElementById('drive-status');
+  if (!box) return;
+  const requestBtn = document.getElementById('drive-request-btn');
+  const connectBtn = document.getElementById('drive-connect-btn');
+  const folderLink = document.getElementById('drive-folder-link');
+  const sheetLink  = document.getElementById('drive-sheet-link');
+  const retryBtn   = document.getElementById('drive-retry-btn');
+  const disconnect = document.getElementById('drive-disconnect-btn');
+  [requestBtn, connectBtn, folderLink, sheetLink, retryBtn, disconnect].forEach(el => { if (el) el.style.display = 'none'; });
+  if (window.location.hash.includes('drive=connected')) {
+    history.replaceState(null, '', window.location.pathname);
+    const dcard = document.getElementById('drive-card');
+    if (dcard) dcard.open = true;
+  }
+  try {
+    const r = await call(DRIVE_URL, 'status');
+    if (!r.ok) throw new Error(r.error || 'Drive status failed');
+    if (!r.platform_configured) {
+      box.innerHTML = '<b>Google Drive backups aren\'t available yet.</b> The Poolside team is still finishing the platform-side setup — please reach out to support if you want auto-archive turned on.';
+      return;
+    }
+    if (!r.connected) {
+      box.innerHTML = '<b>Connect Google Drive</b> to auto-archive every new application as a PDF + roster spreadsheet row in your own Drive. Poolside only ever touches files it creates inside your Drive — nothing else.';
+      connectBtn.style.display = 'inline-block';
+      return;
+    }
+    const lastSync = r.last_sync_at
+      ? new Date(r.last_sync_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : 'never';
+    const errorBlurb = r.last_error
+      ? `<div style="margin-top:8px;color:#7f1d1d"><b>Last error:</b> ${escapeHtml(r.last_error)}</div>`
+      : '';
+    const queueBlurb = r.pending_in_queue
+      ? `<div style="margin-top:8px;color:#92400e"><b>${r.pending_in_queue}</b> application${r.pending_in_queue === 1 ? '' : 's'} pending retry.</div>`
+      : '';
+    box.innerHTML = `
+      ✓ <b>Connected as ${escapeHtml(r.email || '(unknown)')}</b>
+      <div style="margin-top:6px;color:var(--muted)">Last sync: ${escapeHtml(lastSync)}</div>
+      ${errorBlurb}${queueBlurb}
+    `;
+    if (r.drive_root_link)   { folderLink.href = r.drive_root_link;   folderLink.style.display = 'inline-flex'; }
+    if (r.spreadsheet_link)  { sheetLink.href  = r.spreadsheet_link;  sheetLink.style.display  = 'inline-flex'; }
+    if (r.pending_in_queue)  retryBtn.style.display = 'inline-block';
+    document.getElementById('drive-backfill-btn').style.display = 'inline-block';
+    document.getElementById('drive-reformat-btn').style.display = 'inline-block';
+    disconnect.style.display = 'inline-block';
+  } catch (e) {
+    box.innerHTML = `<b>Couldn't load Drive status:</b> ${escapeHtml(e.message)}`;
+  }
+}
+async function connectDrive() {
+  const errEl = document.getElementById('drive-err');
+  errEl.classList.remove('show');
+  try {
+    const r = await call(DRIVE_URL, 'connect_url');
+    if (!r.ok) throw new Error(r.error || 'connect_url failed');
+    window.location.href = r.url;
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+async function requestDriveAccess() {
+  const btn = document.getElementById('drive-request-btn');
+  const errEl = document.getElementById('drive-err');
+  errEl.classList.remove('show');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Requesting…';
+  try {
+    const r = await call(DRIVE_URL, 'request_access');
+    if (!r.ok) throw new Error(r.error || 'request failed');
+    await loadDriveStatus();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+async function disconnectDrive() {
+  if (!confirm('Disconnect Google Drive? Your existing PDFs and spreadsheet rows in Drive will NOT be deleted — only Poolside\'s ability to write new ones is removed. You can reconnect anytime.')) return;
+  try {
+    const r = await call(DRIVE_URL, 'disconnect');
+    if (!r.ok) throw new Error(r.error || 'disconnect failed');
+    await loadDriveStatus();
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+async function backfillDrive() {
+  const btn = document.getElementById('drive-backfill-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Syncing missing…';
+  try {
+    const r = await call(DRIVE_URL, 'backfill_unsynced');
+    if (!r.ok) throw new Error(r.error || 'backfill failed');
+    if (r.total_unsynced === 0) {
+      alert('Nothing missing — all applications are already synced to Drive.');
+    } else {
+      let msg = `Found ${r.total_unsynced} unsynced. Synced ${r.succeeded}, ${r.failed} failed.`;
+      if (r.errors && r.errors.length) {
+        msg += '\n\nFailures:\n' + r.errors.map(e => `  ${e.family}: ${e.error}`).join('\n');
+      }
+      alert(msg);
+    }
+    await loadDriveStatus();
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+async function reformatDriveTabs() {
+  const btn = document.getElementById('drive-reformat-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Reformatting…';
+  try {
+    const r = await call(DRIVE_URL, 'reformat_tabs');
+    if (!r.ok) throw new Error(r.error || 'reformat failed');
+    let msg = `Restyled tabs: ${r.reformatted.join(', ') || '(none)'}`;
+    if (r.failed && r.failed.length) {
+      msg += '\n\nFailures:\n' + r.failed.map(f => `  ${f.year}: ${f.error}`).join('\n');
+    }
+    alert(msg);
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+async function retryDriveQueue() {
+  const btn = document.getElementById('drive-retry-btn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Retrying…';
+  try {
+    const r = await call(DRIVE_URL, 'retry_queue');
+    if (!r.ok) throw new Error(r.error || 'retry failed');
+    alert(`Attempted ${r.attempted}: ${r.succeeded} succeeded, ${r.failed} still failing.`);
+    await loadDriveStatus();
+  } catch (e) {
+    const errEl = document.getElementById('drive-err');
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
 </script>
 </body>
 </html>
