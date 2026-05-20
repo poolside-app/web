@@ -69,6 +69,8 @@
 </nav>
 <script src="/js/admin-flags.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
+<div id="members-subtabs"></div>
+<script src="/js/members-subtabs.js"></script>
 
 <main>
   <h1>Import households from a spreadsheet</h1>
@@ -80,9 +82,8 @@
     <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Export your existing roster (Google Sheets / Excel / Wild Apricot / Member Splash) as a <b>.csv file</b>. Don't worry about column names — we'll map them in the next step.</p>
     <label class="drop" id="drop">
       <input type="file" id="file" accept=".csv,text/csv" style="display:none">
-      <div style="font-size:34px">📄</div>
-      <p><b style="color:var(--blue)">Click to choose a CSV file</b> or drag one here</p>
-      <p style="font-size:12px">Max 5MB. Most clubs have 50-300 rows.</p>
+      <p style="font-size:15px;margin:8px 0 4px"><b style="color:var(--blue)">Click to choose a CSV file</b> or drag one here</p>
+      <p style="font-size:12px;color:var(--muted)">Max 5MB. Most clubs have 50-300 rows.</p>
     </label>
     <div id="up-err" class="err"></div>
   </div>
