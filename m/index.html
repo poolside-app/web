@@ -2073,19 +2073,7 @@ async function submitProfile() {
     `).join('')
     : '<div class="empty">No upcoming events.</div>';
 
-  const documents = me.documents || [];
-  const documentsHtml = documents.length
-    ? documents.map(d => `
-        <a href="${escapeAttr(d.url)}" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:10px 0;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border)">
-          <div style="font-size:24px;flex-shrink:0">${/\.pdf(\?|$)/i.test(d.url) ? '📄' : '📎'}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:14px">${escapeHtml(d.title)}</div>
-            ${d.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(d.description)}</div>` : ''}
-          </div>
-          <span style="color:var(--blue);font-weight:600">↗</span>
-        </a>
-      `).join('')
-    : '';
+  // Documents feature removed 2026-05-21.
 
   const photos = publicData.photos || [];
   GALLERY = photos;
@@ -2195,12 +2183,7 @@ async function submitProfile() {
       <div id="passes-body" class="empty">Loading…</div>
     </div>
 
-    ${documentsHtml ? `
-      <div class="card">
-        <h2>📎 Documents</h2>
-        ${documentsHtml}
-      </div>
-    ` : ''}
+    <!-- Documents feature removed 2026-05-21. -->
 
     <!-- Household summary card. Drilldown for adding/removing members,
          editing household info, and transferring the primary role lives

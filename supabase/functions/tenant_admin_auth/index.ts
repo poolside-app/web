@@ -166,7 +166,7 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
   membership: {
     label: 'Membership chair',
     description: 'Applications and households. Approves new members.',
-    scopes: ['applications', 'households', 'tiers', 'renewals', 'directory', 'documents', 'impact'],
+    scopes: ['applications', 'households', 'tiers', 'renewals', 'directory', 'impact'],
   },
   events: {
     label: 'Volunteer coordinator',
@@ -176,12 +176,12 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
   communications: {
     label: 'Communications',
     description: 'Announcements, campaigns, and photo gallery.',
-    scopes: ['announcements', 'campaigns', 'photos', 'documents', 'policies', 'impact'],
+    scopes: ['announcements', 'campaigns', 'photos', 'policies', 'impact'],
   },
   secretary: {
     label: 'Secretary',
-    description: 'Takes board meeting minutes. Manages bylaws and other governance documents.',
-    scopes: ['meetings', 'documents', 'impact'],
+    description: 'Takes board meeting minutes.',
+    scopes: ['meetings', 'impact'],
   },
   gate_attendant: {
     label: 'Gate attendant / lifeguard',
@@ -197,7 +197,7 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
 
 const ALL_SCOPES = [
   'applications', 'households', 'payments', 'tiers', 'renewals', 'events', 'programs', 'parties',
-  'announcements', 'campaigns', 'volunteer', 'passes', 'photos', 'documents',
+  'announcements', 'campaigns', 'volunteer', 'passes', 'photos',
   'policies', 'directory', 'impact', 'audit',
   'meetings',
   'check_in',

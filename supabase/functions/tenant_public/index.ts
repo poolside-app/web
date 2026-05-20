@@ -157,18 +157,7 @@ Deno.serve(async (req) => {
     },
   };
 
-  // Public-visibility documents only — members see member-visibility ones via
-  // their own authenticated endpoint (member_auth.me already returns them; for
-  // now public surface is enough).
-  const { data: docsData } = await sb.from('documents')
-    .select('id, title, description, url, visibility, sort_order, created_at, updated_at')
-    .eq('tenant_id', tenant.id)
-    .eq('active', true)
-    .eq('visibility', 'public')
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: false })
-    .limit(20);
-  const documents = docsData ?? [];
+  // Documents feature removed 2026-05-21.
 
   // Latest 5 active posts (pinned first), public — surfaces on the landing page.
   const { data: postsData } = await sb.from('posts')
@@ -256,7 +245,7 @@ Deno.serve(async (req) => {
     ok: true,
     tenant: publicTenant,
     public_settings,
-    posts, events, photos, documents, programs, tiers,
+    posts, events, photos, programs, tiers,
     sponsors,
     member_count: memberCount,
   });

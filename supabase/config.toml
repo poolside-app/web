@@ -68,9 +68,7 @@ verify_jwt = false
 [functions.tenant_metrics]
 verify_jwt = false
 
-# Per-tenant documents (handbook, applications, financials)
-[functions.documents_admin]
-verify_jwt = false
+# documents_admin removed 2026-05-21 — Documents feature deleted entirely.
 
 # Membership applications: public submit + admin review
 [functions.applications]

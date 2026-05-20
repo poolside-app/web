@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
   // bare minimum to launch — not the exhaustive ops health (admin_health
   // covers that).
   if (action === 'setup_status') {
-    const [tenantRes, settingsRes, policyRes, ownerRes, gateRes, bylawsRes] = await Promise.all([
+    const [tenantRes, settingsRes, policyRes, ownerRes, gateRes] = await Promise.all([
       sb.from('tenants').select('display_name, slug, stripe_account_id, stripe_charges_enabled')
         .eq('id', payload.tid).maybeSingle(),
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
@@ -158,13 +158,6 @@ Deno.serve(async (req) => {
       sb.from('admin_users').select('id', { count: 'exact', head: true })
         .eq('tenant_id', payload.tid).eq('active', true),
       sb.from('gate_panels').select('status').eq('tenant_id', payload.tid).maybeSingle(),
-      // Bylaws detection: any active document whose title contains "bylaws"
-      // (case-insensitive). Pragmatic — clubs that name it "Constitution"
-      // or "Charter" can manually toggle the optional checklist item by
-      // re-titling. Keeps the detection cheap (no extra metadata column).
-      sb.from('documents').select('id', { count: 'exact', head: true })
-        .eq('tenant_id', payload.tid).eq('active', true)
-        .ilike('title', '%bylaws%'),
     ]);
 
     const tenant = (tenantRes.data || {}) as Record<string, unknown>;
@@ -183,7 +176,6 @@ Deno.serve(async (req) => {
     const gateStatus = (gateRes.data as { status?: string } | null)?.status ?? null;
     const gateActive = gateStatus === 'active';
     const gateRequested = !!gateStatus && gateStatus !== 'active';
-    const bylawsCount = bylawsRes.count ?? 0;
 
     // Each fix_url ends with `?focus=<id>` so the destination page can
     // scroll-to + pulse the matching field via /js/focus-highlight.js.
@@ -283,19 +275,6 @@ Deno.serve(async (req) => {
         fix_url: '/club/admin/admins.html?focus=invite',
         fix_label: 'Invite admin',
         why: 'If you lose access, no one else can manage the club.',
-        optional: true,
-      },
-      {
-        id: 'bylaws',
-        label: bylawsCount > 0
-          ? 'Bylaws uploaded'
-          : 'Upload your club\'s bylaws',
-        done: bylawsCount > 0,
-        fix_url: '/club/admin/documents.html?focus=upload',
-        fix_label: bylawsCount > 0 ? 'Manage documents' : 'Upload bylaws',
-        why: bylawsCount > 0
-          ? 'Members can read your bylaws on the public governance page.'
-          : 'PDF or doc upload. Mark visibility "public" so members can read them on your governance page.',
         optional: true,
       },
       {

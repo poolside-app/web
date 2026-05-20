@@ -361,15 +361,7 @@ Deno.serve(async (req) => {
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 401);
     if (!household || !household.active) return jsonResponse({ ok: false, error: 'Household not active' }, 401);
 
-    // Members see public + members-visibility documents
-    const { data: docs } = await sb.from('documents')
-      .select('id, title, description, url, visibility, sort_order')
-      .eq('tenant_id', payload.tid as string)
-      .eq('active', true)
-      .in('visibility', ['public', 'members'])
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: false })
-      .limit(50);
+    // Documents feature removed 2026-05-21.
 
     // Sliding session: mint a fresh 5-year token on every `me` call. Active
     // users (anyone who opens the app at any cadence) stay logged in
@@ -394,7 +386,6 @@ Deno.serve(async (req) => {
       user: member,
       tenant,
       household: { ...household, members: housemates ?? [] },
-      documents: docs ?? [],
       refreshed_token,
     });
   }
