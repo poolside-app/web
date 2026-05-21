@@ -1207,10 +1207,10 @@ function renderGatePitch() {
     <div style="margin:14px 0;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.6">
       <b style="color:var(--blue)">How it works:</b>
       <ol style="margin:6px 0 0;padding-left:20px">
-        <li>You send the request below.</li>
-        <li>We reach out within 1 business day to coordinate — what gate panel you have, how to test it, when to ship the bridge.</li>
-        <li>We invoice you ($250 setup + $25/mo) and ship a small Pi bridge that sits on your club's network.</li>
-        <li>Once payment clears + bridge is installed + on-site test passes, we activate the integration. Members start seeing the unlock button on their phone the moment we flip the switch.</li>
+        <li>You send the request below — just a name + phone number, no payment.</li>
+        <li>Doug calls you within 1 business day to walk through your gate panel, talk through wiring, and confirm we can actually integrate.</li>
+        <li>If everything checks out, we ship a small Pi bridge that sits on your club's network and run the on-site test together.</li>
+        <li>Only after the integration is in place — and you've said yes — do we send the invoice ($250 setup + $25/mo). Pay it, members start seeing the unlock button.</li>
       </ol>
     </div>
     <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use?</label>
@@ -1239,35 +1239,64 @@ function renderGatePitch() {
         <input id="gate-contact-name" placeholder="Margaret Kowalski" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
       </div>
       <div>
-        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Email to invoice</label>
-        <input id="gate-contact-email" type="email" placeholder="margaret@example.com" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Phone number</label>
+        <input id="gate-contact-phone" type="tel" placeholder="(555) 123-4567" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
       </div>
     </div>
-    <div style="margin-top:14px">
-      <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:12px 22px;font-size:14px">🚪 Send request — we'll be in touch →</button>
-      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Request received — we'll email you within 1 business day to coordinate.</span>
+    <div style="margin-top:10px;max-width:420px">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Email <span style="font-weight:500">(optional — we'll mostly call)</span></label>
+      <input id="gate-contact-email" type="email" placeholder="margaret@example.com" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
     </div>
-    <p style="margin:14px 0 0;font-size:12px;color:var(--muted)">No payment is collected here — we'll only invoice you after we've talked through compatibility and you've said yes.</p>
+    <div style="margin-top:14px">
+      <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:12px 22px;font-size:14px">🚪 Send request — we'll call to discuss →</button>
+      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Request received — Doug will call you within 1 business day.</span>
+    </div>
+    <p style="margin:14px 0 0;font-size:12px;color:var(--muted)">No payment is collected here, and we don't send an invoice until we've talked, integrated, and you've confirmed it works.</p>
   `;
 }
 
 function renderGatePending(panel) {
   const labels = {
-    requested: '📨 Request received — we\'re reaching out',
-    invoiced:  '💸 Invoice sent — paid? we\'ll ship the bridge next',
+    requested: '📨 Request received — Doug will call to walk through your panel',
+    invoiced:  '💸 Invoice sent — pay to keep your gate live',
     shipping:  '📦 Bridge shipping to your club',
   };
   const subs = {
-    requested: 'A real human (Doug) will email you within 1 business day to coordinate. Watch your inbox.',
-    invoiced:  'Once you pay the invoice, we ship the Pi bridge ($25/mo cloud connection starts after install).',
+    requested: 'A real human (Doug) will phone you within 1 business day to coordinate. No invoice goes out until we\'ve talked through integration.',
+    invoiced:  'Reply to the invoice email with your preferred payment method (Venmo / check / wire).',
     shipping:  'Bridge is on its way. When it arrives, plug it into your club\'s network — it phones home automatically.',
   };
+
+  // Invoice card (only shown when Doug has sent an invoice — orthogonal to
+  // status now, see 2026-05-22 flow change in gate_admin/index.ts). Lives
+  // INSIDE the pending render so the tenant sees the same panel whether
+  // they're at status='requested' or any other pre-active state.
+  let invoiceHtml = '';
+  if (panel.invoice_sent_at && !panel.invoice_paid_at) {
+    const dollars = panel.invoice_amount_cents
+      ? (panel.invoice_amount_cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+      : '(see email)';
+    invoiceHtml = `
+      <div style="margin-top:12px;padding:16px 18px;background:#fffbeb;border:1.5px solid #fbbf24;border-radius:10px">
+        <div style="font-weight:700;color:#92400e;font-size:13.5px">💸 Invoice received — ${escapeHtml(dollars)}</div>
+        <div style="font-size:12.5px;color:#78350f;margin-top:6px;line-height:1.5">Doug sent this on ${new Date(panel.invoice_sent_at).toLocaleDateString()}. Check your email for payment instructions (or reply to <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>).${panel.invoice_note ? `<br><br><i style="color:#92400e">${escapeHtml(panel.invoice_note)}</i>` : ''}</div>
+      </div>
+    `;
+  } else if (panel.invoice_sent_at && panel.invoice_paid_at) {
+    invoiceHtml = `
+      <div style="margin-top:12px;padding:10px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;font-size:12.5px;color:#065f46">
+        ✓ Invoice paid on ${new Date(panel.invoice_paid_at).toLocaleDateString()} — thanks!
+      </div>
+    `;
+  }
+
   document.getElementById('gate-body').innerHTML = `
     <div style="padding:14px 16px;background:var(--blue-l);border-radius:10px;font-size:13px;line-height:1.55">
       <b style="color:var(--blue)">${labels[panel.status] || panel.status}</b>
       <p style="margin:8px 0 0">Requested on ${new Date(panel.requested_at).toLocaleDateString()}. ${subs[panel.status] || ''}</p>
       <p style="margin:10px 0 0;font-size:12px;color:var(--muted)">Need to add details or change something? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
     </div>
+    ${invoiceHtml}
   `;
 }
 
@@ -1441,22 +1470,25 @@ function syncGatePanelMode() {
 async function requestGateAddon() {
   const errEl = document.getElementById('gate-err');
   errEl.classList.remove('show');
-  const panelType    = document.getElementById('gate-panel-type').value;
+  const panelType     = document.getElementById('gate-panel-type').value;
   const panelDescribe = document.getElementById('gate-panel-describe')?.value.trim() || '';
-  const contactName  = document.getElementById('gate-contact-name').value.trim();
-  const contactEmail = document.getElementById('gate-contact-email').value.trim();
-  if (!contactEmail || !contactEmail.includes('@')) { errEl.textContent = 'Please add an email so we can invoice you.'; errEl.classList.add('show'); return; }
+  const contactName   = document.getElementById('gate-contact-name').value.trim();
+  const contactPhone  = document.getElementById('gate-contact-phone').value.trim();
+  const contactEmail  = document.getElementById('gate-contact-email').value.trim();
+  if (!contactName)  { errEl.textContent = 'Please add your name so we know who to ask for.';   errEl.classList.add('show'); return; }
+  if (!contactPhone) { errEl.textContent = 'Please add a phone number so we can call you.';     errEl.classList.add('show'); return; }
   try {
     const r = await gateApi('request_addon', {
       panel_type: panelType,
-      contact_name: contactName,
-      contact_email: contactEmail,
+      contact_name:  contactName,
+      contact_phone: contactPhone,
+      contact_email: contactEmail || null,
       // When user says "I know what we have", their description goes in
       // notes so Doug can read it on the provider side without parsing.
       notes: panelDescribe ? `Self-describe panel: ${panelDescribe}` : null,
     });
     if (!r.ok) throw new Error(r.error || 'Request failed');
-    document.getElementById('gate-saved').textContent = '✓ ' + (r.message || 'Reservation received');
+    document.getElementById('gate-saved').textContent = '✓ ' + (r.message || 'Request received');
     document.getElementById('gate-saved').style.display = '';
     setTimeout(() => loadGate(), 1200);
   } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }

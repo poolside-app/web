@@ -331,22 +331,22 @@
         </div>
         <table class="table" id="deployments-table">
           <thead>
-            <tr><th>Tenant</th><th>Status</th><th>Bridge health</th><th>Last seen</th><th>Actions</th></tr>
+            <tr><th>Tenant</th><th>Contact</th><th>Status</th><th>Invoice</th><th>Bridge health</th><th>Actions</th></tr>
           </thead>
           <tbody id="deployments-tbody">
-            <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="card" style="background:var(--blue-l); border-color:#cae0ef">
-        <div class="card-head"><h2 style="font-size:16px">📋 Provisioning workflow</h2></div>
+        <div class="card-head"><h2 style="font-size:16px">📋 Provisioning workflow (updated 2026-05-22)</h2></div>
         <ol style="margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.8;">
-          <li><b>Requested</b> → tenant clicked "Request integration." Stripe Checkout link sent automatically.</li>
-          <li><b>Paid</b> → setup fee landed. Bridge appears in your queue here.</li>
-          <li><b>Provisioning</b> → flash Pi with bridge code, embed tenant_id + auth token, sticker-label, box.</li>
-          <li><b>Shipped</b> → click Mark Shipped, paste tracking number. Tenant gets email with setup guide.</li>
-          <li><b>Active</b> → bridge auto-detects tenant on first connect, status flips to active. Members can unlock.</li>
+          <li><b>Requested</b> → tenant clicked "Request integration." You get an email + Slack-style admin task with their <b>name + phone</b>. Call them — no invoice goes out automatically anymore.</li>
+          <li><b>Verify integration</b> → confirm panel is compatible, agree on plan, ship the Pi bridge, run on-site test.</li>
+          <li><b>Active</b> → bridge phones home, flip status to <b>active</b>. Members can unlock.</li>
+          <li><b>Send invoice</b> → hit <b>💸 Send invoice</b> on the tenant's row. Enter amount + optional override email. Tenant gets an email + in-app banner. Status is unaffected (orthogonal column).</li>
+          <li><b>Mark paid</b> → when the payment lands (Venmo / check / wire), click <b>✓ Mark paid</b>. Recorded in the audit log; the tenant sees a "paid" pill.</li>
         </ol>
       </div>
     </div>
@@ -392,8 +392,44 @@
     <div id="config-host" data-tenant-id=""></div>
   </div>
 </div>
+
+<!-- Send-invoice modal — opens via openInvoiceModal(tenant_id). Records
+     invoice_* columns on gate_panels + emails the tenant. Orthogonal to
+     status (flow change 2026-05-22) so Doug can bill a tenant whose gate
+     is already active. -->
+<div id="invoice-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:101;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto;backdrop-filter:blur(2px)" onclick="if(event.target.id==='invoice-scrim') closeInvoiceModal()">
+  <div style="background:#fff;border-radius:18px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(10,59,92,.25);margin:auto;padding:24px;position:relative">
+    <button onclick="closeInvoiceModal()" style="position:absolute;top:14px;right:18px;background:transparent;border:0;font-size:24px;line-height:1;color:var(--muted);cursor:pointer;padding:6px 10px">×</button>
+    <h2 style="font-family:'Fraunces',serif;font-size:22px;margin:0 0 6px">💸 Send invoice</h2>
+    <p id="invoice-target" style="font-size:13px;color:var(--muted);margin:0 0 18px">—</p>
+
+    <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Amount</label>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px">
+      <span style="font-size:18px;color:var(--muted);font-weight:600">$</span>
+      <input id="invoice-amount" type="number" min="0" step="0.01" placeholder="250.00" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:16px 'Inter';width:100%">
+    </div>
+
+    <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Send to <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">(blank = email from request form / owner email)</span></label>
+    <input id="invoice-email" type="email" placeholder="(use default)" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%;margin-bottom:14px">
+
+    <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Note <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">(optional — shown in the email)</span></label>
+    <textarea id="invoice-note" rows="3" placeholder="$250 setup fee + first month ($25). Net 14 days." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:13.5px 'Inter';width:100%;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
+
+    <div style="padding:10px 14px;background:var(--bg-2);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:18px">
+      The tenant gets an email with the amount + note, plus an in-app banner ("Invoice received"). Status is <b>not</b> changed — you can still flip status separately if you want.
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sm" onclick="closeInvoiceModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitInvoice()">💸 Send invoice</button>
+    </div>
+    <p id="invoice-status" style="font-size:12px;color:var(--green);margin:10px 0 0;min-height:14px;text-align:right"></p>
+  </div>
+</div>
+
 <style>
-  #config-scrim.open { display: flex !important; }
+  #config-scrim.open  { display: flex !important; }
+  #invoice-scrim.open { display: flex !important; }
 </style>
 
 <script>
@@ -443,6 +479,33 @@ async function loadDeployments() {
     const healthDot = { online: '🟢', stale: '🟡', offline: '🔴', never_seen: '⚪', unknown: '⚪' }[healthState] || '⚪';
     const pillClass = STATUS_PILL_CLASS[p.status] || 'pill-requested';
     const statusOptions = STATUSES.map(s => `<option value="${s}" ${s === p.status ? 'selected' : ''}>${s}</option>`).join('');
+
+    // Contact column — phone is the primary; tap-to-call on mobile.
+    const contactHtml = p.contact_name || p.contact_phone
+      ? `
+        <div style="font-size:13px"><b>${escapeHtml(p.contact_name || '(no name)')}</b></div>
+        ${p.contact_phone ? `<div style="font-size:12px"><a href="tel:${escapeHtml(p.contact_phone)}">${escapeHtml(p.contact_phone)}</a></div>` : ''}
+        ${p.contact_email ? `<div style="font-size:11px;color:var(--muted)"><a href="mailto:${escapeHtml(p.contact_email)}">${escapeHtml(p.contact_email)}</a></div>` : ''}
+      `
+      : `<span style="font-size:12px;color:var(--muted);font-style:italic">no contact</span>`;
+
+    // Invoice column — three states: never sent / sent unpaid / paid.
+    let invoiceHtml = '<span style="font-size:12px;color:var(--muted)">—</span>';
+    if (p.invoice_sent_at) {
+      const dollars = p.invoice_amount_cents
+        ? (p.invoice_amount_cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+        : '?';
+      if (p.invoice_paid_at) {
+        invoiceHtml = `<span class="pill pill-active" style="font-size:11px">PAID</span> <span style="font-size:11px;color:var(--muted)">${escapeHtml(dollars)}</span>`;
+      } else {
+        invoiceHtml = `
+          <span class="pill pill-paid" style="font-size:11px">SENT</span>
+          <span style="font-size:12px;color:var(--muted)">${escapeHtml(dollars)}</span>
+          <button class="btn-sm" onclick="markInvoicePaid('${escapeHtml(p.tenant_id)}')" style="margin-top:4px;display:block">✓ Mark paid</button>
+        `;
+      }
+    }
+
     return `
       <tr data-tenant-id="${escapeHtml(p.tenant_id)}">
         <td>
@@ -450,16 +513,16 @@ async function loadDeployments() {
           <br><span style="font-size:12px;color:var(--muted)">${escapeHtml(p.tenant_slug || '')} · panel: ${escapeHtml(p.panel_type || '?')}</span>
           ${p.notes ? `<br><span style="font-size:11px;color:var(--muted);font-style:italic">${escapeHtml(p.notes.slice(0, 80))}</span>` : ''}
         </td>
-        <td>
-          <span class="pill ${pillClass}">${escapeHtml(p.status.toUpperCase())}</span>
-        </td>
-        <td>${healthDot} ${escapeHtml(healthState)}</td>
-        <td style="font-size:12px;color:var(--muted)">${lastSeen}</td>
+        <td>${contactHtml}</td>
+        <td><span class="pill ${pillClass}">${escapeHtml(p.status.toUpperCase())}</span></td>
+        <td>${invoiceHtml}</td>
+        <td>${healthDot} ${escapeHtml(healthState)}<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(lastSeen)}</span></td>
         <td>
           <select onchange="setStatus('${escapeHtml(p.tenant_id)}', this.value)" style="padding:4px 8px;font-size:12px;margin-right:6px">
             ${statusOptions}
           </select>
           <button class="btn-sm" onclick="openConfig('${escapeHtml(p.tenant_id)}')">🔧 Configure</button>
+          <button class="btn-sm" onclick="openInvoiceModal('${escapeHtml(p.tenant_id)}')" style="margin-top:4px">💸 Send invoice</button>
         </td>
       </tr>
     `;
@@ -620,6 +683,57 @@ async function setStatus(tenantId, newStatus) {
   const notes = newStatus === 'active' ? prompt('Optional notes (e.g. "shipped 2026-05-15", "Bishop Estates grandfathered"):', '') : null;
   const r = await gateApi('super_set_status', { tenant_id: tenantId, status: newStatus, notes });
   if (!r.ok) alert(r.error || 'Update failed');
+  loadDeployments();
+}
+
+// ── Send-invoice modal ───────────────────────────────────────────────────
+// Doug picks an amount + optional email override + optional note, hits
+// Send. Backend records invoice_* columns + emails the tenant + drops an
+// admin_task banner on their dashboard. Status is left alone.
+async function openInvoiceModal(tenantId) {
+  // Pull the panel so we can pre-fill the email + show who we're billing.
+  const r = await gateApi('super_get_panel', { tenant_id: tenantId });
+  const panel = r.ok ? r.panel : null;
+  const target = panel ? `${panel.tenant_display_name || panel.tenant_slug || 'unknown'} — ${panel.contact_name || '(no name)'}` : 'Loading…';
+  document.getElementById('invoice-target').textContent = target;
+  document.getElementById('invoice-target').dataset.tenantId = tenantId;
+  document.getElementById('invoice-amount').value = panel?.invoice_amount_cents
+    ? (panel.invoice_amount_cents / 100).toFixed(2)
+    : '275.00';
+  document.getElementById('invoice-email').value = '';
+  document.getElementById('invoice-email').placeholder = panel?.contact_email
+    ? `default: ${panel.contact_email}`
+    : '(use owner email)';
+  document.getElementById('invoice-note').value = panel?.invoice_note || '$250 setup fee + first month ($25). Reply to confirm payment method.';
+  document.getElementById('invoice-status').textContent = '';
+  document.getElementById('invoice-scrim').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeInvoiceModal() {
+  document.getElementById('invoice-scrim').classList.remove('open');
+  document.body.style.overflow = '';
+}
+async function submitInvoice() {
+  const tenantId = document.getElementById('invoice-target').dataset.tenantId;
+  const amountDollars = parseFloat(document.getElementById('invoice-amount').value || '0');
+  if (!tenantId || !(amountDollars > 0)) { alert('Pick a tenant + a positive amount.'); return; }
+  const amount_cents = Math.round(amountDollars * 100);
+  const email = document.getElementById('invoice-email').value.trim();
+  const note  = document.getElementById('invoice-note').value.trim();
+  const statusEl = document.getElementById('invoice-status');
+  statusEl.style.color = 'var(--muted)';
+  statusEl.textContent = 'Sending…';
+  const r = await gateApi('super_send_invoice', { tenant_id: tenantId, amount_cents, email: email || undefined, note: note || undefined });
+  if (!r.ok) { statusEl.style.color = 'var(--red)'; statusEl.textContent = r.error || 'Failed'; return; }
+  statusEl.style.color = 'var(--green)';
+  statusEl.textContent = r.emailed_to ? `✓ Sent to ${r.emailed_to}` : '✓ Recorded (no email — set a contact email first)';
+  setTimeout(() => { closeInvoiceModal(); loadDeployments(); }, 1200);
+}
+
+async function markInvoicePaid(tenantId) {
+  if (!confirm('Mark this invoice as paid? (Records in audit log; the tenant sees a "paid" pill.)')) return;
+  const r = await gateApi('super_mark_invoice_paid', { tenant_id: tenantId });
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
   loadDeployments();
 }
 

@@ -4,8 +4,10 @@
 // Tenant admin actions (require tenant_admin JWT, owner-only):
 //   { action: 'get_status' }
 //     → returns the tenant's gate_panels row (no secrets) + bridge_health
-//   { action: 'request_addon', panel_type, contact_name, contact_email }
-//     → creates a 'requested' row + admin_task for super-admin Doug
+//   { action: 'request_addon', panel_type, contact_name, contact_phone, contact_email? }
+//     → creates a 'requested' row + admin_task for super-admin Doug. NO
+//       invoice is sent at this point (changed 2026-05-22). Doug calls the
+//       contact, confirms integration, then triggers the invoice manually.
 //   { action: 'update_config', panel_host, panel_admin_user, panel_admin_password }
 //     → tenant fills in their panel info post-activation
 //   { action: 'rotate_bridge_secret' }
@@ -20,6 +22,12 @@
 //     → all tenants' gate_panels + bridge health
 //   { action: 'super_set_status', tenant_id, status, notes? }
 //     → flip status (e.g. activate Bishop Estates without payment)
+//   { action: 'super_send_invoice', tenant_id, amount_cents, email?, note? }
+//     → record + email a one-off invoice. Orthogonal to status — doesn't
+//       change the lifecycle, just sets invoice_* columns + sends mail.
+//   { action: 'super_mark_invoice_paid', tenant_id }
+//     → record that the invoice cleared (Venmo/check/wire — Poolside
+//       doesn't auto-collect for the gate add-on yet).
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -72,6 +80,17 @@ function publicGatePanel(row: Record<string, unknown> | null): Record<string, un
     config_locked: !!row.config_locked,
     config_locked_at: row.config_locked_at ?? null,
     config_locked_by: row.config_locked_by ?? null,
+    // Contact + invoice (added 2026-05-22). Returned to BOTH tenant and
+    // provider — the tenant needs invoice_sent_at/amount to render the
+    // "Invoice received — please pay" card. Contact info is what the
+    // tenant typed; no privacy concern returning it to them.
+    contact_name:         row.contact_name ?? null,
+    contact_phone:        row.contact_phone ?? null,
+    contact_email:        row.contact_email ?? null,
+    invoice_amount_cents: row.invoice_amount_cents ?? null,
+    invoice_sent_at:      row.invoice_sent_at ?? null,
+    invoice_paid_at:      row.invoice_paid_at ?? null,
+    invoice_note:         row.invoice_note ?? null,
   };
 }
 
@@ -302,16 +321,27 @@ Deno.serve(async (req) => {
     if (!['mengqi_hxc7000', 'unknown', 'custom'].includes(panelType)) {
       return jsonResponse({ ok: false, error: 'Invalid panel_type' }, 400);
     }
-    const contactName  = String(body.contact_name ?? '').trim();
+    const contactName  = String(body.contact_name  ?? '').trim();
+    const contactPhone = String(body.contact_phone ?? '').trim();
     const contactEmail = String(body.contact_email ?? '').trim().toLowerCase();
 
-    // Insert or upsert the gate_panels row at status='requested'.
+    if (!contactName || !contactPhone) {
+      return jsonResponse({ ok: false, error: 'Name and phone number are required so we can call you.' }, 400);
+    }
+
+    // Insert or upsert the gate_panels row at status='requested'. Contact
+    // info goes into structured columns (added 2026-05-22) so Doug can see
+    // it on the provider admin and call the right person without digging
+    // through notes/audit logs.
     const { error } = await sb.from('gate_panels').upsert({
       tenant_id: payload.tid,
       status: 'requested',
       panel_type: panelType,
       requested_at: new Date().toISOString(),
-      notes: `Requested by ${contactName || payload.sub} (${contactEmail || 'no email'})`,
+      contact_name:  contactName,
+      contact_phone: contactPhone,
+      contact_email: contactEmail || null,
+      notes: `Requested by ${contactName} (${contactPhone})`,
     }, { onConflict: 'tenant_id' });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
@@ -328,7 +358,7 @@ Deno.serve(async (req) => {
       tenant_id: payload.tid,
       target_scopes: [],   // owners-only by default
       kind: 'gate.addon_requested',
-      summary: `Gate add-on requested (${panelType}) — invoice + ship bridge`,
+      summary: `Gate add-on requested (${panelType}) — Doug will call to coordinate`,
       link_url: '/club/admin/settings.html#gate',
       source_kind: 'gate_panel', source_id: payload.tid,
     });
@@ -337,12 +367,11 @@ Deno.serve(async (req) => {
       entity_type: 'gate_panel', entity_id: payload.tid,
       summary: `Gate add-on requested (${panelType})`,
       actor_id: payload.sub, actor_kind: 'tenant_admin',
-      metadata: { panel_type: panelType, contact_name: contactName, contact_email: contactEmail },
+      metadata: { panel_type: panelType, contact_name: contactName, contact_phone: contactPhone, contact_email: contactEmail },
     });
 
-    // Email Doug so he can reach out + invoice. Best-effort — the request
-    // is recorded in admin_tasks regardless, so a Resend hiccup doesn't
-    // lose the lead.
+    // Email Doug so he can reach out. Best-effort — the request is recorded
+    // in admin_tasks regardless, so a Resend hiccup doesn't lose the lead.
     try {
       const { sendEmail, escHtml: escapeHtml } = await import('../_shared/send_email.ts');
       const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
@@ -355,15 +384,16 @@ Deno.serve(async (req) => {
       const html = `
         <div style="font-family:Inter,Arial,sans-serif;max-width:600px;padding:24px;color:#0f172a">
           <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 14px">🚪 New gate integration request</h2>
-          <p style="margin:0 0 16px;color:#475569;line-height:1.55"><b>${escapeHtml(clubName)}</b> just requested keyfob integration. Reach out to coordinate hardware + on-site testing.</p>
+          <p style="margin:0 0 16px;color:#475569;line-height:1.55"><b>${escapeHtml(clubName)}</b> just requested keyfob integration. Call them to confirm the panel + integration plan. No invoice goes out until you've verified everything works.</p>
           <table style="border-collapse:collapse;font-size:14px;margin:0 0 18px">
             <tr><td style="padding:6px 14px 6px 0;color:#64748b">Club</td><td style="padding:6px 0"><b>${escapeHtml(clubName)}</b> (${escapeHtml(clubSlug)}.poolsideapp.com)</td></tr>
             <tr><td style="padding:6px 14px 6px 0;color:#64748b">Panel</td><td style="padding:6px 0">${escapeHtml(panelLabel)}</td></tr>
-            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Contact</td><td style="padding:6px 0">${escapeHtml(contactName || '(not given)')}</td></tr>
-            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Email</td><td style="padding:6px 0">${contactEmail ? `<a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a>` : '(not given)'}</td></tr>
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Contact</td><td style="padding:6px 0"><b>${escapeHtml(contactName)}</b></td></tr>
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Phone</td><td style="padding:6px 0"><a href="tel:${escapeHtml(contactPhone)}">${escapeHtml(contactPhone)}</a></td></tr>
+            ${contactEmail ? `<tr><td style="padding:6px 14px 6px 0;color:#64748b">Email</td><td style="padding:6px 0"><a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a></td></tr>` : ''}
           </table>
           <p style="margin:16px 0 8px"><a href="https://poolsideapp.com/admin/gate-integrations.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Open Gate Integrations admin →</a></p>
-          <p style="margin:18px 0 0;font-size:12px;color:#94a3b8">Once you've talked to them and verified payment, flip their gate panel status to <b>active</b> on the provider admin page. That auto-enables the gate features for their club.</p>
+          <p style="margin:18px 0 0;font-size:12px;color:#94a3b8">After you've talked to them and the integration is in place, hit "💸 Send invoice" on their row to bill the setup + monthly fee.</p>
         </div>
       `;
       await sendEmail({
@@ -378,9 +408,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok: true,
-      message: panelType === 'mengqi_hxc7000'
-        ? "Got it! We'll email you within 1 business day with an invoice. Once paid, your bridge ships in ~5 business days."
-        : "Got it! We'll review your panel info and email you within 2 business days about whether we can support it + pricing.",
+      message: "Got it! Doug will call you within 1 business day to walk through your gate panel and confirm we can integrate. No invoice goes out until you've said yes after that call.",
     });
   }
 
@@ -640,6 +668,133 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({ ok: true, status: newStatus });
+  }
+
+  // ── super_send_invoice ─────────────────────────────────────────────────
+  // Doug clicks "💸 Send invoice" on /admin/gate-integrations.html after
+  // he's talked to the club + verified the integration is in place. This
+  // sets the invoice_* columns and emails the tenant the bill — separate
+  // from the status lifecycle so Doug can invoice a club that's already
+  // 'active' without regressing their state. Behavior pivot from the old
+  // auto-invoice-at-request flow (2026-05-22): the tenant request form
+  // promises a call, not an invoice; the invoice arrives only when Doug
+  // says it should.
+  if (action === 'super_send_invoice') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const targetTenant = String(body.tenant_id ?? '').trim();
+    const amountCents  = Number(body.amount_cents ?? 0);
+    const overrideEmail = String(body.email ?? '').trim().toLowerCase();
+    const note         = String(body.note ?? '').trim();
+    if (!targetTenant) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      return jsonResponse({ ok: false, error: 'amount_cents must be a positive integer' }, 400);
+    }
+
+    const { data: row } = await sb.from('gate_panels')
+      .select('contact_name, contact_email, contact_phone')
+      .eq('tenant_id', targetTenant).maybeSingle();
+    if (!row) return jsonResponse({ ok: false, error: 'No gate panel for this tenant' }, 404);
+
+    const { error } = await sb.from('gate_panels').update({
+      invoice_amount_cents: amountCents,
+      invoice_sent_at: new Date().toISOString(),
+      invoice_paid_at: null,           // clear any prior paid mark — new bill
+      invoice_note: note || null,
+      updated_at: new Date().toISOString(),
+    }).eq('tenant_id', targetTenant);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    // Pick the email address to send to. Override > contact_email from the
+    // request form > the tenant's owner email. If nothing is set, surface
+    // a clear error so Doug knows to collect one.
+    let billTo = overrideEmail || (row.contact_email as string | null) || '';
+    if (!billTo) {
+      const { data: owner } = await sb.from('admin_users')
+        .select('email').eq('tenant_id', targetTenant).eq('active', true)
+        .eq('role_template', 'owner').limit(1).maybeSingle();
+      if (owner?.email) billTo = owner.email;
+    }
+
+    const dollars = (amountCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const { data: tenant } = await sb.from('tenants')
+      .select('slug, display_name').eq('id', targetTenant).maybeSingle();
+    const clubName = tenant?.display_name || 'your club';
+    const slug = tenant?.slug || '';
+
+    // Tenant-facing email. If we don't have a target address, we still
+    // record the invoice + admin_task — Doug can resend from the modal.
+    if (billTo) {
+      try {
+        const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+        const subj = `Poolside gate integration invoice — ${clubName}`;
+        const html = `
+          <div style="font-family:Inter,Arial,sans-serif;max-width:560px;padding:24px;color:#0f172a">
+            <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 14px">💸 Invoice — gate integration</h2>
+            <p style="margin:0 0 14px;color:#475569;line-height:1.55">Hi ${escHtml((row.contact_name as string) || 'there')}, here's the invoice for the keyfob/gate integration we set up for <b>${escHtml(clubName)}</b>.</p>
+            <div style="padding:18px 22px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:12px;margin:0 0 18px">
+              <div style="font-size:13px;color:#64748b;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Amount due</div>
+              <div style="font-size:32px;font-weight:700;color:#0a3b5c;margin:6px 0">${escHtml(dollars)}</div>
+              ${note ? `<div style="font-size:13px;color:#475569;line-height:1.5;margin-top:8px;padding-top:10px;border-top:1px solid #cbd5e1">${escHtml(note)}</div>` : ''}
+            </div>
+            <p style="margin:0 0 12px;color:#475569;line-height:1.55">Reply to this email to confirm or ask questions. We'll send payment details (Venmo / check / wire) directly so you don't have to dig through statements later.</p>
+            <p style="margin:18px 0 0;font-size:12px;color:#94a3b8">Sent by Poolside on behalf of doug@poolsideapp.com.</p>
+          </div>
+        `;
+        await sendEmail({
+          to: billTo,
+          subject: subj,
+          html,
+          replyTo: 'doug@poolsideapp.com',
+        });
+      } catch (e) {
+        console.error('gate.super_send_invoice email failed (non-fatal):', (e as Error).message);
+      }
+    }
+
+    // In-app admin_task so the club sees a banner the next time they log in.
+    await sb.from('admin_tasks').insert({
+      tenant_id: targetTenant,
+      target_scopes: [],
+      kind: 'gate.invoice_received',
+      summary: `Gate integration invoice received — ${dollars}`,
+      link_url: `/club/admin/settings.html?focus=gate#gate`,
+      source_kind: 'gate_panel', source_id: targetTenant,
+    });
+    await sb.from('audit_log').insert({
+      tenant_id: targetTenant, kind: 'gate.invoice_sent',
+      entity_type: 'gate_panel',
+      summary: `Invoice sent: ${dollars}`,
+      actor_id: payload.sub, actor_kind: 'provider',
+      metadata: { amount_cents: amountCents, email: billTo, note },
+    });
+
+    return jsonResponse({ ok: true, amount_cents: amountCents, emailed_to: billTo || null });
+  }
+
+  // ── super_mark_invoice_paid ───────────────────────────────────────────
+  // Doug got paid (Venmo confirmation, check cleared, etc.) → click "Mark
+  // paid" on the provider admin. Recorded in audit log, no tenant email
+  // (they already know they paid).
+  if (action === 'super_mark_invoice_paid') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider access required' }, 403);
+    }
+    const targetTenant = String(body.tenant_id ?? '').trim();
+    if (!targetTenant) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
+    const { error } = await sb.from('gate_panels').update({
+      invoice_paid_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('tenant_id', targetTenant);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await sb.from('audit_log').insert({
+      tenant_id: targetTenant, kind: 'gate.invoice_marked_paid',
+      entity_type: 'gate_panel',
+      summary: 'Invoice marked paid',
+      actor_id: payload.sub, actor_kind: 'provider',
+    });
+    return jsonResponse({ ok: true });
   }
 
   // ── Provider-side panel config ────────────────────────────────────────
