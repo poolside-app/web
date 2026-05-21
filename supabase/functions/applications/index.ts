@@ -408,77 +408,39 @@ Deno.serve(async (req) => {
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
       `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
 
-    // ── Auto-approval routing (2026-05-09 redesign) ─────────────────────
+    // ── Application routing (2026-05-22 redesign — Doug's ONE-CLICK ask) ─
     //   Stripe / stripe_plan : the webhook auto-approves on payment.
     //                          NO admin_task here — the application is
     //                          either pending-payment (60-min cleanup)
     //                          or auto-approved+paid by webhook.
-    //   Venmo                : auto-approve INLINE via internal call.
-    //                          Admin only acts on payment verification
-    //                          (separate venmo.claim task that fires
-    //                          when the member taps "I paid Venmo").
-    //                          Fallback admin_task if auto-approve fails
-    //                          (no phone, capacity hit, etc.).
+    //   Venmo                : application stays PENDING. Admin sees ONE
+    //                          task ("verify Venmo + approve in one click")
+    //                          and uses the combined approve+verify path
+    //                          in applications.html. This kills the old
+    //                          "auto-approved but unpaid" half-state that
+    //                          confused admins into thinking the work was
+    //                          done — and the orphan "I paid Venmo" claim
+    //                          flow that often never fired.
     //   No method (decide later) : admin_task fires for manual approval.
-    let autoApproved = false;
-    let isAdminSelfSignup = false;
-    if (payment_method === 'venmo') {
-      // Self-signup detection: if the applicant's email or phone matches an
-      // active admin on this tenant, they're an admin signing up their own
-      // family. We auto-approve their APPLICATION (no one else needs to
-      // approve membership for the admin) but we explicitly do NOT
-      // auto-verify the PAYMENT — even admins go through the standard
-      // Venmo verify workflow. Symbolic but valuable: every paid record
-      // in the audit trail has a real "verified by X at Y" timestamp,
-      // and admins build the habit of using the verify queue. Decision
-      // from Doug 2026-05-20 onboarding test.
-      try {
-        const orParts: string[] = [];
-        if (email) orParts.push(`email.ilike.${email}`);
-        if (phone) orParts.push(`phone_e164.eq.${phone}`);
-        if (orParts.length) {
-          const { data: matchedAdmin } = await sb.from('admin_users')
-            .select('id').eq('tenant_id', tenant.id).eq('active', true)
-            .or(orParts.join(',')).limit(1).maybeSingle();
-          if (matchedAdmin) isAdminSelfSignup = true;
-        }
-      } catch { /* if the lookup fails, treat as non-self-signup */ }
-
-      try {
-        const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
-          body: JSON.stringify({
-            action: 'approve',
-            id: data.id,
-            tenant_id: tenant.id,
-            verify_venmo_payment: false,   // never auto-verify — admins verify their own payment too
-          }),
-        });
-        const ar = await r.json().catch(() => ({ ok: false }));
-        if (ar && ar.ok) autoApproved = true;
-      } catch (_) { /* fall through to admin_task fallback below */ }
-    }
-
     const isStripeFlow = payment_method === 'stripe' || payment_method === 'stripe_plan';
-    if (!isStripeFlow && !autoApproved) {
+    if (!isStripeFlow) {
       try {
         const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-        const isVenmo = payment_method === 'venmo';  // here only when Venmo auto-approve failed
+        const isVenmo = payment_method === 'venmo';
         await enqueueAdminTask(sb, {
           tenant_id: tenant.id,
           target_scopes: ['applications'],
           kind: 'application.submitted',
           summary: isVenmo
-            ? `New Venmo application — auto-approve failed, review needed: ${family_name} (${primary_name})`
+            ? `New Venmo application from ${family_name} (${primary_name}) — verify in Venmo + approve in one click`
             : `New application: ${family_name} (${primary_name})`,
           link_url: '/club/admin/members.html#applications',
           source_kind: 'application', source_id: data.id,
           push_title: isVenmo
-            ? `⚠️ Application needs manual review`
+            ? `💵 New Venmo application — verify + approve`
             : `📨 New application from ${family_name}`,
           push_body: isVenmo
-            ? `${primary_name} applied via Venmo but auto-approve failed (likely missing phone). Open and approve manually.`
+            ? `${primary_name} applied via Venmo. Open Venmo, confirm the payment, then tap "Approve & verify" — one click handles both.`
             : `${primary_name} just applied. Tap to review.`,
         });
       } catch { /* best-effort — never fails submission */ }
@@ -626,12 +588,11 @@ Deno.serve(async (req) => {
       ok: true,
       application_id: data.id,
       payment_method,
-      auto_approved: autoApproved,
-      // True when the applicant matched an active admin and we auto-verified
-      // the Venmo payment in the same call. apply.html branches on this to
-      // show the founder "you're in!" celebration page instead of the
-      // generic "we got your application" page.
-      self_signup_complete: autoApproved && isAdminSelfSignup,
+      // auto_approved / self_signup_complete removed 2026-05-22 — Venmo
+      // applications no longer auto-approve, so both flags would always be
+      // false. apply.html falls through to the generic "we got your
+      // application" page for everything except Stripe (which redirects
+      // to Checkout) and the legacy admin-self-signup celebration.
       tenant_slug: tenant.slug,
       tenant_display_name: tenant.display_name,
     });

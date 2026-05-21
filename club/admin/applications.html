@@ -173,6 +173,11 @@
       <button class="btn btn-ghost" id="m-remind" style="display:none" onclick="reminderClick()">📧 Send reminder</button>
       <button class="btn btn-ghost" onclick="closeM()">Close</button>
       <button class="btn btn-danger" id="m-reject" onclick="rej()">Reject</button>
+      <!-- Approve-only path. For Venmo apps it stays hidden behind the
+           primary green button so Doug doesn't accidentally approve
+           without verifying. Click "Approve only" to skip Venmo verify
+           when the payment hasn't landed yet but you still want to greenlight. -->
+      <button class="btn btn-ghost" id="m-approve-only" style="display:none" onclick="appr(false)">Approve only (Venmo not received yet)</button>
       <button class="btn btn-success" id="m-approve" onclick="appr()">Approve & create household →</button>
       <button class="btn btn-success" id="m-verify" style="display:none" onclick="verifyClick()">✓ Verify Venmo payment</button>
     </div>
@@ -378,21 +383,43 @@ function openModal(id, rows) {
   document.getElementById('ov-paid_until_year').value = '';
   document.getElementById('m-admin_notes').value = a.admin_notes || '';
   document.getElementById('m-err').classList.remove('show');
-  document.getElementById('m-approve').style.display = a.status === 'pending' ? 'inline-block' : 'none';
-  document.getElementById('m-reject').style.display  = a.status === 'pending' ? 'inline-block' : 'none';
-  // Verify button shows on approved + unpaid applications
+  // 2026-05-22 ONE-CLICK flow: for pending Venmo apps, primary button is
+  // "✓ Approve & verify Venmo payment" — single click flips status to
+  // approved AND payment_status to paid. Approve-only stays available as
+  // a secondary action for the rare case the Venmo hasn't landed yet.
+  // For decide-later or no-method apps, primary button is plain Approve.
+  const isPending = a.status === 'pending';
+  const isVenmo   = a.payment_method === 'venmo';
+  const approveBtn = document.getElementById('m-approve');
+  approveBtn.style.display = isPending ? 'inline-block' : 'none';
+  approveBtn.textContent = isPending && isVenmo
+    ? '✓ Approve & verify Venmo payment'
+    : 'Approve & create household →';
+  document.getElementById('m-approve-only').style.display = (isPending && isVenmo) ? 'inline-block' : 'none';
+  document.getElementById('m-reject').style.display  = isPending ? 'inline-block' : 'none';
+  // Verify-only button still shows for approved+unpaid apps that pre-date
+  // this flow change (or where admin used "Approve only" earlier).
   document.getElementById('m-verify').style.display =
     (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
-  // Remind button shows on approved + unpaid
   document.getElementById('m-remind').style.display =
     (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
   document.getElementById('scrim').classList.add('open');
 }
 function closeM() { document.getElementById('scrim').classList.remove('open'); }
 
-async function appr() {
+// verifyVenmo defaults to TRUE for Venmo applications so the primary green
+// button does both actions in one click (Doug 2026-05-22). Pass false from
+// the "Approve only" secondary button when the Venmo hasn't landed yet.
+async function appr(verifyVenmo) {
   if (!SELECTED) return;
   const errEl = document.getElementById('m-err'); errEl.classList.remove('show');
+  const isVenmo = SELECTED.payment_method === 'venmo';
+  // Default verifyVenmo to true for Venmo apps; false otherwise.
+  // (Explicit false from "Approve only" overrides.)
+  const shouldVerify = verifyVenmo === false ? false : isVenmo;
+  if (shouldVerify) {
+    if (!confirm(`Confirm: you've checked Venmo and the payment from ${SELECTED.family_name} has landed?\n\nThis approves the application AND marks dues paid in one shot.`)) return;
+  }
   const override = {
     tier: document.getElementById('ov-tier').value,
     fob_number: document.getElementById('ov-fob_number').value.trim() || null,
@@ -402,6 +429,7 @@ async function appr() {
     const data = await call('approve', {
       id: SELECTED.id,
       override,
+      verify_venmo_payment: shouldVerify,
       admin_notes: document.getElementById('m-admin_notes').value.trim() || null,
     });
     if (!data.ok) throw new Error(data.error || 'Approve failed');
