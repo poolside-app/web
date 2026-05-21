@@ -151,49 +151,13 @@
     </div>
   </div>
 
-  <!-- Pool access methods (moved from /club/admin/payments.html 2026-05-21
-       — set-once config, belongs in Settings not on the Payments daily-use page) -->
-  <details id="access-card" class="set-section">
-    <summary>
-      <span class="chev">▶</span> 🏊 How members get into the pool <span class="sub">— paper roster / phone pass / lifeguard tablet / keyfob</span>
-    </summary>
-    <div class="card">
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
-      <div id="access-methods" style="display:grid;gap:8px"></div>
-      <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
-        <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
-        <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
-      </div>
-      <div class="err" id="access-err"></div>
-
-      <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
-        <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
-        <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
-      </div>
-    </div>
-  </details>
-
-  <!-- Drive backup (moved from /club/admin/payments.html 2026-05-21) -->
-  <details id="drive-card" data-focus="drive" class="set-section">
-    <summary>
-      <span class="chev">▶</span> 📁 Backups &amp; archive <span class="sub">— Google Drive auto-archive of every application</span>
-    </summary>
-    <div class="card">
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
-      <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
-        <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
-        <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
-        <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
-        <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
-        <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
-        <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
-        <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
-      </div>
-      <div class="err" id="drive-err"></div>
-    </div>
-  </details>
+  <!-- Section order set by Doug 2026-05-22:
+       1. Club info → 2. Front-page intro → 3. Branding → 4. Season &
+       memberships → 5. Pool location & hours → 6. Backup & archive →
+       7. Features → 8. Integrations → 9. Pool access (not listed by
+       Doug; placed at end). Conditional cards stay outside that order:
+       push-card at the top (when shown — it's an attention-grabbing
+       opt-in), gate-card at the bottom (when active — paid add-on). -->
 
   <!-- Phone-alert opt-in (was on the dashboard until 2026-05-21 — moved
        here because it's a one-time setup, not daily content). admin-push.js
@@ -215,6 +179,7 @@
     </div>
   </details>
 
+  <!-- 1. Club info -->
   <details class="set-section">
     <summary><span class="chev">▶</span> 🏷️ Club info <span class="sub">— name, location, swim team</span></summary>
     <div class="card">
@@ -439,30 +404,29 @@
     </div>
   </details>
 
-  <!-- Integrations card — central place for "connect to a 3rd party tool".
-       Currently only Google Drive (auto-archive of applications + roster
-       spreadsheet). Future: QuickBooks export, Mailchimp sync, etc. -->
-  <details class="set-section" data-focus="integrations">
-    <summary><span class="chev">▶</span> 🔌 Integrations <span class="sub">— Google Drive auto-archive</span></summary>
+  <!-- 6. Backups & archive (drive-card) -->
+  <details id="drive-card" data-focus="drive" class="set-section">
+    <summary>
+      <span class="chev">▶</span> 📁 Backups &amp; archive <span class="sub">— Google Drive auto-archive of every application</span>
+    </summary>
     <div class="card">
-    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Optional plug-ins that connect Poolside to other tools your club already uses.</p>
-    <div style="display:flex;gap:14px;align-items:center;padding:14px 16px;background:var(--bg-2);border-radius:12px">
-      <div style="font-size:24px;flex-shrink:0">📁</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:14px">Google Drive auto-archive</div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:2px">Every approved application's signed PDF lands in your club's Drive folder; a roster spreadsheet row is added automatically. One-way; we never delete anything.</div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for the current year (e.g. "2026 Sign-ups"), and a new row is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
+      <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
+        <button class="btn btn-primary" id="drive-connect-btn" type="button" onclick="connectDrive()" style="display:none;background:var(--blue)">Connect Google Drive</button>
+        <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
+        <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
+        <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
+        <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
+        <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
+        <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
       </div>
-      <a class="btn-ghost btn" href="/club/admin/payments.html?focus=drive" style="text-decoration:none;font-size:13px;white-space:nowrap">Connect / manage →</a>
-    </div>
+      <div class="err" id="drive-err"></div>
     </div>
   </details>
 
-  <!-- Payment options card removed 2026-05-08 — full setup lives at
-       /club/admin/payments.html (Members → Payments). Stub cards on
-       Settings just added clutter without info. -->
-  <!-- Membership tiers card removed 2026-05-08 — tier setup lives at
-       /club/admin/members.html#tiers (Members → Tiers). -->
-
+  <!-- 7. Features -->
   <details class="set-section">
     <summary><span class="chev">▶</span> 🧩 Features <span class="sub">— which modules show up in the admin nav</span></summary>
     <div class="card">
@@ -505,6 +469,46 @@
     <input type="hidden" id="feat_keyfobs">
     <input type="hidden" id="feat_gate">
     <input type="hidden" id="fob_activation_day" value="Wednesday">
+    </div>
+  </details>
+
+  <!-- 8. Integrations -->
+  <details class="set-section" data-focus="integrations">
+    <summary><span class="chev">▶</span> 🔌 Integrations <span class="sub">— Google Drive auto-archive</span></summary>
+    <div class="card">
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Optional plug-ins that connect Poolside to other tools your club already uses.</p>
+    <div style="display:flex;gap:14px;align-items:center;padding:14px 16px;background:var(--bg-2);border-radius:12px">
+      <div style="font-size:24px;flex-shrink:0">📁</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px">Google Drive auto-archive</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px">Every approved application's signed PDF lands in your club's Drive folder; a roster spreadsheet row is added automatically. One-way; we never delete anything.</div>
+      </div>
+      <a class="btn-ghost btn" href="/club/admin/payments.html?focus=drive" style="text-decoration:none;font-size:13px;white-space:nowrap">Connect / manage →</a>
+    </div>
+    </div>
+  </details>
+
+  <!-- Pool access methods (not in Doug's 2026-05-22 ordering; placed at
+       end of always-visible sections so the 8 he named come exactly in
+       his order). Set-once config — paper roster / phone pass / lifeguard
+       tablet / keyfob. -->
+  <details id="access-card" class="set-section">
+    <summary>
+      <span class="chev">▶</span> 🏊 How members get into the pool <span class="sub">— paper roster / phone pass / lifeguard tablet / keyfob</span>
+    </summary>
+    <div class="card">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Pick everything that applies — most clubs use 1-2 of these. Each one lights up the relevant features below and on the member app.</p>
+      <div id="access-methods" style="display:grid;gap:8px"></div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+        <button class="btn btn-primary" id="access-save" type="button" onclick="saveAccess()" style="background:var(--blue)">Save</button>
+        <span class="saved" id="access-saved" style="display:none">✓ Saved</span>
+      </div>
+      <div class="err" id="access-err"></div>
+
+      <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
+        <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
+        <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
+      </div>
     </div>
   </details>
 
