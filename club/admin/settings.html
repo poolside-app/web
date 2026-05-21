@@ -1243,10 +1243,6 @@ function renderGatePitch() {
         <input id="gate-contact-phone" type="tel" placeholder="(555) 123-4567" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
       </div>
     </div>
-    <div style="margin-top:10px;max-width:420px">
-      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Email <span style="font-weight:500">(optional — we'll mostly call)</span></label>
-      <input id="gate-contact-email" type="email" placeholder="margaret@example.com" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
-    </div>
     <div style="margin-top:14px">
       <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:12px 22px;font-size:14px">🚪 Send request — we'll call to discuss →</button>
       <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Request received — Doug will call you within 1 business day.</span>
@@ -1474,7 +1470,6 @@ async function requestGateAddon() {
   const panelDescribe = document.getElementById('gate-panel-describe')?.value.trim() || '';
   const contactName   = document.getElementById('gate-contact-name').value.trim();
   const contactPhone  = document.getElementById('gate-contact-phone').value.trim();
-  const contactEmail  = document.getElementById('gate-contact-email').value.trim();
   if (!contactName)  { errEl.textContent = 'Please add your name so we know who to ask for.';   errEl.classList.add('show'); return; }
   if (!contactPhone) { errEl.textContent = 'Please add a phone number so we can call you.';     errEl.classList.add('show'); return; }
   try {
@@ -1482,7 +1477,6 @@ async function requestGateAddon() {
       panel_type: panelType,
       contact_name:  contactName,
       contact_phone: contactPhone,
-      contact_email: contactEmail || null,
       // When user says "I know what we have", their description goes in
       // notes so Doug can read it on the provider side without parsing.
       notes: panelDescribe ? `Self-describe panel: ${panelDescribe}` : null,
