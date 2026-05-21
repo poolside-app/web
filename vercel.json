@@ -29,6 +29,26 @@
       "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_manifest"
     },
     {
+      "source": "/apple-touch-icon.png",
+      "has": [
+        {
+          "type": "host",
+          "value": "(?<slug>[a-z0-9][a-z0-9-]*)\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_icon?slug=:slug&size=180"
+    },
+    {
+      "source": "/apple-touch-icon-precomposed.png",
+      "has": [
+        {
+          "type": "host",
+          "value": "(?<slug>[a-z0-9][a-z0-9-]*)\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_icon?slug=:slug&size=180"
+    },
+    {
       "source": "/",
       "has": [
         {

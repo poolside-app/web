@@ -17,7 +17,7 @@
 //
 // The pages must include in <head>:
 //   <link rel="manifest" href="/manifest.webmanifest">
-//   <link rel="apple-touch-icon" id="apple-touch-icon" href="">
+//   <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
 //   <meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
 //   <meta name="apple-mobile-web-app-capable" content="yes">
 //   <meta name="apple-mobile-web-app-status-bar-style" content="default">

@@ -189,6 +189,13 @@ verify_jwt = false
 [functions.tenant_manifest]
 verify_jwt = false
 
+# Per-tenant icon for iOS apple-touch-icon + Android favicon. Public, fetched
+# by browsers at /apple-touch-icon.png and friends via Vercel rewrites that
+# forward the slug. See supabase/functions/tenant_icon/index.ts for why iOS
+# needs the root-level path (it doesn't wait for JS to set the link href).
+[functions.tenant_icon]
+verify_jwt = false
+
 # Anonymous feedback box. submit is public (no auth — anyone can report a
 # pool issue without identifying themselves); list/update_status verify a
 # tenant_admin token inside the function.
