@@ -173,11 +173,11 @@
       <button class="btn btn-ghost" id="m-remind" style="display:none" onclick="reminderClick()">📧 Send reminder</button>
       <button class="btn btn-ghost" onclick="closeM()">Close</button>
       <button class="btn btn-danger" id="m-reject" onclick="rej()">Reject</button>
-      <!-- Approve-only path. For Venmo apps it stays hidden behind the
-           primary green button so Doug doesn't accidentally approve
-           without verifying. Click "Approve only" to skip Venmo verify
-           when the payment hasn't landed yet but you still want to greenlight. -->
-      <button class="btn btn-ghost" id="m-approve-only" style="display:none" onclick="appr(false)">Approve only (Venmo not received yet)</button>
+      <!-- Single Approve button. For Venmo apps it ALWAYS marks the
+           payment verified — Doug's 2026-05-22 rule: "manual process,
+           one step." If the payment hasn't landed yet, admin doesn't
+           click. The legacy m-verify button below stays for any
+           approved-but-unpaid apps that pre-date this flow change. -->
       <button class="btn btn-success" id="m-approve" onclick="appr()">Approve & create household →</button>
       <button class="btn btn-success" id="m-verify" style="display:none" onclick="verifyClick()">✓ Verify Venmo payment</button>
     </div>
@@ -383,11 +383,11 @@ function openModal(id, rows) {
   document.getElementById('ov-paid_until_year').value = '';
   document.getElementById('m-admin_notes').value = a.admin_notes || '';
   document.getElementById('m-err').classList.remove('show');
-  // 2026-05-22 ONE-CLICK flow: for pending Venmo apps, primary button is
-  // "✓ Approve & verify Venmo payment" — single click flips status to
-  // approved AND payment_status to paid. Approve-only stays available as
-  // a secondary action for the rare case the Venmo hasn't landed yet.
-  // For decide-later or no-method apps, primary button is plain Approve.
+  // 2026-05-22 ONE-CLICK rule (Doug): for pending Venmo apps, the single
+  // green button approves AND verifies payment in one shot. No
+  // "approve only" escape hatch — if the Venmo hasn't landed, the admin
+  // simply doesn't click. For decide-later or no-method apps, the button
+  // is a plain Approve (no payment to verify).
   const isPending = a.status === 'pending';
   const isVenmo   = a.payment_method === 'venmo';
   const approveBtn = document.getElementById('m-approve');
@@ -395,7 +395,6 @@ function openModal(id, rows) {
   approveBtn.textContent = isPending && isVenmo
     ? '✓ Approve & verify Venmo payment'
     : 'Approve & create household →';
-  document.getElementById('m-approve-only').style.display = (isPending && isVenmo) ? 'inline-block' : 'none';
   document.getElementById('m-reject').style.display  = isPending ? 'inline-block' : 'none';
   // Verify-only button still shows for approved+unpaid apps that pre-date
   // this flow change (or where admin used "Approve only" earlier).
@@ -407,18 +406,16 @@ function openModal(id, rows) {
 }
 function closeM() { document.getElementById('scrim').classList.remove('open'); }
 
-// verifyVenmo defaults to TRUE for Venmo applications so the primary green
-// button does both actions in one click (Doug 2026-05-22). Pass false from
-// the "Approve only" secondary button when the Venmo hasn't landed yet.
-async function appr(verifyVenmo) {
+// Single-step approve. For Venmo apps, payment is ALWAYS marked verified
+// in the same call — that's the whole point (Doug 2026-05-22: "manual
+// process, one step"). For non-Venmo (decide-later / no-method) apps,
+// there's no payment to verify, just standard approve.
+async function appr() {
   if (!SELECTED) return;
   const errEl = document.getElementById('m-err'); errEl.classList.remove('show');
   const isVenmo = SELECTED.payment_method === 'venmo';
-  // Default verifyVenmo to true for Venmo apps; false otherwise.
-  // (Explicit false from "Approve only" overrides.)
-  const shouldVerify = verifyVenmo === false ? false : isVenmo;
-  if (shouldVerify) {
-    if (!confirm(`Confirm: you've checked Venmo and the payment from ${SELECTED.family_name} has landed?\n\nThis approves the application AND marks dues paid in one shot.`)) return;
+  if (isVenmo) {
+    if (!confirm(`Confirm: the Venmo payment from ${SELECTED.family_name} has landed in your account?\n\nThis approves the application AND marks dues paid — one shot.`)) return;
   }
   const override = {
     tier: document.getElementById('ov-tier').value,
@@ -429,7 +426,7 @@ async function appr(verifyVenmo) {
     const data = await call('approve', {
       id: SELECTED.id,
       override,
-      verify_venmo_payment: shouldVerify,
+      verify_venmo_payment: isVenmo,
       admin_notes: document.getElementById('m-admin_notes').value.trim() || null,
     });
     if (!data.ok) throw new Error(data.error || 'Approve failed');
