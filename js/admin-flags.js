@@ -16,6 +16,82 @@
 (function () {
   'use strict';
 
+  // ── Mobile layout safety net (2026-05-22) ────────────────────────────
+  // Many admin pages were written desktop-first with their own inline CSS,
+  // and a handful (dashboard, settings, households) shipped nav.tabs
+  // without overflow-x:auto — on mobile, the tabs strip pushed the whole
+  // page wider than the viewport, so the page scrolled horizontally
+  // instead of just the tabs. Injecting the fix here means every admin
+  // page picks it up automatically, no per-file edits needed.
+  //
+  // The CSS uses !important sparingly to override page-specific styles
+  // since admin-flags.js is loaded BEFORE most page-specific styles
+  // execute, but the page's <style> block usually wins by specificity.
+  try {
+    if (!document.getElementById('poolside-admin-mobile-css')) {
+      const style = document.createElement('style');
+      style.id = 'poolside-admin-mobile-css';
+      style.textContent = `
+        /* Page-level horizontal containment. body becomes the overflow
+           context so any rogue child can't push the viewport wider. We use
+           "clip" where available (modern browsers — doesn't break sticky)
+           and fall back to "hidden" for older Safari. */
+        html, body { max-width: 100vw; }
+        body { overflow-x: hidden; overflow-x: clip; }
+
+        /* nav.tabs: always scrollable horizontally. Tabs nowrap + flex-shrink:0
+           so they stay on a single row and the strip swipes left/right.
+           Hide the scrollbar — it's a touch surface, not a desktop one. */
+        nav.tabs { overflow-x: auto !important; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        nav.tabs::-webkit-scrollbar { display: none; }
+        nav.tabs a { white-space: nowrap; flex-shrink: 0; }
+
+        /* Sub-tab strips rendered by /js/members-subtabs.js,
+           /js/content-subtabs.js, /js/calendar-subtabs.js,
+           /js/insights-subtabs.js — same pattern across the board. */
+        .members-subtabs, .content-subtabs, .calendar-subtabs, .insights-subtabs, .payments-subtabs {
+          overflow-x: auto !important; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+        }
+        .members-subtabs::-webkit-scrollbar,
+        .content-subtabs::-webkit-scrollbar,
+        .calendar-subtabs::-webkit-scrollbar,
+        .insights-subtabs::-webkit-scrollbar,
+        .payments-subtabs::-webkit-scrollbar { display: none; }
+        .members-subtabs a, .content-subtabs a, .calendar-subtabs a, .insights-subtabs a, .payments-subtabs a { white-space: nowrap; flex-shrink: 0; }
+
+        /* Tables inside cards: let them scroll horizontally on narrow
+           viewports instead of either clipping (when card has overflow:hidden)
+           or pushing the page wide. Wrapping each table in JS would be a
+           33-file edit; CSS reaches them all. */
+        @media (max-width: 720px) {
+          .card > table {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            white-space: nowrap;
+          }
+          /* Reduce card padding on mobile so 320px viewports aren't
+             swallowed by 28px-per-side internal padding. */
+          .card { padding: 18px 16px !important; }
+          /* Cap main padding too — saves another ~12px on each side. */
+          main { padding-left: 14px !important; padding-right: 14px !important; }
+          /* Long form inputs that hardcoded a 280px width — let them
+             shrink so they don't overflow on a 320px viewport. */
+          .toolbar input { width: 100% !important; }
+          /* h1 sizes that were 26-32px desktop get cramped — scale down. */
+          h1 { font-size: 24px !important; }
+        }
+
+        /* Modal scrims (z-index 80-101 pattern across the app): make sure
+           their inner card never exceeds the viewport width. */
+        @media (max-width: 720px) {
+          [id$="-scrim"] > div { max-width: 100% !important; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  } catch (_) { /* defensive — never block page load */ }
+
   // ── Auto-renew admin tokens ───────────────────────────────────────────
   // tenant_admin_auth.me returns `renewed_token` whenever the current
   // token has been alive >7 days. We hook fetch globally so EVERY page

@@ -40,13 +40,19 @@
   .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
   .who a { cursor: pointer; }
 
+  /* nav.tabs: horizontal scroll the tab strip itself on narrow viewports
+     instead of pushing the whole page wider (mobile fix 2026-05-22). */
   nav.tabs {
     background: #fff; border-bottom: 1px solid var(--border);
     padding: 0 22px; display: flex; gap: 4px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  nav.tabs::-webkit-scrollbar { display: none; }
   nav.tabs a {
     padding: 12px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
     border-bottom: 3px solid transparent; text-decoration: none; margin-bottom: -1px;
+    white-space: nowrap; flex-shrink: 0;
   }
   nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
   nav.tabs a:hover { color: var(--blue); }
