@@ -725,11 +725,15 @@ function clubInitials() {
 
 function drawTextOnCanvas(ctx, size, text, fgColor) {
   ctx.fillStyle = fgColor || '#ffffff';
-  // Auto-shrink the font when there are 3-4 chars or the text is wide
-  // (e.g. an emoji). Aim for ~62% canvas-width fill so it doesn't crowd
-  // the maskable safe area.
+  // Aim for ~85-90% canvas fill so the icon reads at home-screen size.
+  // Earlier (pre-2026-05-22) percentages were tuned for the maskable
+  // safe area (Android adaptive icon mask = ~80% inner). That tiny
+  // text-in-middle look killed iOS where there's no mask — you saw a
+  // postage stamp inside a colored square. New numbers prioritize iOS
+  // legibility; Android maskable still survives because text is centered
+  // and the masked area is the OUTER 20%, not the center.
   const fontFamily = ICON_FONT_READY ? "'Inter','Fraunces',system-ui,sans-serif" : 'system-ui,sans-serif';
-  let pct = text.length <= 1 ? 0.56 : text.length <= 2 ? 0.42 : text.length <= 3 ? 0.32 : 0.26;
+  let pct = text.length <= 1 ? 0.72 : text.length <= 2 ? 0.56 : text.length <= 3 ? 0.42 : 0.34;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = `bold ${Math.round(size * pct)}px ${fontFamily}`;
@@ -759,8 +763,14 @@ function drawIconAt(canvas, size) {
   }
 
   if (mode === 'logo' && LOGO_BITMAP) {
-    // Fit logo inside the maskable safe area (~80% of canvas) with padding.
-    const pad = size * 0.16;
+    // Fit logo near edge-to-edge with just enough padding for visual
+    // breathing room. iOS doesn't apply a mask, so a tight padding
+    // makes the icon read well on the home screen. Android maskable
+    // crops the outer ~12.5% anyway — at 5% padding, only the colored
+    // background corners get clipped, the actual logo content survives.
+    // Doug 2026-05-22: the old 16% padding produced a tiny logo-in-a-frame
+    // on iOS home screens.
+    const pad = size * 0.05;
     const inner = size - pad * 2;
     const ratio = LOGO_BITMAP.width / LOGO_BITMAP.height;
     let w, h;

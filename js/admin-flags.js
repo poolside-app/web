@@ -16,6 +16,25 @@
 (function () {
   'use strict';
 
+  // ── PWA manifest: tell the manifest endpoint we're on an admin page ──
+  // The default manifest's start_url is '/m/' (member portal). If an admin
+  // saves an admin page to their home screen and taps the icon later, iOS
+  // would open /m/ — which requires a separate member sign-in. From the
+  // admin's POV that looks exactly like getting logged out, and Doug hit
+  // this 2026-05-22. By tagging the manifest URL with ?admin=1 from every
+  // admin page, tenant_manifest returns start_url=/club/admin/ so the
+  // home-screen shortcut lands them right back in admin.
+  try {
+    const link = document.querySelector('link[rel="manifest"]');
+    if (link) {
+      const cur = link.getAttribute('href') || '';
+      if (!/[?&]admin=1\b/.test(cur)) {
+        const sep = cur.includes('?') ? '&' : '?';
+        link.setAttribute('href', cur + sep + 'admin=1');
+      }
+    }
+  } catch (_) { /* defensive — never block page load */ }
+
   // ── Mobile layout safety net (2026-05-22) ────────────────────────────
   // Many admin pages were written desktop-first with their own inline CSS,
   // and a handful (dashboard, settings, households) shipped nav.tabs
