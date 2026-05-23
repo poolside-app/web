@@ -178,16 +178,20 @@
       </div>
     </div>
 
-    <!-- Tabs -->
+    <!-- Tabs — Tenant deployments is the default landing tab because
+         that's where active work lives (pending requests, ship the
+         bridge, activate, invoice). Templates / hardware are reference
+         surfaces. Doug 2026-05-23: he opened the page to act on Bishop
+         Estates' request and the landing tab had no action button. -->
     <div class="tabs">
-      <button class="tab active" data-tab="templates" onclick="showTab('templates')">📋 Verified templates</button>
+      <button class="tab active" data-tab="deployments" onclick="showTab('deployments')">🏊 Tenant deployments</button>
+      <button class="tab" data-tab="templates" onclick="showTab('templates')">📋 Verified templates</button>
       <button class="tab" data-tab="requests" onclick="showTab('requests')">🔍 Compatibility requests</button>
-      <button class="tab" data-tab="deployments" onclick="showTab('deployments')">🏊 Tenant deployments</button>
       <button class="tab" data-tab="hardware" onclick="showTab('hardware')">📦 Hardware inventory</button>
     </div>
 
     <!-- TAB: Verified templates -->
-    <div class="pane active" id="pane-templates">
+    <div class="pane" id="pane-templates">
       <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#713f12">
         ⚠️ <b>Templates are publish-after-testing only.</b> Each row here represents a panel we've actually integrated end-to-end on real hardware. Before publishing a new template: full bench test, signed-off install at a pilot tenant, replication recipe documented.
       </div>
@@ -323,7 +327,7 @@
     </div>
 
     <!-- TAB: Tenant deployments -->
-    <div class="pane" id="pane-deployments">
+    <div class="pane active" id="pane-deployments">
       <div class="card">
         <div class="card-head">
           <h2>Tenant deployments</h2>
@@ -506,8 +510,20 @@ async function loadDeployments() {
       }
     }
 
+    // Pre-active states (requested / invoiced / shipping) get a prominent
+    // "🟢 Activate gate" button as the primary action — flipping status to
+    // 'active' is the natural next step. The status dropdown stays for
+    // edge cases (manual move to suspended/cancelled/etc.).
+    // Doug 2026-05-23: the page felt "going nowhere" because the activate
+    // path was hidden inside a status dropdown that didn't read like a CTA.
+    const preActive = ['requested', 'invoiced', 'shipping'].includes(p.status);
+    const rowStyle = preActive ? 'border-left:4px solid var(--sun);background:#fffbeb' : '';
+    const activateBtn = preActive
+      ? `<button class="btn-primary" onclick="activateGate('${escapeHtml(p.tenant_id)}', '${escapeHtml(p.tenant_display_name || p.tenant_slug || 'this club')}')" style="margin-bottom:4px">🟢 Activate gate</button>`
+      : '';
+
     return `
-      <tr data-tenant-id="${escapeHtml(p.tenant_id)}">
+      <tr data-tenant-id="${escapeHtml(p.tenant_id)}" style="${rowStyle}">
         <td>
           <b>${escapeHtml(p.tenant_display_name || p.tenant_slug || 'unknown')}</b>
           <br><span style="font-size:12px;color:var(--muted)">${escapeHtml(p.tenant_slug || '')} · panel: ${escapeHtml(p.panel_type || '?')}</span>
@@ -518,15 +534,39 @@ async function loadDeployments() {
         <td>${invoiceHtml}</td>
         <td>${healthDot} ${escapeHtml(healthState)}<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(lastSeen)}</span></td>
         <td>
-          <select onchange="setStatus('${escapeHtml(p.tenant_id)}', this.value)" style="padding:4px 8px;font-size:12px;margin-right:6px">
-            ${statusOptions}
-          </select>
-          <button class="btn-sm" onclick="openConfig('${escapeHtml(p.tenant_id)}')">🔧 Configure</button>
-          <button class="btn-sm" onclick="openInvoiceModal('${escapeHtml(p.tenant_id)}')" style="margin-top:4px">💸 Send invoice</button>
+          ${activateBtn}
+          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+            <select onchange="setStatus('${escapeHtml(p.tenant_id)}', this.value)" style="padding:4px 8px;font-size:12px" title="Manual status override">
+              ${statusOptions}
+            </select>
+            <button class="btn-sm" onclick="openConfig('${escapeHtml(p.tenant_id)}')">🔧 Configure</button>
+            <button class="btn-sm" onclick="openInvoiceModal('${escapeHtml(p.tenant_id)}')">💸 Send invoice</button>
+          </div>
         </td>
       </tr>
     `;
   }).join('');
+}
+
+// One-click activation flow (Doug 2026-05-23). Prompts for an optional
+// note (e.g. "Bishop Estates grandfathered" / "shipped 2026-05-23"),
+// flips status to 'active', and the backend fans out the welcome email
+// + Web Push to the club's owners. The panel host/credentials get
+// filled in separately via 🔧 Configure when the hardware is wired.
+async function activateGate(tenantId, displayName) {
+  const ok = confirm(
+    `🟢 Activate gate for ${displayName}?\n\n` +
+    `This will:\n` +
+    `  • Flip status to 'active' immediately\n` +
+    `  • Email + push the club's owners that gate access is live\n` +
+    `  • Enable the gate + keyfob features in their admin nav\n\n` +
+    `(Panel host / credentials can be filled in later via 🔧 Configure when the on-site Pi is installed.)`
+  );
+  if (!ok) return;
+  const notes = prompt('Optional activation note (e.g. "Bishop Estates grandfathered", "shipped 2026-05-23"):', '');
+  const r = await gateApi('super_set_status', { tenant_id: tenantId, status: 'active', notes });
+  if (!r.ok) { alert(r.error || 'Activation failed'); return; }
+  loadDeployments();
 }
 
 // ── Provider-side panel config modal ────────────────────────────────────
