@@ -176,6 +176,16 @@ document.getElementById('signout').addEventListener('click', logout);
   }
   if (!data) return;  // already redirected to login.html
 
+  // Doug 2026-05-23: `token` was referenced in 7 fetch headers below but
+  // never actually declared. Every interpolation `${token}` threw a
+  // silent ReferenceError that the surrounding try/catch swallowed — so
+  // the household count, activity feed, tasks queue, and onboarding
+  // status calls have all been failing since the file was written, just
+  // quietly showing "—" / "Couldn't load…" placeholders that read as
+  // "all clear" instead of "the request crashed." Declare it now so
+  // those queries actually execute.
+  const token = localStorage.getItem('poolside_tenant_token');
+
   const { user, tenant } = data;
 
   // First-login forced password change. An invited admin lands here with
