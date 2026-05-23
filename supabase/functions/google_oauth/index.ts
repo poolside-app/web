@@ -264,12 +264,18 @@ Deno.serve(async (req) => {
         );
       }
 
-      const applyUrl = `${clubUrl}/apply.html`;
-      return htmlError(
-        `No active membership for <b>${safeEmail}</b> at ${safeClub}. If you haven't applied yet, the apply page is below; otherwise ask the board to add you.`,
-        200,
-        { actions: [{ label: 'Apply for membership →', href: applyUrl }] },
-      );
+      // No match anywhere → this is a new person signing in with Google
+      // hoping to join. Redirect them straight to the apply form with
+      // their Google profile in the URL hash so name + email are already
+      // filled in. Same pattern tenant_signup uses to bootstrap signup.html.
+      // Putting the data in the hash (not querystring) keeps PII out of
+      // server logs / Referer headers.
+      const applyParams = new URLSearchParams({
+        prefill: 'google',
+        email: profile.email ?? '',
+        name:  profile.name  ?? '',
+      });
+      return Response.redirect(`${clubUrl}/apply.html#${applyParams.toString()}`, 302);
     }
     const jwt = await create({ alg: 'HS256', typ: 'JWT' }, {
       sub: member.id, kind: 'member',

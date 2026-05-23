@@ -1190,6 +1190,50 @@ function appendAdminContinueIfNeeded() {
     }
   }
 
+  // Google-sign-in prefill: when google_oauth member kind finds no
+  // existing member/admin/pending app for the signed-in email, it
+  // redirects here with #prefill=google&email=…&name=… so the apply
+  // form starts with name + email already filled in. Added 2026-05-23
+  // after Doug hit the dead-end "No active membership" error trying
+  // to sign UP as a new member via Google. Hash params (not query)
+  // keep PII out of server logs and Referer headers.
+  try {
+    const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+    if (hashParams.get('prefill') === 'google') {
+      const gEmail = (hashParams.get('email') || '').trim();
+      const gName  = (hashParams.get('name')  || '').trim();
+      if (gEmail) {
+        const e = document.getElementById('primary_email');
+        if (e && !e.value) e.value = gEmail;
+      }
+      if (gName) {
+        const parts = gName.split(/\s+/).filter(Boolean);
+        const last = parts[parts.length - 1];
+        const pn = document.getElementById('primary_name');
+        if (pn && !pn.value) pn.value = gName;
+        const fn = document.getElementById('family_name');
+        if (fn && !fn.value && last) fn.value = last;
+      }
+      // Strip the hash so a refresh doesn't keep re-filling and the
+      // PII doesn't linger in browser history.
+      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) {}
+      // Friendly notice — sessionStorage-dismissable like the admin one.
+      const dismissed = sessionStorage.getItem('apply_prefill_dismissed') === '1';
+      const titleEl = document.getElementById('title');
+      if (titleEl && !dismissed) {
+        const note = document.createElement('div');
+        note.id = 'prefill-notice';
+        note.style.cssText = 'background:#f0f6fb;border:1px solid #cfe1f0;color:#0a3b5c;padding:10px 38px 10px 14px;border-radius:8px;font-size:13px;margin:10px 0 0;position:relative';
+        note.innerHTML = '👋 We pre-filled your name + email from your Google account. Edit anything that needs to change.<button type="button" aria-label="Dismiss" id="prefill-close" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:0;color:#0a3b5c;font-size:20px;line-height:1;cursor:pointer;padding:4px 8px">×</button>';
+        titleEl.parentNode.insertBefore(note, titleEl.nextSibling);
+        document.getElementById('prefill-close').addEventListener('click', () => {
+          sessionStorage.setItem('apply_prefill_dismissed', '1');
+          note.remove();
+        });
+      }
+    }
+  } catch (_) { /* prefill is best-effort */ }
+
   // Founder prefill: if the admin opened this form via the dashboard
   // "Set up my membership" banner (?prefill=admin), pull their identity
   // from tenant_admin_auth.me and pre-fill name + email + phone. Saves
