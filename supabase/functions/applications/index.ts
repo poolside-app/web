@@ -22,7 +22,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
-import { requireScope } from '../_shared/auth.ts';
+import { requireScope, requireOwner } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -1288,6 +1288,37 @@ Deno.serve(async (req) => {
       } catch { /* never fail the reject because the email hiccupped */ }
     }
     return jsonResponse({ ok: true, application: data });
+  }
+
+  // ── purge ──────────────────────────────────────────────────────────────
+  // HARD-delete an application + its open admin_tasks. If the application
+  // already created a household, refuse and tell the caller to purge from
+  // households_admin instead (that path also nukes the household + members).
+  // Owner-only (unrecoverable). Doug 2026-05-23.
+  if (action === 'purge') {
+    if (!(await requireOwner(sb, payload))) {
+      return jsonResponse({ ok: false, error: 'Only owners can permanently delete an application' }, 403);
+    }
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: app } = await sb.from('applications')
+      .select('id, family_name, household_id').eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.household_id) {
+      return jsonResponse({
+        ok: false,
+        error: 'This application created a household. Permanently delete the household instead (Members → Households → Edit → Permanently delete) — it will remove the application too.',
+        has_household: true,
+      }, 409);
+    }
+    await sb.from('admin_tasks').delete()
+      .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id);
+    await sb.from('application_actions').delete().eq('tenant_id', TID).eq('application_id', id);
+    const { error } = await sb.from('applications').delete().eq('id', id).eq('tenant_id', TID);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await audit(sb, TID, payload.sub, 'tenant_admin', 'application.purge', id,
+      `Permanently deleted application "${app.family_name}"`);
+    return jsonResponse({ ok: true, family_name: app.family_name });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

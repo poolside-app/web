@@ -372,7 +372,13 @@
     </div>
     <div class="err" id="e-err"></div>
     <div class="modal-foot">
+      <!-- Remove household = soft delete (keeps history; family disappears
+           from member-facing views but rows stay around). Permanently
+           delete = HARD delete via purge_household — wipes the household,
+           its members, any applications that created it, and any open
+           admin_tasks. Owner-only on the backend. Doug 2026-05-23. -->
       <button class="btn btn-danger left" onclick="deleteHousehold()">Remove household</button>
+      <button class="btn btn-ghost left" onclick="purgeHousehold()" style="color:#7f1d1d;text-decoration:underline;font-size:12px">Permanently delete</button>
       <button class="btn btn-ghost" onclick="closeModal('edit-scrim')">Close</button>
       <button class="btn" id="e-save" onclick="saveEdit()">Save changes</button>
     </div>
@@ -420,6 +426,10 @@
          App.openModal based on status + payment_status + payment_method. -->
     <div id="am-state-explainer" style="margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5"></div>
     <div class="modal-foot" style="flex-wrap:wrap">
+      <!-- Hidden by default — only shown for apps WITHOUT a household.
+           Once an app creates a household, the household-edit modal's
+           "Permanently delete" handles both at once. Doug 2026-05-23. -->
+      <button class="btn btn-ghost left" id="am-purge" style="display:none;color:#7f1d1d;text-decoration:underline;font-size:12px" onclick="App.purge()">Permanently delete</button>
       <button class="btn btn-ghost" id="am-remind" style="display:none" onclick="App.reminder()">📧 Send reminder</button>
       <button class="btn btn-ghost" onclick="App.closeM()">Close</button>
       <button class="btn btn-danger" id="am-reject" onclick="App.reject()">Reject</button>
@@ -695,6 +705,34 @@ async function deleteHousehold() {
     if (!data.ok) throw new Error(data.error || 'Remove failed');
     closeModal('edit-scrim');
     await Households.refresh();
+  } catch (e) { showErr('e-err', e.message); }
+}
+// Hard delete: types the family name as a confirmation step, then nukes
+// household + members + applications + open admin_tasks. Backend is
+// owner-only. Doug 2026-05-23.
+async function purgeHousehold() {
+  const sel = Households.selected();
+  if (!sel) return;
+  const typed = prompt(
+    `PERMANENTLY delete the ${sel.family_name} household?\n\n` +
+    `This is unrecoverable — it removes:\n` +
+    `  • the household record\n` +
+    `  • every member in it\n` +
+    `  • any applications that created it\n` +
+    `  • any open verify/approve tasks\n\n` +
+    `Type the family name to confirm:`
+  );
+  if (typed === null) return;  // cancelled
+  if (typed.trim().toLowerCase() !== (sel.family_name || '').trim().toLowerCase()) {
+    alert(`Name didn't match "${sel.family_name}". Nothing deleted.`);
+    return;
+  }
+  try {
+    const data = await call(HH_URL, 'purge_household', { id: sel.id });
+    if (!data.ok) throw new Error(data.error || 'Permanent delete failed');
+    closeModal('edit-scrim');
+    await Households.refresh();
+    if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
   } catch (e) { showErr('e-err', e.message); }
 }
 async function addMember() {
@@ -1042,6 +1080,10 @@ const App = (() => {
     document.getElementById('am-approve-venmo').style.display = (isPending && isVenmoUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
     document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid') || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
+    // Permanently delete: hidden when the app already created a household
+    // (use the household modal's delete instead — it nukes both at once).
+    // Always available for pending/rejected apps with no household yet.
+    document.getElementById('am-purge').style.display = a.household_id ? 'none' : 'inline-block';
 
     // Plain-English state explainer — tells the volunteer admin what this
     // application's situation is and what the green button below will do.
@@ -1208,6 +1250,31 @@ const App = (() => {
       await refresh();
     } catch (e) { showErr('am-err', e.message); }
   }
+  // Hard delete for apps with no household yet (pending or rejected).
+  // For apps that already created a household, the button is hidden —
+  // use the household-edit modal's Permanently delete instead, which
+  // nukes the household AND its applications. Doug 2026-05-23.
+  async function purge() {
+    if (!SELECTED) return;
+    const fname = SELECTED.family_name || '';
+    const typed = prompt(
+      `PERMANENTLY delete the ${fname} application?\n\n` +
+      `This is unrecoverable — it removes the application and any open verify/approve tasks.\n\n` +
+      `Type the family name to confirm:`
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== fname.trim().toLowerCase()) {
+      alert(`Name didn't match "${fname}". Nothing deleted.`);
+      return;
+    }
+    try {
+      const data = await call(APPS_URL, 'purge', { id: SELECTED.id });
+      if (!data.ok) throw new Error(data.error || 'Permanent delete failed');
+      closeM();
+      await refresh();
+      if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
+    } catch (e) { showErr('am-err', e.message); }
+  }
 
   // Filter button bindings
   document.querySelectorAll('#app-status-filter button').forEach(b => {
@@ -1230,7 +1297,7 @@ const App = (() => {
   // Populate year-filter chips on first paint of the applications panel.
   loadYearFilter();
 
-  return { refresh, applySearch, openModal, closeM, approve, approveAndVerifyVenmo, reject, verify, reminder, loadYearFilter };
+  return { refresh, applySearch, openModal, closeM, approve, approveAndVerifyVenmo, reject, verify, reminder, purge, loadYearFilter };
 })();
 
 // ── Tiers namespace ────────────────────────────────────────────────────

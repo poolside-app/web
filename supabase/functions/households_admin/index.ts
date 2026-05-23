@@ -34,7 +34,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
-import { requireScope } from '../_shared/auth.ts';
+import { requireScope, requireOwner } from '../_shared/auth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -309,6 +309,50 @@ Deno.serve(async (req) => {
     }
     await audit(sb, TID, payload, 'household.delete', 'household', id, `Soft-deleted household ${id}`);
     return jsonResponse({ ok: true });
+  }
+
+  // ── purge_household ──────────────────────────────────────────────────
+  // HARD delete: nukes the household + members + linked applications +
+  // open admin_tasks. Doug 2026-05-23: soft-delete left rows visible in
+  // queries + duplicate-signup guards (phone/email collisions stuck
+  // around). Owner-only because this is unrecoverable.
+  if (action === 'purge_household') {
+    if (!(await requireOwner(sb, payload))) {
+      return jsonResponse({ ok: false, error: 'Only owners can permanently delete a household' }, 403);
+    }
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+
+    const { data: hh } = await sb.from('households')
+      .select('id, family_name').eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!hh) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
+
+    // Order matters: tasks → applications → member sessions → members → household.
+    // Each step scoped by tenant_id + household linkage so we can't accidentally
+    // touch another tenant's data.
+    const { data: linkedApps } = await sb.from('applications')
+      .select('id').eq('tenant_id', TID).eq('household_id', id);
+    const appIds = (linkedApps ?? []).map((r: { id: string }) => r.id);
+    if (appIds.length) {
+      await sb.from('admin_tasks').delete()
+        .eq('tenant_id', TID).eq('source_kind', 'application').in('source_id', appIds);
+      await sb.from('applications').delete().eq('tenant_id', TID).in('id', appIds);
+    }
+
+    const { data: hmIds } = await sb.from('household_members')
+      .select('id').eq('household_id', id).eq('tenant_id', TID);
+    const memberIds = (hmIds ?? []).map((r: { id: string }) => r.id);
+    if (memberIds.length) {
+      await sb.from('member_sessions').delete().in('member_id', memberIds);
+      await sb.from('member_magic_links').delete().in('member_id', memberIds);
+    }
+    await sb.from('household_members').delete().eq('household_id', id).eq('tenant_id', TID);
+    const { error: hhErr } = await sb.from('households').delete().eq('id', id).eq('tenant_id', TID);
+    if (hhErr) return jsonResponse({ ok: false, error: hhErr.message }, 500);
+
+    await audit(sb, TID, payload, 'household.purge', 'household', id,
+      `Permanently deleted household "${hh.family_name}" (${memberIds.length} members, ${appIds.length} applications)`);
+    return jsonResponse({ ok: true, family_name: hh.family_name, members_removed: memberIds.length, applications_removed: appIds.length });
   }
 
   // ── add_member ───────────────────────────────────────────────────────
