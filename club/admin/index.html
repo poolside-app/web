@@ -264,6 +264,28 @@ document.getElementById('signout').addEventListener('click', logout);
   // Households + member counts in parallel with the render
   let hhCount = '…', memberCount = '…';
   document.getElementById('main').innerHTML = `
+    <!-- Order rationale (Doug 2026-05-23):
+         1. What needs your attention       — what to DO  (above the fold)
+         2. Your tasks                      — my queue
+         3. Stats card                      — what IS    (passive context)
+         4. Quick actions                   — common nav
+         5. Apply link                      — share-me URL (rarely needed)
+         Doug's 2026-05-23 phone test: he had an open pending application
+         and the dashboard read as "all clear" because action items were
+         below the stats fold. Hoisting attention cards above stats so
+         pending work is impossible to miss. -->
+
+    <div class="card" id="activity-card">
+      <h2>What needs your attention</h2>
+      <div class="placeholder">Loading…</div>
+    </div>
+
+    <div class="card" id="tasks-card" style="display:none">
+      <h2>Your tasks</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to your role. First admin to handle one closes it for everyone.</p>
+      <div id="tasks-list"></div>
+    </div>
+
     <div class="card">
       <h1>${escapeHtml(tenant.display_name)}</h1>
       <p class="lede">Admin dashboard — your club is at <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">${escapeHtml(tenant.slug)}.poolsideapp.com</a></p>
@@ -277,26 +299,6 @@ document.getElementById('signout').addEventListener('click', logout);
         <div class="stat"><div class="lbl">Active programs</div><div class="val" id="prog-count">…</div></div>
         <div class="stat"><div class="lbl">Live campaigns</div><div class="val" id="camp-count">…</div></div>
       </div>
-    </div>
-
-    <!-- Order rationale (Doug 2026-05-21):
-         1. Stats card (above)              — passive: what IS
-         2. What needs your attention       — active: what to DO
-         3. Your tasks                      — active: my queue
-         4. Quick actions                   — utility: common nav
-         5. Apply link                      — utility: share-me URL (rarely needed)
-         "Get a buzz" push card moved to settings.html — it's a one-time
-         setup, doesn't belong on the daily dashboard. -->
-
-    <div class="card" id="activity-card">
-      <h2>What needs your attention</h2>
-      <div class="placeholder">Loading…</div>
-    </div>
-
-    <div class="card" id="tasks-card" style="display:none">
-      <h2>Your tasks</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to your role. First admin to handle one closes it for everyone.</p>
-      <div id="tasks-list"></div>
     </div>
 
     <div class="card">

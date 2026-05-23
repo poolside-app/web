@@ -261,6 +261,21 @@ function render(rows) {
   }
   list.innerHTML = rows.map(a => {
     const total = (a.num_adults || 0) + (a.num_kids || 0);
+    const isPending = a.status === 'pending';
+    const isVenmo   = a.payment_method === 'venmo';
+    // Inline action buttons on pending rows (2026-05-23): Doug wants to
+    // approve straight from the queue without opening the modal, since
+    // the common path is "I already checked Venmo, just approve." For
+    // unusual tier/fob assignments, "Edit details →" still opens the
+    // modal with all the override controls.
+    const inlineActions = isPending ? `
+      <div class="row-actions" data-id="${a.id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-success" data-act="approve" style="padding:8px 14px;font-size:13px">
+          ${isVenmo ? '✓ Approve & verify Venmo' : '✓ Approve & create household'}
+        </button>
+        <button class="btn btn-ghost" data-act="reject" style="padding:8px 14px;font-size:13px;color:var(--red);border-color:var(--red)">✗ Reject</button>
+        <button class="btn btn-ghost" data-act="open" style="padding:8px 14px;font-size:13px">Edit details →</button>
+      </div>` : '';
     return `
       <div class="app" data-id="${a.id}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
@@ -269,13 +284,80 @@ function render(rows) {
             <div class="meta">${escapeHtml(a.primary_name)}${a.primary_email ? ' · ' + escapeHtml(a.primary_email) : ''}${a.primary_phone ? ' · ' + escapeHtml(fmtPhone(a.primary_phone)) : ''} · ${a.num_adults} adults / ${a.num_kids} kids (${total} total)</div>
             ${a.body ? `<div class="body">${escapeHtml(a.body)}</div>` : ''}
             ${a.admin_notes ? `<div class="note">📝 ${escapeHtml(a.admin_notes)}</div>` : ''}
+            ${inlineActions}
           </div>
           <div style="text-align:right;font-size:11px;color:var(--muted);min-width:100px">submitted<br>${escapeHtml(new Date(a.created_at).toLocaleDateString())}</div>
         </div>
       </div>
     `;
   }).join('');
-  list.querySelectorAll('.app').forEach(el => el.addEventListener('click', () => openModal(el.dataset.id, rows)));
+  // Row click → modal, EXCEPT when the click came from one of the inline
+  // action buttons (handled separately below). Otherwise approving in
+  // place would also open the modal underneath.
+  list.querySelectorAll('.app').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('.row-actions')) return;
+      openModal(el.dataset.id, rows);
+    });
+  });
+  list.querySelectorAll('.row-actions').forEach(box => {
+    box.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('button');
+      if (!btn) return;
+      ev.stopPropagation();
+      const id = box.dataset.id;
+      const act = btn.dataset.act;
+      const row = rows.find(r => r.id === id);
+      if (!row) return;
+      SELECTED = row;
+      if (act === 'open')    { openModal(id, rows); return; }
+      if (act === 'approve') { await inlineApprove(btn, row); return; }
+      if (act === 'reject')  { await inlineReject(btn, row);  return; }
+    });
+  });
+}
+
+// Inline approve path — same backend call the modal's appr() uses, just
+// with default tier / no fob / current year. The modal stays the override
+// surface for non-default cases.
+async function inlineApprove(btn, row) {
+  const isVenmo = row.payment_method === 'venmo';
+  const confirmMsg = isVenmo
+    ? `Confirm: the Venmo payment from ${row.family_name} has landed in your account?\n\nThis approves the application AND marks dues paid — one shot.`
+    : `Approve ${row.family_name} as a new household?`;
+  if (!confirm(confirmMsg)) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Approving…';
+  try {
+    const data = await call('approve', {
+      id: row.id,
+      override: { tier: 'family', fob_number: null, paid_until_year: null },
+      verify_venmo_payment: isVenmo,
+    });
+    if (!data.ok) throw new Error(data.error || 'Approve failed');
+    await refresh();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    alert(e.message);
+  }
+}
+
+async function inlineReject(btn, row) {
+  if (!confirm(`Reject the application from ${row.family_name}?`)) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Rejecting…';
+  try {
+    const data = await call('reject', { id: row.id });
+    if (!data.ok) throw new Error(data.error || 'Reject failed');
+    await refresh();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    alert(e.message);
+  }
 }
 
 async function refresh() {
