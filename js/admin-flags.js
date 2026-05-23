@@ -505,4 +505,73 @@
   }
 
   window.PoolsideAuth = { meOrLogout, logout: poolsideLogout };
+
+  // ── Top-nav badges (2026-05-23) ───────────────────────────────────────
+  // The Members > Pipeline subtab gets a badge from members-subtabs.js,
+  // but the TOP-level "Members" tab in nav.tabs had no equivalent —
+  // Doug 2026-05-23: pending application visible on Pipeline but not on
+  // the parent Members tab, so admins on any other top-level page (e.g.
+  // Calendar or Settings) had no peripheral cue that work was waiting.
+  // Hits admin_tasks.list (already scope-filtered server-side) and
+  // decorates the relevant tab(s). Hidden when no pending items so the
+  // chrome stays quiet in normal state.
+  //
+  // Tab → task-kind mapping:
+  //   Members  ← application.submitted, venmo.claim
+  //   Calendar ← party.requested
+  function setNavBadge(hrefSubstr, n) {
+    const links = document.querySelectorAll('nav.tabs a');
+    for (const link of links) {
+      const href = link.getAttribute('href') || '';
+      if (!href.includes(hrefSubstr)) continue;
+      let badge = link.querySelector('.nav-badge');
+      if (n > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'nav-badge';
+          badge.style.cssText = 'background:var(--sun);color:#fff;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;margin-left:6px;min-width:18px;display:inline-block;text-align:center;line-height:1.4';
+          link.appendChild(badge);
+        }
+        badge.textContent = String(n);
+        badge.style.display = 'inline-block';
+      } else if (badge) {
+        badge.remove();
+      }
+      break;
+    }
+  }
+
+  async function paintNavBadges() {
+    let tok;
+    try { tok = localStorage.getItem('poolside_tenant_token'); } catch (_) { tok = null; }
+    if (!tok) return;
+    try {
+      const SUPABASE_URL_LOCAL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+      const r = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/admin_tasks`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${tok}` },
+        body: JSON.stringify({ action: 'list' }),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (!data.ok) return;
+      const tasks = data.tasks || [];
+      const memberKinds = ['application.submitted', 'venmo.claim'];
+      const calKinds    = ['party.requested'];
+      setNavBadge('/members.html', tasks.filter(t => memberKinds.includes(t.kind)).length);
+      setNavBadge('/events.html',  tasks.filter(t => calKinds.includes(t.kind)).length);
+    } catch (_) { /* badges best-effort — never break the page */ }
+  }
+
+  window.PoolsideNav = { paintNavBadges, setNavBadge };
+
+  // Defer until DOMContentLoaded if nav isn't rendered yet (admin-flags.js
+  // loads in <head> on most pages, but a couple have it after nav.tabs).
+  if (document.querySelector('nav.tabs')) {
+    paintNavBadges();
+  } else if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', paintNavBadges, { once: true });
+  } else {
+    paintNavBadges();
+  }
 })();
