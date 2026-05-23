@@ -255,8 +255,8 @@ Deno.serve(async (req) => {
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (pendingApp) {
         const venmoLine = pendingApp.payment_method === 'venmo'
-          ? `Once the board sees your Venmo payment land, they approve + activate your membership in one step.`
-          : `The board reviews new applications within 1–2 business days.`;
+          ? `Once the board sees your Venmo payment land, they approve + activate your membership in one step — typically within 1–10 days (it's a volunteer-run board).`
+          : `The board reviews new applications within 1–10 days (it's a volunteer-run board).`;
         return htmlError(
           `We received your application for <b>${escHtml(pendingApp.family_name)}</b> at ${safeClub}. ${venmoLine}<br><br>You'll get a sign-in link by email + SMS the moment you're approved — no need to keep trying to sign in here.`,
           200,

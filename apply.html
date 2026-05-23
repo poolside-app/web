@@ -940,8 +940,8 @@ async function submitApplication() {
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. ${isVenmo
-        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot — usually within 1–2 business days. You'll get a welcome email with a magic-link sign-in when you're in.`
-        : `The board will review and reach out within a few days.`}</p>
+        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot — typically within <b>1–10 days</b> (it's a volunteer-run board). You'll get a welcome email with a magic-link sign-in when you're in.`
+        : `The board will review and reach out within 1–10 days — it's a volunteer-run board.`}</p>
       ${isAdminFlow ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">You're set up as a member. Now back to admin setup →</div>
