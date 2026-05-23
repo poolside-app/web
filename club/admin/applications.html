@@ -118,8 +118,13 @@
     <h1>Applications</h1>
     <input id="search" type="search" placeholder="🔍 Search applications…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      <!-- "Needs attention" (default) = pending submissions + approved-but-
+           unpaid Venmo. One unified queue so an admin doesn't have to remember
+           that legacy auto-approved Venmo apps live under "Approved" while
+           fresh apps live under "Pending." Doug 2026-05-23. -->
       <div class="filter-row" id="status-filter">
-        <button class="on" data-status="pending">Pending</button>
+        <button class="on" data-status="needs_attention">Needs attention</button>
+        <button data-status="pending">Pending</button>
         <button data-status="approved">Approved</button>
         <button data-status="rejected">Rejected</button>
         <button data-status="all">All</button>
@@ -191,7 +196,7 @@ const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPS_URL = `${SUPABASE_URL}/functions/v1/applications`;
 const ME_URL   = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
-let STATUS = 'pending';
+let STATUS = 'needs_attention';
 let FILTER = '';
 let SELECTED = null;
 let CACHE = [];
@@ -263,19 +268,32 @@ function render(rows) {
     const total = (a.num_adults || 0) + (a.num_kids || 0);
     const isPending = a.status === 'pending';
     const isVenmo   = a.payment_method === 'venmo';
-    // Inline action buttons on pending rows (2026-05-23): Doug wants to
-    // approve straight from the queue without opening the modal, since
-    // the common path is "I already checked Venmo, just approve." For
-    // unusual tier/fob assignments, "Edit details →" still opens the
-    // modal with all the override controls.
-    const inlineActions = isPending ? `
+    const needsPaymentVerify = a.status === 'approved' && a.payment_status !== 'paid';
+    // Inline action buttons on rows that need work (2026-05-23):
+    //  - pending: one-click Approve & verify (Venmo) / Approve & create
+    //  - approved-but-unpaid: one-click "Verify payment received" so the
+    //    legacy auto-approve-then-claim Venmo path lands in the SAME
+    //    queue as fresh applications. Removes the "is it under Pending
+    //    or Approved?" guess game.
+    let inlineActions = '';
+    if (isPending) {
+      inlineActions = `
       <div class="row-actions" data-id="${a.id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
         <button class="btn btn-success" data-act="approve" style="padding:8px 14px;font-size:13px">
           ${isVenmo ? '✓ Approve & verify Venmo' : '✓ Approve & create household'}
         </button>
         <button class="btn btn-ghost" data-act="reject" style="padding:8px 14px;font-size:13px;color:var(--red);border-color:var(--red)">✗ Reject</button>
         <button class="btn btn-ghost" data-act="open" style="padding:8px 14px;font-size:13px">Edit details →</button>
-      </div>` : '';
+      </div>`;
+    } else if (needsPaymentVerify) {
+      inlineActions = `
+      <div class="row-actions" data-id="${a.id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-success" data-act="verify_payment" style="padding:8px 14px;font-size:13px">
+          ✓ Verify ${isVenmo ? 'Venmo' : 'payment'} received
+        </button>
+        <button class="btn btn-ghost" data-act="open" style="padding:8px 14px;font-size:13px">Edit details →</button>
+      </div>`;
+    }
     return `
       <div class="app" data-id="${a.id}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
@@ -310,11 +328,37 @@ function render(rows) {
       const row = rows.find(r => r.id === id);
       if (!row) return;
       SELECTED = row;
-      if (act === 'open')    { openModal(id, rows); return; }
-      if (act === 'approve') { await inlineApprove(btn, row); return; }
-      if (act === 'reject')  { await inlineReject(btn, row);  return; }
+      if (act === 'open')            { openModal(id, rows); return; }
+      if (act === 'approve')         { await inlineApprove(btn, row); return; }
+      if (act === 'reject')          { await inlineReject(btn, row);  return; }
+      if (act === 'verify_payment')  { await inlineVerifyPayment(btn, row); return; }
     });
   });
+}
+
+// Inline verify-payment path for approved-but-unpaid Venmo rows. Same
+// backend call the modal's verifyClick() uses.
+async function inlineVerifyPayment(btn, row) {
+  const isVenmo = row.payment_method === 'venmo';
+  const confirmMsg = isVenmo
+    ? `Confirm: the Venmo payment from ${row.family_name} has landed in your account?\n\nThis marks dues paid and clears the verify task.`
+    : `Mark payment from ${row.family_name} as received?`;
+  if (!confirm(confirmMsg)) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  try {
+    const data = await call('verify_payment', {
+      id: row.id,
+      method: row.payment_method || 'venmo',
+    });
+    if (!data.ok) throw new Error(data.error || 'Verify failed');
+    await refresh();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    alert(e.message);
+  }
 }
 
 // Inline approve path — same backend call the modal's appr() uses, just

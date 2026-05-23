@@ -165,8 +165,14 @@
       <h1>Application pipeline <span style="font-size:13px;font-weight:500;color:var(--muted);font-family:'Inter',sans-serif;letter-spacing:0;margin-left:6px">— review submissions. <a href="/club/admin/application.html">Edit the form →</a></span></h1>
       <input id="app-search" type="search" placeholder="🔍 Search applications…" oninput="App.applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+        <!-- "Needs attention" (Doug 2026-05-23) = pending submissions +
+             approved-but-unpaid Venmo. One unified queue so an admin
+             doesn't have to switch between filter buttons to see all
+             work — and the badge counts match across nav, subtab, and
+             this filter. -->
         <div class="filter-row" id="app-status-filter">
-          <button class="on" data-status="pending">Pending</button>
+          <button class="on" data-status="needs_attention">Needs attention</button>
+          <button data-status="pending">Pending</button>
           <button data-status="approved">Approved</button>
           <button data-status="rejected">Rejected</button>
           <button data-status="all">All</button>
@@ -756,7 +762,7 @@ function exportCsv() {
 
 // ── Applications namespace ─────────────────────────────────────────────
 const App = (() => {
-  let STATUS = 'pending';
+  let STATUS = 'needs_attention';
   let FILTER = '';
   let YEAR   = null;     // null = "all years"
   let SELECTED = null;
@@ -789,9 +795,38 @@ const App = (() => {
 
   function render(rows) {
     const list = document.getElementById('app-list');
-    if (!rows.length) { list.innerHTML = `<div class="empty">No ${STATUS === 'all' ? '' : STATUS + ' '}applications.</div>`; return; }
+    if (!rows.length) {
+      list.innerHTML = `<div class="empty">${STATUS === 'needs_attention' ? '✓ Nothing needs attention — all applications are processed.' : 'No ' + (STATUS === 'all' ? '' : STATUS + ' ') + 'applications.'}</div>`;
+      return;
+    }
     list.innerHTML = rows.map(a => {
       const total = (a.num_adults || 0) + (a.num_kids || 0);
+      const isPending = a.status === 'pending';
+      const isVenmo   = a.payment_method === 'venmo';
+      const needsPaymentVerify = a.status === 'approved' && a.payment_status !== 'paid';
+      // 2026-05-23 inline actions — same as the queue on applications.html.
+      // Pending → one-click Approve & verify (Venmo) or Approve & create.
+      // Approved-but-unpaid → one-click Verify payment so the legacy
+      // auto-approve-then-claim Venmo path lives here too.
+      let inlineActions = '';
+      if (isPending) {
+        inlineActions = `
+        <div class="row-actions" data-id="${a.id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-success" data-act="approve" style="padding:8px 14px;font-size:13px">
+            ${isVenmo ? '✓ Approve & verify Venmo' : '✓ Approve & create household'}
+          </button>
+          <button class="btn btn-ghost" data-act="reject" style="padding:8px 14px;font-size:13px;color:var(--red);border-color:var(--red)">✗ Reject</button>
+          <button class="btn btn-ghost" data-act="open" style="padding:8px 14px;font-size:13px">Edit details →</button>
+        </div>`;
+      } else if (needsPaymentVerify) {
+        inlineActions = `
+        <div class="row-actions" data-id="${a.id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-success" data-act="verify_payment" style="padding:8px 14px;font-size:13px">
+            ✓ Verify ${isVenmo ? 'Venmo' : 'payment'} received
+          </button>
+          <button class="btn btn-ghost" data-act="open" style="padding:8px 14px;font-size:13px">Edit details →</button>
+        </div>`;
+      }
       return `
         <div class="app" data-id="${a.id}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
@@ -800,12 +835,89 @@ const App = (() => {
               <div class="meta">${escapeHtml(a.primary_name)}${a.primary_email ? ' · ' + escapeHtml(a.primary_email) : ''}${a.primary_phone ? ' · ' + escapeHtml(formatPhone(a.primary_phone)) : ''} · ${a.num_adults} adults / ${a.num_kids} kids (${total} total)</div>
               ${a.body ? `<div class="body">${escapeHtml(a.body)}</div>` : ''}
               ${a.admin_notes ? `<div class="note">📝 ${escapeHtml(a.admin_notes)}</div>` : ''}
+              ${inlineActions}
             </div>
             <div style="text-align:right;font-size:11px;color:var(--muted);min-width:100px">submitted<br>${escapeHtml(new Date(a.created_at).toLocaleDateString())}</div>
           </div>
         </div>`;
     }).join('');
-    list.querySelectorAll('.app').forEach(el => el.addEventListener('click', () => openModal(el.dataset.id, rows)));
+    // Row click → modal, except for clicks inside .row-actions (handled below).
+    list.querySelectorAll('.app').forEach(el => {
+      el.addEventListener('click', (ev) => {
+        if (ev.target.closest('.row-actions')) return;
+        openModal(el.dataset.id, rows);
+      });
+    });
+    list.querySelectorAll('.row-actions').forEach(box => {
+      box.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('button');
+        if (!btn) return;
+        ev.stopPropagation();
+        const id = box.dataset.id;
+        const act = btn.dataset.act;
+        const row = rows.find(r => r.id === id);
+        if (!row) return;
+        if (act === 'open')            { openModal(id, rows); return; }
+        if (act === 'approve')         { await inlineApprove(btn, row); return; }
+        if (act === 'reject')          { await inlineReject(btn, row);  return; }
+        if (act === 'verify_payment')  { await inlineVerifyPayment(btn, row); return; }
+      });
+    });
+  }
+
+  // Inline action helpers (Doug 2026-05-23). Hit the same APPS_URL endpoints
+  // the modal uses; defaults are sensible (family tier, no fob, current year).
+  // Modal stays available via the "Edit details →" button for non-defaults.
+  async function inlineApprove(btn, row) {
+    const isVenmo = row.payment_method === 'venmo';
+    const confirmMsg = isVenmo
+      ? `Confirm: the Venmo payment from ${row.family_name} has landed in your account?\n\nThis approves the application AND marks dues paid — one shot.`
+      : `Approve ${row.family_name} as a new household?`;
+    if (!confirm(confirmMsg)) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Approving…';
+    try {
+      const data = await call(APPS_URL, 'approve', {
+        id: row.id,
+        override: { tier: 'family', fob_number: null, paid_until_year: null },
+        verify_venmo_payment: isVenmo,
+      });
+      if (!data.ok) throw new Error(data.error || 'Approve failed');
+      await refresh();
+      if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
+    } catch (e) { btn.disabled = false; btn.textContent = orig; alert(e.message); }
+  }
+  async function inlineReject(btn, row) {
+    if (!confirm(`Reject the application from ${row.family_name}?`)) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Rejecting…';
+    try {
+      const data = await call(APPS_URL, 'reject', { id: row.id });
+      if (!data.ok) throw new Error(data.error || 'Reject failed');
+      await refresh();
+      if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
+    } catch (e) { btn.disabled = false; btn.textContent = orig; alert(e.message); }
+  }
+  async function inlineVerifyPayment(btn, row) {
+    const isVenmo = row.payment_method === 'venmo';
+    const confirmMsg = isVenmo
+      ? `Confirm: the Venmo payment from ${row.family_name} has landed in your account?\n\nThis marks dues paid and clears the verify task.`
+      : `Mark payment from ${row.family_name} as received?`;
+    if (!confirm(confirmMsg)) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Verifying…';
+    try {
+      const data = await call(APPS_URL, 'verify_payment', {
+        id: row.id,
+        method: row.payment_method || 'venmo',
+      });
+      if (!data.ok) throw new Error(data.error || 'Verify failed');
+      await refresh();
+      if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
+    } catch (e) { btn.disabled = false; btn.textContent = orig; alert(e.message); }
   }
 
   async function refresh() {
@@ -814,12 +926,15 @@ const App = (() => {
       if (!data.ok) throw new Error(data.error || 'Failed to load');
       CACHE = data.applications || [];
       applySearch();
-      // Update sub-tab badge with pending count (regardless of current filter)
-      const pendingData = STATUS === 'pending' && !YEAR
-        ? { applications: CACHE.filter(a => a.status === 'pending') }
-        : await call(APPS_URL, 'list', { status: 'pending' });
-      const pending = (pendingData.applications || []).length;
-      if (window.MembersSubtabs) MembersSubtabs.setPendingApps(pending);
+      // Sub-tab badge counts the same "needs attention" set as the
+      // default queue — pending submissions + approved-but-unpaid.
+      // Matches the top-nav Members badge (which counts the equivalent
+      // admin_tasks) so the numbers don't disagree across nav levels.
+      const attentionData = STATUS === 'needs_attention' && !YEAR
+        ? { applications: CACHE }
+        : await call(APPS_URL, 'list', { status: 'needs_attention' });
+      const needsAttention = (attentionData.applications || []).length;
+      if (window.MembersSubtabs) MembersSubtabs.setPendingApps(needsAttention);
     } catch (e) {
       document.getElementById('app-list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
     }

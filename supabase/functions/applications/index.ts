@@ -725,7 +725,19 @@ Deno.serve(async (req) => {
     const filter = String(body.filter ?? '');  // 'unpaid' | 'overdue' | ''
     const year = body.year ? Number(body.year) : null;
     let q = sb.from('applications').select(FIELDS).eq('tenant_id', TID);
-    if (status !== 'all') q = q.eq('status', status);
+
+    // status='needs_attention' (Doug 2026-05-23) = the Pipeline's unified
+    // "things to do" view. Returns pending applications PLUS approved
+    // applications whose payment hasn't cleared yet — typically the
+    // legacy "auto-approved Venmo, member never claimed it" backlog
+    // (pre-2026-05-22 flow) plus any case where an admin used the
+    // "Approve only" path and is now waiting on payment. Both surfaces
+    // become a single one-click inline-button row in the UI.
+    if (status === 'needs_attention') {
+      q = q.or('status.eq.pending,and(status.eq.approved,payment_status.in.("unpaid","pending"))');
+    } else if (status !== 'all') {
+      q = q.eq('status', status);
+    }
     if (filter === 'unpaid')  q = q.in('payment_status', ['unpaid', 'pending']);
     if (filter === 'overdue') {
       // approved + still unpaid + decided more than 10 days ago

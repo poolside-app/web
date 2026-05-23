@@ -477,7 +477,10 @@ document.getElementById('signout').addEventListener('click', logout);
     const headers = { 'content-type': 'application/json', 'authorization': `Bearer ${token}` };
     const j = (url, body) => fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({ ok: false }));
     const [appsPending, parties, payments, events, programs, campaigns] = await Promise.all([
-      j(APPS_URL,      { action: 'list', status: 'pending' }),
+      // 'needs_attention' = pending submissions + approved-but-unpaid
+      // (same unified queue as the Pipeline). Single counter on the
+      // dashboard matches the Members nav badge + Pipeline subtab badge.
+      j(APPS_URL,      { action: 'list', status: 'needs_attention' }),
       j(PARTIES_URL,   { action: 'list', status: 'pending' }),
       j(PAY_URL,       { action: 'list' }),
       j(EVENTS_URL,    { action: 'list', range: 'upcoming' }),
@@ -487,7 +490,13 @@ document.getElementById('signout').addEventListener('click', logout);
 
     const appCount   = (appsPending.applications || []).length;
     const partyCount = (parties.bookings || []).length;
-    const payItems   = payments.items || [];
+    // Dedupe: payments_admin.list includes application-bound payment rows
+    // (Venmo not yet verified, etc.) — but those already surface as
+    // "new applications" via the Pipeline. Counting them again as "open
+    // payments" double-counts the same household (Doug 2026-05-23).
+    // Filter to payment items NOT tied to an application — typically
+    // pure annual dues / programs / guest passes.
+    const payItems   = (payments.items || []).filter(i => i.source !== 'application');
     const overdueCount = payItems.filter(i => (i.age_days ?? 0) >= 14).length;
     const upcomingEv = (events.events || []).filter(e => new Date(e.starts_at).getTime() >= Date.now()).slice(0, 30).length;
     const activeProg = (programs.programs || []).length;
@@ -505,10 +514,21 @@ document.getElementById('signout').addEventListener('click', logout);
     document.getElementById('camp-count').textContent = liveCamp;
 
     const items = [];
-    if (appCount > 0) items.push({
-      icon: '📨', label: `${appCount} new application${appCount === 1 ? '' : 's'}`,
-      sub: 'Review pending memberships', href: '/club/admin/members.html#applications', tone: 'amber',
-    });
+    if (appCount > 0) {
+      // Split label by what the items actually are — "X new" reads wrong
+      // when some are approved-but-awaiting-Venmo-verify.
+      const apps = appsPending.applications || [];
+      const newCount = apps.filter(a => a.status === 'pending').length;
+      const verifyCount = apps.filter(a => a.status === 'approved').length;
+      const labelParts = [];
+      if (newCount)    labelParts.push(`${newCount} new application${newCount === 1 ? '' : 's'}`);
+      if (verifyCount) labelParts.push(`${verifyCount} awaiting Venmo verify`);
+      items.push({
+        icon: '📨', label: labelParts.join(' · '),
+        sub: 'One-click approve or verify in Pipeline',
+        href: '/club/admin/members.html#applications', tone: 'amber',
+      });
+    }
     if (partyCount > 0) items.push({
       icon: '🎉', label: `${partyCount} party request${partyCount === 1 ? '' : 's'}`,
       sub: 'Approve or reject', href: '/club/admin/parties.html', tone: 'amber',
