@@ -464,7 +464,7 @@ function rebuildPeople() {
           <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)"></div>
           <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:-4px">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
+        <div style="font-size:11px;color:var(--muted);margin:8px 0 2px;line-height:1.45">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
         <label>Email${i === 0 ? '' : ' (opt)'}</label>
         <input data-adult="${i}" data-field="email" type="email">
       </div>
