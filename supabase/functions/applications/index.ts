@@ -258,28 +258,43 @@ Deno.serve(async (req) => {
     // Both checks scoped to active rows so a household that was deactivated
     // for non-payment can re-apply.
     if (email || phone) {
-      const memberMatchPromises: Promise<{ data: Array<{ id: string }> | null }>[] = [];
+      // Tracked separately so the UX can offer a recovery path keyed to
+      // the actual match (e.g. "use phone-magic-link if your phone is on
+      // file, even if the email doesn't match"). Doug 2026-05-23 got stuck
+      // in a Google-sign-in → apply → "already a member" → loop because
+      // his gmail wasn't on any row but the phone was — message was generic
+      // "sign in" with no indication of which one to use.
+      let emailMatch: { id: string } | null = null;
+      let phoneMatch: { id: string } | null = null;
       if (email) {
-        memberMatchPromises.push(
-          sb.from('household_members').select('id')
-            .eq('tenant_id', tenant.id).eq('active', true)
-            .ilike('email', email).limit(1) as never,
-        );
+        const { data } = await sb.from('household_members').select('id')
+          .eq('tenant_id', tenant.id).eq('active', true)
+          .ilike('email', email).limit(1).maybeSingle();
+        emailMatch = data;
       }
       if (phone) {
-        memberMatchPromises.push(
-          sb.from('household_members').select('id')
-            .eq('tenant_id', tenant.id).eq('active', true)
-            .eq('phone_e164', phone).limit(1) as never,
-        );
+        const { data } = await sb.from('household_members').select('id')
+          .eq('tenant_id', tenant.id).eq('active', true)
+          .eq('phone_e164', phone).limit(1).maybeSingle();
+        phoneMatch = data;
       }
-      const memberHits = (await Promise.all(memberMatchPromises))
-        .flatMap(r => r.data ?? []);
-      if (memberHits.length > 0) {
+      if (emailMatch || phoneMatch) {
+        // matched_via tells the UI which sign-in option to lead with.
+        // "both"  → either works
+        // "email" → magic-link to email
+        // "phone" → magic-link to phone (most common case for the loop —
+        //           user changed emails since they signed up, but kept
+        //           their phone number)
+        const matched_via = emailMatch && phoneMatch ? 'both' : (emailMatch ? 'email' : 'phone');
         return jsonResponse({
           ok: false,
-          error: `You already have a membership at ${tenant.display_name || 'this club'}. Sign in to your member home instead — visit /m/login.html and we'll text or email you a sign-in link.`,
+          error: matched_via === 'phone'
+            ? `Your phone number is already registered as a member at ${tenant.display_name || 'this club'}. If that's you, sign in with the phone-magic-link option below.`
+            : matched_via === 'email'
+            ? `Your email is already registered as a member at ${tenant.display_name || 'this club'}. If that's you, sign in with the email-magic-link option below.`
+            : `You're already a member at ${tenant.display_name || 'this club'}. Sign in below — we'll text or email you a one-tap link.`,
           code: 'already_member',
+          matched_via,
         }, 409);
       }
 

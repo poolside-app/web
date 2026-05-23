@@ -225,6 +225,33 @@ async function autoSignInIfPossible() {
       } catch (_) { /* leave hidden on probe failure */ }
     }
   }
+
+  // ?via=phone | ?via=email | ?via=both — set by the apply form's
+  // "already a member" recovery CTA so the user knows which channel
+  // matched a record. Pre-fills nothing (we don't want PII in URLs)
+  // but autofocuses the input so they can start typing immediately.
+  try {
+    const via = (new URLSearchParams(window.location.search)).get('via');
+    if (via === 'phone' || via === 'email' || via === 'both') {
+      const label = document.querySelector('label[for="email"]');
+      const input = document.getElementById('email');
+      const sub   = document.getElementById('sub');
+      if (label && via === 'phone') label.textContent = 'Your phone number';
+      if (label && via === 'email') label.textContent = 'Your email';
+      if (input) {
+        if (via === 'phone') input.placeholder = '(555) 123-4567';
+        if (via === 'email') input.placeholder = 'you@example.com';
+        try { input.focus(); } catch (_) {}
+      }
+      if (sub) {
+        sub.innerHTML = via === 'phone'
+          ? "We matched your phone on an existing membership. Type your <b>phone number</b> below and we'll text you a 6-digit sign-in code."
+          : via === 'email'
+          ? "We matched your email on an existing membership. Type your <b>email</b> below and we'll send a one-tap sign-in link."
+          : "Type the email <i>or</i> phone you signed up with — we'll send a sign-in link by text or email.";
+      }
+    }
+  } catch (_) { /* contextual hint is best-effort */ }
 })();
 
 async function doStart() {

@@ -830,14 +830,25 @@ async function submitApplication() {
       if (data.code === 'already_member' || data.code === 'already_applied') {
         const formEl = document.getElementById('form');
         formEl.className = 'card ok';
-        const slug = getSlug();
-        const memberLogin = `/m/login.html`;
+        // matched_via tells us which channel the UI should lead with —
+        // routes the user to the right magic-link sign-in option instead
+        // of dropping them on a generic /m/login.html and forcing them to
+        // remember which contact matched. ?via= is a hint; /m/login.html
+        // reads it (2026-05-23) and auto-focuses the matching surface.
+        const matchedVia = data.matched_via || '';
+        const memberLogin = `/m/login.html${matchedVia ? '?via=' + encodeURIComponent(matchedVia) : ''}`;
         if (data.code === 'already_member') {
+          const subline = matchedVia === 'phone'
+            ? 'We matched on your phone number — if your email has changed since you signed up, use the phone option below to sign in.'
+            : matchedVia === 'email'
+            ? 'We matched on your email address.'
+            : '';
           formEl.innerHTML = `
             <h1 style="color:var(--blue)">You're already a member 👋</h1>
             <p class="lede">${escapeHtml(data.error)}</p>
-            <div style="margin-top:18px"><a href="${memberLogin}" style="display:inline-block;background:var(--blue);color:#fff;padding:12px 24px;border-radius:10px;font-weight:600;text-decoration:none">Sign in to your member home →</a></div>
-            <p style="margin-top:16px;font-size:12px;color:var(--muted)">If you think this is a mistake, reply to your welcome email or contact a board member.</p>`;
+            ${subline ? `<p style="margin-top:6px;color:var(--muted);font-size:13.5px">${escapeHtml(subline)}</p>` : ''}
+            <div style="margin-top:18px"><a href="${memberLogin}" style="display:inline-block;background:var(--blue);color:#fff;padding:12px 24px;border-radius:10px;font-weight:600;text-decoration:none">Sign in${matchedVia === 'phone' ? ' by phone' : matchedVia === 'email' ? ' by email' : ''} →</a></div>
+            <p style="margin-top:16px;font-size:12px;color:var(--muted)">Not you? If a different family member or housemate shares your ${matchedVia === 'phone' ? 'phone number' : matchedVia === 'email' ? 'email' : 'contact info'}, reach out to a board member — they can add you to the existing household.</p>`;
         } else {
           formEl.innerHTML = `
             <h1 style="color:var(--blue)">Application already submitted ⏳</h1>
