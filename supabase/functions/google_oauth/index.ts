@@ -40,13 +40,29 @@ function jsonResponse(body: unknown, status = 200) {
     status, headers: { ...cors, 'content-type': 'application/json' },
   });
 }
-function htmlError(msg: string, status = 400) {
-  return new Response(`<!doctype html><meta charset="utf-8"><title>Sign-in error</title>
+// Optional CTA buttons attached below the message. When present, the
+// generic "← Go back" link drops to a smaller secondary link so the
+// primary action stands out.
+type ErrorAction = { label: string; href: string };
+function htmlError(msg: string, status = 400, opts?: { actions?: ErrorAction[]; title?: string }) {
+  const title = opts?.title ?? 'Sign-in problem';
+  const actions = opts?.actions ?? [];
+  const actionsHtml = actions.length
+    ? `<p style="margin-top:24px;display:flex;gap:10px;flex-wrap:wrap">${actions.map(a =>
+        `<a href="${escAttr(a.href)}" style="display:inline-block;padding:11px 20px;background:#0a3b5c;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px">${escHtml(a.label)}</a>`
+      ).join('')}</p>
+      <p style="margin-top:14px"><a href="javascript:history.back()" style="font-size:13px;color:#64748b">← Go back</a></p>`
+    : `<p><a href="javascript:history.back()">← Go back</a></p>`;
+  return new Response(`<!doctype html><meta charset="utf-8"><title>${escHtml(title)}</title>
     <body style="font-family:Inter,system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a">
-    <h1 style="font-family:Georgia,serif;color:#0a3b5c">Sign-in problem</h1>
-    <p>${msg}</p><p><a href="javascript:history.back()">← Go back</a></p></body>`,
+    <h1 style="font-family:Georgia,serif;color:#0a3b5c">${escHtml(title)}</h1>
+    <p>${msg}</p>${actionsHtml}</body>`,
     { status, headers: { 'content-type': 'text/html; charset=utf-8' } });
 }
+function escHtml(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] as string));
+}
+function escAttr(s: string): string { return escHtml(s); }
 
 async function getKey(): Promise<CryptoKey> {
   if (!JWT_SECRET) throw new Error('ADMIN_JWT_SECRET not set');
@@ -209,7 +225,51 @@ Deno.serve(async (req) => {
       }
     }
     if (!member || !member.active) {
-      return htmlError(`No active membership for ${profile.email} at ${tenant.display_name}. Apply for membership first or ask the board to add you.`);
+      // Doug 2026-05-23 hit this trying to sign in as a member while his
+      // admin self-signup application was still pending review. The bare
+      // "no active membership" message was technically right but dead-
+      // ends users. Branch on what we know about the email:
+      //   1. Matches an active admin → suggest the admin sign-in surface.
+      //   2. Matches a pending application → tell them it's being reviewed.
+      //   3. Else → original message + a CTA to the apply page.
+      const emailLc = profile.email.toLowerCase();
+      const safeEmail = escHtml(profile.email);
+      const safeClub  = escHtml(tenant.display_name);
+
+      const { data: adminMatch } = await sb.from('admin_users')
+        .select('id').eq('tenant_id', tenant.id).eq('active', true)
+        .ilike('email', emailLc).maybeSingle();
+      if (adminMatch) {
+        const adminLoginUrl = `${clubUrl}/club/admin/login.html`;
+        return htmlError(
+          `You're listed as an <b>admin</b> at ${safeClub}, not a member. Sign in on the admin page instead.<br><br><span style="color:#64748b;font-size:13px">Signed in as ${safeEmail}.</span>`,
+          200,
+          { actions: [{ label: 'Sign in as admin →', href: adminLoginUrl }], title: 'Wrong sign-in surface' },
+        );
+      }
+
+      const { data: pendingApp } = await sb.from('applications')
+        .select('id, family_name, payment_method, payment_status, created_at')
+        .eq('tenant_id', tenant.id).eq('status', 'pending')
+        .ilike('primary_email', emailLc)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (pendingApp) {
+        const venmoLine = pendingApp.payment_method === 'venmo'
+          ? `Once the board sees your Venmo payment land, they approve + activate your membership in one step.`
+          : `The board reviews new applications within 1–2 business days.`;
+        return htmlError(
+          `We received your application for <b>${escHtml(pendingApp.family_name)}</b> at ${safeClub}. ${venmoLine}<br><br>You'll get a sign-in link by email + SMS the moment you're approved — no need to keep trying to sign in here.`,
+          200,
+          { title: 'Application under review' },
+        );
+      }
+
+      const applyUrl = `${clubUrl}/apply.html`;
+      return htmlError(
+        `No active membership for <b>${safeEmail}</b> at ${safeClub}. If you haven't applied yet, the apply page is below; otherwise ask the board to add you.`,
+        200,
+        { actions: [{ label: 'Apply for membership →', href: applyUrl }] },
+      );
     }
     const jwt = await create({ alg: 'HS256', typ: 'JWT' }, {
       sub: member.id, kind: 'member',
