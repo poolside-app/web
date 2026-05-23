@@ -68,10 +68,10 @@
       <a href="#" class="active"><span class="icon">📊</span> Dashboard</a>
       <a href="#tenants"><span class="icon">🏊</span> Tenants</a>
       <a href="#integrations"><span class="icon">🔌</span> Integrations</a>
-      <a href="gate-integrations.html"><span class="icon">🚪</span> Gate Integrations</a>
-      <a href="profile.html"><span class="icon">👤</span> My profile</a>
+      <a href="/admin/gate-integrations.html"><span class="icon">🚪</span> Gate Integrations</a>
+      <a href="/admin/profile.html"><span class="icon">👤</span> My profile</a>
       <a href="#billing"><span class="icon">💳</span> Billing</a>
-      <a href="analytics.html"><span class="icon">📈</span> Analytics</a>
+      <a href="/admin/analytics.html"><span class="icon">📈</span> Analytics</a>
       <a href="#support"><span class="icon">💬</span> Support</a>
       <hr style="border:0; border-top:1px solid rgba(255,255,255,.15); margin:18px 0">
       <div style="font-size:12px;color:rgba(255,255,255,.65);padding:6px 12px;line-height:1.4">
@@ -161,7 +161,7 @@
     <div class="card" id="gate-summary-card">
       <div class="card-head">
         <h2>🚪 Gate Integrations <span style="background:var(--sun);color:#422006;font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.06em;margin-left:8px;vertical-align:middle">PAID ADD-ON · VETTING-FIRST</span></h2>
-        <a href="gate-integrations.html" class="btn-sm">Manage →</a>
+        <a href="/admin/gate-integrations.html" class="btn-sm">Manage →</a>
       </div>
       <p style="color:var(--muted);font-size:13px;margin-top:0">
         Each request needs back-and-forth coordination + on-site testing. Once you've talked to them and verified payment, flip status to <b>active</b> on the manage page — that auto-emails the club + flips features.gate on their settings.
@@ -229,7 +229,7 @@
           <div style="font:600 15px 'Fraunces',serif;color:var(--blue);margin-top:6px">doug.frevele@gmail.com</div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">Currently the only channel — point clubs here.</div>
         </a>
-        <a href="analytics.html" style="display:block;padding:14px 16px;background:var(--bg-2);border-radius:10px;text-decoration:none;color:var(--text)">
+        <a href="/admin/analytics.html" style="display:block;padding:14px 16px;background:var(--bg-2);border-radius:10px;text-decoration:none;color:var(--text)">
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600">Analytics</div>
           <div style="font:600 15px 'Fraunces',serif;color:var(--blue);margin-top:6px">See per-tenant usage</div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">Diagnose which clubs are hot or cold.</div>
@@ -824,7 +824,7 @@
           const ago = Math.max(0, Math.floor((Date.now() - new Date(p.requested_at).getTime()) / (3600 * 1000)));
           const when = ago < 1 ? 'just now' : ago < 24 ? `${ago}h ago` : `${Math.floor(ago / 24)}d ago`;
           const name = (p.tenant_display_name || p.tenant_slug || 'Unknown').replace(/[<>&"']/g, '');
-          return `<li><b>${name}</b> · ${when} · <a href="gate-integrations.html" style="color:#7c2d12;text-decoration:underline">review</a></li>`;
+          return `<li><b>${name}</b> · ${when} · <a href="/admin/gate-integrations.html" style="color:#7c2d12;text-decoration:underline">review</a></li>`;
         }).join('');
         pending.style.display = 'block';
         pending.innerHTML = `⚠️ <b>${requested} new request${requested === 1 ? '' : 's'} need${requested === 1 ? 's' : ''} your attention.</b><ul style="margin:6px 0 0;padding-left:22px;line-height:1.6">${lines}</ul>`;
