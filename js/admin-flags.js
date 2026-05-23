@@ -55,8 +55,13 @@
            context so any rogue child can't push the viewport wider. We use
            "clip" where available (modern browsers — doesn't break sticky)
            and fall back to "hidden" for older Safari. */
-        html, body { max-width: 100vw; }
+        html, body { max-width: 100vw; color-scheme: light; }
         body { overflow-x: hidden; overflow-x: clip; }
+        /* Doug 2026-05-23: on a dark-mode iPhone, the dashboard stat
+           numbers (var(--blue) on var(--bg-2)) read as muddled because
+           iOS Safari auto-adjusts colors when no color-scheme is
+           declared. Force the dashboard to render in its designed
+           light palette so the contrast is what we drew. */
 
         /* nav.tabs: always scrollable horizontally. Tabs nowrap + flex-shrink:0
            so they stay on a single row and the strip swipes left/right.
