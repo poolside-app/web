@@ -317,7 +317,7 @@
         <!-- Mode-specific controls. Only the panel for the active mode is
              visible. Background color is shared across logo/initials/text. -->
         <div id="icon-panel-logo" data-icon-panel>
-          <div class="icon-mode-hint" id="icon-logo-hint">Using your uploaded logo. Set the brand color above to change the background.</div>
+          <div class="icon-mode-hint" id="icon-logo-hint">Using your uploaded logo. Wide or tall logos get center-cropped to a square so the icon fills the whole home-screen tile — upload a square version for a specific framing, or pick the <b>Upload</b> mode to use a different image just for the icon.</div>
         </div>
 
         <div id="icon-panel-initials" data-icon-panel style="display:none">
@@ -763,20 +763,21 @@ function drawIconAt(canvas, size) {
   }
 
   if (mode === 'logo' && LOGO_BITMAP) {
-    // Fit logo near edge-to-edge with just enough padding for visual
-    // breathing room. iOS doesn't apply a mask, so a tight padding
-    // makes the icon read well on the home screen. Android maskable
-    // crops the outer ~12.5% anyway — at 5% padding, only the colored
-    // background corners get clipped, the actual logo content survives.
-    // Doug 2026-05-22: the old 16% padding produced a tiny logo-in-a-frame
-    // on iOS home screens.
-    const pad = size * 0.05;
-    const inner = size - pad * 2;
+    // Cover-fit (center-crop) instead of letterbox-fit. The previous
+    // approach preserved aspect ratio inside an 80-90% safe area, which
+    // worked fine for square logos but produced a tiny photo floating in
+    // a colored frame whenever the source was a wide landscape image
+    // (Doug 2026-05-22: Bishop Estates' pool photo logo showed as a
+    // small rectangle with a thick blue border on his iPhone home
+    // screen). Square icons need full coverage; let the user crop in
+    // their own image editor if they want a specific framing. Identical
+    // to Upload mode now — just sourcing the bitmap from the topbar
+    // logo URL instead of a separate icon upload.
     const ratio = LOGO_BITMAP.width / LOGO_BITMAP.height;
-    let w, h;
-    if (ratio > 1) { w = inner; h = inner / ratio; }
-    else            { h = inner; w = inner * ratio; }
-    ctx.drawImage(LOGO_BITMAP, (size - w) / 2, (size - h) / 2, w, h);
+    let sw, sh, sx, sy;
+    if (ratio > 1) { sh = LOGO_BITMAP.height; sw = LOGO_BITMAP.height; sx = (LOGO_BITMAP.width - sw) / 2; sy = 0; }
+    else            { sw = LOGO_BITMAP.width;  sh = LOGO_BITMAP.width;  sx = 0; sy = (LOGO_BITMAP.height - sh) / 2; }
+    ctx.drawImage(LOGO_BITMAP, sx, sy, sw, sh, 0, 0, size, size);
     return;
   }
 
