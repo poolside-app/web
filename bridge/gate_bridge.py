@@ -160,16 +160,23 @@ def main() -> None:
     LOG.info(f"  poll every {POLL_SEC}s, heartbeat every {HEARTBEAT_SEC}s")
 
     # First contact — also serves as a sanity check that creds are right.
+    # 401 is fatal: bridge_id/secret are wrong, no point burning CPU on a
+    # cred that will never start working. 403 is NON-fatal as of 2026-05-23:
+    # it means the platform admin hasn't flipped this tenant to 'active'
+    # yet, but they probably will soon — the bridge just sits there polling
+    # and picks up the moment activation happens. Exiting on 403 used to
+    # cause "service failed to start" right after install, because the
+    # natural flow is install → start service → THEN activate.
     code, resp = cloud("heartbeat")
     if code == 401:
         LOG.error("Auth failed (401). Check BRIDGE_ID and BRIDGE_SECRET in .env.")
         LOG.error("If your secret was lost, rotate it in Poolside admin → Settings → 🔐 Remote keyfob access.")
         sys.exit(2)
     if code == 403:
-        LOG.error("Forbidden (403). The tenant gate add-on is not 'active'.")
-        LOG.error("Ask the platform admin to flip status to 'active' for this tenant.")
-        sys.exit(3)
-    if code != 200:
+        LOG.warning("Tenant gate add-on is not 'active' yet — staying alive and polling.")
+        LOG.warning("Once the platform admin clicks '🟢 Activate gate' in /admin/gate-integrations.html,")
+        LOG.warning("the next poll succeeds automatically. No restart needed.")
+    elif code != 200:
         LOG.warning(f"First heartbeat returned {code}: {resp.get('error', resp)}. Will keep trying...")
     else:
         LOG.info("First heartbeat ok — credentials accepted.")

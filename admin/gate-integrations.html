@@ -752,7 +752,16 @@ notepad 'C:\\PoolsideGateBridge\\.env'</pre>
         <button class="btn-sm" onclick="copyEnvSnippet('${escapeHtml(tenantId)}')">📋 Copy .env template</button>
         <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Save + close Notepad (Ctrl+S, then close).</p>
 
-        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 6 — Start the service + watch the log</h4>
+        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 6 — Activate the gate for this tenant</h4>
+        <p style="margin:0 0 6px"><b>Do this BEFORE starting the service.</b> Close this modal and hit
+        <b>🟢 Activate gate</b> on the deployments row. The cloud needs the tenant in
+        <code>status='active'</code> before it'll accept the bridge's heartbeats — otherwise the bridge
+        gets 403s and either sits idle (newer versions) or exits and reports "service failed to start"
+        (older versions). The activation also fans out an email + Web Push to the club's owners and
+        unlocks the gate features in their admin nav.</p>
+        <p style="margin:6px 0">After activating, re-open this modal to keep going.</p>
+
+        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 7 — Start the service + watch the log</h4>
         <p style="margin:0 0 6px">Back in the Administrator PowerShell:</p>
         <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">Start-Service PoolsideGateBridge ; Get-Content C:\\PoolsideGateBridge\\bridge.log -Tail 20 -Wait</pre>
         <p style="margin:6px 0">Expected within ~5 seconds:</p>
@@ -761,11 +770,10 @@ notepad 'C:\\PoolsideGateBridge\\.env'</pre>
         the same window. Once it's green, hit <b>⚡ Test unlock</b> below — the gate should physically
         open within ~2 seconds. Press <kbd>Ctrl+C</kbd> in PowerShell to stop tailing the log; the
         service keeps running in the background.</p>
-
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 7 — Activate the gate for the tenant</h4>
-        <p style="margin:0 0 6px">Once 🟢 online + Test unlock works, close this modal and hit
-        <b>🟢 Activate gate</b> on the deployments row. The club's owners get an email + Web Push,
-        gate features turn on in their admin nav, members see "🚪 Unlock the gate" on their home.</p>
+        <p style="margin:6px 0;font-size:12px;color:var(--muted)"><b>Service won't start with "Failed to start service"?</b>
+        Almost always means the tenant isn't activated yet (step 6 skipped) or BRIDGE_SECRET wasn't
+        replaced in <code>.env</code>. Quick diagnostic — run the bridge in foreground to see the real error:
+        <code>cd C:\\PoolsideGateBridge ; venv\\Scripts\\python gate_bridge.py</code></p>
 
         <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Reboot + power-outage guarantee</h4>
         <p style="margin:0 0 6px;font-size:13px">The installer configures four layers of resilience:</p>
