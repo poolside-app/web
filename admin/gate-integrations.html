@@ -701,15 +701,21 @@ Set-Location 'C:\\PoolsideGateBridge'
 &amp; python -m venv venv
 &amp; '.\\venv\\Scripts\\python.exe' -m pip install --upgrade pip --quiet
 &amp; '.\\venv\\Scripts\\pip.exe' install -r requirements.txt --quiet
-Write-Host '[6/8] Writing .env (BRIDGE_ID pre-filled for this tenant)...' -ForegroundColor Cyan
-Set-Content -Path 'C:\\PoolsideGateBridge\\.env' -Encoding UTF8 -Value @(
+Write-Host '[6/8] Writing .env (BRIDGE_ID pre-filled, no BOM)...' -ForegroundColor Cyan
+# Set-Content -Encoding UTF8 in Windows PowerShell 5.1 emits a BOM,
+# which python-dotenv parses as part of the first key name (Doug hit
+# this 2026-05-23 — KeyError: 'SUPABASE_URL' because the actual key
+# was '﻿SUPABASE_URL'). Use .NET WriteAllText with an explicit
+# UTF8Encoding($false) to write WITHOUT the BOM, cross-PS-version.
+$envLines = @(
   'SUPABASE_URL=https://sdewylbddkcvidwosgxo.supabase.co',
   'BRIDGE_ID=${escapeHtml(bridgeId)}',
   'BRIDGE_SECRET=PASTE_FROM_ROTATE_POPUP_HERE',
   'POLL_SEC=1.5',
   'HEARTBEAT_SEC=30',
   'STALE_COMMAND_SEC=60'
-)
+) -join "\`r\`n"
+[System.IO.File]::WriteAllText('C:\\PoolsideGateBridge\\.env', $envLines, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host '[7/8] Installing nssm service manager...' -ForegroundColor Cyan
 $nssmExe = 'C:\\PoolsideGateBridge\\nssm.exe'
 if (-not (Test-Path $nssmExe)) {
