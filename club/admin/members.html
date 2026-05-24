@@ -869,7 +869,7 @@ const App = (() => {
         <div class="app" data-id="${a.id}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
             <div style="flex:1;min-width:0">
-              <h3 style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${escapeHtml(a.family_name)} <span class="pill ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span> ${paymentBadges(a)}</h3>
+              <h3 style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${escapeHtml(a.family_name)} <span class="pill ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span> ${paymentBadges(a)}${a.no_app_member ? ' <span class="pill" style="background:#f1f5f9;color:#475569" title="Applicant opted out of the Poolside app — handle them off-platform (paper roster, phone calls, etc.)">🚫 no app</span>' : ''}</h3>
               <div class="meta">${escapeHtml(a.primary_name)}${a.primary_email ? ' · ' + escapeHtml(a.primary_email) : ''}${a.primary_phone ? ' · ' + escapeHtml(formatPhone(a.primary_phone)) : ''} · ${a.num_adults} adults / ${a.num_kids} kids (${total} total)</div>
               ${a.body ? `<div class="body">${escapeHtml(a.body)}</div>` : ''}
               ${a.admin_notes ? `<div class="note">📝 ${escapeHtml(a.admin_notes)}</div>` : ''}

@@ -133,6 +133,32 @@
     <div class="step" data-step="1">
       <h2>Family info</h2>
 
+      <!-- Sign-up mode toggle (Doug 2026-05-23). Default to "Full app
+           experience" — same flow as before. "Just sign me up" is an
+           explicit opt-out for members who'd rather not use the app at
+           all. Selection drives:
+             - what the welcome email says (no magic-link CTA in no-app)
+             - what the success page says
+             - which copy hints render under phone fields
+             - the no_app_member flag stored on the application row -->
+      <div class="signup-mode" style="margin:0 0 22px;padding:14px 16px;background:var(--bg-2);border-radius:12px;border:1px solid var(--border)">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px">How do you want to use this?</div>
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;margin-bottom:6px;background:#fff;border:1.5px solid var(--blue);border-radius:10px;cursor:pointer">
+          <input type="radio" name="signup_mode" value="full_app" checked onchange="onSignupModeChange()" style="margin-top:3px;flex-shrink:0">
+          <div>
+            <div style="font-weight:600;font-size:14px">📱 Full app experience <span style="color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-left:4px">recommended</span></div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5">Pool pass on phone, online party booking, push reminders for events + closures, magic-link sign-in (no password).</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1.5px solid var(--border);border-radius:10px;cursor:pointer">
+          <input type="radio" name="signup_mode" value="no_app" onchange="onSignupModeChange()" style="margin-top:3px;flex-shrink:0">
+          <div>
+            <div style="font-weight:600;font-size:14px">📝 Just sign me up</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5">You'll be a paid member and welcome at the pool. Some features won't be available without the app. You can opt in any time later — no setup needed.</div>
+          </div>
+        </label>
+      </div>
+
       <label style="margin-top:0">Family last name *</label>
       <input id="family_name" placeholder="Smith">
 
@@ -142,7 +168,10 @@
 
       <label>Primary phone *</label>
       <input id="primary_phone" type="tel" placeholder="(555) 123-4567" oninput="formatPhoneInput(this)">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5">💡 Once approved, you can sign in with this number — we text a 1-tap code, no password.<br>By providing your phone number you consent to receive transactional SMS (sign-in codes, dues reminders, account notifications) from Poolside on behalf of your club. Frequency varies (typically 1–5 msgs/mo). Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="https://www.poolsideapp.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://www.poolsideapp.com/terms.html" target="_blank" rel="noopener">Terms</a>.</div>
+      <!-- Two flavours of this hint — one for full-app, one for no-app.
+           onSignupModeChange() flips display between them. -->
+      <div id="phone-hint-app" style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5">💡 Once approved, you can sign in with this number — we text a 1-tap code, no password.<br>By providing your phone number you consent to receive transactional SMS (sign-in codes, dues reminders, account notifications) from Poolside on behalf of your club. Frequency varies (typically 1–5 msgs/mo). Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="https://www.poolsideapp.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://www.poolsideapp.com/terms.html" target="_blank" rel="noopener">Terms</a>.</div>
+      <div id="phone-hint-noapp" style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5;display:none">📞 Used by the board to reach you about dues + club news. No SMS reminders are sent unless you later opt into the app.</div>
 
       <label>Primary email *</label>
       <input id="primary_email" type="email" placeholder="you@example.com">
@@ -160,7 +189,7 @@
     <!-- Step 2 — Adults + children -->
     <div class="step" data-step="2" style="display:none">
       <h2>Family members</h2>
-      <p class="lede" style="margin-top:0">Tell us who's on the membership. We'll create a Poolside account for each adult after approval.</p>
+      <p class="lede" id="step2-lede" style="margin-top:0">Tell us who's on the membership. We'll create a Poolside account for each adult after approval.</p>
 
       <div class="row2">
         <div>
@@ -418,6 +447,36 @@ function formatPhoneInput(el) {
   el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
 }
 
+// 2026-05-23 Doug — "guest checkout" toggle wiring. Flips copy across the
+// form without hiding any fields (we still need the same contact info; just
+// the framing changes for members who don't want the app).
+function onSignupModeChange() {
+  const noApp = (document.querySelector('input[name="signup_mode"]:checked')?.value === 'no_app');
+  // Visual emphasis on the selected card.
+  document.querySelectorAll('.signup-mode label').forEach((lbl) => {
+    const input = lbl.querySelector('input[type=radio]');
+    lbl.style.borderColor = (input && input.checked) ? 'var(--blue)' : 'var(--border)';
+  });
+  // Primary phone hint — SMS-consent copy is the app version, short
+  // "board contact only" is the no-app version.
+  const a = document.getElementById('phone-hint-app');
+  const n = document.getElementById('phone-hint-noapp');
+  if (a) a.style.display = noApp ? 'none' : 'block';
+  if (n) n.style.display = noApp ? 'block' : 'none';
+  // Step-2 lede — drop the "Poolside account for each adult" line for no-app.
+  const s2 = document.getElementById('step2-lede');
+  if (s2) {
+    s2.textContent = noApp
+      ? 'Tell us who\'s on the membership. The board needs everyone\'s name + DOB for the roster.'
+      : 'Tell us who\'s on the membership. We\'ll create a Poolside account for each adult after approval.';
+  }
+  // Per-adult phone-sign-in hint — hide for no-app (irrelevant if they
+  // never sign in).
+  document.querySelectorAll('.per-adult-app-hint').forEach((el) => {
+    el.style.display = noApp ? 'none' : 'block';
+  });
+}
+
 // Real-time DOB sanity check. Browsers DON'T enforce min/max on typed
 // input — only on the native picker. So we re-validate here and visually
 // flag the field if the year is outside 1900..today.
@@ -464,7 +523,7 @@ function rebuildPeople() {
           <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)"></div>
           <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin:8px 0 2px;line-height:1.45">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
+        <div class="per-adult-app-hint" style="font-size:11px;color:var(--muted);margin:8px 0 2px;line-height:1.45">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
         <label>Email${i === 0 ? '' : ' (opt)'}</label>
         <input data-adult="${i}" data-field="email" type="email">
       </div>
@@ -482,6 +541,9 @@ function rebuildPeople() {
       </div>
     `);
   }
+  // Re-apply mode-conditional hints after the per-adult rows are rebuilt
+  // (.per-adult-app-hint elements live inside the newly-inserted markup).
+  if (typeof onSignupModeChange === 'function') onSignupModeChange();
 }
 
 // Step 3 — policies (loaded dynamically per tenant)
@@ -813,6 +875,11 @@ async function submitApplication() {
     signature_primary:  (adults[0] && adults[0].signature_url) || null,
     signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
     referral_code: window.__POOLSIDE_REF_CODE__ || null,
+    // 2026-05-23 "guest checkout" — flag set when applicant ticks the
+    // "Just sign me up" radio at the top of step 1. Backend uses it to
+    // pick the _no_app welcome email template + show a pill in the
+    // admin Pipeline.
+    no_app_member: (document.querySelector('input[name="signup_mode"]:checked')?.value === 'no_app'),
   };
 
   const btn = document.getElementById('next-btn');
@@ -936,19 +1003,31 @@ async function submitApplication() {
     // redundant (admin already has the task; the button just creates a
     // duplicate). For admin self-signup, show a CTA back to the dashboard.
     const isAdminFlow = (new URLSearchParams(window.location.search)).get('prefill') === 'admin';
+    // Read the no-app flag once at submit time. 2026-05-23 Doug: drop the
+    // "magic-link sign-in" promise for guest-checkout members — they don't
+    // want it, mentioning it makes the welcome flow feel forced.
+    const isNoApp = (document.querySelector('input[name="signup_mode"]:checked')?.value === 'no_app');
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. ${isVenmo
-        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot — typically within <b>1–10 days</b> (it's a volunteer-run board). You'll get a welcome email with a magic-link sign-in when you're in.`
+        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot — typically within <b>1–10 days</b> (it's a volunteer-run board).${isNoApp
+            ? ` You'll get a welcome email from the board once you're in.`
+            : ` You'll get a welcome email with a magic-link sign-in when you're in.`}`
         : `The board will review and reach out within 1–10 days — it's a volunteer-run board.`}</p>
+      ${isNoApp ? `
+        <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);font-size:13.5px;color:var(--text);line-height:1.55">
+          <b>📝 No-app member — you're all set.</b><br>
+          Once approved, you're on the roster. Pool entry is whatever the club uses (printed list, staff check-in, keyfob — the board will let you know). If you ever change your mind, you can sign in with this email or phone any time at <a href="/m/login.html" style="color:var(--blue);font-weight:600">${window.location.host}/m/</a> — no setup needed.
+        </div>
+      ` : ''}
       ${isAdminFlow ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid #cfe1f0;border-radius:14px;background:#f0f6fb">
           <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">You're set up as a member. Now back to admin setup →</div>
           <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Your application is queued. Head back to admin to approve yourself — should be one click in the Pending applications queue.</div>
           <a href="/club/admin/" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:13px">Continue to admin →</a>
         </div>
-      ` : `<p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>`}
+      ` : (!isNoApp ? `<p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>` : '')}
     `;
   } catch (e) { show(e.message); btn.disabled = false; btn.textContent = orig; }
 }

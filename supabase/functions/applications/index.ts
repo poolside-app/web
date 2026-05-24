@@ -102,7 +102,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, created_at, updated_at';
 
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'venmo']);
 
@@ -418,6 +418,12 @@ Deno.serve(async (req) => {
       signature_guardian: sigGuardian,
       tier_slug: strOrNull(body.tier_slug),
       referral_code: body.referral_code ? String(body.referral_code).trim().toUpperCase().slice(0, 32) : null,
+      // 2026-05-23 "guest checkout" — applicant ticked "Just sign me up"
+      // (don't want the app). Used downstream to pick the welcome email
+      // template + show a pill in the Pipeline. Doesn't change the
+      // applicant's underlying capability — they can always opt into the
+      // app later via /m/login.html.
+      no_app_member: body.no_app_member === true,
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
@@ -970,7 +976,9 @@ Deno.serve(async (req) => {
 
       // Branch into one of the welcome-email registry templates based on
       // payment status. Admin can customize each variant separately via
-      // the Emails admin page.
+      // the Emails admin page. 2026-05-23 — when the applicant opted into
+      // "guest checkout" (no_app_member=true), append "_no_app" so they
+      // get the warmer, magic-link-free copy.
       let templateKey = 'application_approved_other';
       if (app.payment_status === 'paid') {
         if      (app.payment_method === 'stripe')      templateKey = 'application_approved_stripe_paid';
@@ -978,6 +986,9 @@ Deno.serve(async (req) => {
         else if (app.payment_method === 'stripe_plan') templateKey = 'application_approved_plan_first';
       } else if (app.payment_method === 'venmo' && venmo) {
         templateKey = 'application_approved_unpaid_venmo';
+      }
+      if (app.no_app_member) {
+        templateKey = templateKey + '_no_app';
       }
 
       // For Stripe paths, the welcome email IS the receipt — the submit

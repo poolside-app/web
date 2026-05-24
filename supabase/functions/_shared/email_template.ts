@@ -182,6 +182,85 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       <p style="margin:0;color:#64748b;font-size:13px">A board member will reach out shortly with payment details.</p>
     `),
   },
+  // ── "Guest checkout" no-app member variants (Doug 2026-05-23) ─────────
+  // Sent to applicants who picked "Just sign me up" on the apply form.
+  // Short + warm copy with no magic-link CTA. One subtle "you can opt in
+  // later" line at the bottom for the day they change their mind. Same
+  // templating system — admins can customize each one in the Emails admin.
+  {
+    key: 'application_approved_stripe_paid_no_app',
+    label: 'Welcome (no app) — Stripe paid',
+    description: 'Sent to guest-checkout applicants whose Stripe payment cleared. No magic-link CTA — they opted out of the app.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'club_url'],
+    default_subject: 'Welcome to {{tenant_name}}!',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your payment cleared. Your family's on the roster. See you at the pool!</p>
+      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
+      </div>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
+    `),
+  },
+  {
+    key: 'application_approved_venmo_verified_no_app',
+    label: 'Welcome (no app) — Venmo verified at approval',
+    description: 'Sent to guest-checkout applicants when admin approves + verifies Venmo in one shot.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'club_url'],
+    default_subject: 'Payment verified — welcome to {{tenant_name}}!',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Payment verified — welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — your Venmo payment was verified by the board. Dues are paid in full and your family's on the roster. See you at the pool!</p>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Changed your mind about the app? You can sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
+    `),
+  },
+  {
+    key: 'application_approved_unpaid_venmo_no_app',
+    label: 'Approved (no app) — final step is Venmo payment',
+    description: 'Sent to guest-checkout applicants who are approved but haven\'t Venmo\'d their dues yet.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'venmo_handle', 'club_url'],
+    default_subject: 'You\'re approved — final step is dues — {{tenant_name}}',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 You're approved!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — your application was approved. One last thing: please send your annual dues via Venmo so we can finalize your membership.</p>
+      <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:18px 0 6px;font-size:16px">Send Venmo</h3>
+      <p style="margin:0 0 12px;color:#475569">Send your annual dues to <b>@{{venmo_handle}}</b>. The board will email another confirmation once the payment lands.</p>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">You can manage your membership online any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
+    `),
+  },
+  {
+    key: 'application_approved_plan_first_no_app',
+    label: 'Welcome (no app) — first installment paid',
+    description: 'Sent to guest-checkout applicants whose first Stripe-plan installment cleared.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'club_url'],
+    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your first installment cleared. Your membership is active and your family's on the roster. Your second installment will auto-charge on the final due date.</p>
+      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
+      </div>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
+    `),
+  },
+  {
+    key: 'application_approved_other_no_app',
+    label: 'Approved (no app) — payment TBD',
+    description: 'Generic approval email for guest-checkout applicants when no specific payment branch matches.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'club_url'],
+    default_subject: 'Welcome to {{tenant_name}}!',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — your application was approved. Your family's on the roster.</p>
+      <p style="margin:0 0 12px;color:#64748b;font-size:13px">A board member will reach out shortly with payment details.</p>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
+    `),
+  },
   {
     key: 'application_rejected',
     label: 'Application rejected',
