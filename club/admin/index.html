@@ -122,6 +122,7 @@ const PROGRAMS_URL = `${SUPABASE_URL}/functions/v1/programs`;
 const VOLUNTEER_URL = `${SUPABASE_URL}/functions/v1/volunteer`;
 const CAMPAIGNS_URL = `${SUPABASE_URL}/functions/v1/campaigns`;
 const TASKS_URL = `${SUPABASE_URL}/functions/v1/admin_tasks`;
+const GATE_URL = `${SUPABASE_URL}/functions/v1/gate_admin`;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -284,6 +285,24 @@ document.getElementById('signout').addEventListener('click', logout);
          and the dashboard read as "all clear" because action items were
          below the stats fold. Hoisting attention cards above stats so
          pending work is impossible to miss. -->
+
+    <!-- Quick-unlock card — only renders when this tenant has the gate
+         add-on at status='active' AND the bridge is online. Lives above
+         everything else so a board member at the gate can fire an unlock
+         without going to settings or signing in on the member side.
+         Hidden by default; loadGateUnlockCard() flips display when the
+         get_status response confirms readiness. Doug 2026-05-23. -->
+    <div class="card" id="gate-quick-unlock" style="display:none;background:linear-gradient(135deg,var(--blue),var(--blue-2));color:#fff;border:0">
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <div style="font-size:42px;line-height:1">🚪</div>
+        <div style="flex:1;min-width:200px">
+          <h2 style="color:#fff;font-size:18px;margin:0 0 4px">Unlock the gate</h2>
+          <div id="gate-quick-status" style="font-size:13px;opacity:.85">Bridge online — tap to fire an unlock at the panel.</div>
+        </div>
+        <button id="gate-quick-btn" type="button" style="padding:14px 28px;background:#fff;color:var(--blue);border:0;border-radius:12px;font:700 15px Inter,sans-serif;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.15)">🚪 Unlock now</button>
+      </div>
+      <div id="gate-quick-feedback" style="font-size:13px;margin-top:10px;min-height:18px"></div>
+    </div>
 
     <div class="card" id="activity-card">
       <h2>What needs your attention</h2>
@@ -561,6 +580,72 @@ document.getElementById('signout').addEventListener('click', logout);
   } catch {
     document.getElementById('activity-card').innerHTML = `<h2>What needs your attention</h2><div class="placeholder">Couldn't load activity feed.</div>`;
     ['pay-count','ev-count','prog-count','camp-count'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '–'; });
+  }
+
+  // Quick-unlock card — visible only when this tenant has the gate
+  // add-on active AND the bridge is reachable. Doug 2026-05-23: surface
+  // the unlock right on the admin dashboard for board members at the
+  // gate, so they don't have to drill into Settings → Remote keyfob
+  // access or sign in on the member side.
+  try {
+    // Cheap pre-filter: skip the API call entirely if the tenant doesn't
+    // have the gate feature enabled. Avoids one network round-trip on
+    // every dashboard load for clubs that never bought the add-on.
+    const features = (data.tenant && data.tenant.features) || {};
+    if (!features.gate) throw new Error('gate feature not enabled');
+
+    const gr = await fetch(GATE_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'get_status' }),
+    });
+    if (!gr.ok) throw new Error('get_status fetch failed');
+    const gdata = await gr.json();
+    if (!gdata.ok || !gdata.panel) throw new Error('no panel data');
+    const panel = gdata.panel;
+    const bh = gdata.bridge_health || { state: 'unknown' };
+    // Only reveal when status='active' AND bridge is at least heartbeating
+    // recently. Offline/never_seen would queue an unlock the panel can't
+    // execute — surfacing the button would just produce dead taps.
+    const ready = panel.status === 'active' && (bh.state === 'online' || bh.state === 'stale') && !!panel.panel_host;
+    if (!ready) throw new Error('gate not ready for quick-unlock');
+
+    const card = document.getElementById('gate-quick-unlock');
+    card.style.display = 'block';
+    const statusEl = document.getElementById('gate-quick-status');
+    if (statusEl) {
+      statusEl.textContent = bh.state === 'online'
+        ? `🟢 Bridge online (last seen ${bh.last_seen_seconds_ago}s ago) — tap to fire an unlock at the panel.`
+        : `🟡 Bridge briefly stale (~${bh.last_seen_seconds_ago}s ago). Unlock will fire when the bridge polls next.`;
+    }
+    const btn = document.getElementById('gate-quick-btn');
+    const fb  = document.getElementById('gate-quick-feedback');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Sending…';
+      fb.textContent = '';
+      fb.style.color = '';
+      try {
+        const ur = await fetch(GATE_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'test_unlock' }),
+        });
+        const udata = await ur.json();
+        if (!udata.ok) throw new Error(udata.error || 'Unlock failed');
+        fb.style.color = '#dcfce7';
+        fb.textContent = '✓ Unlock queued — the bridge picks it up within ~2 seconds. Gate should open shortly.';
+      } catch (e) {
+        fb.style.color = '#fecaca';
+        fb.textContent = '✗ ' + (e.message || 'Unlock failed');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  } catch (_) {
+    // Card stays hidden — no harm, no log spam.
   }
 
   // Per-role task queue (admin_tasks)

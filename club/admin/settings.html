@@ -1381,6 +1381,17 @@ function renderGateActive(panel, health) {
       <a href="mailto:doug@poolsideapp.com?subject=Gate%20panel%20question" style="color:var(--blue);font-weight:600">email Doug</a>
       if you need anything beyond the steps above.
     </p>
+    <!-- Test unlock — admin-side button that fires a real unlock command at
+         the panel via the bridge. Only enabled when bridge is online or
+         briefly stale (offline means the bridge won't pick it up anyway).
+         Doug 2026-05-23 ask: surface this on the tenant admin too, not
+         only on /admin/gate-integrations.html. -->
+    <div style="margin:0 0 18px;padding:14px 16px;background:var(--bg-2);border-radius:10px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:6px">Test the gate from here</div>
+      <p style="margin:0 0 10px;font-size:12.5px;color:var(--muted);line-height:1.5">Fires a real unlock at the panel (bypasses the dues-paid check). Useful when you're at the gate troubleshooting — no need to log in as a member.</p>
+      <button class="btn btn-primary" onclick="testGateUnlock()" ${state === 'offline' ? 'disabled style="opacity:.5"' : ''} style="background:var(--blue);color:#fff;padding:10px 18px;font-size:13px">⚡ Test unlock</button>
+      ${state === 'offline' ? '<span style="margin-left:10px;font-size:12px;color:var(--muted)">Bridge offline — fix the bridge first.</span>' : ''}
+    </div>
     <details style="margin-top:18px">
       <summary style="cursor:pointer;font-size:13px;color:var(--blue);font-weight:600">Recent unlocks (last 25)</summary>
       <div id="gate-unlocks-list" style="margin-top:10px;font-size:13px;color:var(--muted)">Loading…</div>

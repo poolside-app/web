@@ -521,6 +521,14 @@ async function loadDeployments() {
     const activateBtn = preActive
       ? `<button class="btn-primary" onclick="activateGate('${escapeHtml(p.tenant_id)}', '${escapeHtml(p.tenant_display_name || p.tenant_slug || 'this club')}')" style="margin-bottom:4px">🟢 Activate gate</button>`
       : '';
+    // Inline Test unlock — visible only when status='active' AND panel_host
+    // is configured (the bridge needs both before it can talk to the panel).
+    // Doug 2026-05-23: hoisted out of the Configure modal so it's one click
+    // from the table without opening the deeper config UI.
+    const canTestUnlock = p.status === 'active' && !!p.panel_host;
+    const testUnlockBtn = canTestUnlock
+      ? `<button class="btn-sm" onclick="testUnlock('${escapeHtml(p.tenant_id)}')" style="margin-top:4px">⚡ Test unlock</button>`
+      : '';
 
     return `
       <tr data-tenant-id="${escapeHtml(p.tenant_id)}" style="${rowStyle}">
@@ -541,6 +549,7 @@ async function loadDeployments() {
             </select>
             <button class="btn-sm" onclick="openConfig('${escapeHtml(p.tenant_id)}')">🔧 Configure</button>
             <button class="btn-sm" onclick="openInvoiceModal('${escapeHtml(p.tenant_id)}')">💸 Send invoice</button>
+            ${testUnlockBtn}
           </div>
         </td>
       </tr>
