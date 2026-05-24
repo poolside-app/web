@@ -671,7 +671,7 @@ $pyOk = $false
 try { $v = (&amp; python --version 2>&amp;1) -replace '^Python ', ''; if ([version]$v -ge [version]'3.10.0') { $pyOk = $true; Write-Host "      Found Python $v" -ForegroundColor Green } } catch {}
 if (-not $pyOk) {
   Write-Host '      Python not found. Installing Python 3.12 silently (~1 min)...' -ForegroundColor Yellow
-  $py = "$env:TEMP\python-installer.exe"
+  $py = "$env:TEMP\\python-installer.exe"
   Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe' -OutFile $py -UseBasicParsing
   Start-Process -FilePath $py -ArgumentList '/quiet','InstallAllUsers=1','PrependPath=1','Include_pip=1' -Wait
   Remove-Item $py
@@ -687,22 +687,22 @@ foreach ($svc in 'PoolsideGateBridge','GateBridge') {
     Start-Sleep -Seconds 2
   }
 }
-Write-Host '[3/8] Wiping C:\PoolsideGateBridge...' -ForegroundColor Cyan
-if (Test-Path 'C:\PoolsideGateBridge') { Remove-Item 'C:\PoolsideGateBridge' -Recurse -Force }
-New-Item -ItemType Directory -Path 'C:\PoolsideGateBridge' -Force | Out-Null
+Write-Host '[3/8] Wiping C:\\PoolsideGateBridge...' -ForegroundColor Cyan
+if (Test-Path 'C:\\PoolsideGateBridge') { Remove-Item 'C:\\PoolsideGateBridge' -Recurse -Force }
+New-Item -ItemType Directory -Path 'C:\\PoolsideGateBridge' -Force | Out-Null
 Write-Host '[4/8] Downloading bridge code from GitHub...' -ForegroundColor Cyan
-$tmp = "$env:TEMP\pl-bridge-$(Get-Random)"
+$tmp = "$env:TEMP\\pl-bridge-$(Get-Random)"
 Invoke-WebRequest -Uri 'https://github.com/poolside-app/web/archive/refs/heads/main.zip' -OutFile "$tmp.zip" -UseBasicParsing
 Expand-Archive -Path "$tmp.zip" -DestinationPath $tmp -Force
-Copy-Item -Path "$tmp\web-main\bridge\*" -Destination 'C:\PoolsideGateBridge\' -Recurse -Force
+Copy-Item -Path "$tmp\\web-main\\bridge\\*" -Destination 'C:\\PoolsideGateBridge\\' -Recurse -Force
 Remove-Item "$tmp.zip", $tmp -Recurse -Force
 Write-Host '[5/8] Creating venv + installing deps (~45 sec)...' -ForegroundColor Cyan
-Set-Location 'C:\PoolsideGateBridge'
+Set-Location 'C:\\PoolsideGateBridge'
 &amp; python -m venv venv
-&amp; '.\venv\Scripts\python.exe' -m pip install --upgrade pip --quiet
-&amp; '.\venv\Scripts\pip.exe' install -r requirements.txt --quiet
+&amp; '.\\venv\\Scripts\\python.exe' -m pip install --upgrade pip --quiet
+&amp; '.\\venv\\Scripts\\pip.exe' install -r requirements.txt --quiet
 Write-Host '[6/8] Writing .env (BRIDGE_ID pre-filled for this tenant)...' -ForegroundColor Cyan
-Set-Content -Path 'C:\PoolsideGateBridge\.env' -Encoding UTF8 -Value @(
+Set-Content -Path 'C:\\PoolsideGateBridge\\.env' -Encoding UTF8 -Value @(
   'SUPABASE_URL=https://sdewylbddkcvidwosgxo.supabase.co',
   'BRIDGE_ID=${escapeHtml(bridgeId)}',
   'BRIDGE_SECRET=PASTE_FROM_ROTATE_POPUP_HERE',
@@ -711,19 +711,19 @@ Set-Content -Path 'C:\PoolsideGateBridge\.env' -Encoding UTF8 -Value @(
   'STALE_COMMAND_SEC=60'
 )
 Write-Host '[7/8] Installing nssm service manager...' -ForegroundColor Cyan
-$nssmExe = 'C:\PoolsideGateBridge\nssm.exe'
+$nssmExe = 'C:\\PoolsideGateBridge\\nssm.exe'
 if (-not (Test-Path $nssmExe)) {
-  $nssmZip = "$env:TEMP\nssm.zip"; $nssmDir = "$env:TEMP\nssm-extract"
+  $nssmZip = "$env:TEMP\\nssm.zip"; $nssmDir = "$env:TEMP\\nssm-extract"
   Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile $nssmZip -UseBasicParsing
   Expand-Archive -Path $nssmZip -DestinationPath $nssmDir -Force
-  Copy-Item -Path "$nssmDir\nssm-2.24\win64\nssm.exe" -Destination $nssmExe -Force
+  Copy-Item -Path "$nssmDir\\nssm-2.24\\win64\\nssm.exe" -Destination $nssmExe -Force
   Remove-Item $nssmZip, $nssmDir -Recurse -Force
 }
 Write-Host '[8/8] Registering Windows service (auto-start + auto-restart + log rotation)...' -ForegroundColor Cyan
-&amp; $nssmExe install PoolsideGateBridge 'C:\PoolsideGateBridge\venv\Scripts\python.exe' 'C:\PoolsideGateBridge\gate_bridge.py' | Out-Null
-&amp; $nssmExe set PoolsideGateBridge AppDirectory 'C:\PoolsideGateBridge' | Out-Null
-&amp; $nssmExe set PoolsideGateBridge AppStdout 'C:\PoolsideGateBridge\bridge.log' | Out-Null
-&amp; $nssmExe set PoolsideGateBridge AppStderr 'C:\PoolsideGateBridge\bridge.log' | Out-Null
+&amp; $nssmExe install PoolsideGateBridge 'C:\\PoolsideGateBridge\\venv\\Scripts\\python.exe' 'C:\\PoolsideGateBridge\\gate_bridge.py' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppDirectory 'C:\\PoolsideGateBridge' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppStdout 'C:\\PoolsideGateBridge\\bridge.log' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppStderr 'C:\\PoolsideGateBridge\\bridge.log' | Out-Null
 &amp; $nssmExe set PoolsideGateBridge AppRotateFiles 1 | Out-Null
 &amp; $nssmExe set PoolsideGateBridge AppRotateBytes 10485760 | Out-Null
 &amp; $nssmExe set PoolsideGateBridge Start SERVICE_AUTO_START | Out-Null
@@ -735,17 +735,17 @@ Write-Host ''
 Write-Host '== INSTALL DONE — NEXT STEPS ==' -ForegroundColor Green
 Write-Host '  1. Notepad will open on .env in 2 sec — replace PASTE_FROM_ROTATE_POPUP_HERE with the BRIDGE_SECRET from step 3.' -ForegroundColor Yellow
 Write-Host '  2. Save + close Notepad.' -ForegroundColor Yellow
-Write-Host '  3. Run:  Start-Service PoolsideGateBridge ; Get-Content C:\PoolsideGateBridge\bridge.log -Tail 20 -Wait' -ForegroundColor Yellow
+Write-Host '  3. Run:  Start-Service PoolsideGateBridge ; Get-Content C:\\PoolsideGateBridge\\bridge.log -Tail 20 -Wait' -ForegroundColor Yellow
 Write-Host '          Watch for "First heartbeat ok" within ~5 seconds. Ctrl+C to stop tailing once verified.' -ForegroundColor Yellow
 Write-Host ''
 Write-Host 'Reboot safety: Windows Service Control Manager auto-starts PoolsideGateBridge on every boot.' -ForegroundColor Green
 Write-Host 'Crash safety: nssm auto-restarts the service after 5s if the Python process exits.' -ForegroundColor Green
 Start-Sleep -Seconds 2
-notepad 'C:\PoolsideGateBridge\.env'</pre>
+notepad 'C:\\PoolsideGateBridge\\.env'</pre>
         <button class="btn-sm" onclick="copyInstallSnippet('${escapeHtml(tenantId)}')">📋 Copy installer</button>
 
         <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 5 — Paste BRIDGE_SECRET into the open Notepad</h4>
-        <p style="margin:0 0 6px">Notepad pops open on <code>C:\PoolsideGateBridge\.env</code> after
+        <p style="margin:0 0 6px">Notepad pops open on <code>C:\\PoolsideGateBridge\\.env</code> after
         the installer finishes. The file looks like this — replace the placeholder on
         line 3 with the bridge_secret from step 3:</p>
         <pre id="env-snippet-${escapeHtml(tenantId)}" style="background:#fff;border:1.5px dashed var(--border);padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0;font-family:Consolas,monospace">${escapeHtml(envSnippet)}</pre>
@@ -790,7 +790,7 @@ notepad 'C:\PoolsideGateBridge\.env'</pre>
         <ul style="padding-left:20px;margin:4px 0 4px;font-size:13px">
           <li><b>Service starts but log shows "Auth failed (401)"</b> → BRIDGE_SECRET in
           <code>.env</code> doesn't match the latest rotation. Rotate again here, edit
-          <code>C:\PoolsideGateBridge\.env</code>, then
+          <code>C:\\PoolsideGateBridge\\.env</code>, then
           <code>Restart-Service PoolsideGateBridge</code>.</li>
           <li><b>Service starts, online, but Test unlock = panel_unreachable</b> → wrong
           panel IP, panel powered off, or PC + panel on different VLANs. Confirm with
