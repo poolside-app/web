@@ -665,6 +665,11 @@ $me = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($me)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Write-Host 'Run PowerShell as Administrator (right-click Start - Windows PowerShell (Admin)) and re-paste.' -ForegroundColor Red; return
 }
+# Step out of any subdirectory that could lock the install folder
+# during the wipe (Doug 2026-05-23 hit "Cannot remove the item ...
+# because it is in use" because PS was sitting at C:\PoolsideGateBridge
+# from the previous attempt). Always re-anchor to C:\.
+Set-Location 'C:\\'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Write-Host '[1/8] Checking Python 3.10+...' -ForegroundColor Cyan
 $pyOk = $false
