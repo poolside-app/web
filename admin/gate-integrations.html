@@ -619,11 +619,26 @@ function paintConfig(p) {
       </summary>
       <div style="margin-top:14px;font-size:13.5px;line-height:1.6;color:var(--text)">
 
+        ${healthState === 'online' ? `
+        <div style="background:#dcfce7;border-left:4px solid var(--green);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;line-height:1.5">
+          <b>✓ Bridge is already 🟢 online for this tenant.</b> You can skip the install
+          steps below — they only apply when setting up a fresh bridge on a new PC.
+          Just close this walkthrough, confirm the panel host / creds above are correct,
+          hit ⚡ Test unlock to verify, and then 🟢 Activate gate on the row.
+        </div>` : ''}
         <div style="background:#fffbeb;border-left:4px solid var(--sun);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;line-height:1.5">
           <b>You need:</b> the club's on-site Windows PC (on the same LAN as the panel),
           AnyDesk or RDP into it, and ~20 minutes. The bridge is a Python service that
           runs there permanently — polls the cloud every 1.5s and fires unlocks at the
           panel over LAN.
+          <br><br>
+          <b>Already running a bridge from a previous install?</b> Don't re-run the
+          installer in step 5 — it overwrites <code>.env</code> and would stomp on your
+          working credentials. Check the bridge-health pill at the top of this modal —
+          if it's 🟢 online, you're done; skip to step 9 (Activate). If you need to
+          point an existing bridge at a different BRIDGE_ID/BRIDGE_SECRET (rare),
+          just rotate the secret and edit <code>C:\\PoolsideGateBridge\\.env</code>
+          directly.
         </div>
 
         <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 1 — Fill in the panel info above ↑</h4>
@@ -643,28 +658,50 @@ function paintConfig(p) {
         plaintext secret <b>once</b> — copy it now, you'll paste it in Step 6.</p>
 
         <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 4 — Install Python 3.11+ (skip if already there)</h4>
+        <p style="margin:0 0 6px">Open <b>PowerShell as Administrator</b> on the on-site PC and run:</p>
         <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">python --version</pre>
-        <p style="margin:0 0 6px">If you get "Python was not found," install from
+        <p style="margin:0 0 6px">If you get <i>"Python was not found"</i>, install from
         <a href="https://python.org" target="_blank" rel="noopener">python.org</a> —
-        tick <b>"Add Python to PATH"</b> during install.</p>
+        tick <b>"Add Python to PATH"</b> during install, then close + reopen PowerShell.</p>
 
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 5 — Copy the bridge code to the PC</h4>
-        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">git clone https://github.com/poolside-app/web C:\\poolside-tmp
-xcopy C:\\poolside-tmp\\bridge C:\\PoolsideGateBridge\\ /E /I
-rmdir /s /q C:\\poolside-tmp</pre>
-
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 6 — Set up venv + .env</h4>
-        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">cd C:\\PoolsideGateBridge
+        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 5 — One-paste installer (PowerShell)</h4>
+        <p style="margin:0 0 6px">Paste this whole block into Administrator PowerShell. Downloads
+        the bridge code, sets up the venv, writes <code>.env</code> with this tenant's
+        <code>BRIDGE_ID</code> baked in, and opens Notepad so you can paste BRIDGE_SECRET.
+        No git, no cmd-style commands — pure PowerShell so it runs on a fresh Windows PC.</p>
+        <pre id="install-snippet-${escapeHtml(tenantId)}" style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12px;overflow-x:auto;margin:6px 0;line-height:1.5;white-space:pre">$ErrorActionPreference = 'Stop'
+$null = python --version 2>&amp;1
+if ($LASTEXITCODE -ne 0) { Write-Host 'ERROR: install Python 3.11+ first (https://python.org, tick Add to PATH).' -ForegroundColor Red; return }
+Write-Host '[1/3] Downloading bridge code...' -ForegroundColor Cyan
+$tmp = Join-Path $env:TEMP 'pl-bridge'
+if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+Invoke-WebRequest -Uri 'https://github.com/poolside-app/web/archive/refs/heads/main.zip' -OutFile "$tmp.zip"
+Expand-Archive -Path "$tmp.zip" -DestinationPath $tmp -Force
+New-Item -ItemType Directory -Path 'C:\PoolsideGateBridge' -Force | Out-Null
+Copy-Item -Path "$tmp\web-main\bridge\*" -Destination 'C:\PoolsideGateBridge\' -Recurse -Force
+Remove-Item "$tmp.zip", $tmp -Recurse -Force
+Write-Host '[2/3] Setting up Python venv (~30 sec)...' -ForegroundColor Cyan
+Set-Location 'C:\PoolsideGateBridge'
 python -m venv venv
-venv\\Scripts\\pip install -r requirements.txt
-copy .env.example .env
-notepad .env</pre>
-        <p style="margin:6px 0">In Notepad, replace the placeholders with these values
-        (bridge_id is already filled in for this tenant):</p>
+&amp; '.\venv\Scripts\pip.exe' install -r requirements.txt --quiet
+Write-Host '[3/3] Writing .env...' -ForegroundColor Cyan
+Set-Content -Path 'C:\PoolsideGateBridge\.env' -Encoding UTF8 -Value @(
+  'SUPABASE_URL=https://sdewylbddkcvidwosgxo.supabase.co',
+  'BRIDGE_ID=${escapeHtml(bridgeId)}',
+  'BRIDGE_SECRET=PASTE_FROM_ROTATE_POPUP_HERE'
+)
+Write-Host ''
+Write-Host 'Done. Notepad is opening .env — paste BRIDGE_SECRET from step 3, save, close.' -ForegroundColor Green
+notepad 'C:\PoolsideGateBridge\.env'</pre>
+        <button class="btn-sm" onclick="copyInstallSnippet('${escapeHtml(tenantId)}')">📋 Copy installer</button>
+
+        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 6 — Paste BRIDGE_SECRET in Notepad</h4>
+        <p style="margin:0 0 6px">The installer opens <code>C:\PoolsideGateBridge\.env</code> in
+        Notepad. The file looks like this — replace the placeholder on line 3 with the
+        bridge_secret you copied in step 3:</p>
         <pre id="env-snippet-${escapeHtml(tenantId)}" style="background:#fff;border:1.5px dashed var(--border);padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0;font-family:Consolas,monospace">${escapeHtml(envSnippet)}</pre>
         <button class="btn-sm" onclick="copyEnvSnippet('${escapeHtml(tenantId)}')">📋 Copy .env template</button>
-        <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Replace <code>PASTE_FROM_ROTATE_POPUP_IN_STEP_3</code>
-        with the bridge_secret you copied in step 3. Save + close Notepad.</p>
+        <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Save + close Notepad. The bridge is now ready to smoke-test.</p>
 
         <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 7 — Smoke test in the foreground</h4>
         <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">venv\\Scripts\\python gate_bridge.py</pre>
@@ -760,25 +797,37 @@ nssm status PoolsideGateBridge</pre>
   loadRecentUnlocks(tenantId);
 }
 
+// Copy the PowerShell installer (with bridge_id already pre-filled) to
+// the clipboard so step 5 of the setup walkthrough is one paste.
+async function copyInstallSnippet(tenantId) {
+  return copyBlock('install-snippet-' + tenantId, event?.target);
+}
 // Copy the pre-filled .env template (bridge_id baked in for this tenant)
 // to the clipboard. Doug 2026-05-23: makes step 6 of the setup walkthrough
 // a single click instead of "find the .env.example, edit by hand."
 async function copyEnvSnippet(tenantId) {
-  const el = document.getElementById('env-snippet-' + tenantId);
+  return copyBlock('env-snippet-' + tenantId, event?.target);
+}
+async function copyBlock(elementId, btn) {
+  const el = document.getElementById(elementId);
   if (!el) return;
   // textContent gives us the raw text, not the HTML-escaped version, so
   // BRIDGE_ID and BRIDGE_SECRET land in clipboard exactly as displayed.
   const text = el.textContent;
   try {
     await navigator.clipboard.writeText(text);
-    const orig = event.target.textContent;
-    event.target.textContent = '✓ Copied';
-    event.target.style.background = '#16a34a';
-    event.target.style.color = '#fff';
+    const orig = btn ? btn.textContent : null;
+    if (btn) {
+      btn.textContent = '✓ Copied';
+      btn.style.background = '#16a34a';
+      btn.style.color = '#fff';
+    }
     setTimeout(() => {
-      event.target.textContent = orig;
-      event.target.style.background = '';
-      event.target.style.color = '';
+      if (btn) {
+        btn.textContent = orig;
+        btn.style.background = '';
+        btn.style.color = '';
+      }
     }, 1500);
   } catch (e) {
     // Fallback: select the text so the admin can Ctrl+C manually.
