@@ -621,24 +621,21 @@ function paintConfig(p) {
 
         ${healthState === 'online' ? `
         <div style="background:#dcfce7;border-left:4px solid var(--green);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;line-height:1.5">
-          <b>✓ Bridge is already 🟢 online for this tenant.</b> You can skip the install
-          steps below — they only apply when setting up a fresh bridge on a new PC.
-          Just close this walkthrough, confirm the panel host / creds above are correct,
-          hit ⚡ Test unlock to verify, and then 🟢 Activate gate on the row.
+          <b>✓ Bridge is 🟢 online for this tenant.</b> Skip to step 7 — Activate gate.
+          The installer below is still safe to re-run if you want a clean reinstall.
         </div>` : ''}
         <div style="background:#fffbeb;border-left:4px solid var(--sun);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;line-height:1.5">
-          <b>You need:</b> the club's on-site Windows PC (on the same LAN as the panel),
-          AnyDesk or RDP into it, and ~20 minutes. The bridge is a Python service that
-          runs there permanently — polls the cloud every 1.5s and fires unlocks at the
-          panel over LAN.
+          <b>What you need:</b> Administrator access to the club's on-site Windows PC
+          (on the same LAN as the panel), AnyDesk or RDP into it, and ~5 minutes.
+          The bridge is a Python service that runs there permanently — polls the cloud
+          every 1.5s, fires unlocks at the panel over LAN.
           <br><br>
-          <b>Already running a bridge from a previous install?</b> Don't re-run the
-          installer in step 5 — it overwrites <code>.env</code> and would stomp on your
-          working credentials. Check the bridge-health pill at the top of this modal —
-          if it's 🟢 online, you're done; skip to step 9 (Activate). If you need to
-          point an existing bridge at a different BRIDGE_ID/BRIDGE_SECRET (rare),
-          just rotate the secret and edit <code>C:\\PoolsideGateBridge\\.env</code>
-          directly.
+          <b>Idempotent installer:</b> the script in step 5 is safe to re-run any time.
+          It removes any prior <code>PoolsideGateBridge</code> or legacy
+          <code>GateBridge</code> service, wipes <code>C:\\PoolsideGateBridge\\</code>,
+          installs Python 3.12 if missing, downloads + installs nssm, registers the
+          service with auto-start-on-boot + auto-restart-on-crash + log rotation.
+          Reboot survival is guaranteed by Windows Service Control Manager.
         </div>
 
         <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 1 — Fill in the panel info above ↑</h4>
@@ -649,99 +646,168 @@ function paintConfig(p) {
           <li>Hit <b>💾 Save panel config</b></li>
         </ul>
 
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 2 — Remote into the on-site PC</h4>
-        <p style="margin:0 0 6px">AnyDesk, RDP, or TeamViewer. The PC must be on the same LAN as the panel
-        (a quick <code>ping &lt;panel-ip&gt;</code> on the PC confirms reachability).</p>
+        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 2 — Open Administrator PowerShell on the on-site PC</h4>
+        <p style="margin:0 0 6px">AnyDesk / RDP into the PC, then right-click Start →
+        <b>Windows PowerShell (Admin)</b>. The installer needs admin rights to register
+        the service and install Python machine-wide.</p>
 
         <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 3 — Rotate the bridge secret</h4>
-        <p style="margin:0 0 6px">Click <b>🔑 Rotate bridge secret</b> below. A popup will show the
-        plaintext secret <b>once</b> — copy it now, you'll paste it in Step 6.</p>
+        <p style="margin:0 0 6px">Click <b>🔑 Rotate bridge secret</b> further down this modal.
+        A popup shows the plaintext secret <b>once</b> — copy it, you'll paste it in step 5.</p>
 
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 4 — Install Python 3.11+ (skip if already there)</h4>
-        <p style="margin:0 0 6px">Open <b>PowerShell as Administrator</b> on the on-site PC and run:</p>
-        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">python --version</pre>
-        <p style="margin:0 0 6px">If you get <i>"Python was not found"</i>, install from
-        <a href="https://python.org" target="_blank" rel="noopener">python.org</a> —
-        tick <b>"Add Python to PATH"</b> during install, then close + reopen PowerShell.</p>
-
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 5 — One-paste installer (PowerShell)</h4>
-        <p style="margin:0 0 6px">Paste this whole block into Administrator PowerShell. Downloads
-        the bridge code, sets up the venv, writes <code>.env</code> with this tenant's
-        <code>BRIDGE_ID</code> baked in, and opens Notepad so you can paste BRIDGE_SECRET.
-        No git, no cmd-style commands — pure PowerShell so it runs on a fresh Windows PC.</p>
+        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 4 — Paste the bulletproof installer</h4>
+        <p style="margin:0 0 6px">Click <b>📋 Copy installer</b>, paste into the Administrator
+        PowerShell from step 2, press Enter. The script writes <code>BRIDGE_ID</code>
+        for this tenant automatically; you only paste <code>BRIDGE_SECRET</code> at the end.</p>
         <pre id="install-snippet-${escapeHtml(tenantId)}" style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12px;overflow-x:auto;margin:6px 0;line-height:1.5;white-space:pre">$ErrorActionPreference = 'Stop'
-$null = python --version 2>&amp;1
-if ($LASTEXITCODE -ne 0) { Write-Host 'ERROR: install Python 3.11+ first (https://python.org, tick Add to PATH).' -ForegroundColor Red; return }
-Write-Host '[1/3] Downloading bridge code...' -ForegroundColor Cyan
-$tmp = Join-Path $env:TEMP 'pl-bridge'
-if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-Invoke-WebRequest -Uri 'https://github.com/poolside-app/web/archive/refs/heads/main.zip' -OutFile "$tmp.zip"
-Expand-Archive -Path "$tmp.zip" -DestinationPath $tmp -Force
+Write-Host '== Poolside Gate Bridge Installer ==' -ForegroundColor Cyan
+$me = [Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not (New-Object Security.Principal.WindowsPrincipal($me)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  Write-Host 'Run PowerShell as Administrator (right-click Start - Windows PowerShell (Admin)) and re-paste.' -ForegroundColor Red; return
+}
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Write-Host '[1/8] Checking Python 3.10+...' -ForegroundColor Cyan
+$pyOk = $false
+try { $v = (&amp; python --version 2>&amp;1) -replace '^Python ', ''; if ([version]$v -ge [version]'3.10.0') { $pyOk = $true; Write-Host "      Found Python $v" -ForegroundColor Green } } catch {}
+if (-not $pyOk) {
+  Write-Host '      Python not found. Installing Python 3.12 silently (~1 min)...' -ForegroundColor Yellow
+  $py = "$env:TEMP\python-installer.exe"
+  Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe' -OutFile $py -UseBasicParsing
+  Start-Process -FilePath $py -ArgumentList '/quiet','InstallAllUsers=1','PrependPath=1','Include_pip=1' -Wait
+  Remove-Item $py
+  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+  Write-Host '      Python installed.' -ForegroundColor Green
+}
+Write-Host '[2/8] Removing any prior bridge service...' -ForegroundColor Cyan
+foreach ($svc in 'PoolsideGateBridge','GateBridge') {
+  if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+    Write-Host "      Stopping + deleting '$svc'..."
+    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+    &amp; sc.exe delete $svc | Out-Null
+    Start-Sleep -Seconds 2
+  }
+}
+Write-Host '[3/8] Wiping C:\PoolsideGateBridge...' -ForegroundColor Cyan
+if (Test-Path 'C:\PoolsideGateBridge') { Remove-Item 'C:\PoolsideGateBridge' -Recurse -Force }
 New-Item -ItemType Directory -Path 'C:\PoolsideGateBridge' -Force | Out-Null
+Write-Host '[4/8] Downloading bridge code from GitHub...' -ForegroundColor Cyan
+$tmp = "$env:TEMP\pl-bridge-$(Get-Random)"
+Invoke-WebRequest -Uri 'https://github.com/poolside-app/web/archive/refs/heads/main.zip' -OutFile "$tmp.zip" -UseBasicParsing
+Expand-Archive -Path "$tmp.zip" -DestinationPath $tmp -Force
 Copy-Item -Path "$tmp\web-main\bridge\*" -Destination 'C:\PoolsideGateBridge\' -Recurse -Force
 Remove-Item "$tmp.zip", $tmp -Recurse -Force
-Write-Host '[2/3] Setting up Python venv (~30 sec)...' -ForegroundColor Cyan
+Write-Host '[5/8] Creating venv + installing deps (~45 sec)...' -ForegroundColor Cyan
 Set-Location 'C:\PoolsideGateBridge'
-python -m venv venv
+&amp; python -m venv venv
+&amp; '.\venv\Scripts\python.exe' -m pip install --upgrade pip --quiet
 &amp; '.\venv\Scripts\pip.exe' install -r requirements.txt --quiet
-Write-Host '[3/3] Writing .env...' -ForegroundColor Cyan
+Write-Host '[6/8] Writing .env (BRIDGE_ID pre-filled for this tenant)...' -ForegroundColor Cyan
 Set-Content -Path 'C:\PoolsideGateBridge\.env' -Encoding UTF8 -Value @(
   'SUPABASE_URL=https://sdewylbddkcvidwosgxo.supabase.co',
   'BRIDGE_ID=${escapeHtml(bridgeId)}',
-  'BRIDGE_SECRET=PASTE_FROM_ROTATE_POPUP_HERE'
+  'BRIDGE_SECRET=PASTE_FROM_ROTATE_POPUP_HERE',
+  'POLL_SEC=1.5',
+  'HEARTBEAT_SEC=30',
+  'STALE_COMMAND_SEC=60'
 )
+Write-Host '[7/8] Installing nssm service manager...' -ForegroundColor Cyan
+$nssmExe = 'C:\PoolsideGateBridge\nssm.exe'
+if (-not (Test-Path $nssmExe)) {
+  $nssmZip = "$env:TEMP\nssm.zip"; $nssmDir = "$env:TEMP\nssm-extract"
+  Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile $nssmZip -UseBasicParsing
+  Expand-Archive -Path $nssmZip -DestinationPath $nssmDir -Force
+  Copy-Item -Path "$nssmDir\nssm-2.24\win64\nssm.exe" -Destination $nssmExe -Force
+  Remove-Item $nssmZip, $nssmDir -Recurse -Force
+}
+Write-Host '[8/8] Registering Windows service (auto-start + auto-restart + log rotation)...' -ForegroundColor Cyan
+&amp; $nssmExe install PoolsideGateBridge 'C:\PoolsideGateBridge\venv\Scripts\python.exe' 'C:\PoolsideGateBridge\gate_bridge.py' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppDirectory 'C:\PoolsideGateBridge' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppStdout 'C:\PoolsideGateBridge\bridge.log' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppStderr 'C:\PoolsideGateBridge\bridge.log' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppRotateFiles 1 | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppRotateBytes 10485760 | Out-Null
+&amp; $nssmExe set PoolsideGateBridge Start SERVICE_AUTO_START | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppExit Default Restart | Out-Null
+&amp; $nssmExe set PoolsideGateBridge AppRestartDelay 5000 | Out-Null
+&amp; $nssmExe set PoolsideGateBridge DisplayName 'Poolside Gate Bridge' | Out-Null
+&amp; $nssmExe set PoolsideGateBridge Description 'Polls the Poolside cloud and fires gate unlock commands at the on-LAN panel.' | Out-Null
 Write-Host ''
-Write-Host 'Done. Notepad is opening .env — paste BRIDGE_SECRET from step 3, save, close.' -ForegroundColor Green
+Write-Host '== INSTALL DONE — NEXT STEPS ==' -ForegroundColor Green
+Write-Host '  1. Notepad will open on .env in 2 sec — replace PASTE_FROM_ROTATE_POPUP_HERE with the BRIDGE_SECRET from step 3.' -ForegroundColor Yellow
+Write-Host '  2. Save + close Notepad.' -ForegroundColor Yellow
+Write-Host '  3. Run:  Start-Service PoolsideGateBridge ; Get-Content C:\PoolsideGateBridge\bridge.log -Tail 20 -Wait' -ForegroundColor Yellow
+Write-Host '          Watch for "First heartbeat ok" within ~5 seconds. Ctrl+C to stop tailing once verified.' -ForegroundColor Yellow
+Write-Host ''
+Write-Host 'Reboot safety: Windows Service Control Manager auto-starts PoolsideGateBridge on every boot.' -ForegroundColor Green
+Write-Host 'Crash safety: nssm auto-restarts the service after 5s if the Python process exits.' -ForegroundColor Green
+Start-Sleep -Seconds 2
 notepad 'C:\PoolsideGateBridge\.env'</pre>
         <button class="btn-sm" onclick="copyInstallSnippet('${escapeHtml(tenantId)}')">📋 Copy installer</button>
 
-        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 6 — Paste BRIDGE_SECRET in Notepad</h4>
-        <p style="margin:0 0 6px">The installer opens <code>C:\PoolsideGateBridge\.env</code> in
-        Notepad. The file looks like this — replace the placeholder on line 3 with the
-        bridge_secret you copied in step 3:</p>
+        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 5 — Paste BRIDGE_SECRET into the open Notepad</h4>
+        <p style="margin:0 0 6px">Notepad pops open on <code>C:\PoolsideGateBridge\.env</code> after
+        the installer finishes. The file looks like this — replace the placeholder on
+        line 3 with the bridge_secret from step 3:</p>
         <pre id="env-snippet-${escapeHtml(tenantId)}" style="background:#fff;border:1.5px dashed var(--border);padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0;font-family:Consolas,monospace">${escapeHtml(envSnippet)}</pre>
         <button class="btn-sm" onclick="copyEnvSnippet('${escapeHtml(tenantId)}')">📋 Copy .env template</button>
-        <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Save + close Notepad. The bridge is now ready to smoke-test.</p>
+        <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Save + close Notepad (Ctrl+S, then close).</p>
 
-        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 7 — Smoke test in the foreground</h4>
-        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">venv\\Scripts\\python gate_bridge.py</pre>
-        <p style="margin:0 0 4px">Expected within 2 seconds:</p>
+        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Step 6 — Start the service + watch the log</h4>
+        <p style="margin:0 0 6px">Back in the Administrator PowerShell:</p>
+        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">Start-Service PoolsideGateBridge ; Get-Content C:\\PoolsideGateBridge\\bridge.log -Tail 20 -Wait</pre>
+        <p style="margin:6px 0">Expected within ~5 seconds:</p>
         <pre style="background:#dcfce7;color:#14532d;padding:8px 12px;border-radius:6px;font-size:12px;margin:4px 0">INFO First heartbeat ok — credentials accepted.</pre>
-        <p style="margin:6px 0">The bridge health pill at the top of this modal should flip to
-        <b>🟢 online</b> within ~5 seconds. Once it does, hit <b>⚡ Test unlock</b> below — the gate should
-        physically open within ~2 seconds. Then <code>Ctrl+C</code> the foreground process; you'll
-        install it as a service next.</p>
+        <p style="margin:6px 0">The bridge-health pill at the top of THIS modal flips to 🟢 within
+        the same window. Once it's green, hit <b>⚡ Test unlock</b> below — the gate should physically
+        open within ~2 seconds. Press <kbd>Ctrl+C</kbd> in PowerShell to stop tailing the log; the
+        service keeps running in the background.</p>
 
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 8 — Install as a Windows service via nssm</h4>
-        <p style="margin:0 0 6px">Download <a href="https://nssm.cc/download" target="_blank" rel="noopener">nssm</a>
-        from nssm.cc if not already on the PC. Extract <code>nssm.exe</code> somewhere on PATH.</p>
-        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">nssm install PoolsideGateBridge "C:\\PoolsideGateBridge\\venv\\Scripts\\python.exe" "C:\\PoolsideGateBridge\\gate_bridge.py"
-nssm set PoolsideGateBridge AppDirectory C:\\PoolsideGateBridge
-nssm set PoolsideGateBridge AppStdout C:\\PoolsideGateBridge\\bridge.log
-nssm set PoolsideGateBridge AppStderr C:\\PoolsideGateBridge\\bridge.log
-nssm set PoolsideGateBridge Start SERVICE_AUTO_START
-nssm start PoolsideGateBridge
-nssm status PoolsideGateBridge</pre>
-        <p style="margin:0 0 6px">Last line should say <code>SERVICE_RUNNING</code>.
-        Tail the log with:</p>
-        <pre style="background:#0f172a;color:#dcfce7;padding:10px 14px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:6px 0">Get-Content C:\\PoolsideGateBridge\\bridge.log -Tail 20 -Wait</pre>
-
-        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 9 — Activate the gate for the tenant</h4>
-        <p style="margin:0 0 6px">Once the bridge is 🟢 online and ⚡ Test unlock works, close this
-        modal and hit <b>🟢 Activate gate</b> on this row. The club's owners get an email + push,
+        <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Step 7 — Activate the gate for the tenant</h4>
+        <p style="margin:0 0 6px">Once 🟢 online + Test unlock works, close this modal and hit
+        <b>🟢 Activate gate</b> on the deployments row. The club's owners get an email + Web Push,
         gate features turn on in their admin nav, members see "🚪 Unlock the gate" on their home.</p>
+
+        <h4 style="margin:18px 0 6px;font-size:14px;color:var(--blue)">Reboot + power-outage guarantee</h4>
+        <p style="margin:0 0 6px;font-size:13px">The installer configures four layers of resilience:</p>
+        <ul style="padding-left:20px;margin:4px 0 4px;font-size:13px">
+          <li><code>Start SERVICE_AUTO_START</code> — Windows Service Control Manager launches
+          PoolsideGateBridge during boot, before any user logs in.</li>
+          <li><code>AppExit Default Restart</code> + <code>AppRestartDelay 5000</code> — if the
+          Python process exits for any reason (panel comms error, OOM, etc.), nssm restarts it
+          5 seconds later. Forever.</li>
+          <li><code>AppRotateFiles 1</code> + <code>AppRotateBytes 10485760</code> — bridge.log
+          rotates at 10MB so disk space never fills.</li>
+          <li>The bridge itself polls the cloud every 1.5s and re-establishes auth on each call,
+          so transient network blips heal on their own.</li>
+        </ul>
+        <p style="margin:6px 0;font-size:13px">To verify reboot survival on first install:
+        from PowerShell run <code>Restart-Computer -Force</code>, wait for the PC to come back,
+        then check <code>Get-Service PoolsideGateBridge</code> — Status should be Running.
+        Or check the bridge-health pill at the top of this modal — should be 🟢 within ~30s
+        of boot.</p>
 
         <h4 style="margin:14px 0 6px;font-size:14px;color:var(--blue)">Common failures</h4>
         <ul style="padding-left:20px;margin:4px 0 4px;font-size:13px">
-          <li><b>Bridge logs "Auth failed (401)"</b> → typo'd bridge_id/secret, or secret was rotated again after pasting. Rotate again, repaste.</li>
-          <li><b>Bridge online but Test unlock = panel_unreachable</b> → wrong panel IP, panel powered off, or PC + panel on different VLANs. Confirm with <code>ping</code>.</li>
-          <li><b>Bridge online but Test unlock = login HTTP 401</b> → wrong panel admin user/password. Fix it in the form above; bridge picks up the new creds on its next poll (~2s).</li>
-          <li><b>Bridge 🟡 stale every few minutes</b> → PC on WiFi, drops intermittently. Wired ethernet is much more reliable for always-on services.</li>
+          <li><b>Service starts but log shows "Auth failed (401)"</b> → BRIDGE_SECRET in
+          <code>.env</code> doesn't match the latest rotation. Rotate again here, edit
+          <code>C:\PoolsideGateBridge\.env</code>, then
+          <code>Restart-Service PoolsideGateBridge</code>.</li>
+          <li><b>Service starts, online, but Test unlock = panel_unreachable</b> → wrong
+          panel IP, panel powered off, or PC + panel on different VLANs. Confirm with
+          <code>ping &lt;panel-ip&gt;</code> from the bridge PC.</li>
+          <li><b>Service starts, online, but Test unlock = login HTTP 401</b> → wrong panel
+          admin user/password in the form above. Update + 💾 Save panel config; bridge picks
+          up the new creds on its next poll (~1.5s).</li>
+          <li><b>Bridge 🟡 stale every few minutes</b> → PC on WiFi, drops intermittently.
+          Wired ethernet is much more reliable for always-on services.</li>
+          <li><b>Installer fails on Invoke-WebRequest with TLS error</b> → corporate proxy
+          or very old Windows. The installer forces TLS 1.2 — if that still fails, you're
+          behind a deep-packet-inspection firewall and need IT to allow
+          <code>github.com</code> + <code>python.org</code> + <code>nssm.cc</code>.</li>
         </ul>
 
         <p style="margin-top:14px;padding-top:10px;border-top:1px solid #cae0ef;font-size:12px;color:var(--muted)">
-          Full README (printable) +  Bishop Estates migration notes:
-          <a href="https://github.com/poolside-app/web/blob/main/bridge/README.md" target="_blank" rel="noopener">github.com/poolside-app/web/bridge/README.md</a>
+          Full README (printable): <a href="https://github.com/poolside-app/web/blob/main/bridge/README.md" target="_blank" rel="noopener">github.com/poolside-app/web/bridge/README.md</a>
         </p>
       </div>
     </details>
