@@ -42,7 +42,11 @@
   .lede { color: var(--muted); margin: 8px 0 22px; font-size: 14px; }
   label { display:block; font-weight:600; font-size: 12px; margin: 14px 0 4px; }
   label .opt { font-weight:500; color: var(--muted); text-transform: none; font-size: 11px; margin-left: 6px; }
-  input, textarea, select { width: 100%; min-width: 0; padding: 11px 13px; font: 14px 'Inter', sans-serif; border:1.5px solid var(--border); border-radius: var(--r-md); background:#fff; }
+  /* Scope text-field styling to actual text fields. Radios/checkboxes must
+     keep their native size — otherwise width:100% + padding balloons them and
+     crushes their label text (Doug 2026-05-30). */
+  input:not([type="radio"]):not([type="checkbox"]), textarea, select { width: 100%; min-width: 0; padding: 11px 13px; font: 14px 'Inter', sans-serif; border:1.5px solid var(--border); border-radius: var(--r-md); background:#fff; }
+  input[type="radio"], input[type="checkbox"] { accent-color: var(--blue); flex-shrink: 0; }
   input:focus, textarea:focus, select:focus { outline:0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
   /* iOS Safari renders type="date" inputs with an intrinsic min-width based
      on the displayed date string ("May 5, 2026") that ignores width:100%.
@@ -875,6 +879,9 @@ async function submitApplication() {
     signature_primary:  (adults[0] && adults[0].signature_url) || null,
     signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
     referral_code: window.__POOLSIDE_REF_CODE__ || null,
+    // CSV-import claim: present when the member arrived via apply.html?claim=…
+    // The backend UPDATEs their pre-filled application instead of inserting.
+    claim_token: window.__POOLSIDE_CLAIM_TOKEN__ || null,
     // 2026-05-23 "guest checkout" — flag set when applicant ticks the
     // "Just sign me up" radio at the top of step 1. Backend uses it to
     // pick the _no_app welcome email template + show a pill in the
@@ -1106,6 +1113,76 @@ function appendAdminContinueIfNeeded() {
   formEl.appendChild(div);
 }
 
+// CSV-import claim: ?claim=<token> means a migrating member is completing
+// their pre-filled application. Pull the row via get_claim and populate the
+// form so they just confirm + add family + accept policies + pay.
+async function prefillFromClaim(token) {
+  const slug = getSlug();
+  if (!slug) return;
+  let d;
+  try {
+    const r = await fetch(APPLY_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'get_claim', slug, claim_token: token }),
+    });
+    d = await r.json();
+  } catch (_) { return; }
+  if (!d || !d.ok) {
+    if (d && d.code === 'already_member') {
+      const formEl = document.getElementById('form');
+      if (formEl) {
+        formEl.className = 'card ok';
+        formEl.innerHTML = `<h1>You're already set up</h1><p class="lede">${escapeHtml(d.error || '')}</p><p style="margin-top:12px"><a href="/m/login.html" style="color:var(--blue);font-weight:600">Sign in →</a></p>`;
+      }
+    }
+    return;
+  }
+  window.__POOLSIDE_CLAIM_TOKEN__ = token;
+  const a = d.application || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
+  const fnEl = document.getElementById('family_name');
+  if (fnEl && a.family_name) fnEl.value = String(a.family_name).replace(/\s+Family$/i, '');
+  setVal('address', a.address); setVal('city', a.city); setVal('zip', a.zip);
+  setVal('primary_email', a.primary_email); setVal('primary_phone', a.primary_phone);
+
+  const adults = (Array.isArray(a.adults_json) && a.adults_json.length)
+    ? a.adults_json
+    : [{ name: a.primary_name, email: a.primary_email, phone: a.primary_phone }];
+  const children = Array.isArray(a.children_json) ? a.children_json : [];
+  const pickCount = (sel, n) => {
+    if (!sel) return;
+    const opts = Array.from(sel.options).map(o => parseInt(o.value, 10)).filter(x => !isNaN(x));
+    if (!opts.length) return;
+    sel.value = String(Math.min(Math.max(n, Math.min(...opts)), Math.max(...opts)));
+  };
+  pickCount(document.getElementById('acount'), adults.length);
+  pickCount(document.getElementById('ccount'), children.length);
+  rebuildPeople();
+  adults.forEach((ad, i) => {
+    const n  = document.querySelector(`[data-adult="${i}"][data-field="name"]`);  if (n  && ad.name)  n.value  = ad.name;
+    const ph = document.querySelector(`[data-adult="${i}"][data-field="phone"]`); if (ph && ad.phone) ph.value = ad.phone;
+    const em = document.querySelector(`[data-adult="${i}"][data-field="email"]`); if (em && ad.email) em.value = ad.email;
+  });
+  children.forEach((ch, i) => {
+    const n   = document.querySelector(`[data-child="${i}"][data-field="name"]`); if (n   && ch.name) n.value   = ch.name;
+    const dob = document.querySelector(`[data-child="${i}"][data-field="dob"]`);  if (dob && ch.dob)  dob.value = ch.dob;
+  });
+  if (a.tier_slug) {
+    try {
+      const tierEl = document.querySelector(`input[name="tier_slug"][value="${CSS.escape(String(a.tier_slug))}"]`);
+      if (tierEl) tierEl.checked = true;
+    } catch (_) { /* tier may not match a current slug — admin can fix on approve */ }
+  }
+  const titleEl = document.getElementById('title');
+  if (titleEl && !document.getElementById('claim-banner')) {
+    const banner = document.createElement('div');
+    banner.id = 'claim-banner';
+    banner.style.cssText = 'background:linear-gradient(90deg,#dbeafe,#bfdbfe);border:1px solid #93c5fd;border-radius:12px;padding:14px 18px;margin:14px 0 0';
+    banner.innerHTML = `<div style="font-weight:700;color:#0a3b5c;font-size:15px">👋 Welcome back!</div><div style="font-size:13px;color:#1e3a5f;margin-top:2px;line-height:1.45">We pre-filled your information. Review it, add anyone on your membership, accept the policies, and pay your dues to finish.</div>`;
+    titleEl.parentNode.insertBefore(banner, titleEl.nextSibling);
+  }
+}
+
 (async () => {
   // If the user just came back from Stripe Checkout, show a success/cancel
   // banner instead of the empty form. Stripe redirected to ?paid=1 / ?paid=0
@@ -1244,6 +1321,13 @@ function appendAdminContinueIfNeeded() {
   paintTiers();
   paintPaymentChoices();
   paintVenmoQR();
+
+  // CSV-import claim link — populate the form from the member's pre-filled
+  // application. Runs after tiers paint so the tier radio can be selected.
+  if (params.has('claim')) {
+    const claimTok = String(params.get('claim') || '').trim();
+    if (claimTok) { try { await prefillFromClaim(claimTok); } catch (_) { /* best-effort */ } }
+  }
 
   // Referral capture: ?ref=CODE in URL means a current member sent this
   // person here. Validate the code, show a friendly banner so the new
