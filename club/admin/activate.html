@@ -45,7 +45,13 @@
   .install { margin-top:22px; padding:16px; background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); text-align:left; }
   .install h2 { font-size:15px; color:var(--blue); }
   .install p { font-size:13.5px; color:var(--text); margin:6px 0 0; line-height:1.55; }
-  .install .share { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:1.5px solid var(--blue); border-radius:5px; color:var(--blue); font-size:13px; vertical-align:-5px; margin:0 2px; }
+  .bpick { display:flex; gap:6px; margin:0 0 10px; }
+  .btab { flex:1; padding:8px 4px; font:600 12px 'Inter',sans-serif; border:1.5px solid var(--border); background:#fff; color:var(--muted); border-radius:9px; cursor:pointer; line-height:1.2; }
+  .btab.on { border-color:var(--blue); background:var(--blue-l); color:var(--blue); }
+  .steps { margin:2px 0 0; padding-left:20px; font-size:13.5px; line-height:1.7; }
+  .steps li { margin:1px 0; }
+  .ic { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border:1.4px solid currentColor; border-radius:4px; font-size:11px; line-height:1; vertical-align:-4px; }
+  .hintline { font-size:12px; color:var(--muted); margin:8px 0 0; }
   .err-box { display:none; margin-top:6px; }
   footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
 </style>
@@ -100,35 +106,61 @@ async function paintBranding() {
   } catch (_) { return null; }
 }
 
-function platformInstallHtml() {
-  if (!window.Pwa) return '';
-  if (window.Pwa.isStandalone()) return '';  // already running as an installed app
-  const plat = window.Pwa.detectPlatform();
-  if (plat === 'ios') {
-    return `<div class="install"><h2>📲 Put it on your home screen</h2>
-      <p>Tap the <b>Share</b> button <span class="share">↑</span> at the bottom of Safari, then choose <b>“Add to Home Screen.”</b> Now the club is one tap away — like a regular app.</p></div>`;
+// Which browser/OS are they on? On iOS EVERY browser's UA says "iPhone", so
+// we also sniff the browser token (CriOS=Chrome, FxiOS/EdgiOS=Firefox/Edge).
+// Without this, Chrome-on-iPhone users were wrongly shown Safari's steps.
+function detectInstallEnv() {
+  const ua = navigator.userAgent || '';
+  const ios = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  if (ios) return /CriOS|FxiOS|EdgiOS/.test(ua) ? 'ios-chrome' : 'ios-safari';
+  if (/Android/.test(ua)) return 'android';
+  return 'desktop';
+}
+const INSTALL_ENV = detectInstallEnv();
+
+// One short instruction set per browser. Only ever ONE is shown at a time.
+const INSTALL_INSTR = {
+  'ios-safari': `<ol class="steps"><li>Tap <b>Share</b> <span class="ic">↑</span> at the <b>bottom</b> of Safari.</li><li>Tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b> (top-right).</li></ol>`,
+  'ios-chrome': `<ol class="steps"><li>Tap the <b>Share</b> icon <span class="ic">↑</span> (near the address bar, <b>top-right</b>).</li><li>Tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>.</li></ol><p class="hintline">Don’t see it? Open this page in <b>Safari</b> and try the same steps.</p>`,
+  'android': `<div id="android-btn-slot"></div><ol class="steps"><li>Or tap Chrome’s <b>⋮</b> menu (top-right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>).</li></ol>`,
+};
+
+function installCardHtml() {
+  if (window.Pwa && window.Pwa.isStandalone()) return '';  // already installed
+  if (INSTALL_ENV === 'desktop') {
+    return `<div class="install"><h2>📲 Want it on your phone?</h2>
+      <div id="android-btn-slot"></div>
+      <p style="font-size:13.5px;margin:6px 0 0">Open <b>${esc(SLUG ? SLUG + '.poolsideapp.com' : 'your club')}/club/admin</b> on your phone’s browser, then add it to the home screen.</p></div>`;
   }
-  if (plat === 'android') {
-    return `<div class="install"><h2>📲 Put it on your home screen</h2>
-      <p id="android-install-copy">Tap the button below to add the club to your phone like a regular app.</p>
-      <button class="btn btn-ghost" id="install-btn" style="margin-top:12px">📲 Add to home screen</button></div>`;
-  }
-  return `<div class="install"><h2>📲 Want it on your phone?</h2>
-    <p>Open <b>${esc(SLUG ? SLUG + '.poolsideapp.com' : 'your club')}/club/admin</b> in your phone’s browser, then add it to your home screen.</p></div>`;
+  const tabs = [['ios-safari', 'iPhone · Safari'], ['ios-chrome', 'iPhone · Chrome'], ['android', 'Android']];
+  const tabHtml = tabs.map(t => `<button type="button" class="btab${t[0] === INSTALL_ENV ? ' on' : ''}" data-b="${t[0]}">${t[1]}</button>`).join('');
+  return `<div class="install"><h2>📲 Put it on your home screen</h2>
+    <p style="font-size:12.5px;color:var(--muted);margin:2px 0 10px">Tap your browser for the steps:</p>
+    <div class="bpick">${tabHtml}</div>
+    <div id="binstr">${INSTALL_INSTR[INSTALL_ENV] || INSTALL_INSTR['ios-safari']}</div></div>`;
 }
 
-function wireInstallButton() {
-  const btn = document.getElementById('install-btn');
-  if (!btn || !window.Pwa) return;
-  btn.addEventListener('click', async () => {
-    if (window.Pwa.canPromptInstall()) {
-      await window.Pwa.promptInstall();
-    } else {
-      // Chrome hasn't offered the native prompt — guide them manually.
-      const copy = document.getElementById('android-install-copy');
-      if (copy) copy.innerHTML = 'Tap the <b>⋮</b> menu (top-right of Chrome) → <b>“Install app”</b> or <b>“Add to Home screen.”</b>';
-    }
-  });
+// Android/desktop Chrome can offer a real one-tap install via beforeinstallprompt.
+function mountAndroidInstallBtn() {
+  const slot = document.getElementById('android-btn-slot');
+  if (!slot || slot.dataset.done || !window.Pwa || !window.Pwa.canPromptInstall()) return;
+  slot.dataset.done = '1';
+  slot.innerHTML = `<button class="btn btn-primary" id="install-btn" style="margin-top:0">📲 Add to home screen</button>`;
+  document.getElementById('install-btn').addEventListener('click', () => window.Pwa.promptInstall());
+}
+
+function wireInstallCard() {
+  document.querySelectorAll('.btab').forEach(b => b.addEventListener('click', () => {
+    const key = b.dataset.b;
+    const box = document.getElementById('binstr');
+    if (box) box.innerHTML = INSTALL_INSTR[key] || '';
+    document.querySelectorAll('.btab').forEach(x => x.classList.toggle('on', x === b));
+    if (key === 'android') mountAndroidInstallBtn();
+  }));
+  // Mount the one-tap button now (if Android/desktop tab is active)…
+  mountAndroidInstallBtn();
+  // …and again if Chrome fires the install prompt a moment late.
+  document.addEventListener('pwa-installable', mountAndroidInstallBtn);
 }
 
 function showSuccess(user) {
@@ -137,12 +169,10 @@ function showSuccess(user) {
     <div class="check">✓</div>
     <h1>You’re in, ${esc(name)}!</h1>
     <p class="lede">Your admin account is active. No password to remember — next time, just tap “Text me a link” to sign in.</p>
-    ${platformInstallHtml()}
+    ${installCardHtml()}
     <a class="btn btn-primary" href="/club/admin/">Go to my dashboard →</a>
   `;
-  wireInstallButton();
-  // If Chrome fires the install prompt a moment late, make sure the button works.
-  document.addEventListener('pwa-installable', wireInstallButton, { once: true });
+  wireInstallCard();
 }
 
 function showError(msg) {
