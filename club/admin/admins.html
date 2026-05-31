@@ -269,7 +269,7 @@ function renderRoot() {
   }
 
   const activeAdmins = ADMINS.filter(a => a.active);
-  const pending = ADMINS.filter(a => a.is_default_pw && a.last_login_at == null && a.active);
+  const pending = ADMINS.filter(a => a.last_login_at == null && a.active);
   const owners = activeAdmins.filter(a => isOwner(a));
 
   // Build the role-counts map for the right rail
@@ -292,14 +292,33 @@ function renderRoot() {
 
           <div class="invite-form" id="invite-form">
             <div class="invite-err" id="invite-err"></div>
+
+            <!-- Delivery channel. Default Text — the easiest path for less
+                 techy board members. Radios use inline width:auto so the
+                 global .invite-form input{width:100%} rule doesn't balloon
+                 them into giant boxes. -->
+            <label style="margin-bottom:6px">How should we send the invite?</label>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <label id="ch-sms-opt" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border:1.5px solid var(--blue);background:var(--blue-l);border-radius:10px;cursor:pointer;font-size:14px;font-weight:600">
+                <input type="radio" name="iv-channel" value="sms" checked onchange="onChannelChange()" style="width:auto;margin:0;accent-color:var(--blue)"> 📱 Text it
+              </label>
+              <label id="ch-email-opt" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:14px;font-weight:600">
+                <input type="radio" name="iv-channel" value="email" onchange="onChannelChange()" style="width:auto;margin:0;accent-color:var(--blue)"> ✉️ Email it
+              </label>
+            </div>
+            <p id="ch-hint" style="font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 14px">📱 Easiest: enter a mobile number and they get a text with a one-tap link to activate — no password, ever. (They'll sign in later with a quick texted code too.)</p>
+
             <div class="grid2">
-              <div><label for="iv-email">Their email</label><input type="email" id="iv-email" placeholder="margaret@example.com" autocomplete="off" required></div>
               <div><label for="iv-name">Their first name (or full name)</label><input type="text" id="iv-name" placeholder="Margaret Kowalski" autocomplete="off" required></div>
+              <div>
+                <label for="iv-phone" id="lbl-phone">Their mobile number *</label>
+                <input type="tel" id="iv-phone" placeholder="(555) 123-4567" autocomplete="off">
+              </div>
             </div>
             <div class="grid2">
               <div>
-                <label for="iv-phone">Their phone <span style="font-weight:500;color:var(--muted)">(easier sign-in via text)</span></label>
-                <input type="tel" id="iv-phone" placeholder="(555) 123-4567" autocomplete="off">
+                <label for="iv-email" id="lbl-email">Their email <span style="font-weight:500;color:var(--muted)">(optional)</span></label>
+                <input type="email" id="iv-email" placeholder="margaret@example.com" autocomplete="off">
               </div>
               <div>
                 <label for="iv-title">Title on the board</label>
@@ -366,7 +385,7 @@ function renderRoot() {
     const form = document.getElementById('invite-form');
     form.classList.toggle('open');
     if (form.classList.contains('open')) {
-      document.getElementById('iv-email').focus();
+      document.getElementById('iv-phone').focus();
     }
   });
   document.getElementById('invite-cancel').addEventListener('click', () => {
@@ -391,7 +410,7 @@ function renderRoot() {
   document.querySelectorAll('[data-action="remove"]').forEach(b =>
     b.addEventListener('click', () => removeAdmin(b.dataset.id)));
   document.querySelectorAll('[data-action="resend"]').forEach(b =>
-    b.addEventListener('click', () => alert('Resend invite — not yet implemented (the original temp password is still valid).')));
+    b.addEventListener('click', () => alert('Resend isn’t built yet — for now, remove them and invite again to send a fresh activation link.')));
 }
 
 // Change board_title via prompt() — simple but does the job. Owners only;
@@ -414,7 +433,7 @@ async function changeTitle(id, name, currentTitle) {
 function renderAdminRow(a) {
   const isYou = a.id === ME.id;
   const rolesArr = a.roles || [a.role_template || 'owner'];
-  const isPending = a.is_default_pw && a.last_login_at == null;
+  const isPending = a.last_login_at == null;
   const lastSeenStr = a.last_login_at ? fmtRelative(a.last_login_at) : (isPending ? 'Hasn\'t signed in yet' : 'Never signed in');
   const showActions = !isYou;
   const isLastOwner = rolesArr.includes('owner') && ADMINS.filter(x => x.active && (x.roles?.includes('owner') || x.role_template === 'owner')).length <= 1;
@@ -445,52 +464,74 @@ function renderAdminRow(a) {
   `;
 }
 
+// Toggle the form between Text and Email delivery: swap which field is
+// required (* vs optional), update the helper line, and highlight the picked
+// option. Called from the channel radios' inline onchange.
+function onChannelChange() {
+  const sms = (document.querySelector('input[name="iv-channel"]:checked')?.value || 'sms') !== 'email';
+  const lblP = document.getElementById('lbl-phone'), lblE = document.getElementById('lbl-email');
+  if (lblP) lblP.innerHTML = sms ? 'Their mobile number *' : 'Their mobile number <span style="font-weight:500;color:var(--muted)">(optional)</span>';
+  if (lblE) lblE.innerHTML = sms ? 'Their email <span style="font-weight:500;color:var(--muted)">(optional)</span>' : 'Their email *';
+  const hint = document.getElementById('ch-hint');
+  if (hint) hint.textContent = sms
+    ? "📱 Easiest: enter a mobile number and they get a text with a one-tap link to activate — no password, ever. (They'll sign in later with a quick texted code too.)"
+    : '✉️ They’ll get an email with a one-tap link to activate. No password needed.';
+  const so = document.getElementById('ch-sms-opt'), eo = document.getElementById('ch-email-opt');
+  if (so) { so.style.borderColor = sms ? 'var(--blue)' : 'var(--border)'; so.style.background = sms ? 'var(--blue-l)' : '#fff'; }
+  if (eo) { eo.style.borderColor = !sms ? 'var(--blue)' : 'var(--border)'; eo.style.background = !sms ? 'var(--blue-l)' : '#fff'; }
+}
+
 async function sendInvite() {
   const errEl = document.getElementById('invite-err');
   const successEl = document.getElementById('invite-success');
   errEl.classList.remove('show');
   successEl.classList.remove('show');
 
+  const channel = (document.querySelector('input[name="iv-channel"]:checked')?.value === 'email') ? 'email' : 'sms';
   const email = document.getElementById('iv-email').value.trim().toLowerCase();
   const name  = document.getElementById('iv-name').value.trim();
   const phone = document.getElementById('iv-phone')?.value.trim() || '';
   const title = document.getElementById('iv-title')?.value || 'Member-at-large';
   const roles = [...document.querySelectorAll('#role-pickers input:checked')].map(c => c.value);
 
-  if (!email || !email.includes('@')) { errEl.textContent = 'Please add a valid email address.'; errEl.classList.add('show'); return; }
   if (!name) { errEl.textContent = 'Please add their name.'; errEl.classList.add('show'); return; }
+  if (channel === 'sms' && phone.replace(/\D/g, '').length < 10) { errEl.textContent = 'Add a mobile number to text the invite (or switch to Email).'; errEl.classList.add('show'); return; }
+  if (channel === 'email' && (!email || !email.includes('@'))) { errEl.textContent = 'Add a valid email to email the invite (or switch to Text).'; errEl.classList.add('show'); return; }
+  if (email && !email.includes('@')) { errEl.textContent = "That email doesn't look right."; errEl.classList.add('show'); return; }
   if (!roles.length) { errEl.textContent = 'Pick at least one role.'; errEl.classList.add('show'); return; }
 
   const btn = document.getElementById('invite-send');
-  btn.disabled = true; btn.textContent = 'Sending invite…';
+  btn.disabled = true; btn.textContent = 'Sending…';
   try {
     const r = await api('invite_admin', {
-      username: email, email, display_name: name, roles,
-      board_title: title,
+      channel, display_name: name, roles, board_title: title,
+      email: email || undefined,
       phone_e164: phone || undefined,
     });
     if (!r.ok) throw new Error(r.error || 'Invite failed');
-    if (r.invite_email_sent) {
-      successEl.innerHTML = `<b>Invite sent to ${escapeHtml(email)}.</b> They'll get an email with a temporary password and a link to sign in.`;
-    } else {
-      successEl.innerHTML = `<b>Invite created — but the email didn't go through.</b> Send these to ${escapeHtml(name || email)} another way (text, in person, etc.):<br><br>
-        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;line-height:1.7">
-          <b>Sign-in page:</b> <a href="${escapeHtml(window.location.origin)}/club/admin/login.html" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">${escapeHtml(window.location.origin.replace(/^https?:\/\//, ''))}/club/admin/login.html</a><br>
-          <b>Email:</b> ${escapeHtml(email)}<br>
-          <b>Temporary password:</b> <span style="font-family:Menlo,Consolas,monospace;background:var(--bg-2);padding:2px 8px;border-radius:6px">${escapeHtml(r.temp_password)}</span>
-        </div>
-        <p style="margin:10px 0 0;font-size:13px;color:var(--muted)">They'll be asked to set their own password on first sign-in.</p>`;
-    }
+
+    const where = channel === 'sms' ? `a text to ${escapeHtml(phone)}` : `an email to ${escapeHtml(email)}`;
+    const sentLine = r.sent
+      ? `<b>Invite sent — ${where}.</b> They'll tap the one-tap link to activate. No password needed.`
+      : `<b>Saved ${escapeHtml(name)} as an admin, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through${r.send_error ? ` (${escapeHtml(r.send_error)})` : ''}.</b> Send them this activation link another way — text, chat, or in person:`;
+    successEl.innerHTML = sentLine + `
+      <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:10px;font-size:12.5px;line-height:1.6;word-break:break-all">
+        <span style="color:var(--muted)">Activation link (just for them, expires in 7 days):</span><br>
+        <a href="${escapeHtml(r.activation_url)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;user-select:all">${escapeHtml(r.activation_url)}</a>
+      </div>`;
     successEl.classList.add('show');
 
-    // Reset form
+    // Clear the typed fields so the form's ready for the next person.
     document.getElementById('iv-email').value = '';
     document.getElementById('iv-name').value = '';
+    if (document.getElementById('iv-phone')) document.getElementById('iv-phone').value = '';
     document.querySelectorAll('#role-pickers input').forEach(c => { c.checked = false; });
     document.querySelectorAll('.role-picker').forEach(c => c.classList.remove('checked'));
 
-    // Reload list
-    await loadAdmins();
+    // Refresh the list on the happy path so the new "Invited" row shows. On a
+    // delivery failure we DON'T refresh — that would wipe the activation link
+    // the inviter still needs to copy.
+    if (r.sent) await loadAdmins();
   } catch (e) {
     errEl.textContent = e.message;
     errEl.classList.add('show');

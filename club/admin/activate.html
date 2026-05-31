@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Activate your account — Poolside</title>
+<!-- PWA wiring (admin manifest → start_url=/club/admin/) so "Add to home
+     screen" from here installs the admin app, not the member home. -->
+<link rel="manifest" href="/manifest.webmanifest?admin=1">
+<link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
+<script src="/js/pwa.js" defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --green-soft:#f0fdf4; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  a { color:var(--blue); }
+  h1,h2 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size:26px; line-height:1.15; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:18px 22px; border-bottom:1px solid var(--border); background:#fff; }
+  main { flex:1; display:flex; align-items:center; justify-content:center; padding:32px 22px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:32px 28px; box-shadow:var(--shadow); max-width:440px; width:100%; text-align:center; }
+  .lede { color:var(--muted); margin:10px 0 0; font-size:14.5px; line-height:1.55; }
+  .spin { width:34px; height:34px; border:3px solid var(--blue-l); border-top-color:var(--blue); border-radius:50%; animation:spin .8s linear infinite; margin:8px auto 0; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .check { width:56px; height:56px; border-radius:50%; background:var(--green-soft); border:1.5px solid #bbf7d0; color:var(--green); font-size:30px; line-height:54px; margin:0 auto 12px; }
+  .btn { display:block; width:100%; padding:14px; border-radius:var(--r-md); font:600 15px 'Inter',sans-serif; cursor:pointer; border:1.5px solid transparent; text-decoration:none; text-align:center; }
+  .btn-primary { background:var(--blue); color:#fff; margin-top:18px; }
+  .btn-primary:hover { background:var(--blue-2); }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); margin-top:10px; }
+  .install { margin-top:22px; padding:16px; background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); text-align:left; }
+  .install h2 { font-size:15px; color:var(--blue); }
+  .install p { font-size:13.5px; color:var(--text); margin:6px 0 0; line-height:1.55; }
+  .install .share { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:1.5px solid var(--blue); border-radius:5px; color:var(--blue); font-size:13px; vertical-align:-5px; margin:0 2px; }
+  .err-box { display:none; margin-top:6px; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><a href="/" class="logo"><span class="logo-dot"></span> <span id="brand-name">Poolside</span></a></header>
+<main>
+  <div class="card" id="card">
+    <h1 id="title">Activating your account…</h1>
+    <p class="lede" id="lede">One moment — getting you signed in.</p>
+    <div class="spin" id="spin"></div>
+  </div>
+</main>
+<footer>Poolside · pool clubs, minus the spreadsheets</footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUTH_URL   = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const PUBLIC_URL = `${SUPABASE_URL}/functions/v1/tenant_public`;
+
+function getSlug() {
+  const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
+  return m && m[1] && m[1] !== 'www' ? m[1].toLowerCase() : null;
+}
+// Token arrives in the hash (#token=…) so it stays out of server logs/Referer.
+function getToken() {
+  const h = window.location.hash || '';
+  if (h.startsWith('#token=')) return decodeURIComponent(h.slice('#token='.length));
+  const q = new URLSearchParams(window.location.search);
+  return q.get('token') || null;
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+const SLUG = getSlug();
+
+// Best-effort branding paint (club name, app icon, theme color). Never blocks
+// activation — if it fails we just show "Poolside".
+async function paintBranding() {
+  if (!SLUG) return null;
+  try {
+    const r = await fetch(PUBLIC_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: SLUG }),
+    });
+    const d = await r.json();
+    if (!d || !d.ok || !d.tenant) return null;
+    const name = d.tenant.display_name || 'Poolside';
+    document.getElementById('brand-name').textContent = name;
+    document.title = `Activate — ${name}`;
+    if (window.Pwa) window.Pwa.setup({ branding: d.branding || {}, displayName: name });
+    return d;
+  } catch (_) { return null; }
+}
+
+function platformInstallHtml() {
+  if (!window.Pwa) return '';
+  if (window.Pwa.isStandalone()) return '';  // already running as an installed app
+  const plat = window.Pwa.detectPlatform();
+  if (plat === 'ios') {
+    return `<div class="install"><h2>📲 Put it on your home screen</h2>
+      <p>Tap the <b>Share</b> button <span class="share">↑</span> at the bottom of Safari, then choose <b>“Add to Home Screen.”</b> Now the club is one tap away — like a regular app.</p></div>`;
+  }
+  if (plat === 'android') {
+    return `<div class="install"><h2>📲 Put it on your home screen</h2>
+      <p id="android-install-copy">Tap the button below to add the club to your phone like a regular app.</p>
+      <button class="btn btn-ghost" id="install-btn" style="margin-top:12px">📲 Add to home screen</button></div>`;
+  }
+  return `<div class="install"><h2>📲 Want it on your phone?</h2>
+    <p>Open <b>${esc(SLUG ? SLUG + '.poolsideapp.com' : 'your club')}/club/admin</b> in your phone’s browser, then add it to your home screen.</p></div>`;
+}
+
+function wireInstallButton() {
+  const btn = document.getElementById('install-btn');
+  if (!btn || !window.Pwa) return;
+  btn.addEventListener('click', async () => {
+    if (window.Pwa.canPromptInstall()) {
+      await window.Pwa.promptInstall();
+    } else {
+      // Chrome hasn't offered the native prompt — guide them manually.
+      const copy = document.getElementById('android-install-copy');
+      if (copy) copy.innerHTML = 'Tap the <b>⋮</b> menu (top-right of Chrome) → <b>“Install app”</b> or <b>“Add to Home screen.”</b>';
+    }
+  });
+}
+
+function showSuccess(user) {
+  const name = (user && user.display_name) ? user.display_name.split(' ')[0] : 'there';
+  document.getElementById('card').innerHTML = `
+    <div class="check">✓</div>
+    <h1>You’re in, ${esc(name)}!</h1>
+    <p class="lede">Your admin account is active. No password to remember — next time, just tap “Text me a link” to sign in.</p>
+    ${platformInstallHtml()}
+    <a class="btn btn-primary" href="/club/admin/">Go to my dashboard →</a>
+  `;
+  wireInstallButton();
+  // If Chrome fires the install prompt a moment late, make sure the button works.
+  document.addEventListener('pwa-installable', wireInstallButton, { once: true });
+}
+
+function showError(msg) {
+  document.getElementById('card').innerHTML = `
+    <h1>Link expired</h1>
+    <p class="lede">${esc(msg || 'This activation link has expired or was already used.')} No worries — you can get a fresh one in a few seconds.</p>
+    <a class="btn btn-primary" href="/club/admin/login.html">Text me a sign-in link →</a>
+  `;
+}
+
+(async () => {
+  if (!SLUG) { showError('Open this from your club’s web address (yourclub.poolsideapp.com).'); return; }
+  const token = getToken();
+  // No token → this is a revisit or a home-screen launch. Send them to the
+  // dashboard (which bounces to sign-in if they aren’t logged in).
+  if (!token) { window.location.replace('/club/admin/'); return; }
+  // Strip the token from the URL immediately so it isn’t bookmarked / re-used
+  // (and so an iOS "Add to Home Screen" saves a clean URL).
+  history.replaceState(null, '', '/club/admin/activate.html');
+
+  paintBranding();  // fire-and-forget; don't block activation on it
+
+  try {
+    const res = await fetch(AUTH_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'verify_link', slug: SLUG, token }),
+    });
+    const data = await res.json();
+    if (!data.ok) { showError(data.error); return; }
+    localStorage.setItem('poolside_tenant_token', data.token);
+    localStorage.setItem('poolside_tenant_user', JSON.stringify(data.user));
+    localStorage.setItem('poolside_tenant_tenant', JSON.stringify(data.tenant));
+    showSuccess(data.user);
+  } catch (e) {
+    showError('Couldn’t reach the server. Check your connection and tap the link again.');
+  }
+})();
+</script>
+</body>
+</html>

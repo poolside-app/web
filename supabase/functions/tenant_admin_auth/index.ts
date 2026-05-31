@@ -49,11 +49,12 @@ function escAdmin(s: unknown): string {
 }
 
 async function sendAdminInviteEmail(args: {
-  to: string; tenantName: string; clubUrl: string; tempPassword: string;
+  to: string; tenantName: string; clubUrl: string; activationLink: string;
   inviteeName: string; roleLabel: string;
 }) {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
-  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a"><h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added as a <b>${escAdmin(args.roleLabel)}</b>.</p><p style="margin:24px 0"><a href="${args.clubUrl}/club/admin/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in</a></p><div style="background:#f7f3eb;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-family:monospace;font-size:13px"><div>Email: <b>${escAdmin(args.to)}</b></div><div>Temp password: <b>${escAdmin(args.tempPassword)}</b></div></div><p style="margin:0;color:#94a3b8;font-size:12px">You'll be prompted to set a new password on first login.</p></div>`;
+  const signInHost = `${escAdmin(args.clubUrl.replace(/^https?:\/\//, ''))}/club/admin`;
+  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a"><h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added as a <b>${escAdmin(args.roleLabel)}</b>. Tap below to activate your account. No password needed.</p><p style="margin:24px 0"><a href="${args.activationLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Activate my account</a></p><p style="margin:0;color:#94a3b8;font-size:12px">This one-tap link is just for you and expires in 7 days. After that you can sign in any time at ${signInHost} — we'll text or email you a quick link to get in.</p></div>`;
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -97,6 +98,35 @@ async function sendAdminSmsCode(args: { to: string; tenantName: string; code: st
     return { sent: false, error: 'TWILIO_* env vars not set' };
   }
   const smsBody = `Your ${args.tenantName} sign-in code is ${args.code}. Expires in 10 min. If you didn't ask for it, ignore this message.`;
+  const params: Record<string, string> = { To: args.to, Body: smsBody };
+  if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
+  else if (from) params.From = from;
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa(`${sid}:${tok}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params).toString(),
+    });
+    if (!res.ok) { const t = await res.text(); return { sent: false, error: `Twilio ${res.status}: ${t.slice(0, 200)}` }; }
+    return { sent: true };
+  } catch (e) { return { sent: false, error: String(e) }; }
+}
+
+// SMS invite/activation link. Same A2P-registered Twilio path + kill-switch as
+// sendAdminSmsCode, but the body carries a one-tap activation LINK rather than
+// a code — an invitee has never visited the site, so a bare code has nowhere
+// to be typed. Tapping the link signs them in (passwordless) via verify_link.
+async function sendAdminSmsInviteLink(args: { to: string; tenantName: string; link: string; sb: ReturnType<typeof createClient> }) {
+  if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
+  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
+  if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };
+  const sid = TWILIO_SID, tok = TWILIO_TOKEN;
+  const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
+  const from = TWILIO_FROM_N;
+  if (!sid || !tok || (!messagingServiceSid && !from)) {
+    return { sent: false, error: 'TWILIO_* env vars not set' };
+  }
+  const smsBody = `${args.tenantName} on Poolside: you've been added as an admin. Tap to activate your account — no password needed: ${args.link}`;
   const params: Record<string, string> = { To: args.to, Body: smsBody };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (from) params.From = from;
@@ -517,6 +547,9 @@ Deno.serve(async (req) => {
       .eq('id', link.admin_user_id).maybeSingle();
     if (!admin || !admin.active) return jsonResponse({ ok: false, error: 'Admin not found' }, 401);
     await sb.from('admin_magic_links').update({ used_at: new Date().toISOString() }).eq('id', link.id);
+    // Mark them as signed in so the admin list stops showing them as "Invited"
+    // (pending = never signed in). An activation/sign-in link counts as a login.
+    await sb.from('admin_users').update({ last_login_at: new Date().toISOString() }).eq('id', admin.id);
     const jwt = await signToken(admin.id, tenant.id, tenant.slug, {
       role_template: admin.role_template ?? 'owner',
       scopes: admin.scopes ?? [],
@@ -688,15 +721,14 @@ Deno.serve(async (req) => {
     if (!(await requireOwner(sb, payload as never))) {
       return jsonResponse({ ok: false, error: 'Only owners can invite new admins' }, 403);
     }
-    const usernameRaw = String(body.username ?? '').trim().toLowerCase();
-    const email       = String(body.email ?? '').trim().toLowerCase();
+    const email        = String(body.email ?? '').trim().toLowerCase();
     const display_name = String(body.display_name ?? '').trim();
     const phone_raw    = String(body.phone_e164 ?? '').trim();
-    const username = usernameRaw || email;
-    if (!username || !username.includes('@')) {
-      return jsonResponse({ ok: false, error: 'Email-shaped username is required' }, 400);
-    }
+    // Delivery channel for the activation link. Default 'sms' (text) — the
+    // grandma-friendly path. 'email' sends the link to the inbox instead.
+    const channel: 'sms' | 'email' = String(body.channel ?? 'sms').toLowerCase() === 'email' ? 'email' : 'sms';
     if (!display_name) return jsonResponse({ ok: false, error: 'Name is required' }, 400);
+    if (email && !email.includes('@')) return jsonResponse({ ok: false, error: 'That email address doesn\'t look right' }, 400);
 
     // Resolve roles + scopes. New API accepts a `roles[]` array (multi-role,
     // e.g. ['communications', 'volunteer']). Legacy `role_template` (single
@@ -738,67 +770,113 @@ Deno.serve(async (req) => {
       else return jsonResponse({ ok: false, error: 'Invalid phone number' }, 400);
     }
 
-    // Make sure they don't already exist on this tenant
-    const { data: clash } = await sb.from('admin_users').select('id, active')
-      .eq('tenant_id', payload.tid).eq('username', username).maybeSingle();
-    if (clash) {
-      if (clash.active) return jsonResponse({ ok: false, error: 'That admin already exists' }, 409);
-      // Reactivate stale row + apply the new role
-      await sb.from('admin_users').update({
-        active: true, display_name,
-        email: email || username,
-        scopes, role_template, roles,
-        phone_e164: phone ?? null,
-      }).eq('id', clash.id);
-      return jsonResponse({ ok: true, admin_id: clash.id, reactivated: true, role_template, roles, scopes });
-    }
-
-    // Generate a temporary password — admin must change on first login.
-    const bytes = new Uint8Array(9);
-    crypto.getRandomValues(bytes);
-    const tempPw = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '').slice(0, 12);
-    const hash = await bcrypt.hash(tempPw, 10);
+    // Channel-specific requirements. Text invites need a phone; email invites
+    // need an email. Username (per-tenant unique identity) is the email when we
+    // have one, else the phone — so phone-only admins work too.
+    if (channel === 'sms' && !phone) return jsonResponse({ ok: false, error: 'A phone number is required to text the invite' }, 400);
+    if (channel === 'email' && !email) return jsonResponse({ ok: false, error: 'An email is required to email the invite' }, 400);
+    const username = email || phone;
+    if (!username) return jsonResponse({ ok: false, error: 'A phone or email is required' }, 400);
 
     // board_title — display-only label distinct from role_template
     // (permissions). Free text but the UI provides a dropdown of common
-    // pool-club titles. Falls back to the role_template label if not set.
+    // pool-club titles.
     const board_title = (() => {
       const s = String(body.board_title ?? '').trim();
       return s ? s.slice(0, 60) : null;
     })();
-    const { data, error } = await sb.from('admin_users').insert({
-      tenant_id: payload.tid,
-      username, email: email || username, display_name,
-      password_hash: hash,
-      notify_pref: 'email',
-      is_default_pw: true, active: true,
-      scopes, role_template, roles, phone_e164: phone,
-      board_title,
-    }).select('id, username, display_name, email').single();
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    const roleLabel = ROLE_TEMPLATES[role_template]?.label ?? role_template;
+
+    // Tenant — needed to build the activation link's subdomain URL.
+    const { data: tnt } = await sb.from('tenants').select('slug, display_name').eq('id', payload.tid).maybeSingle();
+    if (!tnt) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const clubUrl = `https://${tnt.slug}.poolsideapp.com`;
+
+    // Passwordless: invited admins never get a temp password. We still satisfy
+    // the NOT NULL password_hash with an unguessable random value (they can
+    // optionally set a real password later in Settings). is_default_pw stays
+    // FALSE so they skip the forced "change your password" screen entirely.
+    const randomPw = crypto.randomUUID() + crypto.randomUUID();
+    const hash = await bcrypt.hash(randomPw, 10);
+    const notify_pref = channel === 'sms' ? 'sms' : 'email';
+
+    // Make sure they don't already exist on this tenant. Reactivate a stale
+    // (deactivated) row instead of erroring — re-inviting a former admin is
+    // normal. Either path ends with an active row + a fresh activation link.
+    const { data: clash } = await sb.from('admin_users').select('id, active')
+      .eq('tenant_id', payload.tid).eq('username', username).maybeSingle();
+    let adminId: string;
+    let reactivated = false;
+    if (clash) {
+      if (clash.active) return jsonResponse({ ok: false, error: 'That admin already exists' }, 409);
+      await sb.from('admin_users').update({
+        active: true, display_name,
+        email: email || null,
+        password_hash: hash, is_default_pw: false, notify_pref,
+        scopes, role_template, roles,
+        phone_e164: phone ?? null, board_title,
+      }).eq('id', clash.id);
+      adminId = clash.id;
+      reactivated = true;
+    } else {
+      const { data, error } = await sb.from('admin_users').insert({
+        tenant_id: payload.tid,
+        username, email: email || null, display_name,
+        password_hash: hash,
+        notify_pref,
+        is_default_pw: false, active: true,
+        scopes, role_template, roles, phone_e164: phone,
+        board_title,
+      }).select('id').single();
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      adminId = data.id;
+    }
 
     try {
       await sb.from('audit_log').insert({
-        tenant_id: payload.tid, kind: 'admin.invited', entity_type: 'admin_user', entity_id: data.id,
-        summary: `Invited ${display_name} (${username}) as ${ROLE_TEMPLATES[role_template]?.label ?? role_template}`,
+        tenant_id: payload.tid, kind: 'admin.invited', entity_type: 'admin_user', entity_id: adminId,
+        summary: `Invited ${display_name} (${username}) as ${roleLabel}`,
         actor_id: payload.sub, actor_kind: 'tenant_admin',
       });
     } catch { /* ignore */ }
 
-    // Send invite email if Resend is configured. Always also return
-    // temp_password so the inviter can share verbally if email fails.
-    const { data: tnt } = await sb.from('tenants').select('slug, display_name').eq('id', payload.tid).maybeSingle();
-    const clubUrl = tnt ? `https://${tnt.slug}.poolsideapp.com` : '';
-    const inviteEmail = await sendAdminInviteEmail({
-      to: data.email || username,
-      tenantName: tnt?.display_name || 'your club',
-      clubUrl, tempPassword: tempPw, inviteeName: display_name,
-      roleLabel: ROLE_TEMPLATES[role_template]?.label ?? role_template,
+    // Mint a single-use activation link (7-day TTL — invitees may not tap it
+    // for days). Same admin_magic_links machinery as sign-in links; verify_link
+    // exchanges it for a session. Hashed at rest.
+    const tokBytes = new Uint8Array(32);
+    crypto.getRandomValues(tokBytes);
+    let tokBin = ''; for (const b of tokBytes) tokBin += String.fromCharCode(b);
+    const tokRaw = btoa(tokBin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const tokenHash = await sha256Hex(tokRaw);
+    await sb.from('admin_magic_links').insert({
+      tenant_id: payload.tid, admin_user_id: adminId, token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString(),
     });
+    const activationLink = `${clubUrl}/club/admin/activate.html#token=${tokRaw}`;
+
+    // Deliver the link on the chosen channel.
+    let sent = false;
+    let sendError: string | null = null;
+    if (channel === 'sms') {
+      const r = await sendAdminSmsInviteLink({ to: phone as string, tenantName: tnt.display_name, link: activationLink, sb });
+      sent = r.sent; sendError = r.sent ? null : (r.error ?? 'unknown');
+      await sb.from('sms_log').insert({
+        tenant_id: payload.tid, category: 'auth', to_phone: phone as string,
+        success: r.sent, error: sendError, source: 'tenant_admin_auth.invite_admin',
+      });
+    } else {
+      const r = await sendAdminInviteEmail({
+        to: email as string, tenantName: tnt.display_name,
+        clubUrl, activationLink, inviteeName: display_name, roleLabel,
+      });
+      sent = r.sent; sendError = r.sent ? null : (r.error ?? 'unknown');
+    }
+
     return jsonResponse({
-      ok: true, admin_id: data.id, temp_password: tempPw, role_template, roles, scopes,
-      invite_email_sent: inviteEmail.sent,
-      invite_email_error: inviteEmail.sent ? null : inviteEmail.error,
+      ok: true, admin_id: adminId, reactivated, channel,
+      activation_url: activationLink,
+      sent, send_error: sendError,
+      role_template, roles, scopes,
     });
   }
 
