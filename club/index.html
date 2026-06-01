@@ -238,6 +238,7 @@
 <div id="root"></div>
 
 <script src="/js/calendar.js"></script>
+<script src="/js/today.js" defer></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
   <button class="close" onclick="closeLightbox()" aria-label="Close">×</button>
@@ -704,7 +705,7 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
     : '';
 
   const stripCells = [];
-  if (opens && closes) stripCells.push(`<div class="stat"><div class="lbl">Today's hours</div><div class="val">${escapeHtml(opens)} – ${escapeHtml(closes)}</div></div>`);
+  // Hours now live in the richer "Today at the pool" block below (#today-block).
   if (location)        stripCells.push(`<div class="stat"><div class="lbl">Where</div><div class="val">${escapeHtml(location)}</div></div>`);
 
   // Season closed → hide "Apply for membership" CTA. Memberships frozen
@@ -812,6 +813,7 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
       </div>
     </section>
     ${memberCountTicker}
+    <section style="padding:18px 22px 0;max-width:1120px;margin:0 auto"><div id="today-block"></div></section>
     ${stripCells.length ? `<section class="strip">${stripCells.join('')}</section>` : ''}
     ${fundraiserSection}
     ${(photos && photos.length) ? `
@@ -916,6 +918,17 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
     ${feedbackSection}
   `;
 
+  // "Today at the pool" — hours + today's events (recurrence-expanded, smart
+  // by type, generic parties) + today's program sessions + check-in counter.
+  if (window.PoolsideToday) {
+    PoolsideToday.render({
+      rootEl: document.getElementById('today-block'),
+      events: events || [], programs: programs || [],
+      publicSettings: ps || {}, slug: t.slug, clubName: t.display_name,
+      checkinsCount: (window.__PUBLIC_PAYLOAD && window.__PUBLIC_PAYLOAD.today_checkins) || 0,
+    });
+  }
+
   // Render the shared month-grid widget after the HTML is in place.
   // Fetches external iCal feeds (Google Calendar, Swimtopia, etc. that the
   // admin connected) and merges them into the native event list with per-feed
@@ -952,6 +965,8 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
           }
         }
         if (!flat.length) return;
+        // Fold imported iCal events into "Today" too.
+        if (window.PoolsideToday) PoolsideToday.update([...(events || []), ...flat]);
         PoolsideCalendar.render({
           rootEl: calRoot,
           events: [...(events || []), ...flat],
@@ -1047,14 +1062,17 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
   const slug = getSlugFromHostname();
   if (!slug) { renderNotFound(null); return; }
   try {
+    const __ds = new Date(); __ds.setHours(0, 0, 0, 0);
+    const __de = new Date(); __de.setHours(24, 0, 0, 0);
     const res = await fetch(PUBLIC_LOOKUP, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug }),
+      body: JSON.stringify({ slug, day_start: __ds.toISOString(), day_end: __de.toISOString() }),
     });
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
+    window.__PUBLIC_PAYLOAD = data;
     renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || [], data.photos || [], data.documents || [], data.programs || [], data.sponsors || [], data.member_count || null);
 
     // Sponsor popup — rotates through active sponsors per the tenant's

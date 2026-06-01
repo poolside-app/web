@@ -504,6 +504,7 @@
 </div>
 
 <script src="/js/calendar.js"></script>
+<script src="/js/today.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
@@ -1933,9 +1934,11 @@ async function submitProfile() {
   let publicData = { events: [], posts: [], public_settings: {} };
   if (slug) {
     try {
+      const __ds = new Date(); __ds.setHours(0, 0, 0, 0);
+      const __de = new Date(); __de.setHours(24, 0, 0, 0);
       const r = await fetch(PUBLIC_URL, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slug }),
+        body: JSON.stringify({ slug, day_start: __ds.toISOString(), day_end: __de.toISOString() }),
       });
       const d = await r.json();
       if (d.ok) publicData = d;
@@ -2117,6 +2120,9 @@ async function submitProfile() {
       ${renderMemberCountTicker(publicData.member_count, publicData.public_settings?.public)}
     </div>
 
+    <!-- Today at the pool — hours + today's events + check-in counter -->
+    <div id="today-block"></div>
+
     <!-- "Add to home screen" install card — populated by renderInstallCard()
          after Pwa.setup runs. Hidden by default; revealed on iOS/Android
          non-standalone. -->
@@ -2204,6 +2210,17 @@ async function submitProfile() {
     ${renderFeedbackCard()}
   `;
 
+  // "Today at the pool" — shared engine (same as the public page).
+  if (window.PoolsideToday) {
+    PoolsideToday.render({
+      rootEl: document.getElementById('today-block'),
+      events: publicData.events || [], programs: publicData.programs || [],
+      publicSettings: publicData.public_settings || {}, slug: getSlug(),
+      clubName: tenant.display_name,
+      checkinsCount: publicData.today_checkins || 0,
+    });
+  }
+
   // Render shared month-grid widget. Reuse the same fmtHourLabel logic the
   // public landing page uses so the daily open/close hint matches.
   const fmtHr = (hhmm) => {
@@ -2249,6 +2266,8 @@ async function submitProfile() {
           }
         }
         if (!flat.length) return;
+        // Fold imported iCal events into "Today" too.
+        if (window.PoolsideToday) PoolsideToday.update([...(publicData.events || []), ...flat]);
         PoolsideCalendar.render({
           rootEl: calRoot,
           events: [...(publicData.events || []), ...flat],

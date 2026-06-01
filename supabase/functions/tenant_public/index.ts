@@ -38,6 +38,13 @@ Deno.serve(async (req) => {
   const slug = String(body.slug ?? '').trim().toLowerCase();
   if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
 
+  // Local-day window for the "checked in today" counter (resets daily). The
+  // client passes its local midnight boundaries; fall back to UTC day if absent.
+  const dayStart = typeof body.day_start === 'string' ? body.day_start
+    : new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
+  const dayEnd = typeof body.day_end === 'string' ? body.day_end
+    : new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString();
+
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const { data: tenant } = await sb.from('tenants')
     .select('id, slug, display_name, status, plan, custom_domain, stripe_account_id, stripe_charges_enabled')
@@ -183,7 +190,12 @@ Deno.serve(async (req) => {
     .lte('starts_at', until)
     .order('starts_at', { ascending: true })
     .limit(300);
-  const events = eventsData ?? [];
+  // Sanitize member-booked parties: their title/body carry the host family's
+  // name ("Hosted by the Smiths…"), which must NOT leak onto the public site.
+  // Show them generically; the booker sees their own details in their account.
+  const events = (eventsData ?? []).map((e) =>
+    e.kind === 'party' ? { ...e, title: 'Private event', body: null } : e
+  );
 
   // Photo gallery — admin-curated order, capped at 24 for landing-page weight.
   const { data: photosData } = await sb.from('photos')
@@ -240,6 +252,24 @@ Deno.serve(async (req) => {
     memberCount = { households: hh ?? 0, members: mm ?? 0 };
   }
 
+  // Today's check-in buzz: headcount from pool check-ins (lifeguard/keyfob/app,
+  // including guests) + members who pressed the gate unlock, within the local
+  // day window. Resets daily. Best-effort — never blocks the page.
+  let today_checkins = 0;
+  try {
+    const [ciRes, guRes] = await Promise.all([
+      sb.from('pool_checkins').select('party_size, guest_count')
+        .eq('tenant_id', tenant.id).gte('checked_in_at', dayStart).lt('checked_in_at', dayEnd),
+      sb.from('gate_unlocks').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant.id).eq('actor_kind', 'member').eq('is_test', false)
+        .gte('requested_at', dayStart).lt('requested_at', dayEnd),
+    ]);
+    const checkinPeople = (ciRes.data ?? []).reduce(
+      (s: number, r: { party_size: number | null; guest_count: number | null }) =>
+        s + (r.party_size ?? 1) + (r.guest_count ?? 0), 0);
+    today_checkins = checkinPeople + (guRes.count ?? 0);
+  } catch { today_checkins = 0; }
+
   const { id: _id, ...publicTenant } = tenant;
   return jsonResponse({
     ok: true,
@@ -248,5 +278,6 @@ Deno.serve(async (req) => {
     posts, events, photos, programs, tiers,
     sponsors,
     member_count: memberCount,
+    today_checkins,
   });
 });
