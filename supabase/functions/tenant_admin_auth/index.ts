@@ -724,9 +724,13 @@ Deno.serve(async (req) => {
     const email        = String(body.email ?? '').trim().toLowerCase();
     const display_name = String(body.display_name ?? '').trim();
     const phone_raw    = String(body.phone_e164 ?? '').trim();
-    // Delivery channel for the activation link. Default 'sms' (text) — the
-    // grandma-friendly path. 'email' sends the link to the inbox instead.
-    const channel: 'sms' | 'email' = String(body.channel ?? 'sms').toLowerCase() === 'email' ? 'email' : 'sms';
+    // Delivery channel for the activation link. An explicit `channel` wins;
+    // otherwise infer from what's provided (phone → text, else email) so an
+    // email-only invite doesn't wrongly demand a phone number.
+    const channelRaw = body.channel ? String(body.channel).toLowerCase() : '';
+    const channel: 'sms' | 'email' = channelRaw === 'email' ? 'email'
+      : channelRaw === 'sms' ? 'sms'
+      : (phone_raw ? 'sms' : 'email');
     if (!display_name) return jsonResponse({ ok: false, error: 'Name is required' }, 400);
     if (email && !email.includes('@')) return jsonResponse({ ok: false, error: 'That email address doesn\'t look right' }, 400);
 

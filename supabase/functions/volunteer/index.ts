@@ -113,9 +113,11 @@ Deno.serve(async (req) => {
   const payload = tokRaw ? await verifyToken(tokRaw) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
-  // Scope gate: this function's admin actions require the 'volunteer' scope.
-  // Synthetic webhook tokens bypass; super + owner roles bypass.
-  if (!(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'volunteer'))) {
+  // Scope gate: ADMIN actions require the 'volunteer' scope. Gate admin tokens
+  // ONLY — members are authorized by membership and handled in the isMember
+  // branch below (with its own catch-all). Without the `kind` guard this 403'd
+  // real members out of signing up / cancelling. Synthetic/super/owner bypass.
+  if (payload.kind === 'tenant_admin' && !(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'volunteer'))) {
     return jsonResponse({ ok: false, error: 'Missing required scope: volunteer' }, 403);
   }
   const TID = payload.tid;

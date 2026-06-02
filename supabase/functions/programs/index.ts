@@ -151,7 +151,10 @@ Deno.serve(async (req) => {
 
   // Scope gate: this function's admin actions require the 'programs' scope.
   // Synthetic webhook tokens bypass; super + owner roles bypass.
-  if (!(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'programs'))) {
+  // Gate ADMIN tokens only — members are authorized by membership and handled
+  // in the isMember branch below (which has its own catch-all). Without the
+  // `kind` guard this 403'd real members out of booking/my_bookings/cancel.
+  if (payload.kind === 'tenant_admin' && !(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'programs'))) {
     return jsonResponse({ ok: false, error: 'Missing required scope: programs' }, 403);
   }
   const TID = payload.tid;

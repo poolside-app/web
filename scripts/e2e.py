@@ -1115,7 +1115,7 @@ step('cross-tenant isolation on rollup', pay_isolation)
 section('Co-admin invites')
 
 CO_ADMIN_ID = None
-CO_ADMIN_PW = None
+CO_ADMIN_ACT_URL = None
 CO_ADMIN_EMAIL = f'coadmin-e2e-{STAMP}@example.com'
 
 def admin_list_starts_at_one():
@@ -1125,16 +1125,17 @@ def admin_list_starts_at_one():
     assert isinstance(r.get('admins'), list), 'admins is not a list'
 
 def admin_invite_creates_row():
-    global CO_ADMIN_ID, CO_ADMIN_PW
+    global CO_ADMIN_ID, CO_ADMIN_ACT_URL
     r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
         'action': 'invite_admin',
         'display_name': f'E2E Co-Admin {STAMP}',
         'email': CO_ADMIN_EMAIL,
     }, TOKEN_A)
     assert r.get('ok'), f'invite: {r}'
-    assert r.get('temp_password'), 'no temp password returned'
+    # Passwordless invites return a one-tap activation link, not a temp password.
+    assert r.get('activation_url') and '#token=' in r['activation_url'], f'no activation_url: {r}'
     CO_ADMIN_ID = r['admin_id']
-    CO_ADMIN_PW = r['temp_password']
+    CO_ADMIN_ACT_URL = r['activation_url']
 
 def admin_invite_dupe_blocked():
     r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
@@ -1145,12 +1146,14 @@ def admin_invite_dupe_blocked():
     assert not r.get('ok'), 'duplicate invite should fail'
 
 def admin_invite_can_login():
+    # Tapping the activation link (verify_link) signs them in — no password.
+    tok = CO_ADMIN_ACT_URL.split('#token=', 1)[1]
     r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
-        'action': 'login', 'slug': SLUG_A,
-        'email': CO_ADMIN_EMAIL, 'password': CO_ADMIN_PW,
+        'action': 'verify_link', 'slug': SLUG_A, 'token': tok,
     })
-    assert r.get('ok'), f'login: {r}'
-    assert r.get('user', {}).get('is_default_pw') is True, 'invited admin should have is_default_pw=true'
+    assert r.get('ok'), f'activate: {r}'
+    assert r.get('token'), 'activation did not return a session token'
+    assert r.get('user', {}).get('is_default_pw') is False, 'passwordless invite should be is_default_pw=false'
 
 def admin_isolation():
     # Tenant B's admin list should NOT include tenant A's invitee
@@ -1257,7 +1260,7 @@ step('archive hides from public list',      pol_archive_hides_from_public)
 section('Admin scopes + task queue')
 
 ROLE_INVITE_ID = None
-ROLE_INVITE_PW = None
+ROLE_ACT_URL = None
 ROLE_INVITE_EMAIL = f'roletest-e2e-{STAMP}@example.com'
 ROLE_TOKEN = None
 TASK_APP_ID = None
@@ -1269,7 +1272,7 @@ def role_templates_listed():
     assert {'owner', 'treasurer', 'membership', 'events', 'communications'}.issubset(keys), f'missing templates: {keys}'
 
 def role_invite_with_template():
-    global ROLE_INVITE_ID, ROLE_INVITE_PW
+    global ROLE_INVITE_ID, ROLE_ACT_URL
     r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
         'action': 'invite_admin',
         'display_name': f'E2E Treasurer {STAMP}',
@@ -1280,17 +1283,17 @@ def role_invite_with_template():
     assert r.get('role_template') == 'treasurer'
     assert 'payments' in r.get('scopes', []), 'treasurer should have payments scope'
     ROLE_INVITE_ID = r['admin_id']
-    ROLE_INVITE_PW = r['temp_password']
+    ROLE_ACT_URL = r['activation_url']
 
 def role_login_returns_scopes():
     global ROLE_TOKEN
+    tok = ROLE_ACT_URL.split('#token=', 1)[1]
     r = post(f'{SUPABASE_URL}/functions/v1/tenant_admin_auth', {
-        'action': 'login', 'slug': SLUG_A,
-        'email': ROLE_INVITE_EMAIL, 'password': ROLE_INVITE_PW,
+        'action': 'verify_link', 'slug': SLUG_A, 'token': tok,
     })
-    assert r.get('ok'), f'login: {r}'
+    assert r.get('ok'), f'activate: {r}'
     assert r.get('user', {}).get('role_template') == 'treasurer'
-    assert 'payments' in r.get('user', {}).get('scopes', []), 'treasurer login missing payments scope'
+    assert 'payments' in r.get('user', {}).get('scopes', []), 'treasurer activation missing payments scope'
     ROLE_TOKEN = r['token']
 
 def role_custom_scopes_flip_template():
