@@ -69,8 +69,6 @@ check_status "tenant /club/admin/"  "${HOST}/club/admin/login.html" "200"
 check_status "shared calendar.js"   "${HOST}/js/calendar.js"        "200"
 check_status "shared calendar.css"  "${HOST}/js/calendar.css"       "200"
 check       "calendar.js exposes widget" "${HOST}/js/calendar.js" "PoolsideCalendar"
-check_status "provider /admin/cockpit.html" "${ROOT}/admin/cockpit.html" "200"
-check       "cockpit page wires the runner" "${ROOT}/admin/cockpit.html" "Run end-to-end"
 check_status "admin events page (after refactor)" "${HOST}/club/admin/events.html" "200"
 check       "admin events imports calendar.js" "${HOST}/club/admin/events.html" "/js/calendar.js"
 
@@ -175,11 +173,6 @@ check       "admin-flags.js exports apply" "${HOST}/js/admin-flags.js"     "Pool
 check_status "provider /admin/analytics.html" "${ROOT}/admin/analytics.html" "200"
 check       "analytics page wires API"        "${ROOT}/admin/analytics.html" "provider_metrics"
 
-check_post "documents_admin rejects anon" \
-  "${SUPA}/functions/v1/documents_admin" \
-  '{"action":"list"}' \
-  'Not authenticated'
-
 check_post "applications.list rejects anon" \
   "${SUPA}/functions/v1/applications" \
   '{"action":"list"}' \
@@ -267,14 +260,8 @@ check       "admin members page wires both APIs"  "${HOST}/club/admin/members.ht
 
 check_status "admin /club/admin/impact.html"     "${HOST}/club/admin/impact.html"     "200"
 check       "impact page wires the API"           "${HOST}/club/admin/impact.html"     "tenant_metrics"
-check_status "admin /club/admin/documents.html"  "${HOST}/club/admin/documents.html"  "200"
-check       "docs page wires the API"             "${HOST}/club/admin/documents.html"  "documents_admin"
 check_status "provider /admin/profile.html"       "${ROOT}/admin/profile.html"          "200"
 check       "profile page wires admin_auth"       "${ROOT}/admin/profile.html"          "change_password"
-check_post "tenant_public exposes documents shape" \
-  "${SUPA}/functions/v1/tenant_public" \
-  '{"slug":"bishopestates"}' \
-  '"documents"'
 
 echo
 echo "── Member magic-link round trip (no auth, but real DB write) ──"

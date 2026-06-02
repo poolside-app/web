@@ -235,9 +235,9 @@ async function loadMe() {
 
 async function loadSettings() {
   try {
-    const s = await call(SETTINGS_URL, 'load');
+    const s = await call(SETTINGS_URL, 'get');
     if (s.ok) {
-      LAST_SETTINGS = s.value || {};
+      LAST_SETTINGS = s.settings || {};
       const cfg = LAST_SETTINGS.sponsors_config || {};
       setVal('popup_enabled',   cfg.popup_enabled ? 'true' : 'false');
       setVal('popup_frequency', cfg.popup_frequency || 'once_per_session');

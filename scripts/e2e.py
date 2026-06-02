@@ -312,11 +312,8 @@ def now_in_public():
 def doc_cleanup():
     post(f'{SUPABASE_URL}/functions/v1/documents_admin', {'action': 'delete', 'id': DOC_ID}, TOKEN_A)
 
-step('create admin-only document',         doc_create_admin_only)
-step('admin doc NOT on public surface',    admin_only_doc_NOT_in_public)
-step('flip visibility to public',          update_to_public)
-step('public doc appears on public surface', now_in_public)
-step('soft-delete document',               doc_cleanup)
+# Documents feature was removed (documents_admin function deleted; tenant_public
+# no longer returns documents). Section retired 2026-06-01.
 
 # ── 5. Events with recurrence ────────────────────────────────────────────
 section('Events (recurring)')
@@ -639,7 +636,11 @@ def member_add_housemate():
         'action': 'add_household_member',
         'name': f'Member-Add {STAMP}',
         'role': 'adult',
-        'phone_e164': f'+1555{STAMP}5678',
+        'phone': f'+1555{STAMP}5678',
+        # Adults must accept the required policies + sign for themselves
+        # (legal-evidence requirement added since this test was first written).
+        'policies_accepted': {'rules': True, 'guest': True, 'party': True, 'sitter': True, 'waiver': True},
+        'signature': SIG_PNG,
     }, tok)
     assert r.get('ok'), f'add: {r}'
     M_ADDED_ID = r['member_id']
@@ -882,10 +883,8 @@ def dir_isolation():
     )
     assert rows[0]['c'] == 0, 'tenant B has stray opted-in members (isolation concern)'
 
-step('directory empty by default',     dir_default_empty)
-step('member opts in via profile',     dir_opt_in_via_profile)
-step('directory now includes them',    dir_now_lists_me)
-step('cross-tenant directory isolation', dir_isolation)
+# Member directory feature was removed (member_auth.list_directory returns
+# "removed"). Section retired 2026-06-01.
 
 # ── 16. Volunteer opportunities ──────────────────────────────────────────
 section('Volunteer signups')
@@ -1368,6 +1367,43 @@ step('claim_venmo_paid creates payments task',   role_venmo_claim_creates_task)
 step('repeated claim is deduped (no spam)',      role_venmo_claim_dedupes)
 step('complete closes task for everyone',        role_complete_task_closes_for_everyone)
 step('cross-tenant isolation on admin_tasks',    role_isolation_other_tenant)
+
+# ── 22. Today block: party privacy + check-in counter ───────────────────
+section('Today block (party privacy + check-in count)')
+
+PARTY_EVENT_ID = None
+
+def party_event_genericized_in_public():
+    global PARTY_EVENT_ID
+    # A party carries a host name; tenant_public must strip it so the public
+    # site never leaks who booked (privacy fix, 2026-05-31).
+    starts = time.strftime('%Y-%m-%dT18:00:00.000Z', time.gmtime(time.time() + 86400))
+    r = post(f'{SUPABASE_URL}/functions/v1/events_admin', {
+        'action': 'create', 'title': f'Smith Family Bash {STAMP}', 'kind': 'party',
+        'body': f'Hosted by the Smith family {STAMP}', 'starts_at': starts,
+    }, TOKEN_A)
+    assert r.get('ok'), f'create party: {r}'
+    PARTY_EVENT_ID = r['event']['id']
+    track('events', PARTY_EVENT_ID)
+    pub = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A})
+    ev = next((e for e in pub.get('events', []) if e['id'] == PARTY_EVENT_ID), None)
+    assert ev, 'party event missing from public surface'
+    assert ev.get('title') == 'Private event', f'party title not genericized: {ev.get("title")!r}'
+    assert not ev.get('body'), f'party body leaked the host name: {ev.get("body")!r}'
+
+def today_checkins_counter_rises():
+    # tenant_public.today_checkins = check-in headcount + member gate unlocks today.
+    before = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A}).get('today_checkins', 0)
+    mgmt_query(
+        f"insert into public.pool_checkins (tenant_id, family_name, party_size, guest_count, method, checked_in_at) "
+        f"values ('{TENANT_A_ID}', 'E2E Checkin {STAMP}', 3, 1, 'manual', now());"
+    )
+    after = post(f'{SUPABASE_URL}/functions/v1/tenant_public', {'slug': SLUG_A}).get('today_checkins', 0)
+    mgmt_query(f"delete from public.pool_checkins where family_name = 'E2E Checkin {STAMP}';")
+    assert after >= before + 4, f'today_checkins should rise by party_size+guests: before={before} after={after}'
+
+step('party event genericized on public surface', party_event_genericized_in_public)
+step('today_checkins counter reflects a check-in', today_checkins_counter_rises)
 
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')

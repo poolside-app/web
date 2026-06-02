@@ -1,0 +1,24 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "description": "Multi-tenant SaaS for community pool clubs. Members. Gate access. Party booking. Email confirmations. Photo galleries. Nightly Drive backups. Built so volunteer pool boards can stop running their clubs from spreadsheets.",
+  "main": "sw.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/poolside-app/web.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/poolside-app/web/issues"
+  },
+  "homepage": "https://github.com/poolside-app/web#readme",
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}
