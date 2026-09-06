@@ -1756,6 +1756,75 @@ def link_renewal_price_matches_the_app():
     assert len(link.get('options') or []) == len(app.get('options') or []), \
         'link and app offer different payment plans'
 
+
+def csv_invites_reach_phone_only_members():
+    # A migrating roster always has households with a phone and no email.
+    # Email-only invites skipped them in silence, which is the exact segment a
+    # treasurer then has to ring one at a time.
+    comms = sign_jwt({
+        'sub': '00000000-0000-0000-0000-000000000000',
+        'kind': 'tenant_admin', 'tid': TENANT_A_ID, 'slug': SLUG_A,
+        'synthetic': True, 'role_template': 'owner', 'scopes': ['members'],
+        'exp': int(time.time()) + 3600,
+    })
+    rows = mgmt_query(f"""
+        insert into public.applications
+          (tenant_id, family_name, primary_name, primary_phone, primary_email,
+           status, payment_status, claim_source, membership_year)
+        values ('{TENANT_A_ID}', 'Phone Only {STAMP}', 'Phoney {STAMP}',
+                '+1555{STAMP}0091', null, 'prefilled', 'unpaid', 'csv_import', {NEXT_YEAR})
+        returning id;""")
+    phone_only = rows[0]['id']; track('applications', phone_only)
+
+    # Target just this row so the test cannot blast the real club.
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'send_claim_invites', 'ids': [phone_only],
+        'channels': ['email'], 'only_uninvited': False,
+    }, comms)
+    assert r.get('ok'), f'email-only send: {r}'
+    assert r.get('skipped_no_contact') == 1, \
+        f'a phone-only member should be unreachable by email alone: {r}'
+
+    # With SMS allowed it is reachable — the token gets stored either way, so
+    # assert on that rather than on Twilio actually delivering in a test.
+    r2 = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'send_claim_invites', 'ids': [phone_only],
+        'channels': ['email', 'sms'], 'only_uninvited': False,
+    }, comms)
+    assert r2.get('ok'), f'sms send: {r2}'
+    assert r2.get('skipped_no_contact') == 0, f'still counted unreachable: {r2}'
+    got = mgmt_query(f"select claim_token_hash, invited_at from public.applications where id = '{phone_only}';")
+    assert got[0]['claim_token_hash'] and got[0]['invited_at'], \
+        f'no claim link minted for the phone-only member: {got[0]}'
+
+def csv_invites_can_target_individuals():
+    # "Check person by person" — sending to one must not touch the others.
+    comms = sign_jwt({
+        'sub': '00000000-0000-0000-0000-000000000000',
+        'kind': 'tenant_admin', 'tid': TENANT_A_ID, 'slug': SLUG_A,
+        'synthetic': True, 'role_template': 'owner', 'scopes': ['members'],
+        'exp': int(time.time()) + 3600,
+    })
+    ids = []
+    for i in (1, 2):
+        rows = mgmt_query(f"""
+            insert into public.applications
+              (tenant_id, family_name, primary_name, primary_phone,
+               status, payment_status, claim_source, membership_year)
+            values ('{TENANT_A_ID}', 'Pick {i} {STAMP}', 'Pick{i} {STAMP}',
+                    '+1555{STAMP}009{i}', 'prefilled', 'unpaid', 'csv_import', {NEXT_YEAR})
+            returning id;""")
+        ids.append(rows[0]['id']); track('applications', rows[0]['id'])
+
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'send_claim_invites', 'ids': [ids[0]],
+        'channels': ['sms'], 'only_uninvited': False,
+    }, comms)
+    assert r.get('ok'), f'targeted send: {r}'
+    assert r.get('total') == 1, f'targeting sent to {r.get("total")} rows, expected 1'
+    other = mgmt_query(f"select invited_at from public.applications where id = '{ids[1]}';")
+    assert other[0]['invited_at'] is None, 'an unselected member was invited anyway'
+
 def ren_restore_settings():
     # Leave the real club exactly as we found it — this suite runs against
     # production, so a stray "renewals are open" flag would be visible to
@@ -1783,6 +1852,8 @@ step('in-season lapse enforces access loss',        dun_in_season_lapse_enforces
 step('auto-renew warns before it charges',          auto_renew_warns_before_charging)
 step('auto-renew without a card reports why',       auto_renew_without_a_card_says_so)
 step('auto-renew emails exist and render',          auto_renew_emails_are_registered)
+step('csv invites reach phone-only members',        csv_invites_reach_phone_only_members)
+step('csv invites can target individuals',          csv_invites_can_target_individuals)
 step('renewal link works with no login',            link_renewal_works_without_login)
 step('renewal link records first open',             link_renewal_stamps_first_open)
 step('link and app quote the same price',           link_renewal_price_matches_the_app)

@@ -88,10 +88,17 @@
 
     <div class="card">
       <h2>Send invites</h2>
-      <p class="muted" id="invite-blurb" style="margin-top:0">Email each imported member their personal claim link.</p>
+      <p class="muted" id="invite-blurb" style="margin-top:0">Each member gets their own link to a form already filled in with their details — they confirm, accept your policies, and pay. No password to create.</p>
       <div id="no-email-note" class="muted" style="display:none;margin-bottom:10px"></div>
+      <p style="margin:0 0 4px;font-weight:600;font-size:13px">Send by</p>
+      <p style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:0 0 6px">
+        <label style="display:flex;gap:7px;align-items:center;font-size:14px"><input type="checkbox" id="ch-email" checked> 📧 Email</label>
+        <label style="display:flex;gap:7px;align-items:center;font-size:14px"><input type="checkbox" id="ch-sms" checked> 💬 Text</label>
+      </p>
+      <p class="muted" style="margin:0 0 12px;font-size:12.5px">Texting reaches people email misses — worth leaving on for a first migration. Texts count against your monthly SMS allowance.</p>
       <p>
         <button class="btn" id="send-new">Send to everyone not yet invited</button>
+        <button class="btn btn-ghost" id="send-selected" disabled>Send to selected →</button>
         <button class="btn btn-ghost" id="send-all">Resend to everyone</button>
       </p>
       <div id="send-err" class="err"></div>
@@ -102,7 +109,10 @@
     <div class="card">
       <h2>Imported members</h2>
       <table class="t">
-        <thead><tr><th>Member</th><th>Contact</th><th>Status</th><th>Invited</th></tr></thead>
+        <thead><tr>
+          <th style="width:34px"><input type="checkbox" id="sel-all" title="Select everyone"></th>
+          <th>Member</th><th>Contact</th><th>Status</th><th>Invited</th>
+        </tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
@@ -169,30 +179,86 @@ async function load() {
   if (s.no_email) { noEmail.style.display = ''; noEmail.innerHTML = `⚠️ ${s.no_email} imported member${s.no_email===1?'':'s'} ${s.no_email===1?'has':'have'} no email — they can't be emailed an invite. Add an email in your roster, or contact them directly with your apply link.`; }
   else noEmail.style.display = 'none';
 
-  document.getElementById('rows').innerHTML = rows.map(r => `
+  document.getElementById('rows').innerHTML = rows.map(r => {
+    // Nothing to send to means nothing to select — an unticked, disabled box
+    // reads as "we can't reach this person", which is the actual situation.
+    const reachable = !!(r.primary_email || r.primary_phone);
+    const contact = [r.primary_email, fmtPhone(r.primary_phone)].filter(Boolean).join(' · ')
+      || '— no contact —';
+    return `
     <tr>
+      <td><input type="checkbox" class="pick" value="${escapeHtml(r.id)}" ${reachable ? '' : 'disabled title="No email or phone on file"'}></td>
       <td>${escapeHtml(r.primary_name || r.family_name || '—')}</td>
-      <td class="muted">${escapeHtml(r.primary_email || r.primary_phone || '— no contact —')}</td>
+      <td class="muted">${escapeHtml(contact)}</td>
       <td>${statusPills(r)}</td>
       <td class="muted">${fmtDate(r.invited_at)}</td>
-    </tr>`).join('');
+    </tr>`; }).join('');
+
+  document.querySelectorAll('.pick').forEach(c => c.addEventListener('change', updateSelCount));
+  const all = document.getElementById('sel-all');
+  all.checked = false;
+  all.onchange = () => {
+    document.querySelectorAll('.pick:not(:disabled)').forEach(c => { c.checked = all.checked; });
+    updateSelCount();
+  };
+  updateSelCount();
 }
 
-async function send(onlyUninvited, btn) {
+function fmtPhone(e164) {
+  if (!e164) return '';
+  const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+}
+
+function selectedIds() {
+  return [...document.querySelectorAll('.pick:checked')].map(c => c.value);
+}
+
+function updateSelCount() {
+  const n = selectedIds().length;
+  const btn = document.getElementById('send-selected');
+  if (!btn) return;
+  btn.disabled = n === 0;
+  btn.textContent = n ? `Send to ${n} selected →` : 'Send to selected →';
+}
+
+function chosenChannels() {
+  const out = [];
+  if (document.getElementById('ch-email').checked) out.push('email');
+  if (document.getElementById('ch-sms').checked) out.push('sms');
+  return out;
+}
+
+async function sendSelected(btn) {
+  const ids = selectedIds();
+  if (!ids.length) return;
+  return send(false, btn, ids);
+}
+
+async function send(onlyUninvited, btn, ids) {
   const errEl = document.getElementById('send-err'); const okEl = document.getElementById('send-ok');
   errEl.classList.remove('show'); okEl.classList.remove('show');
   const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    const d = await api('send_claim_invites', { only_uninvited: onlyUninvited });
+    const channels = chosenChannels();
+    if (!channels.length) throw new Error('Pick email, text, or both.');
+    const d = await api('send_claim_invites', {
+      only_uninvited: onlyUninvited, channels,
+      ...(ids && ids.length ? { ids } : {}),
+    });
     if (!d.ok) throw new Error(d.error || 'Send failed');
-    if (!d.email_configured) {
-      errEl.innerHTML = 'Email isn\'t configured yet, so no invites were sent. Once Resend is set up, come back and resend.';
+    if (d.sent === 0 && channels.includes('email') && !channels.includes('sms') && !d.email_configured) {
+      errEl.innerHTML = 'Email isn\'t configured yet, so no invites were sent. Set up Resend, or send by text instead.';
       errEl.classList.add('show');
     } else {
-      let msg = `Sent ${d.sent} invite${d.sent===1?'':'s'}.`;
-      if (d.skipped_already) msg += ` ${d.skipped_already} already invited (skipped).`;
-      if (d.skipped_no_email) msg += ` ${d.skipped_no_email} skipped (no email).`;
-      if (d.failed) msg += ` ${d.failed} failed.`;
+      const parts = [];
+      if (d.sent_email) parts.push(`${d.sent_email} email${d.sent_email===1?'':'s'}`);
+      if (d.sent_sms)   parts.push(`${d.sent_sms} text${d.sent_sms===1?'':'s'}`);
+      let msg = parts.length ? `Sent ${parts.join(' + ')}.` : 'Nothing sent.';
+      if (d.skipped_already)   msg += ` ${d.skipped_already} already invited (skipped).`;
+      if (d.skipped_no_contact) msg += ` ${d.skipped_no_contact} have no email or phone — you'll need to reach those by hand.`;
+      if (d.sms_capped)        msg += ` ${d.sms_capped} text${d.sms_capped===1?'':'s'} held back by your monthly SMS cap.`;
+      if (d.failed)            msg += ` ${d.failed} failed.`;
       okEl.textContent = msg; okEl.classList.add('show');
     }
     await load();
@@ -205,6 +271,7 @@ async function send(onlyUninvited, btn) {
 
 document.getElementById('send-new').addEventListener('click', e => send(true, e.target));
 document.getElementById('send-all').addEventListener('click', e => send(false, e.target));
+document.getElementById('send-selected').addEventListener('click', e => sendSelected(e.target));
 
 (async () => {
   let d;

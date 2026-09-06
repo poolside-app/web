@@ -1052,7 +1052,20 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
     <p class="lede">${lede}</p>
     <div id="signin-area" style="margin-top:18px">
       <p style="font-size:13px;color:var(--muted)">Setting up your account…</p>
-    </div>`;
+    </div>
+    <div id="install-area"></div>`;
+
+  // Best moment there is to ask: they have just paid, they are on their phone,
+  // and they are still paying attention. Wait until they have wandered off to
+  // the member home and most people never come back to do it.
+  try {
+    if (window.Pwa) {
+      window.Pwa.renderInstallGuide(document.getElementById('install-area'), {
+        title: 'Put your club on your home screen',
+        lede: 'One tap for pool hours, party bookings and payments — no link to hunt for.',
+      });
+    }
+  } catch (_) { /* never let this get between a paying member and their receipt */ }
 
   if (!appId) {
     document.getElementById('signin-area').innerHTML =

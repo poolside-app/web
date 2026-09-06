@@ -965,8 +965,17 @@ Deno.serve(async (req) => {
   if (action === 'send_claim_invites') {
     const onlyUninvited = body.only_uninvited !== false;   // default: don't re-spam
     const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String) : null;
+    // Email stays the default so existing callers behave exactly as before;
+    // the migration screen asks for both. Text matters more than it looks on
+    // a pool roster — plenty of households have a phone on file and no email,
+    // and those members were previously skipped in silence.
+    const channels = Array.isArray(body.channels) && body.channels.length
+      ? (body.channels as unknown[]).map(String)
+      : ['email'];
+    const wantEmail = channels.includes('email');
+    const wantSms   = channels.includes('sms');
     let q = sb.from('applications')
-      .select('id, family_name, primary_name, primary_email, status, invited_at')
+      .select('id, family_name, primary_name, primary_email, primary_phone, status, invited_at')
       .eq('tenant_id', TID).eq('claim_source', 'csv_import')
       .in('status', ['prefilled', 'pending']);
     if (ids) q = q.in('id', ids);
@@ -974,7 +983,7 @@ Deno.serve(async (req) => {
     if (listErr) return jsonResponse({ ok: false, error: listErr.message }, 500);
 
     const { data: tenant } = await sb.from('tenants')
-      .select('slug, display_name').eq('id', TID).maybeSingle();
+      .select('slug, display_name, plan').eq('id', TID).maybeSingle();
     const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
     const clubName = tenant?.display_name || 'your club';
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
@@ -982,9 +991,14 @@ Deno.serve(async (req) => {
     const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 
     let sent = 0, skipped_no_email = 0, skipped_already = 0, failed = 0;
+    let sent_email = 0, sent_sms = 0, sms_capped = 0;
     for (const app of (apps ?? [])) {
       if (onlyUninvited && app.invited_at) { skipped_already++; continue; }
-      if (!app.primary_email) { skipped_no_email++; continue; }
+      const canEmail = wantEmail && !!app.primary_email;
+      const canSms   = wantSms   && !!app.primary_phone;
+      // "No contact at all" is the number a treasurer needs — it is a list of
+      // people to phone, not a silent failure.
+      if (!canEmail && !canSms) { skipped_no_email++; continue; }
 
       // Fresh token each send — a re-send invalidates the previous link.
       const tok  = randomToken();
@@ -995,7 +1009,32 @@ Deno.serve(async (req) => {
       if (updErr) { failed++; continue; }
 
       const claimUrl = `${clubUrl}/apply.html?claim=${encodeURIComponent(tok)}`;
-      if (!RESEND_API_KEY) { failed++; continue; }   // token stored; resend once email is configured
+      let delivered = false;
+
+      // Text first when asked: it is the channel a migrating club actually
+      // reaches people on, and it is what gets opened on a phone where the
+      // whole flow then happens.
+      if (canSms) {
+        const { sendSms } = await import('../_shared/send_sms.ts');
+        const firstNm = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
+        const r = await sendSms({
+          sb, tenantId: TID, tenantPlan: tenant?.plan as string | null,
+          to: app.primary_phone as string,
+          body: `Hi ${firstNm} — ${clubName} here. We've moved to the Poolside app. Your info is already filled in: tap to confirm and pay your dues. ${claimUrl}`,
+        });
+        if (r.sent) { delivered = true; sent_sms++; }
+        else if (r.capped) sms_capped++;
+      }
+
+      if (!canEmail) {
+        if (delivered) sent++; else failed++;
+        continue;
+      }
+      if (!RESEND_API_KEY) {
+        // Token is stored either way; email can be re-sent once configured.
+        if (delivered) sent++; else failed++;
+        continue;
+      }
       const firstName = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
       const html = `
         <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
@@ -1019,14 +1058,19 @@ Deno.serve(async (req) => {
             html,
           }),
         });
-        if (res.ok) sent++; else failed++;
-      } catch { failed++; }
+        if (res.ok) { sent_email++; delivered = true; }
+      } catch { /* delivered stays false unless SMS got through */ }
+      if (delivered) sent++; else failed++;
     }
 
     await audit(sb, TID, payload.synthetic ? null : payload.sub, 'tenant_admin', 'application.claim_invites_sent', null,
-      `Sent ${sent} season-invite email${sent === 1 ? '' : 's'}`);
+      `Sent ${sent} season invite${sent === 1 ? '' : 's'} (${sent_email} email, ${sent_sms} text)`);
     return jsonResponse({
-      ok: true, sent, skipped_no_email, skipped_already, failed,
+      ok: true, sent, sent_email, sent_sms, sms_capped,
+      // Named for what it means to a treasurer: households with neither an
+      // email nor a phone, i.e. the ones they have to ring.
+      skipped_no_contact: skipped_no_email,
+      skipped_no_email, skipped_already, failed,
       total: (apps ?? []).length,
       email_configured: !!RESEND_API_KEY,
     });
