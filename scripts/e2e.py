@@ -1948,6 +1948,24 @@ def blast_expired_cannot_be_released():
     assert 'expired' in str(r.get('error','')).lower(), f'wrong reason: {r}'
     mgmt_query(f"delete from public.sms_blasts where id = '{stale}';")
 
+
+def blast_refuses_a_partial_send():
+    # All-or-nothing. Reaching some of the club is worse than reaching none:
+    # the board thinks everyone was told.
+    mgmt_query(f"""update public.tenants set sms_credits = 0 where id = '{TENANT_A_ID}';""")
+    # Burn the monthly allowance down to almost nothing by logging sends.
+    cap_rows = mgmt_query(f"""select count(*) as n from public.sms_log
+                              where tenant_id = '{TENANT_A_ID}' and category = 'campaign'
+                                and sent_at >= date_trunc('month', now() at time zone 'utc');""")
+    to_add = 250 - int(cap_rows[0]['n']) - 0   # free plan cap is 250
+    mgmt_query(f"""insert into public.sms_log (tenant_id, category, to_phone, success, source)
+                   select '{TENANT_A_ID}', 'campaign', '+15550000000', true, 'e2e-fill'
+                   from generate_series(1, {max(to_add,0)});""")
+    r = post(BLAST_URL, {'action': 'create', 'body': f'Closed today {STAMP}'}, _admin_tok(ADMIN_A))
+    assert not r.get('ok'), f'a blast was queued with no allowance left: {r}'
+    assert r.get('short_by', 0) >= 1, f'shortfall not reported: {r}'
+    mgmt_query(f"delete from public.sms_log where source = 'e2e-fill';")
+
 def blast_cleanup():
     mgmt_query(f"delete from public.sms_blasts where tenant_id = '{TENANT_A_ID}';")
     mgmt_query(f"delete from public.admin_users where id in ('{ADMIN_A}','{ADMIN_B}');")
@@ -1960,6 +1978,7 @@ step('the author cannot release their own blast', blast_author_cannot_release_th
 step('solo_confirm cannot bypass a co-admin',     blast_solo_confirm_does_not_bypass_when_others_exist)
 step('a second admin can release it',             blast_second_admin_can_release)
 step('an expired message cannot be released',     blast_expired_cannot_be_released)
+step('refuses to reach only part of the club',    blast_refuses_a_partial_send)
 step('cleanup blast fixtures',                    blast_cleanup)
 
 # ── Cleanup ──────────────────────────────────────────────────────────────

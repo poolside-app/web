@@ -151,10 +151,19 @@ Deno.serve(async (req) => {
     if (!people.length) {
       return j({ ok: false, error: 'Nobody on your roster has a phone number on file yet.', ...info }, 400);
     }
-    // Blocked here rather than at approval time, so an admin is not left with
-    // an approved blast that silently cannot send.
-    if (cap.blocked) {
-      return j({ ok: false, error: `Your monthly texts are used up (${cap.used}/${cap.cap}) and you have no top-up credits left.`, ...info }, 429);
+    // Enough for EVERYONE, or nobody. A club-wide text that reaches 40 of 148
+    // members is worse than one that never sends: the board believes they told
+    // everyone, and 108 families turn up to a closed pool. Checked here so the
+    // admin finds out while writing, not after a second admin has released it.
+    const headroom = cap.remaining + cap.credits;
+    if (headroom < people.length) {
+      return j({
+        ok: false,
+        error: `You have ${headroom} text${headroom === 1 ? '' : 's'} left but ${people.length} members to reach. ` +
+               `A message that reaches only some of them is worse than none — buy more texts in Billing, or wait ${cap.days_until_reset} day${cap.days_until_reset === 1 ? '' : 's'} for your monthly allowance to reset.`,
+        short_by: people.length - headroom,
+        ...info,
+      }, 429);
     }
 
     const { data: created, error } = await sb.from('sms_blasts').insert({
@@ -207,6 +216,19 @@ Deno.serve(async (req) => {
 
     const people = await recipients(sb, TID);
     if (!people.length) return j({ ok: false, error: 'Nobody has a phone number on file.' }, 400);
+
+    // Re-check now: another blast or a renewal run may have spent the
+    // allowance between queueing and release, and it is still all-or-nothing.
+    const capNow = await checkSmsCap(sb, TID, 'campaign', tenant.plan as string);
+    const headroomNow = capNow.remaining + capNow.credits;
+    if (headroomNow < people.length) {
+      return j({
+        ok: false,
+        error: `Only ${headroomNow} text${headroomNow === 1 ? '' : 's'} left but ${people.length} members to reach. ` +
+               `Nothing was sent — buy more texts in Billing and release it again.`,
+        short_by: people.length - headroomNow,
+      }, 429);
+    }
 
     const rendered = renderBlast(clubName, String(blast.body));
     let sent = 0, failed = 0, capped = 0;
