@@ -60,7 +60,27 @@ Deploy each function the preflight named, using `deploy_edge_function`. Two thin
 
 **Include the shared files in the payload.** The `files` array must carry `index.ts` *and* every `_shared/*.ts` the function imports, at the paths the imports expect (`supabase/functions/_shared/auth.ts`, etc.). Omit one and the function deploys fine but throws at runtime on first use.
 
-Verify each with `get_edge_function` (version should have incremented) before moving on.
+A version bump is **not** proof the function works. Deploys succeed on code that can't boot — a duplicate top-level identifier, for instance, is a `SyntaxError` that takes the whole function down while the deploy returns 201. Always call the function afterward and confirm it answers; a `BOOT_ERROR` response means it is down. When that happens, read the cause from the logs rather than guessing:
+
+```
+query_logs → select timestamp, event_message from logs
+             where source = 'function_logs' order by timestamp desc limit 20
+```
+
+The boot error names the file and line.
+
+**Deploying without the MCP tool.** `deploy_edge_function` needs every file's contents passed inline, which is impractical for the larger functions (`applications` is ~1,500 lines plus seven shared modules). The Management API reads straight from disk instead:
+
+```bash
+TOKEN=$(grep -m1 '^SUPABASE_ACCESS_TOKEN=' .env.local | sed 's/^SUPABASE_ACCESS_TOKEN=//' | tr -d '\r\n')
+args=( -F 'metadata={"name":"<slug>","entrypoint_path":"supabase/functions/<slug>/index.ts","verify_jwt":false};type=application/json' )
+args+=( -F "file=@supabase/functions/<slug>/index.ts;filename=supabase/functions/<slug>/index.ts" )
+for f in supabase/functions/_shared/*.ts; do args+=( -F "file=@${f};filename=${f}" ); done
+curl -s -X POST "https://api.supabase.com/v1/projects/sdewylbddkcvidwosgxo/functions/deploy?slug=<slug>" \
+  -H "Authorization: Bearer $TOKEN" "${args[@]}"
+```
+
+Paths must stay repo-relative so `../_shared/…` resolves the way it does locally. Sending the whole `_shared` directory is simplest and safest — it costs nothing and covers transitive imports you'd otherwise have to trace by hand.
 
 ### 4. Frontend
 
@@ -99,6 +119,8 @@ node scripts/frontend_smoke.mjs # headless Chrome across every page; catches cli
 ```
 
 Run `e2e.py` when the change touched Edge Functions or the schema. Run `frontend_smoke.mjs` when it touched pages — it's the only thing in the stack that catches client-side JS errors, since production has no error tracking.
+
+**Check what the machine can actually run.** These suites were written on a Windows box with a fuller toolchain, and not every machine has it. On the Mac mini as of 2026-09: `smoke.sh` runs (curl + bash), but `e2e.py` does not (it needs Python 3.10+ for `str | None`; only 3.9.6 is installed) and `frontend_smoke.mjs` does not (no Node). When a suite can't run, substitute targeted `curl` calls against the endpoints you changed — assert on the *specific* error each new action returns, not merely that the function responds — and say plainly in the report which suites were skipped and why. Silently omitting them reads as a clean run when it isn't.
 
 ### 7. Report
 
