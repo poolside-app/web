@@ -92,6 +92,11 @@ const SAMPLE_VARS: Record<string, string> = {
   next_amount:       '$300',
   next_due_date:     '2026-07-01',
   admin_notes:       '(Admin reason from the rejection form would appear here.)',
+  // Auto-renew: without these the preview shows a board "renewing your
+  // membership on ", which reads as a bug in the template they are editing.
+  season:            '2027',
+  charge_date:       'December 15, 2026',
+  manage_url:        'https://bishopestates.poolsideapp.com/m/renew.html',
   club_url:          'https://bishopestates.poolsideapp.com',
 };
 

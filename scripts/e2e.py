@@ -1634,6 +1634,12 @@ def dun_in_season_lapse_enforces():
 def auto_renew_warns_before_charging():
     # The renewal page promises "we'll email you first". Verify the first pass
     # only notices, and records which season it warned about.
+    # The suite runs against production on every deploy, so a real notice email
+    # to an @example.com address would bounce repeatedly and cost us sender
+    # reputation. Clearing the address skips the send; the stamping this test
+    # actually cares about happens either way.
+    mgmt_query(f"""update public.household_members set email = null
+                    where household_id = '{REN_HH_ID}';""")
     mgmt_query(f"""update public.households
                       set auto_renew = true, paid_until_year = {NEXT_YEAR - 1},
                           auto_renew_notice_year = null, auto_renew_notice_sent_at = null,
@@ -1659,6 +1665,32 @@ def auto_renew_without_a_card_says_so():
     assert rows[0]['auto_renew_last_error'], 'no reason recorded for the skipped charge'
     assert 'card' in rows[0]['auto_renew_last_error'].lower(), f"unhelpful reason: {rows[0]}"
     mgmt_query(f"""update public.households set auto_renew = false where id = '{REN_HH_ID}';""")
+
+
+def auto_renew_emails_are_registered():
+    # email_templates gates on the 'communications' scope, and the suite's
+    # default admin token carries none. Mint one that does rather than widening
+    # the shared token, which would weaken every other authorization test.
+    comms_token = sign_jwt({
+        'sub': '00000000-0000-0000-0000-000000000000',
+        'kind': 'tenant_admin', 'tid': TENANT_A_ID, 'slug': SLUG_A,
+        'synthetic': True, 'role_template': 'owner', 'scopes': ['communications'],
+        'exp': int(time.time()) + 3600,
+    })
+    # renderAndSend refuses an unknown key, so a template that is not in the
+    # registry means the cron silently sends nothing. Assert all three exist
+    # and render, which is the failure mode that would otherwise only show up
+    # as members never hearing from us.
+    r = post(f'{SUPABASE_URL}/functions/v1/email_templates', {'action': 'list'}, comms_token)
+    assert r.get('ok'), f'list: {r}'
+    keys = {t['key'] for t in (r.get('templates') or [])}
+    for key in ('auto_renew_notice', 'auto_renew_charged', 'auto_renew_failed'):
+        assert key in keys, f'{key} missing from the email registry'
+        pv = post(f'{SUPABASE_URL}/functions/v1/email_templates',
+                  {'action': 'preview', 'key': key}, comms_token)
+        assert pv.get('ok'), f'{key} preview: {pv}'
+        blob = (pv.get('subject') or '') + (pv.get('html') or '')
+        assert '{{' not in blob, f'{key} preview left placeholders unfilled'
 
 def ren_restore_settings():
     # Leave the real club exactly as we found it — this suite runs against
@@ -1686,6 +1718,7 @@ step('pre-season lapse keeps gate access',          dun_preseason_lapse_keeps_ac
 step('in-season lapse enforces access loss',        dun_in_season_lapse_enforces)
 step('auto-renew warns before it charges',          auto_renew_warns_before_charging)
 step('auto-renew without a card reports why',       auto_renew_without_a_card_says_so)
+step('auto-renew emails exist and render',          auto_renew_emails_are_registered)
 step('restore club settings',                       ren_restore_settings)
 
 # ── Cleanup ──────────────────────────────────────────────────────────────

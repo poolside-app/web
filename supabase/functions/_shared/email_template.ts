@@ -363,6 +363,64 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
     `),
   },
 
+  // ─── Auto-renew ───────────────────────────────────────────────────────
+  {
+    key: 'auto_renew_notice',
+    label: 'Auto-renew — heads up before we charge',
+    description: 'Sent when the new season opens to households with auto-renew on, a set number of days BEFORE their card is charged. The whole point is that nobody is charged by surprise, so this fires before any money moves.',
+    audience: 'member',
+    variables: ['tenant_name', 'family_name', 'amount', 'season', 'charge_date', 'manage_url', 'club_url'],
+    default_subject: 'Heads up — renewing your {{tenant_name}} membership on {{charge_date}}',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🏊 Your {{season}} season is coming up</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — you asked us to renew your <b>{{tenant_name}}</b> membership automatically, so this is your heads up before anything happens.</p>
+      <div style="margin:18px 0;padding:16px 18px;background:#f7f3eb;border-radius:10px;color:#0a3b5c">
+        <div style="font-size:26px;font-family:Georgia,serif;font-weight:600;line-height:1">{{amount}}</div>
+        <div style="font-size:13px;color:#475569;margin-top:6px">will be charged to your saved card on <b>{{charge_date}}</b> for the {{season}} season.</div>
+      </div>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">You don't need to do anything — we'll take care of it and email you a receipt.</p>
+      <p style="margin:24px 0">
+        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Review or turn off auto-renew</a>
+      </p>
+      <p style="margin:0;color:#64748b;font-size:13px">Changed your mind, or need to update the card? Use the button above before {{charge_date}} and nothing will be charged.</p>
+    `),
+  },
+  {
+    key: 'auto_renew_charged',
+    label: 'Auto-renew — receipt',
+    description: 'Sent immediately after a successful auto-renew charge. Confirms the season is paid so the member never has to wonder whether it went through.',
+    audience: 'member',
+    variables: ['tenant_name', 'family_name', 'amount', 'season', 'club_url'],
+    default_subject: "You're all set for {{season}} — {{tenant_name}}",
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#166534;margin:0 0 8px">✅ You're renewed for {{season}}</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we charged <b>{{amount}}</b> to your saved card and your <b>{{tenant_name}}</b> membership is paid through the {{season}} season. Nothing else to do.</p>
+      <p style="margin:24px 0">
+        <a href="{{club_url}}/m/" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Open my club</a>
+      </p>
+      <p style="margin:0;color:#64748b;font-size:13px">Keep this email as your receipt. See you at the pool.</p>
+    `),
+  },
+  {
+    key: 'auto_renew_failed',
+    label: 'Auto-renew — card declined',
+    description: 'Sent when an auto-renew charge is declined. The renewal stays open so the member can finish it themselves rather than losing their spot.',
+    audience: 'member',
+    variables: ['tenant_name', 'family_name', 'amount', 'season', 'manage_url', 'club_url'],
+    default_subject: '[Action needed] We couldn\'t renew your {{tenant_name}} membership',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">⚠ Your card was declined</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we tried to renew your <b>{{tenant_name}}</b> membership for {{season}} ({{amount}}) using your saved card, and it didn't go through.</p>
+      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12;line-height:1.6">
+        <b>Your spot is still held.</b> Nothing has been cancelled — we've left your renewal open so you can finish it with a different card whenever suits you.
+      </div>
+      <p style="margin:24px 0">
+        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Finish renewing</a>
+      </p>
+      <p style="margin:0;color:#64748b;font-size:13px">Usually this is an expired card or a new billing address. Replying to this email reaches the board directly.</p>
+    `),
+  },
+
   // ─── Party booking lifecycle ──────────────────────────────────────────
   {
     key: 'party_request_received',

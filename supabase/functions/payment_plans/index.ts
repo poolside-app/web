@@ -448,7 +448,7 @@ Deno.serve(async (req) => {
                   amount: '$' + (amountCents / 100).toFixed(2),
                   season: String(year),
                   charge_date: chargeOn,
-                  club_url: `https://${tenant.slug}.poolsideapp.com/m/renew.html`,
+                  manage_url: `https://${tenant.slug}.poolsideapp.com/m/renew.html`,
                 },
               });
             } catch { /* a missing template must not block the renewal */ }
@@ -524,6 +524,24 @@ Deno.serve(async (req) => {
             auto_renew_last_attempt_at: now2,
             auto_renew_last_error: null,
           }).eq('id', hh.id);
+          try {
+            const { data: primary } = await sb.from('household_members')
+              .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
+            if (primary?.email) {
+              const { renderAndSend } = await import('../_shared/email_template.ts');
+              await renderAndSend(sb, {
+                tenantId: tenant.id as string,
+                templateKey: 'auto_renew_charged',
+                to: primary.email as string,
+                variables: {
+                  family_name: hh.family_name as string,
+                  amount: '$' + (amountCents / 100).toFixed(2),
+                  season: String(year),
+                },
+              });
+            }
+          } catch { /* the money moved; a failed receipt must not undo that */ }
+
           await sb.from('audit_log').insert({
             tenant_id: tenant.id, kind: 'renewal.auto_charged',
             entity_type: 'application', entity_id: appId,
@@ -538,6 +556,25 @@ Deno.serve(async (req) => {
             auto_renew_last_attempt_at: nowIso,
             auto_renew_last_error: (charge.error || 'Card declined').slice(0, 500),
           }).eq('id', hh.id);
+          try {
+            const { data: primary } = await sb.from('household_members')
+              .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
+            if (primary?.email) {
+              const { renderAndSend } = await import('../_shared/email_template.ts');
+              await renderAndSend(sb, {
+                tenantId: tenant.id as string,
+                templateKey: 'auto_renew_failed',
+                to: primary.email as string,
+                variables: {
+                  family_name: hh.family_name as string,
+                  amount: '$' + (amountCents / 100).toFixed(2),
+                  season: String(year),
+                  manage_url: `https://${tenant.slug}.poolsideapp.com/m/renew.html`,
+                },
+              });
+            }
+          } catch { /* best-effort; the admin task below is the backstop */ }
+
           await sb.from('admin_tasks').insert({
             tenant_id: tenant.id, kind: 'renewal.auto_renew_failed',
             summary: `Auto-renew failed for ${hh.family_name} — card declined`,
