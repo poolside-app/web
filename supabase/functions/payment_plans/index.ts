@@ -61,6 +61,23 @@ async function hasPaymentsScope(sb: SupabaseClient, p: AdminPayload): Promise<bo
   return scopes.includes('payments');
 }
 
+// A plan finishing does NOT mean "paid for this calendar year" — the whole
+// point of installments is that the money arrives before (or across) the
+// season it buys. Ask the application the plan came from which season that is,
+// and only fall back to the clock when the plan predates the column.
+async function planMembershipYear(
+  sb: ReturnType<typeof createClient>,
+  plan: { application_id?: string | null } | null | undefined,
+): Promise<number> {
+  if (plan?.application_id) {
+    const { data: app } = await sb.from('applications')
+      .select('membership_year').eq('id', plan.application_id).maybeSingle();
+    const y = app?.membership_year as number | null | undefined;
+    if (typeof y === 'number' && y > 2000) return y;
+  }
+  return new Date().getUTCFullYear();
+}
+
 const DEFAULT_PLAN_CONFIG = {
   enabled: false,
   season_open_date: null as string | null,           // 'YYYY-MM-DD'
@@ -353,7 +370,7 @@ Deno.serve(async (req) => {
           }).eq('id', plan.id);
           if (plan.household_id) {
             await sb.from('households').update({
-              dues_paid_for_year: true, paid_until_year: new Date().getFullYear(),
+              dues_paid_for_year: true, paid_until_year: await planMembershipYear(sb, plan),
             }).eq('id', plan.household_id);
           }
         }
@@ -466,13 +483,13 @@ Deno.serve(async (req) => {
     const { data: rem } = await sb.from('payment_plan_installments').select('id', { count: 'exact', head: true })
       .eq('plan_id', inst.plan_id).neq('status', 'paid').neq('status', 'manual');
     if ((rem as unknown as { count?: number })?.count === 0) {
-      const { data: plan } = await sb.from('payment_plans').select('household_id').eq('id', inst.plan_id).maybeSingle();
+      const { data: plan } = await sb.from('payment_plans').select('household_id, application_id').eq('id', inst.plan_id).maybeSingle();
       await sb.from('payment_plans').update({
         status: 'completed', completed_at: new Date().toISOString(),
       }).eq('id', inst.plan_id);
       if (plan?.household_id) {
         await sb.from('households').update({
-          dues_paid_for_year: true, paid_until_year: new Date().getFullYear(),
+          dues_paid_for_year: true, paid_until_year: await planMembershipYear(sb, plan),
         }).eq('id', plan.household_id);
       }
     }

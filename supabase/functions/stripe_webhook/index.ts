@@ -155,11 +155,11 @@ Deno.serve(async (req) => {
 
       // Re-load household_id (approval just set it) and flip dues paid.
       const { data: appAfter } = await sb.from('applications')
-        .select('household_id, paid_until_year').eq('id', md.application_id).maybeSingle();
+        .select('household_id, membership_year').eq('id', md.application_id).maybeSingle();
       if (appAfter?.household_id) {
         await sb.from('households').update({
           dues_paid_for_year: true,
-          paid_until_year: appAfter.paid_until_year ?? new Date().getFullYear(),
+          paid_until_year: appAfter.membership_year ?? new Date().getUTCFullYear(),
         }).eq('id', appAfter.household_id);
       }
       // Close any related admin tasks (submitted, venmo claim, etc.)
@@ -256,12 +256,12 @@ Deno.serve(async (req) => {
       // get gate access immediately. Failing the second charge starts the
       // retry/lapse flow, NOT a "they were never paid" state.
       const { data: appAfter } = await sb.from('applications')
-        .select('household_id, paid_until_year').eq('id', md.application_id).maybeSingle();
+        .select('household_id, membership_year').eq('id', md.application_id).maybeSingle();
       if (appAfter?.household_id) {
         await sb.from('payment_plans').update({ household_id: appAfter.household_id }).eq('id', md.plan_id);
         await sb.from('households').update({
           dues_paid_for_year: true,
-          paid_until_year: appAfter.paid_until_year ?? new Date().getFullYear(),
+          paid_until_year: appAfter.membership_year ?? new Date().getUTCFullYear(),
         }).eq('id', appAfter.household_id);
       }
     }
@@ -270,8 +270,17 @@ Deno.serve(async (req) => {
     // Restore household dues + keyfob, mark plan + installments cleared.
     if (kind === 'payment_plan_reactivation' && md.plan_id) {
       const now = new Date().toISOString();
-      const { data: plan } = await sb.from('payment_plans').select('id, household_id').eq('id', md.plan_id).maybeSingle();
+      const { data: plan } = await sb.from('payment_plans')
+        .select('id, household_id, application_id').eq('id', md.plan_id).maybeSingle();
       if (plan) {
+        // Restore the season the plan was actually for. A plan taken out in
+        // December for next summer must not reactivate as "paid through this
+        // year" — that would leave the family expired on opening day.
+        const { data: planApp } = plan.application_id
+          ? await sb.from('applications').select('membership_year')
+              .eq('id', plan.application_id).maybeSingle()
+          : { data: null };
+        const restoreYear = planApp?.membership_year ?? new Date().getUTCFullYear();
         await sb.from('payment_plans').update({
           status: 'completed', completed_at: now, reactivated_at: now,
         }).eq('id', plan.id);
@@ -280,7 +289,7 @@ Deno.serve(async (req) => {
         }).eq('plan_id', plan.id).neq('status', 'paid').neq('status', 'manual');
         if (plan.household_id) {
           await sb.from('households').update({
-            dues_paid_for_year: true, paid_until_year: new Date().getFullYear(),
+            dues_paid_for_year: true, paid_until_year: restoreYear,
           }).eq('id', plan.household_id);
           // Restore keyfob access for adult + teen members
           await sb.from('household_members').update({ can_unlock_gate: true })
