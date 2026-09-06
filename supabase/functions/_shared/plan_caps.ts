@@ -1,9 +1,10 @@
 // =============================================================================
 // plan_caps.ts — single source of truth for plan-tier capacity gates
 // =============================================================================
-// Capacity caps (households per tier). Free Forever for ≤30; everything past
-// that requires a paid plan. NO feature paywalls — every tier gets every
-// feature; only headcount differs. SMS caps live in _shared/sms_cap.ts.
+// Capacity caps (households per tier). Free Forever for ≤20 households;
+// everything past that requires a paid plan. NO feature paywalls — every
+// tier gets every feature; only headcount differs. SMS caps live in
+// _shared/sms_cap.ts.
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';

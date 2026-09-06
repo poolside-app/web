@@ -334,54 +334,75 @@ Deno.serve(async (req) => {
     // === COMMIT path ===
     if (valid_rows.length === 0) return j({ ok: false, error: 'Nothing to import — every row had errors. Fix the file and try again.' }, 400);
 
+    // Import creates PRE-FILLED APPLICATIONS, not active members. The club is
+    // migrating its existing roster onto Poolside at a season boundary;
+    // everyone then claims their pre-filled application (apply.html?claim=…),
+    // confirms their info + family, accepts the legal docs, and pays. The
+    // existing approve flow turns each into a real household — which is also
+    // where the plan's household cap is enforced. Prefilled applications
+    // don't consume household slots, so we don't block on the cap here; we
+    // just surface an advisory warning if the import is bigger than the plan
+    // can ultimately approve.
+    const { getHouseholdCapStatus } = await import('../_shared/plan_caps.ts');
+    const { data: tenantRow } = await sb.from('tenants').select('plan').eq('id', payload.tid).maybeSingle();
+    const capStatus = await getHouseholdCapStatus(sb, payload.tid, tenantRow?.plan);
+
+    const importRunId = crypto.randomUUID();
     let created = 0;
     const failures: Array<{ row: number; error: string }> = [];
     for (const t of valid_rows) {
-      const { data: hh, error: hhErr } = await sb.from('households').insert({
+      // Fold the primary + optional second adult into adults_json so the
+      // member sees their family pre-populated and can add more on the form.
+      const adults_json: Array<Record<string, unknown>> = [
+        { name: t.primary_name, email: t.primary_email, phone: t.primary_phone, signature_url: null },
+      ];
+      if (t.secondary_name) {
+        adults_json.push({ name: t.secondary_name, email: t.secondary_email, phone: t.secondary_phone, signature_url: null });
+      }
+      const { error: appErr } = await sb.from('applications').insert({
         tenant_id: payload.tid,
         family_name: t.family_name,
-        tier: t.tier,
+        primary_name: t.primary_name,
+        primary_email: t.primary_email,
+        primary_phone: t.primary_phone,
         address: t.address,
         city: t.city,
         zip: t.zip,
-        fob_number: t.fob_number,
-        emergency_contact: t.emergency_contact,
-        notes: t.notes,
-        dues_paid_for_year: t.dues_paid,
-        active: true,
-      }).select('id').single();
-      if (hhErr || !hh) { failures.push({ row: t.index + 1, error: hhErr?.message || 'household insert failed' }); continue; }
-
-      // Primary member always created.
-      const { error: pErr } = await sb.from('household_members').insert({
-        tenant_id: payload.tid, household_id: hh.id,
-        name: t.primary_name,
-        email: t.primary_email,
-        phone_e164: t.primary_phone,
-        role: 'adult',
-        active: true,
-        added_by: payload.sub,
-        added_via: 'csv_import',
+        tier_slug: t.tier || null,
+        prior_fob_number: t.fob_number,
+        body: t.notes,
+        num_adults: adults_json.length,
+        num_kids: 0,
+        adults_json,
+        children_json: [],
+        is_new_member: false,           // existing member being migrated
+        status: 'prefilled',
+        payment_status: 'unpaid',
+        claim_source: 'csv_import',
+        import_run_id: importRunId,
       });
-      if (pErr) { failures.push({ row: t.index + 1, error: `primary member: ${pErr.message}` }); continue; }
-
-      // Secondary member only if a name was provided.
-      if (t.secondary_name) {
-        await sb.from('household_members').insert({
-          tenant_id: payload.tid, household_id: hh.id,
-          name: t.secondary_name,
-          email: t.secondary_email,
-          phone_e164: t.secondary_phone,
-          role: 'adult',
-          active: true,
-          added_by: payload.sub,
-          added_via: 'csv_import',
-        });
-      }
+      if (appErr) { failures.push({ row: t.index + 1, error: appErr.message }); continue; }
       created++;
     }
 
-    return j({ ok: true, created, failed: failures.length, failures, skipped_invalid: invalid_rows.length });
+    // Advisory cap warning — prefilled apps cost nothing, but the admin can
+    // only APPROVE up to the plan limit, so flag an oversized migration.
+    const projected = capStatus.count + created;
+    const overCap = capStatus.cap !== Infinity && projected > capStatus.cap;
+    return j({
+      ok: true,
+      created,
+      failed: failures.length,
+      failures,
+      skipped_invalid: invalid_rows.length,
+      prefilled: true,
+      plan_label: capStatus.plan_label,
+      cap: capStatus.cap === Infinity ? null : capStatus.cap,
+      over_cap: overCap,
+      ...(overCap ? {
+        cap_warning: `Imported ${created} member${created === 1 ? '' : 's'} as pre-filled applications. Heads up: your ${capStatus.plan_label} plan caps at ${capStatus.cap} active households, so you'll only be able to approve ${capStatus.cap} of them until you upgrade.`,
+      } : {}),
+    });
   }
 
   return j({ ok: false, error: `Unknown action: ${action}` }, 400);

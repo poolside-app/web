@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Import households — Poolside</title>
+<title>Import your roster — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -73,8 +73,8 @@
 <script src="/js/members-subtabs.js"></script>
 
 <main>
-  <h1>Import households from a spreadsheet</h1>
-  <p style="color:var(--muted);font-size:14px;margin:6px 0 18px">Upload your existing roster (CSV). We'll match your columns to ours — you confirm the mapping, then we import.</p>
+  <h1>Import your existing roster</h1>
+  <p style="color:var(--muted);font-size:14px;margin:6px 0 18px">Upload your current member list (CSV). We'll match your columns to ours — you confirm the mapping, then each member is loaded as a <b>pre-filled application</b>. Next, you'll email everyone a link to confirm their info, accept your policies, and pay for the season. Nobody is activated until they (or you) complete that step.</p>
 
   <!-- STEP 1: Upload -->
   <div class="card" id="step-upload">
@@ -116,7 +116,7 @@
     <h2>4. Done</h2>
     <div id="done-msg"></div>
     <p style="margin-top:18px">
-      <a class="btn" href="/club/admin/members.html#households">View imported households →</a>
+      <a class="btn" href="/club/admin/migrate.html">Send invites & track sign-ups →</a>
       <a class="btn btn-ghost" href="/club/admin/import.html">Import another file</a>
     </p>
   </div>
@@ -304,13 +304,19 @@ document.getElementById('commit-btn').addEventListener('click', async () => {
     if (!d.ok) throw new Error(d.error || 'Import failed');
     document.getElementById('step-preview').style.display = 'none';
     document.getElementById('step-done').style.display = '';
-    let msg = `<p><b style="color:var(--green)">Imported ${d.created} households.</b></p>`;
+    let msg = `<p><b style="color:var(--green)">Imported ${d.created} member${d.created === 1 ? '' : 's'} as pre-filled applications.</b></p>`;
+    msg += `<p style="color:var(--muted)">Nobody is active yet. Next, send the "claim your spot" invite — each member gets a link to a form already filled in with their info, where they confirm details, accept the club policies, and pay for the season.</p>`;
     if (d.skipped_invalid) msg += `<p style="color:var(--muted)">${d.skipped_invalid} rows were skipped because of errors flagged in the preview.</p>`;
+    if (d.over_cap) {
+      msg += `<p style="color:var(--red);font-weight:600">${escapeHtml(d.cap_warning || 'This import is larger than your plan can approve.')}</p>`;
+      msg += `<p style="font-size:13px"><a href="/club/admin/billing.html">Upgrade your plan →</a></p>`;
+    }
     if (d.failed) {
-      msg += `<p style="color:var(--red)">${d.failed} rows failed at insert time:</p><ul style="font-size:13px;color:var(--red)">`;
+      msg += `<p style="color:var(--red)">${d.failed} rows failed:</p><ul style="font-size:13px;color:var(--red)">`;
       d.failures.forEach(f => { msg += `<li>Row ${f.row}: ${escapeHtml(f.error)}</li>`; });
       msg += '</ul>';
     }
+    msg += `<p style="margin-top:18px"><a class="btn" href="/club/admin/migrate.html">Send invites & track sign-ups →</a></p>`;
     document.getElementById('done-msg').innerHTML = msg;
   } catch (e) {
     errEl.textContent = e.message;

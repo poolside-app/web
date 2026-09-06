@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Season migration — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626; --amber:#92400e;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+  a { color:var(--blue); }
+  h1, h2 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size:26px; }
+  h2 { font-size:18px; margin-bottom:12px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:1000px; width:100%; margin:0 auto; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; box-shadow:var(--shadow); margin-bottom:14px; }
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; text-decoration:none; display:inline-block; }
+  .btn:hover { background:var(--blue-2); }
+  .btn:disabled { opacity:.6; cursor:not-allowed; }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; }
+  .stat { background:var(--bg-2); border-radius:var(--r-md); padding:14px 16px; text-align:center; }
+  .stat .n { font-family:'Fraunces',serif; font-size:28px; font-weight:600; color:var(--blue); line-height:1; }
+  .stat .l { font-size:12px; color:var(--muted); margin-top:6px; }
+  table.t { width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.t th, table.t td { padding:9px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:middle; }
+  table.t th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font:600 11px Inter; }
+  .pill.gray { background:#f1f5f9; color:#475569; }
+  .pill.blue { background:#dbeafe; color:#1e3a8a; }
+  .pill.amber { background:#fef3c7; color:#92400e; }
+  .pill.green { background:#dcfce7; color:#14532d; }
+  .err { padding:10px 14px; border-radius:10px; background:#fee2e2; color:#7f1d1d; border:1px solid #fecaca; font-size:13.5px; margin:8px 0; display:none; }
+  .err.show { display:block; }
+  .ok { padding:10px 14px; border-radius:10px; background:#dcfce7; color:#14532d; border:1px solid #86efac; font-size:13.5px; margin:8px 0; display:none; }
+  .ok.show { display:block; }
+  .muted { color:var(--muted); font-size:13.5px; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/lifeguards.html">Lifeguards</a>
+  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<script src="/js/admin-flags.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+
+<main>
+  <h1>Season migration</h1>
+  <p class="muted" style="margin:6px 0 18px">Members you imported from a spreadsheet land here as pre-filled applications. Send them a "claim your spot" email — each gets a link to a form already filled in with their info, where they confirm details, add family, accept your policies, and pay for the season. Track who's done below.</p>
+
+  <div id="empty" class="card" style="display:none">
+    <h2>Nothing imported yet</h2>
+    <p class="muted">Import your existing roster first, then come back here to send invites.</p>
+    <p style="margin-top:14px"><a class="btn" href="/club/admin/import.html">Import a spreadsheet →</a></p>
+  </div>
+
+  <div id="content" style="display:none">
+    <div class="card">
+      <h2>Progress</h2>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="card">
+      <h2>Send invites</h2>
+      <p class="muted" id="invite-blurb" style="margin-top:0">Email each imported member their personal claim link.</p>
+      <div id="no-email-note" class="muted" style="display:none;margin-bottom:10px"></div>
+      <p>
+        <button class="btn" id="send-new">Send to everyone not yet invited</button>
+        <button class="btn btn-ghost" id="send-all">Resend to everyone</button>
+      </p>
+      <div id="send-err" class="err"></div>
+      <div id="send-ok" class="ok"></div>
+      <p class="muted" style="margin-top:6px">When a member claims and pays, they appear in your <a href="/club/admin/members.html#applications">Applications pipeline</a> to approve. For anyone who already paid you by cash or check, approve them there and mark the payment.</p>
+    </div>
+
+    <div class="card">
+      <h2>Imported members</h2>
+      <table class="t">
+        <thead><tr><th>Member</th><th>Contact</th><th>Status</th><th>Invited</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const APPS_URL = `${SUPABASE_URL}/functions/v1/applications`;
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function logout() {
+  try {
+    const t = token();
+    if (t) {
+      const vr = await fetch(`${SUPABASE_URL}/functions/v1/tenant_admin_auth`, {
+        method:'POST', headers:{'content-type':'application/json','authorization':`Bearer ${t}`},
+        body: JSON.stringify({ action:'me' }),
+      });
+      if (vr.status !== 401) return;
+    }
+  } catch (_) { return; }
+  ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function api(action, extra = {}) {
+  const r = await fetch(APPS_URL, {
+    method:'POST',
+    headers:{'content-type':'application/json','authorization':`Bearer ${token()}`},
+    body: JSON.stringify({ action, ...extra }),
+  });
+  return r.json();
+}
+
+function pill(label, cls) { return `<span class="pill ${cls}">${label}</span>`; }
+function statusPills(row) {
+  if (row.status === 'approved') return pill('✓ Approved (active)', 'green');
+  if (row.payment_status === 'paid') return pill('Paid — awaiting approval', 'green');
+  if (row.claimed_at) return pill('Claimed — not paid', 'amber');
+  if (row.invited_at) return pill('Invited', 'blue');
+  return pill('Imported', 'gray');
+}
+function fmtDate(s) { if (!s) return '—'; try { return new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric'}); } catch { return '—'; } }
+
+async function load() {
+  const d = await api('list_prefilled');
+  if (!d.ok) { document.getElementById('send-err').textContent = d.error || 'Could not load'; document.getElementById('send-err').classList.add('show'); return; }
+  const rows = d.applications || [];
+  const s = d.summary || {};
+  if (!rows.length) { document.getElementById('empty').style.display = ''; document.getElementById('content').style.display = 'none'; return; }
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('content').style.display = '';
+
+  const stat = (n, l) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  document.getElementById('stats').innerHTML =
+    stat(s.total||0, 'Imported') + stat(s.invited||0, 'Invited') + stat(s.claimed||0, 'Claimed') +
+    stat(s.paid||0, 'Paid') + stat(s.approved||0, 'Approved');
+
+  const noEmail = document.getElementById('no-email-note');
+  if (s.no_email) { noEmail.style.display = ''; noEmail.innerHTML = `⚠️ ${s.no_email} imported member${s.no_email===1?'':'s'} ${s.no_email===1?'has':'have'} no email — they can't be emailed an invite. Add an email in your roster, or contact them directly with your apply link.`; }
+  else noEmail.style.display = 'none';
+
+  document.getElementById('rows').innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.primary_name || r.family_name || '—')}</td>
+      <td class="muted">${escapeHtml(r.primary_email || r.primary_phone || '— no contact —')}</td>
+      <td>${statusPills(r)}</td>
+      <td class="muted">${fmtDate(r.invited_at)}</td>
+    </tr>`).join('');
+}
+
+async function send(onlyUninvited, btn) {
+  const errEl = document.getElementById('send-err'); const okEl = document.getElementById('send-ok');
+  errEl.classList.remove('show'); okEl.classList.remove('show');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const d = await api('send_claim_invites', { only_uninvited: onlyUninvited });
+    if (!d.ok) throw new Error(d.error || 'Send failed');
+    if (!d.email_configured) {
+      errEl.innerHTML = 'Email isn\'t configured yet, so no invites were sent. Once Resend is set up, come back and resend.';
+      errEl.classList.add('show');
+    } else {
+      let msg = `Sent ${d.sent} invite${d.sent===1?'':'s'}.`;
+      if (d.skipped_already) msg += ` ${d.skipped_already} already invited (skipped).`;
+      if (d.skipped_no_email) msg += ` ${d.skipped_no_email} skipped (no email).`;
+      if (d.failed) msg += ` ${d.failed} failed.`;
+      okEl.textContent = msg; okEl.classList.add('show');
+    }
+    await load();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+document.getElementById('send-new').addEventListener('click', e => send(true, e.target));
+document.getElementById('send-all').addEventListener('click', e => send(false, e.target));
+
+(async () => {
+  let d;
+  try { d = await PoolsideAuth.meOrLogout(); } catch (e) { return; }
+  if (!d) return;
+  document.title = `Season migration — ${d.tenant.display_name}`;
+  document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+  if (window.PoolsideFlags) PoolsideFlags.apply((d.tenant && d.tenant.features) || {}, d.user, d.tenant, d.usage);
+  await load();
+})();
+</script>
+</body>
+</html>

@@ -102,9 +102,15 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, claim_source, invited_at, claimed_at, created_at, updated_at';
 
-const VALID_PAYMENT_METHODS = new Set(['stripe', 'venmo']);
+// stripe_plan is the pay-in-2 option offered on the apply form; it must be
+// accepted here or the plan radio submits a "400 Invalid payment method".
+const VALID_PAYMENT_METHODS = new Set(['stripe', 'stripe_plan', 'venmo']);
+
+// Claim tokens (CSV-import → claimable application flow) reuse randomToken /
+// sha256Hex declared above — same generate-then-store-the-hash pattern the
+// magic-link paths already use.
 
 // Bind an admin row to the household_member they just got approved as.
 // Match on email OR phone (E.164) — phone is a stronger signal because
@@ -172,6 +178,11 @@ Deno.serve(async (req) => {
       .eq('payment_status', 'unpaid')
       .eq('status', 'pending')
       .lt('created_at', cutoff)
+      // Never auto-delete a CSV-imported member's claimed application. Those
+      // represent existing members the club is chasing for payment over
+      // days/weeks — not 60-minute Stripe-checkout ghosts. (.neq alone would
+      // drop normal NULL-source rows, so allow null OR not-import.)
+      .or('claim_source.is.null,claim_source.neq.csv_import')
       .limit(500);
 
     let deleted = 0;
@@ -222,10 +233,28 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'This club isn\'t accepting applications right now' }, 403);
     }
 
+    // Claim flow: a CSV-imported member is completing their pre-filled
+    // application via apply.html?claim=<token>. Resolve the existing row so
+    // we UPDATE it (below) instead of inserting a new one. Claims skip the
+    // capacity gate + duplicate guard — they're existing members being
+    // migrated, and the household cap is still enforced at approve time.
+    let claimAppId: string | null = null;
+    const claimToken = String(body.claim_token ?? '').trim();
+    if (claimToken) {
+      const hash = await sha256Hex(claimToken);
+      const { data: claimApp } = await sb.from('applications')
+        .select('id, status').eq('tenant_id', tenant.id).eq('claim_token_hash', hash).maybeSingle();
+      if (!claimApp) return jsonResponse({ ok: false, error: 'This invite link is invalid or has expired.' }, 404);
+      if (!['prefilled', 'pending'].includes(String(claimApp.status))) {
+        return jsonResponse({ ok: false, error: 'This application has already been processed.' }, 409);
+      }
+      claimAppId = claimApp.id as string;
+    }
+
     // Capacity gate at SUBMIT time, not just approve. Avoids the bad UX where
     // a family fills out the form, gets a "we received it!" confirmation,
     // and then never hears back because the admin can't approve them.
-    {
+    if (!claimAppId) {
       const { getHouseholdCapStatus } = await import('../_shared/plan_caps.ts');
       const cap = await getHouseholdCapStatus(sb, tenant.id, tenant.plan);
       if (cap.at_cap) {
@@ -256,8 +285,10 @@ Deno.serve(async (req) => {
     // few days ago, don't create a new application. Common case: someone
     // hits Submit twice, or a returning member forgets they're a member.
     // Both checks scoped to active rows so a household that was deactivated
-    // for non-payment can re-apply.
-    if (email || phone) {
+    // for non-payment can re-apply. Skipped for claims — the imported row IS
+    // the match, and the member's own contact info legitimately "already
+    // exists" as their prefilled application.
+    if (!claimAppId && (email || phone)) {
       // Tracked separately so the UX can offer a recovery path keyed to
       // the actual match (e.g. "use phone-magic-link if your phone is on
       // file, even if the email doesn't match"). Doug 2026-05-23 got stuck
@@ -393,7 +424,7 @@ Deno.serve(async (req) => {
     const sigPrimary  = typeof body.signature_primary  === 'string' ? String(body.signature_primary).slice(0, 200000)  : null;
     const sigGuardian = typeof body.signature_guardian === 'string' ? String(body.signature_guardian).slice(0, 200000) : null;
 
-    const { data, error } = await sb.from('applications').insert({
+    const appData: Record<string, unknown> = {
       tenant_id: tenant.id,
       family_name, primary_name,
       primary_email: email,
@@ -424,8 +455,24 @@ Deno.serve(async (req) => {
       // applicant's underlying capability — they can always opt into the
       // app later via /m/login.html.
       no_app_member: body.no_app_member === true,
-    }).select('id').single();
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    };
+
+    // Claim → UPDATE the pre-filled row (flip to 'pending', stamp claimed_at).
+    // Otherwise INSERT a brand-new application. Same return shape either way
+    // so the apply form's downstream payment step is unchanged.
+    let data: { id: string } | null = null;
+    let error: { message: string } | null = null;
+    if (claimAppId) {
+      appData.status = 'pending';
+      appData.claimed_at = new Date().toISOString();
+      ({ data, error } = await sb.from('applications')
+        .update(appData).eq('id', claimAppId).eq('tenant_id', tenant.id)
+        .select('id').single());
+    } else {
+      ({ data, error } = await sb.from('applications')
+        .insert(appData).select('id').single());
+    }
+    if (error || !data) return jsonResponse({ ok: false, error: error?.message || 'Could not save application' }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
       `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
 
@@ -705,6 +752,45 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── get_claim (public) ─────────────────────────────────────────────────
+  // A CSV-imported member opens apply.html?claim=<token>. We resolve the
+  // pre-filled application and hand back its fields so the form starts
+  // populated. No auth — the unguessable token IS the credential.
+  if (action === 'get_claim') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const claimToken = String(body.claim_token ?? '').trim();
+    if (!slug || !claimToken) return jsonResponse({ ok: false, error: 'slug + claim_token required' }, 400);
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const hash = await sha256Hex(claimToken);
+    const { data: app } = await sb.from('applications').select(FIELDS)
+      .eq('tenant_id', tenant.id).eq('claim_token_hash', hash).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'This invite link is invalid or has expired.' }, 404);
+    if (app.status === 'approved') {
+      return jsonResponse({ ok: false, code: 'already_member', error: 'You\'re already set up — just sign in at /m/login.html.' }, 409);
+    }
+    if (app.status === 'rejected') {
+      return jsonResponse({ ok: false, error: 'This application is no longer active. Contact the club.' }, 409);
+    }
+    return jsonResponse({
+      ok: true,
+      application: {
+        family_name: app.family_name,
+        primary_name: app.primary_name,
+        primary_email: app.primary_email,
+        primary_phone: app.primary_phone,
+        address: app.address, city: app.city, zip: app.zip,
+        adults_json: app.adults_json ?? [],
+        children_json: app.children_json ?? [],
+        tier_slug: app.tier_slug,
+        prior_fob_number: app.prior_fob_number,
+        body: app.body,
+        already_claimed: app.status === 'pending',
+      },
+    });
+  }
+
   // Admin actions below — verify tenant admin OR service-role internal call
   // (used by stripe_webhook to auto-approve on Stripe Checkout success).
   // Internal header carries the service-role key + body.tenant_id is the scope.
@@ -724,6 +810,103 @@ Deno.serve(async (req) => {
   // Synthetic webhook tokens bypass (used by stripe_webhook for auto-approve).
   if (!payload.synthetic && !(await requireScope(sb, payload as never, 'applications'))) {
     return jsonResponse({ ok: false, error: 'Missing required scope: applications' }, 403);
+  }
+
+  // ── list_prefilled (admin) — migration tracker ─────────────────────────
+  // Every row that came from a CSV import, with rollup counts so the admin
+  // sees how the "claim your spot" blast is landing.
+  if (action === 'list_prefilled') {
+    const { data, error } = await sb.from('applications')
+      .select('id, family_name, primary_name, primary_email, primary_phone, status, payment_status, invited_at, claimed_at, created_at')
+      .eq('tenant_id', TID).eq('claim_source', 'csv_import')
+      .order('created_at', { ascending: true });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    const rows = data ?? [];
+    const summary = {
+      total:    rows.length,
+      invited:  rows.filter(r => r.invited_at).length,
+      claimed:  rows.filter(r => r.claimed_at).length,
+      paid:     rows.filter(r => r.payment_status === 'paid').length,
+      approved: rows.filter(r => r.status === 'approved').length,
+      no_email: rows.filter(r => !r.primary_email).length,
+    };
+    return jsonResponse({ ok: true, applications: rows, summary });
+  }
+
+  // ── send_claim_invites (admin) — the migration blast ───────────────────
+  // Email-first: mints a fresh one-time claim token per imported member,
+  // stores its hash, and emails the apply.html?claim=<token> link. Members
+  // without an email are reported back so the admin can chase them another
+  // way. (SMS blast intentionally omitted for now — the global SMS kill-
+  // switch would throttle it; revisit once per-tenant SMS limits exist.)
+  if (action === 'send_claim_invites') {
+    const onlyUninvited = body.only_uninvited !== false;   // default: don't re-spam
+    const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String) : null;
+    let q = sb.from('applications')
+      .select('id, family_name, primary_name, primary_email, status, invited_at')
+      .eq('tenant_id', TID).eq('claim_source', 'csv_import')
+      .in('status', ['prefilled', 'pending']);
+    if (ids) q = q.in('id', ids);
+    const { data: apps, error: listErr } = await q;
+    if (listErr) return jsonResponse({ ok: false, error: listErr.message }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('slug, display_name').eq('id', TID).maybeSingle();
+    const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
+    const clubName = tenant?.display_name || 'your club';
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
+
+    let sent = 0, skipped_no_email = 0, skipped_already = 0, failed = 0;
+    for (const app of (apps ?? [])) {
+      if (onlyUninvited && app.invited_at) { skipped_already++; continue; }
+      if (!app.primary_email) { skipped_no_email++; continue; }
+
+      // Fresh token each send — a re-send invalidates the previous link.
+      const tok  = randomToken();
+      const hash = await sha256Hex(tok);
+      const { error: updErr } = await sb.from('applications')
+        .update({ claim_token_hash: hash, invited_at: new Date().toISOString() })
+        .eq('id', app.id).eq('tenant_id', TID);
+      if (updErr) { failed++; continue; }
+
+      const claimUrl = `${clubUrl}/apply.html?claim=${encodeURIComponent(tok)}`;
+      if (!RESEND_API_KEY) { failed++; continue; }   // token stored; resend once email is configured
+      const firstName = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
+      const html = `
+        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">${esc(clubName)} has moved to a new system</h2>
+          <p style="margin:0 0 16px;color:#334155">Hi ${esc(firstName)} — we've switched to Poolside to manage memberships, payments, and pool access. We've pre-filled your information to make this quick.</p>
+          <p style="margin:0 0 16px;color:#334155">Tap below to review your details, add anyone on your membership, accept the club policies, and pay your dues for the season.</p>
+          <p style="margin:24px 0">
+            <a href="${claimUrl}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Confirm &amp; pay →</a>
+          </p>
+          <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5">If the button doesn't work, paste this link into your browser:<br><code style="font-size:12px;word-break:break-all;color:#0a3b5c">${claimUrl}</code></p>
+          <hr style="border:0;border-top:1px solid #e5e7eb;margin:28px 0">
+          <p style="margin:0;color:#94a3b8;font-size:12px">You're receiving this because you're a member of ${esc(clubName)}. Questions? Just reply to this email.</p>
+        </div>`;
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: RESEND_FROM, to: [app.primary_email],
+            subject: `${clubName}: confirm your membership & pay for the season`,
+            html,
+          }),
+        });
+        if (res.ok) sent++; else failed++;
+      } catch { failed++; }
+    }
+
+    await audit(sb, TID, payload.synthetic ? null : payload.sub, 'tenant_admin', 'application.claim_invites_sent', null,
+      `Sent ${sent} season-invite email${sent === 1 ? '' : 's'}`);
+    return jsonResponse({
+      ok: true, sent, skipped_no_email, skipped_already, failed,
+      total: (apps ?? []).length,
+      email_configured: !!RESEND_API_KEY,
+    });
   }
 
   if (action === 'list') {
