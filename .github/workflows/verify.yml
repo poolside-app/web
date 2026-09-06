@@ -1,0 +1,100 @@
+# =============================================================================
+# verify — run the three suites against production after every deploy
+# =============================================================================
+# Triggered by Vercel finishing a deploy, not by the push itself. Vercel takes
+# 30-60s to build, so a push-triggered run would test the PREVIOUS build and
+# report a green that means nothing. Waiting for deployment_status is the same
+# rule .claude/skills/deploy enforces by hand, just automatic.
+#
+# What this catches that a deploy does not: a deploy reports success on code
+# that cannot run. On 2026-09-05 the `applications` function shipped with a
+# duplicate top-level identifier, the deploy API returned 201, and the function
+# was down until someone called it. These suites call it.
+#
+# Scope, honestly: everything here runs against LIVE production, because there
+# is no staging environment yet. e2e.py makes real writes under a throwaway
+# tenant and tears it down afterward. Once Supabase branches + Vercel previews
+# are in use (readiness board, section 03), point the PR path at those instead
+# and this becomes a pre-merge gate rather than a post-deploy alarm.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   ADMIN_JWT_SECRET       signs the synthetic admin/member/provider tokens
+#   SUPABASE_ACCESS_TOKEN  management API reads
+#   SUPABASE_URL           https://<ref>.supabase.co
+#   SUPABASE_PROJECT_REF   the project ref alone
+# smoke.sh needs none of these — its targets are public.
+# =============================================================================
+
+name: verify
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+# Serialize: e2e.py writes to the production database, so two runs at once can
+# collide on the same fixtures. Queue them rather than cancelling — a cancelled
+# run can die between "create test tenant" and "tear it down".
+concurrency:
+  group: verify-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    # deployment_status fires for every state (pending, error, success) and for
+    # preview URLs too. Only a live production deploy is worth testing.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # e2e.py uses `str | None`; 3.9 cannot parse it
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Write .env.local
+        # Both suites read this file directly rather than the environment.
+        env:
+          ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          umask 077
+          {
+            echo "ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET}"
+            echo "SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN}"
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "SUPABASE_PROJECT_REF=${SUPABASE_PROJECT_REF}"
+          } > .env.local
+
+      - name: "Public surfaces: smoke.sh"
+        run: |
+          chmod +x scripts/smoke.sh
+          ./scripts/smoke.sh
+
+      - name: "Backend paths: e2e.py"
+        run: python scripts/e2e.py
+
+      - name: "Every page renders: frontend_smoke.mjs"
+        # ubuntu-latest ships Google Chrome; the script also probes the standard
+        # locations and prints what it tried if this path ever moves.
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node scripts/frontend_smoke.mjs
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f .env.local
