@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
             link_url: '/club/admin/settings.html#gate',
             source_kind: 'gate_panel', source_id: p.tenant_id,
             push_title: `🔴 Gate bridge offline at ${clubName}`,
-            push_body: `Last seen ${agoMin} min ago. Open Settings → Remote keyfob access for the 3-step fix (Pi power, internet, reboot).`,
+            push_body: `Last seen ${agoMin} min ago. Open Settings > Remote keyfob access for the 3-step fix (Pi power, internet, reboot).`,
           });
 
           // 2) Email club owner admins with the troubleshooting steps

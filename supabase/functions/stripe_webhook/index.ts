@@ -719,7 +719,7 @@ Deno.serve(async (req) => {
             link_url: '/club/admin/members.html#applications',
             source_kind: 'application', source_id: app.id,
             push_title: `🚨 Chargeback: ${app.family_name}`,
-            push_body: `$${(amount / 100).toFixed(2)} disputed (${reason}). Stripe is holding the funds — respond ASAP.`,
+            push_body: `$${(amount / 100).toFixed(2)} disputed (${reason}). Stripe is holding the funds - respond ASAP.`,
           });
         }
         await sb.from('audit_log').insert({

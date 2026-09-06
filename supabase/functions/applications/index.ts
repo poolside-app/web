@@ -1020,7 +1020,7 @@ Deno.serve(async (req) => {
         const r = await sendSms({
           sb, tenantId: TID, tenantPlan: tenant?.plan as string | null,
           to: app.primary_phone as string,
-          body: `Hi ${firstNm} — ${clubName} here. We've moved to the Poolside app. Your info is already filled in: tap to confirm and pay your dues. ${claimUrl}`,
+          body: `Hi ${firstNm}, ${clubName} here. We've moved to the Poolside app. Your info is already filled in: tap to confirm and pay your dues. ${claimUrl}`,
         });
         if (r.sent) { delivered = true; sent_sms++; }
         else if (r.capped) { sms_capped++; if (r.capped_by === 'platform') sms_capped_platform++; }
