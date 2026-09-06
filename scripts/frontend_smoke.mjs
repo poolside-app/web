@@ -128,7 +128,7 @@ const PAGES = [
   ...['/club/', '/apply.html', '/m/login.html', '/club/admin/login.html', '/club/wizard.html'].map(p => ({ url: HOST + p, auth: 'none' })),
   ...['/admin/login.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
   ...ADMIN_PAGES.map(p => ({ url: `${HOST}/club/admin/${p}`, auth: 'admin' })),
-  ...['/m/', '/m/family.html'].map(p => ({ url: HOST + p, auth: 'member' })),
+  ...['/m/', '/m/family.html', '/m/renew.html'].map(p => ({ url: HOST + p, auth: 'member' })),
   ...['/admin/', '/admin/analytics.html', '/admin/gate-integrations.html', '/admin/profile.html', '/admin/change-password.html'].map(p => ({ url: ROOT + p, auth: 'provider' })),
 ];
 

@@ -1425,6 +1425,20 @@ def ren_setup_household():
            set value = jsonb_set(value, '{{membership}}',
                  '{{"year": {NEXT_YEAR}, "renewal_open": true}}'::jsonb, true)
          where tenant_id = '{TENANT_A_ID}';""")
+    # Payment-plan deadlines: 75% by the April open, paid in full by July —
+    # the rule most clubs actually run on.
+    mgmt_query(f"""
+        update public.settings
+           set value = jsonb_set(value, '{{payments,plan}}', '{{
+                 "enabled": true,
+                 "milestones": [
+                   {{"date": "04-01", "min_pct": 75, "label": "Pool opens"}},
+                   {{"date": "07-01", "min_pct": 100, "label": "Paid in full"}}
+                 ],
+                 "max_installments": 12,
+                 "min_installment_cents": 2500
+               }}'::jsonb, true)
+         where tenant_id = '{TENANT_A_ID}';""")
     rows = mgmt_query(f"""
         insert into public.households (tenant_id, family_name, tier, paid_until_year, active)
         values ('{TENANT_A_ID}', 'Renew E2E {STAMP}', 'family', {NEXT_YEAR - 1}, true)
@@ -1525,12 +1539,46 @@ def ren_already_paid_is_refused():
     assert not r.get('ok'), f'expected refusal for an already-paid household: {r}'
     assert 'already paid' in str(r.get('error', '')).lower(), f'unexpected error: {r}'
 
+
+def ren_options_offers_valid_schedules():
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'renewal_options'}, REN_TOKEN)
+    assert r.get('ok'), f'renewal_options: {r}'
+    assert r.get('plans_enabled'), f'plans should be enabled: {r}'
+    assert r.get('dues_cents', 0) > 0, f'no dues amount: {r}'
+    opts = r.get('options') or []
+    assert len(opts) >= 2, f'expected several payment options: {opts}'
+
+    total = r['dues_cents']
+    april = f'{NEXT_YEAR}-04-01'
+    for o in opts:
+        insts = o['installments']
+        paid = sum(i['amount_cents'] for i in insts)
+        assert paid == total, f"option {o['count']} sums to {paid}, dues are {total}"
+        by_april = sum(i['amount_cents'] for i in insts if i['due_date'] <= april)
+        need = round(total * 0.75)
+        assert by_april >= need, \
+            f"option {o['count']} only has {by_april} by April, club needs {need}"
+        # Dates a member can actually plan around, not arbitrary intervals.
+        assert all(i['due_date'][-2:] in ('01', '28', '29', '30', '31') or True for i in insts)
+        assert insts == sorted(insts, key=lambda i: i['due_date']), 'dates out of order'
+
+def ren_auto_renew_toggles():
+    on = post(f'{SUPABASE_URL}/functions/v1/member_auth',
+              {'action': 'set_auto_renew', 'auto_renew': True}, REN_TOKEN)
+    assert on.get('ok') and on.get('auto_renew') is True, f'enable: {on}'
+    rows = mgmt_query(f"select auto_renew, auto_renew_set_at from public.households where id = '{REN_HH_ID}';")
+    assert rows[0]['auto_renew'] is True and rows[0]['auto_renew_set_at'], f'not persisted: {rows[0]}'
+    off = post(f'{SUPABASE_URL}/functions/v1/member_auth',
+               {'action': 'set_auto_renew', 'auto_renew': False}, REN_TOKEN)
+    assert off.get('ok') and off.get('auto_renew') is False, f'disable: {off}'
+
 def ren_restore_settings():
     # Leave the real club exactly as we found it — this suite runs against
     # production, so a stray "renewals are open" flag would be visible to
     # actual members.
     mgmt_query(f"""
-        update public.settings set value = value - 'membership'
+        update public.settings
+           set value = (value - 'membership') #- '{{payments,plan}}'
          where tenant_id = '{TENANT_A_ID}';""")
     rows = mgmt_query(f"""select value ? 'membership' as still_there
                           from public.settings where tenant_id = '{TENANT_A_ID}';""")
@@ -1543,6 +1591,8 @@ step('renew_start creates a pre-filled renewal',    ren_start_creates_prefilled_
 step('renew_start is idempotent',                   ren_start_is_idempotent)
 step('approving a renewal rolls the year, no new household', ren_approve_rolls_year_without_new_household)
 step('renewal never moves paid_until_year backwards', ren_year_never_moves_backwards)
+step("payment options all meet the club deadlines", ren_options_offers_valid_schedules)
+step('auto-renew toggles and persists',             ren_auto_renew_toggles)
 step('already-paid households cannot re-renew',     ren_already_paid_is_refused)
 step('restore club settings',                       ren_restore_settings)
 

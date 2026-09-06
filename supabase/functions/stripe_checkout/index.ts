@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     const id = String(body.application_id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'application_id required' }, 400);
     const { data: app } = await sb.from('applications')
-      .select('id, tenant_id, family_name, primary_name, primary_email, payment_status, tier_slug, status')
+      .select('id, tenant_id, family_name, primary_name, primary_email, payment_status, tier_slug, status, is_renewal')
       .eq('id', id).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
@@ -157,8 +157,14 @@ Deno.serve(async (req) => {
       description: `Application from ${app.family_name} (${app.primary_name})`,
       // app_id in the success URL lets the success page issue a fresh
       // magic-link sign-in token immediately (instead of "watch for email").
-      successUrl: `${clubUrl}/apply.html?paid=1&app_id=${app.id}`,
-      cancelUrl: `${clubUrl}/apply.html?paid=0`,
+      // A renewing member is already signed in and belongs in the member
+      // portal; only brand-new applicants belong back on the apply form.
+      successUrl: app.is_renewal
+        ? `${clubUrl}/m/?renewed=1`
+        : `${clubUrl}/apply.html?paid=1&app_id=${app.id}`,
+      cancelUrl: app.is_renewal
+        ? `${clubUrl}/m/renew.html?cancelled=1`
+        : `${clubUrl}/apply.html?paid=0`,
       metadata: {
         kind: 'application',
         application_id: app.id,
@@ -181,7 +187,7 @@ Deno.serve(async (req) => {
     const id = String(body.application_id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'application_id required' }, 400);
     const { data: app } = await sb.from('applications')
-      .select('id, tenant_id, family_name, primary_name, primary_email, primary_phone, payment_status, tier_slug, status')
+      .select('id, tenant_id, family_name, primary_name, primary_email, primary_phone, payment_status, tier_slug, status, is_renewal')
       .eq('id', id).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
@@ -208,10 +214,42 @@ Deno.serve(async (req) => {
     if (cutoff && today > cutoff) {
       return jsonResponse({ ok: false, error: 'Payment plan signup window has closed; please pay in full' }, 400);
     }
-    const pct = Math.max(1, Math.min(99, Number(planConfig.first_installment_pct) || 50));
-    const firstCents = Math.round(totalCents * pct / 100);
+    // Two shapes share this action. A member who picked a payment count on the
+    // renewal page gets a milestone-driven schedule of that length; anyone
+    // arriving from the old apply form (no count) keeps the original
+    // pay-half-now behaviour, so nothing that worked before changes.
+    const { resolveRules, generateSchedule, validateSchedule } =
+      await import('../_shared/payment_schedule.ts');
+    const { data: appYearRow } = await sb.from('applications')
+      .select('membership_year').eq('id', id).maybeSingle();
+    const planYear = (appYearRow?.membership_year as number | null)
+      ?? new Date().getUTCFullYear();
+
+    const wantCount = Math.trunc(Number(body.installment_count) || 0);
+    let schedule: Array<{ sequence: number; due_date: string; amount_cents: number }>;
+
+    if (wantCount >= 2) {
+      const rules = resolveRules(planConfig, planYear);
+      const gen = generateSchedule({ totalCents, rules, count: wantCount, startDate: today });
+      if (!gen.ok) return jsonResponse({ ok: false, error: gen.error }, 400);
+      // Re-check what we just built. Generation is ours, but the count came
+      // from a browser, and money is about to be scheduled against this.
+      const check = validateSchedule({ installments: gen.installments, rules, totalCents });
+      if (!check.ok) return jsonResponse({ ok: false, error: check.violations[0] }, 400);
+      schedule = gen.installments;
+    } else {
+      const pct = Math.max(1, Math.min(99, Number(planConfig.first_installment_pct) || 50));
+      const firstOnly = Math.round(totalCents * pct / 100);
+      schedule = [
+        { sequence: 1, due_date: today, amount_cents: firstOnly },
+        { sequence: 2, due_date: String(planConfig.final_due_date), amount_cents: totalCents - firstOnly },
+      ];
+    }
+
+    const firstCents = schedule[0].amount_cents;
     const secondCents = totalCents - firstCents;
-    const finalDueDate = String(planConfig.final_due_date);
+    const finalDueDate = schedule[schedule.length - 1].due_date;
+    const laterCount = schedule.length - 1;
 
     // Create plan + installments now (idempotently — no double-create on retry)
     const { data: existingPlan } = await sb.from('payment_plans').select('id, status')
@@ -223,7 +261,7 @@ Deno.serve(async (req) => {
       const { data: newPlan, error: planErr } = await sb.from('payment_plans').insert({
         tenant_id: app.tenant_id,
         application_id: id,
-        plan_type: 'two_installment',
+        plan_type: schedule.length === 2 ? 'two_installment' : 'custom',
         total_cents: totalCents,
         status: 'active',
         primary_email: app.primary_email,
@@ -232,16 +270,17 @@ Deno.serve(async (req) => {
       }).select('id').single();
       if (planErr || !newPlan) return jsonResponse({ ok: false, error: planErr?.message || 'plan create failed' }, 500);
       planId = newPlan.id as string;
-      await sb.from('payment_plan_installments').insert([
-        {
+      await sb.from('payment_plan_installments').insert(
+        schedule.map(inst => ({
           plan_id: planId, tenant_id: app.tenant_id,
-          sequence: 1, due_date: today, amount_cents: firstCents, status: 'pending',
-        },
-        {
-          plan_id: planId, tenant_id: app.tenant_id,
-          sequence: 2, due_date: finalDueDate, amount_cents: secondCents, status: 'pending',
-        },
-      ]);
+          sequence: inst.sequence,
+          // Installment 1 is collected by this Checkout session, so it is due
+          // today regardless of where the schedule nominally starts.
+          due_date: inst.sequence === 1 ? today : inst.due_date,
+          amount_cents: inst.amount_cents,
+          status: 'pending',
+        })),
+      );
     }
 
     // Stripe Checkout — mode=payment + setup_future_usage=off_session so we
@@ -250,13 +289,19 @@ Deno.serve(async (req) => {
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
-    params.append('success_url', `${clubUrl}/apply.html?plan_started=1&app_id=${id}`);
-    params.append('cancel_url',  `${clubUrl}/apply.html?plan_started=0`);
+    params.append('success_url', app.is_renewal
+      ? `${clubUrl}/m/?renewed=1&plan=1`
+      : `${clubUrl}/apply.html?plan_started=1&app_id=${id}`);
+    params.append('cancel_url', app.is_renewal
+      ? `${clubUrl}/m/renew.html?cancelled=1`
+      : `${clubUrl}/apply.html?plan_started=0`);
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]',
-      `${tenant.display_name} dues — installment 1 of 2 (${(tier?.label as string) || 'family'})`);
+      `${tenant.display_name} dues — payment 1 of ${schedule.length} (${(tier?.label as string) || 'family'})`);
     params.append('line_items[0][price_data][product_data][description]',
-      `Installment 2 of $${(secondCents / 100).toFixed(2)} will auto-charge on ${finalDueDate}.`);
+      laterCount === 1
+        ? `The remaining $${(secondCents / 100).toFixed(2)} auto-charges on ${finalDueDate}.`
+        : `${laterCount} more payments totalling $${(secondCents / 100).toFixed(2)} auto-charge through ${finalDueDate}.`);
     params.append('line_items[0][price_data][unit_amount]', String(firstCents));
     params.append('line_items[0][quantity]', '1');
     params.append('payment_intent_data[application_fee_amount]', String(platformFee));

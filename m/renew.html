@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Renew — Poolside</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
+<script src="/js/pwa.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-bottom: 10px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  main { flex:1; padding:22px 16px 40px; max-width:640px; width:100%; margin:0 auto; }
+  .back { display:inline-flex; align-items:center; gap:6px; font:600 13px 'Inter'; color:var(--blue); text-decoration:none; padding:8px 0 16px; }
+  footer { padding:18px; text-align:center; font-size:12px; color:var(--muted); }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; margin-bottom:14px; box-shadow:var(--shadow); }
+
+  /* Amount hero — the one number the member came here for. */
+  .amount { font-family:'Fraunces',serif; font-size:40px; font-weight:600; color:var(--blue); letter-spacing:-.02em; line-height:1; }
+  .amount-sub { color:var(--muted); font-size:13.5px; margin-top:6px; }
+
+  /* The club's deadlines, stated as reassurance rather than a warning. */
+  .rules { background:var(--blue-l); border-radius:var(--r-md); padding:13px 15px; font-size:13.5px; color:var(--blue); margin-top:14px; }
+  .rules b { font-weight:600; }
+
+  .opt { display:flex; gap:12px; align-items:flex-start; padding:14px; border:1.5px solid var(--border); border-radius:var(--r-md); cursor:pointer; margin-bottom:10px; background:#fff; }
+  .opt:hover { border-color:var(--blue); }
+  .opt.sel { border-color:var(--blue); background:var(--blue-l); }
+  .opt input { margin:3px 0 0; accent-color:var(--blue); width:18px; height:18px; flex:none; }
+  .opt-title { font-weight:600; font-size:15px; }
+  .opt-sub { color:var(--muted); font-size:13px; margin-top:2px; }
+
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 16px; }
+  .chip { padding:9px 15px; border:1.5px solid var(--border); border-radius:999px; background:#fff; font:600 13px 'Inter'; color:var(--text); cursor:pointer; }
+  .chip:hover { border-color:var(--blue); }
+  .chip.sel { background:var(--blue); border-color:var(--blue); color:#fff; }
+
+  table.sched { width:100%; border-collapse:collapse; font-size:14px; }
+  table.sched th { text-align:left; font:600 11px 'Inter'; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); padding-bottom:8px; }
+  table.sched td { padding:9px 0; border-top:1px solid var(--border); font-variant-numeric:tabular-nums; }
+  table.sched td.amt { text-align:right; font-weight:600; }
+  table.sched tr.milestone td { border-top:1.5px solid var(--blue); }
+  .ms-note { font-size:11.5px; color:var(--blue); font-weight:600; padding-top:2px; }
+  .first-note { font-size:12px; color:var(--muted); }
+
+  .toggle { display:flex; gap:12px; align-items:flex-start; padding:14px; border:1.5px solid var(--border); border-radius:var(--r-md); background:#fff; }
+  .toggle input { margin:2px 0 0; accent-color:var(--blue); width:18px; height:18px; flex:none; }
+
+  .btn { padding:14px 22px; border-radius:var(--r-md); font:600 15px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; width:100%; }
+  .btn:hover { background:var(--blue-2); }
+  .btn:disabled { opacity:.55; cursor:not-allowed; }
+  .err { background:#fef2f2; border:1px solid #fecaca; color:var(--red); border-radius:var(--r-md); padding:12px 14px; font-size:13.5px; margin-bottom:12px; }
+  .ok-note { color:var(--muted); font-size:12.5px; text-align:center; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/m/" class="logo" id="brand-link"><span class="logo-dot"></span> <span id="brand-name">…</span></a>
+  <div class="who"><span id="whoami">Loading…</span><a id="signout">Sign out</a></div>
+</header>
+
+<main>
+  <a href="/m/" class="back">← My club home</a>
+  <div id="root"><div class="card"><p style="color:var(--muted);font-size:14px;margin:0">Loading…</p></div></div>
+</main>
+
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const AUTH_URL     = `${SUPABASE_URL}/functions/v1/member_auth`;
+const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/stripe_checkout`;
+
+let OPTS = null;        // renewal_options response
+let choice = 'full';    // 'full' | 'plan'
+let planCount = null;   // selected installment count
+
+function token() { return localStorage.getItem('poolside_member_token'); }
+function logout() {
+  localStorage.removeItem('poolside_member_token');
+  localStorage.removeItem('poolside_member_user');
+  localStorage.removeItem('poolside_member_tenant');
+  window.location.href = '/m/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function money(cents) { return '$' + (Number(cents || 0) / 100).toFixed(2); }
+function prettyDate(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined,
+    { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+async function callMember(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(AUTH_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...(extra || {}) }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+function shell(inner) { document.getElementById('root').innerHTML = inner; }
+
+function render() {
+  const o = OPTS;
+  document.getElementById('whoami').textContent = o.family_name || '';
+
+  if (o.already_paid) {
+    shell(`<div class="card">
+      <h1>You're all set for ${o.year}</h1>
+      <p style="color:var(--muted);font-size:14px;margin:10px 0 0">
+        Your membership is paid through the ${o.year} season. Nothing to do — see you at the pool.</p>
+      <p style="margin:18px 0 0"><a href="/m/" class="back" style="padding:0">← Back to my club</a></p>
+    </div>`);
+    return;
+  }
+  if (!o.open) {
+    shell(`<div class="card">
+      <h1>Renewals aren't open yet</h1>
+      <p style="color:var(--muted);font-size:14px;margin:10px 0 0">
+        Your club hasn't opened ${o.year} renewals. You'll get a note when it does — nothing to do right now.</p>
+    </div>`);
+    return;
+  }
+  if (!o.dues_cents) {
+    shell(`<div class="card">
+      <h1>Renewals aren't quite ready</h1>
+      <p style="color:var(--muted);font-size:14px;margin:10px 0 0">
+        Your club still has to set this season's dues. Check back shortly.</p>
+    </div>`);
+    return;
+  }
+
+  const plansOn = o.plans_enabled && (o.options || []).length > 0;
+  if (!plansOn) choice = 'full';
+
+  shell(`
+    <div class="card">
+      <h1>Renew for ${o.year}</h1>
+      <p style="color:var(--muted);font-size:14px;margin:8px 0 18px">
+        ${esc(o.family_name || 'Your household')} · ${esc(o.tier_label)}</p>
+      <div class="amount">${money(o.dues_cents)}</div>
+      <div class="amount-sub">${o.pass_fee ? 'Includes the card processing fee.' : 'Total for the season.'}</div>
+      ${plansOn && o.rules ? rulesHtml(o.rules) : ''}
+    </div>
+
+    <div class="card">
+      <h2>How would you like to pay?</h2>
+      <label class="opt ${choice === 'full' ? 'sel' : ''}" id="opt-full">
+        <input type="radio" name="how" value="full" ${choice === 'full' ? 'checked' : ''}>
+        <span>
+          <span class="opt-title">Pay in full — ${money(o.dues_cents)}</span>
+          <span class="opt-sub">One payment today. Done for the season.</span>
+        </span>
+      </label>
+      ${plansOn ? `
+      <label class="opt ${choice === 'plan' ? 'sel' : ''}" id="opt-plan">
+        <input type="radio" name="how" value="plan" ${choice === 'plan' ? 'checked' : ''}>
+        <span>
+          <span class="opt-title">Spread it out</span>
+          <span class="opt-sub">Smaller payments, charged automatically to your card.</span>
+        </span>
+      </label>` : ''}
+      <div id="plan-area">${choice === 'plan' ? planHtml() : ''}</div>
+    </div>
+
+    <div class="card">
+      <label class="toggle">
+        <input type="checkbox" id="auto-renew" ${o.auto_renew ? 'checked' : ''}>
+        <span>
+          <span class="opt-title">Renew me automatically each year</span>
+          <span class="opt-sub">We'll charge this card when ${o.year + 1} opens and email you first. Cancel any time from My family.</span>
+        </span>
+      </label>
+    </div>
+
+    <div id="err"></div>
+    <button class="btn" id="go">${choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(o.dues_cents)}</button>
+    <p class="ok-note">Payments are handled by Stripe. Your card details never touch your club or Poolside.</p>
+  `);
+
+  document.querySelectorAll('input[name=how]').forEach(r => {
+    r.addEventListener('change', () => {
+      choice = r.value;
+      if (choice === 'plan' && planCount === null && OPTS.options.length) {
+        // Default to the option with the most payments — the smallest bite,
+        // which is the reason someone picked a plan in the first place.
+        planCount = OPTS.options[OPTS.options.length - 1].count;
+      }
+      render();
+    });
+  });
+  document.querySelectorAll('.chip').forEach(c => {
+    c.addEventListener('click', () => { planCount = Number(c.dataset.count); render(); });
+  });
+  document.getElementById('go').addEventListener('click', submit);
+}
+
+function rulesHtml(rules) {
+  const ms = (rules.milestones || []).filter(m => m.min_pct < 100);
+  const last = (rules.milestones || []).find(m => m.min_pct >= 100);
+  if (!ms.length && !last) return '';
+  const parts = ms.map(m => `<b>${m.min_pct}%</b> by ${prettyDate(m.date)}${m.label ? ` (${esc(m.label)})` : ''}`);
+  if (last) parts.push(`<b>paid in full</b> by ${prettyDate(last.date)}`);
+  return `<div class="rules">Your club asks for ${parts.join(', and ')}.
+    Every plan below already does that — pick whichever suits you.</div>`;
+}
+
+function planHtml() {
+  const o = OPTS;
+  const opts = o.options || [];
+  if (!opts.length) return '';
+  const sel = opts.find(x => x.count === planCount) || opts[opts.length - 1];
+  planCount = sel.count;
+
+  const msDates = new Set((o.rules?.milestones || []).map(m => m.date));
+  const msByDate = {};
+  (o.rules?.milestones || []).forEach(m => { msByDate[m.date] = m; });
+
+  const rows = sel.installments.map((inst, i) => {
+    const isMs = msDates.has(inst.due_date);
+    const note = isMs && msByDate[inst.due_date].label
+      ? `<div class="ms-note">${esc(msByDate[inst.due_date].label)}</div>` : '';
+    const when = i === 0
+      ? `Today<div class="first-note">Charged now</div>`
+      : `${prettyDate(inst.due_date)}${note}`;
+    return `<tr class="${isMs ? 'milestone' : ''}"><td>${when}</td><td class="amt">${money(inst.amount_cents)}</td></tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-top:16px">
+      <div style="font:600 11px 'Inter';letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">How many payments?</div>
+      <div class="chips">
+        ${opts.map(x => `<button class="chip ${x.count === sel.count ? 'sel' : ''}" data-count="${x.count}">${x.count}</button>`).join('')}
+      </div>
+      <table class="sched">
+        <thead><tr><th>When</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="color:var(--muted);font-size:12.5px;margin:12px 0 0">
+        Payments after the first are charged automatically to the card you use today.
+        We'll email you before each one.</p>
+    </div>`;
+}
+
+async function submit() {
+  const btn = document.getElementById('go');
+  const errEl = document.getElementById('err');
+  errEl.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = 'Setting up…';
+  try {
+    const autoRenew = document.getElementById('auto-renew').checked;
+    const started = await callMember('renew_start', { auto_renew: autoRenew });
+    if (!started.ok) throw new Error(started.error || 'Could not start your renewal');
+
+    const payload = choice === 'plan'
+      ? { action: 'application_plan', application_id: started.application_id, installment_count: planCount }
+      : { action: 'application',      application_id: started.application_id };
+
+    const res = await fetch(CHECKOUT_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const out = await res.json();
+    if (!out.ok || !out.url) throw new Error(out.error || 'Could not start checkout');
+    window.location.href = out.url;
+  } catch (e) {
+    errEl.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    btn.disabled = false;
+    btn.textContent = choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(OPTS.dues_cents);
+  }
+}
+
+(async function init() {
+  try {
+    if (new URLSearchParams(location.search).get('cancelled')) {
+      // Coming back from an abandoned checkout: the renewal row is still there
+      // and renew_start is idempotent, so simply re-rendering is enough.
+    }
+    const me = await callMember('me');
+    if (!me.ok) { logout(); return; }
+    if (me.refreshed_token) { try { localStorage.setItem('poolside_member_token', me.refreshed_token); } catch (_) {} }
+    document.getElementById('brand-name').textContent = me.tenant?.display_name || 'Poolside';
+
+    OPTS = await callMember('renewal_options');
+    if (!OPTS.ok) throw new Error(OPTS.error || 'Could not load renewal details');
+    if (OPTS.plans_enabled && (OPTS.options || []).length) {
+      planCount = OPTS.options[OPTS.options.length - 1].count;
+    }
+    render();
+  } catch (e) {
+    shell(`<div class="card"><div class="err">${esc(e.message)}</div>
+      <p style="margin:12px 0 0"><a href="/m/">← Back to my club</a></p></div>`);
+  }
+})();
+</script>
+</body>
+</html>

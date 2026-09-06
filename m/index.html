@@ -1437,6 +1437,28 @@ function renderSponsorStrip(sponsors) {
     </div>`;
 }
 
+function renderRenewalCard(renewal, tenant) {
+  // Only speak up when there is something to do. A member who has already
+  // paid, or whose club has not opened renewals, should never see this — the
+  // fastest way to make people ignore a prompt is to show it when it is moot.
+  if (!renewal || !renewal.open || renewal.already_paid) return '';
+
+  const started = !!renewal.application_id;
+  const heading = started ? 'Finish renewing' : `Renew for ${renewal.year}`;
+  const blurb = started
+    ? 'You started a renewal but haven\'t paid yet. Pick up where you left off.'
+    : `Keep your membership going for the ${renewal.year} season. Pay in full or spread it out.`;
+  const cta = started ? 'Finish paying →' : 'Renew now →';
+
+  return `
+    <div class="card" style="border-color:#0a3b5c;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff">
+      <h2 style="color:#fff;margin:0 0 6px">${escapeHtml(heading)}</h2>
+      <p style="margin:0 0 16px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.5">${escapeHtml(blurb)}</p>
+      <a href="/m/renew.html" style="display:inline-block;background:#fff;color:#0a3b5c;text-decoration:none;padding:11px 20px;border-radius:12px;font-weight:600;font-size:14px">${escapeHtml(cta)}</a>
+    </div>
+  `;
+}
+
 function renderSeasonClosedBanner(season) {
   if (!season) return '';
   if (season.open !== false) return '';
@@ -2119,6 +2141,8 @@ async function submitProfile() {
       <div class="actions">${heroActions.join('')}</div>
       ${renderMemberCountTicker(publicData.member_count, publicData.public_settings?.public)}
     </div>
+
+    ${renderRenewalCard(me.renewal, tenant)}
 
     <!-- Today at the pool — hours + today's events + check-in counter -->
     <div id="today-block"></div>

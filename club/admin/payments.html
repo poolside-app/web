@@ -156,17 +156,26 @@
 
       <div class="card" id="plans-card">
         <h2>🗓️ Payment plans</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Offer applicants a 2-installment Stripe option (e.g. half by season open, half by July 1). Auto-charges the saved card on the due date. Auto-deactivates keyfobs on chronic failure; reactivation flow charges remaining balance + a fee.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Let members spread dues over several Stripe payments instead of one hit. You set the deadlines; members choose how many payments they want, and Poolside only offers schedules that meet your deadlines. Auto-charges the saved card on each due date, and auto-deactivates keyfobs on chronic failure.</p>
         <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="plan-enabled"><span>Enable payment plans</span></label>
-        <div class="row3" style="gap:10px">
-          <div><label>Season open date</label><input type="date" id="plan-open"></div>
-          <div><label>Final due date</label><input type="date" id="plan-final"></div>
+        <label style="margin-top:6px">Payment deadlines</label>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 8px">
+          How much of the season's dues you need in hand, and by when. Month and day only —
+          these repeat every season, so you set them once. Most clubs want a chunk by the day
+          they open and the rest a couple of months later.</p>
+        <div id="ms-rows"></div>
+        <button class="btn" type="button" onclick="addMilestone()" style="font-size:12px;padding:6px 12px;margin-top:2px">+ Add a deadline</button>
+        <div class="err" id="ms-err" style="margin-top:8px"></div>
+
+        <div class="row3" style="gap:10px;margin-top:14px">
           <div><label>Plan-signup cutoff</label><input type="date" id="plan-cutoff"></div>
+          <div><label>Most payments allowed</label><input type="number" id="plan-max" min="2" max="24"></div>
+          <div><label>Smallest payment ($)</label><input type="number" id="plan-min" min="1" step="1"></div>
         </div>
         <div class="row3" style="gap:10px;margin-top:8px">
-          <div><label>1st installment %</label><input type="number" id="plan-pct" min="1" max="99"></div>
           <div><label>Lapse grace (days)</label><input type="number" id="plan-grace" min="1" max="60"></div>
           <div><label>Reactivation fee ($)</label><input type="number" id="plan-fee" min="0" step="0.01"></div>
+          <div></div>
         </div>
         <label class="checkbox-row" style="margin:8px 0 0"><input type="checkbox" id="plan-deactivate"><span>Auto-deactivate keyfobs on lapse (re-enabled on reactivation)</span></label>
         <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
@@ -503,6 +512,89 @@ async function loadPaymentMethods() {
   }
 }
 // Access methods (was here, moved to /club/admin/settings.html 2026-05-21).
+
+// ── Payment deadlines (milestones) ──────────────────────────────────────
+// Stored as MM-DD so a club sets "April 1" once and it applies every season.
+let MILESTONES = [];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function monthDay(raw) {
+  const v = String(raw || '');
+  const m = v.match(/(\d{2})-(\d{2})$/);
+  return m ? `${m[1]}-${m[2]}` : '';
+}
+function legacyToMilestones(c) {
+  const out = [];
+  if (c.season_open_date && c.first_installment_pct) {
+    out.push({ date: monthDay(c.season_open_date), min_pct: Number(c.first_installment_pct), label: 'Pool opens' });
+  }
+  if (c.final_due_date) out.push({ date: monthDay(c.final_due_date), min_pct: 100, label: 'Paid in full' });
+  return out.filter(m => m.date);
+}
+function renderMilestones() {
+  const host = document.getElementById('ms-rows');
+  if (!MILESTONES.length) {
+    host.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:0 0 8px">No deadlines set yet — add one below.</p>';
+    return;
+  }
+  host.innerHTML = MILESTONES.map((m, i) => {
+    const [mm, dd] = (m.date || '--').split('-');
+    return `<div class="row3" style="gap:10px;margin-bottom:8px;align-items:end">
+      <div>
+        <label>Deadline</label>
+        <div style="display:flex;gap:6px">
+          <select data-ms="${i}" data-f="month" style="flex:2">
+            ${MONTHS.map((name, k) => `<option value="${String(k+1).padStart(2,'0')}" ${String(k+1).padStart(2,'0') === mm ? 'selected' : ''}>${name}</option>`).join('')}
+          </select>
+          <input type="number" data-ms="${i}" data-f="day" min="1" max="31" value="${Number(dd) || 1}" style="flex:1">
+        </div>
+      </div>
+      <div><label>% paid by then</label><input type="number" data-ms="${i}" data-f="pct" min="1" max="100" value="${m.min_pct}"></div>
+      <div style="display:flex;gap:6px;align-items:end">
+        <div style="flex:1"><label>Label (optional)</label><input type="text" data-ms="${i}" data-f="label" value="${String(m.label || '').replace(/"/g,'&quot;')}" placeholder="Pool opens"></div>
+        <button class="btn" type="button" onclick="removeMilestone(${i})" style="font-size:12px;padding:9px 11px" title="Remove">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function readMilestones() {
+  document.querySelectorAll('#ms-rows [data-ms]').forEach(el => {
+    const i = Number(el.dataset.ms), f = el.dataset.f;
+    if (!MILESTONES[i]) return;
+    if (f === 'month' || f === 'day') {
+      const [mm, dd] = (MILESTONES[i].date || '01-01').split('-');
+      const month = f === 'month' ? el.value : mm;
+      const day = String(Math.min(31, Math.max(1, Number(f === 'day' ? el.value : dd) || 1))).padStart(2, '0');
+      MILESTONES[i].date = `${month}-${day}`;
+    } else if (f === 'pct') {
+      MILESTONES[i].min_pct = Math.min(100, Math.max(1, Number(el.value) || 1));
+    } else {
+      MILESTONES[i].label = el.value.trim();
+    }
+  });
+}
+function milestoneProblem() {
+  if (!document.getElementById('plan-enabled').checked) return '';
+  if (!MILESTONES.length) return 'Add at least one payment deadline.';
+  const sorted = [...MILESTONES].sort((a, b) => a.date < b.date ? -1 : 1);
+  if (sorted[sorted.length - 1].min_pct !== 100) {
+    return 'The last deadline has to be 100% — that is when members finish paying.';
+  }
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].min_pct <= sorted[i - 1].min_pct) {
+      return 'Each deadline has to ask for more than the one before it.';
+    }
+  }
+  return '';
+}
+function addMilestone() {
+  readMilestones();
+  MILESTONES.push(MILESTONES.length ? { date: '07-01', min_pct: 100, label: 'Paid in full' }
+                                    : { date: '04-01', min_pct: 75,  label: 'Pool opens' });
+  renderMilestones();
+}
+function removeMilestone(i) { readMilestones(); MILESTONES.splice(i, 1); renderMilestones(); }
+
 // ── Setup: Payment plans ────────────────────────────────────────────────
 async function loadPlanConfig() {
   try {
@@ -510,13 +602,20 @@ async function loadPlanConfig() {
     if (!r.ok) throw new Error(r.error || 'config load failed');
     const c = r.config || {};
     document.getElementById('plan-enabled').checked = !!c.enabled;
-    document.getElementById('plan-open').value     = c.season_open_date || '';
-    document.getElementById('plan-final').value    = c.final_due_date   || '';
     document.getElementById('plan-cutoff').value   = c.plan_signup_cutoff_date || '';
-    document.getElementById('plan-pct').value      = (c.first_installment_pct ?? 50);
+    document.getElementById('plan-max').value      = (c.max_installments ?? 12);
+    document.getElementById('plan-min').value      = Math.round((c.min_installment_cents ?? 2500) / 100);
     document.getElementById('plan-grace').value    = (c.lapse_grace_days      ?? 14);
     document.getElementById('plan-fee').value      = ((c.reactivation_fee_cents ?? 5000) / 100).toFixed(2);
     document.getElementById('plan-deactivate').checked = c.auto_deactivate_keyfob !== false;
+
+    // Milestones are the control now. A club configured before they existed
+    // still has the old season-open / final-due pair, so convert it rather
+    // than showing an empty editor to someone who already set this up.
+    MILESTONES = Array.isArray(c.milestones) && c.milestones.length
+      ? c.milestones.map(m => ({ date: monthDay(m.date), min_pct: Number(m.min_pct) || 100, label: m.label || '' }))
+      : legacyToMilestones(c);
+    renderMilestones();
   } catch (e) {
     document.getElementById('plan-err').textContent = e.message;
     document.getElementById('plan-err').classList.add('show');
@@ -530,12 +629,26 @@ async function savePlanConfig() {
   savedEl.style.display = 'none';
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
   try {
+    readMilestones();
+    const problem = milestoneProblem();
+    if (problem) throw new Error(problem);
+
+    // The legacy season_open_date / final_due_date / first_installment_pct
+    // trio still drives the older apply-form path, so derive it from the
+    // milestones instead of asking a board to keep two settings in step.
+    const year = new Date().getUTCFullYear();
+    const sorted = [...MILESTONES].sort((a, b) => a.date < b.date ? -1 : 1);
+    const first = sorted[0], last = sorted[sorted.length - 1];
+
     const config = {
       enabled: document.getElementById('plan-enabled').checked,
-      season_open_date:        document.getElementById('plan-open').value || null,
-      final_due_date:          document.getElementById('plan-final').value || null,
+      milestones: sorted,
+      season_open_date:        first ? `${year}-${first.date}` : null,
+      final_due_date:          last  ? `${year}-${last.date}`  : null,
+      first_installment_pct:   first ? first.min_pct : 50,
       plan_signup_cutoff_date: document.getElementById('plan-cutoff').value || null,
-      first_installment_pct: Number(document.getElementById('plan-pct').value) || 50,
+      max_installments:        Number(document.getElementById('plan-max').value) || 12,
+      min_installment_cents:   Math.round((Number(document.getElementById('plan-min').value) || 25) * 100),
       lapse_grace_days:      Number(document.getElementById('plan-grace').value) || 14,
       reactivation_fee_cents: Math.round((parseFloat(document.getElementById('plan-fee').value) || 0) * 100),
       auto_deactivate_keyfob: document.getElementById('plan-deactivate').checked,

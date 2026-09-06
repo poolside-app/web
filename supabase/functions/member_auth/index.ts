@@ -438,6 +438,90 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── renewal_options ────────────────────────────────────────────────────
+  // Everything the renewal page needs to render itself in one call: what is
+  // owed, what the club's payment deadlines are in plain language, and a few
+  // ready-made schedules that satisfy them. The member picks; they never have
+  // to work out whether their own plan clears the club's 75%-by-opening rule.
+  if (action === 'renewal_options') {
+    const { data: household } = await sb.from('households')
+      .select('id, family_name, tier, paid_until_year, auto_renew, active')
+      .eq('id', payload.hid as string).eq('tenant_id', payload.tid as string).maybeSingle();
+    if (!household) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
+
+    const { data: settings } = await sb.from('settings')
+      .select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+    const sv = (settings?.value ?? {}) as Record<string, unknown>;
+
+    const state = await renewalStateFor(sb, payload.tid as string, household);
+
+    // Dues come from the household's tier, same source the apply form uses.
+    const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+    const tier = tiers.find(t => t.slug === household.tier) || tiers[0];
+    const baseCents = Number(tier?.price_cents) || 0;
+
+    // If the club passes card fees to members, quote the grossed-up figure so
+    // the page never shows one number and the checkout another.
+    const pay = (sv.payments as Record<string, unknown> | undefined) ?? {};
+    const passFee = !!pay.pass_stripe_fee;
+    const pct = Number(pay.stripe_pct ?? 2.9) / 100;
+    const fixed = Number(pay.stripe_fixed_cents ?? 30);
+    const duesCents = passFee && baseCents > 0
+      ? Math.ceil((baseCents + fixed) / (1 - pct))
+      : baseCents;
+
+    const planCfg = (pay.plan as Record<string, unknown> | undefined) ?? {};
+    const plansEnabled = !!planCfg.enabled;
+
+    let rules = null as unknown;
+    let options: unknown[] = [];
+    if (plansEnabled && duesCents > 0) {
+      const { resolveRules, generateSchedule, suggestedCounts } =
+        await import('../_shared/payment_schedule.ts');
+      const today = new Date().toISOString().slice(0, 10);
+      const r = resolveRules(planCfg, state.year);
+      rules = {
+        milestones: r.milestones,
+        max_installments: r.maxInstallments,
+        min_installment_cents: r.minInstallmentCents,
+      };
+      options = suggestedCounts(r, today).map(count => {
+        const gen = generateSchedule({ totalCents: duesCents, rules: r, count, startDate: today });
+        return gen.ok ? { count, installments: gen.installments } : null;
+      }).filter(Boolean);
+    }
+
+    return jsonResponse({
+      ok: true,
+      year: state.year,
+      open: state.open,
+      already_paid: state.already_paid,
+      application_id: state.application_id,
+      family_name: household.family_name,
+      tier_label: (tier?.label as string) ?? household.tier ?? 'Membership',
+      dues_cents: duesCents,
+      pass_fee: passFee,
+      auto_renew: !!household.auto_renew,
+      plans_enabled: plansEnabled,
+      rules,
+      options,
+    });
+  }
+
+  // ── set_auto_renew ─────────────────────────────────────────────────────
+  // A member turning this on is telling the club "keep me". Stored on the
+  // household so next season's charge can run without anyone being asked to
+  // do anything; the card itself is captured by checkout, not here.
+  if (action === 'set_auto_renew') {
+    const on = body.auto_renew === true;
+    const { error } = await sb.from('households').update({
+      auto_renew: on,
+      auto_renew_set_at: on ? new Date().toISOString() : null,
+    }).eq('id', payload.hid as string).eq('tenant_id', payload.tid as string);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, auto_renew: on });
+  }
+
   // ── renew_start ────────────────────────────────────────────────────────
   // One tap. Build a renewal application pre-filled from the household the
   // member already has, so renewing is a confirmation rather than a second
@@ -493,6 +577,13 @@ Deno.serve(async (req) => {
     }).select('id').single();
     if (insErr || !created) {
       return jsonResponse({ ok: false, error: insErr?.message || 'Could not start renewal' }, 500);
+    }
+
+    if (body.auto_renew !== undefined) {
+      await sb.from('households').update({
+        auto_renew: body.auto_renew === true,
+        auto_renew_set_at: body.auto_renew === true ? new Date().toISOString() : null,
+      }).eq('id', household.id).eq('tenant_id', payload.tid as string);
     }
 
     return jsonResponse({ ok: true, application_id: created.id, membership_year: state.year, reused: false });
