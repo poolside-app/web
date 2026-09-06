@@ -27,6 +27,7 @@ with open('.env.local', 'r') as f:
 
 SUPABASE_URL = ENV.get('SUPABASE_URL', '').rstrip('/')
 JWT_SECRET   = ENV.get('ADMIN_JWT_SECRET')
+CRON_SECRET  = ENV.get('CRON_SECRET')
 ACCESS_TOKEN = ENV.get('SUPABASE_ACCESS_TOKEN')
 PROJECT_REF  = ENV.get('SUPABASE_PROJECT_REF', 'sdewylbddkcvidwosgxo')
 
@@ -1572,6 +1573,93 @@ def ren_auto_renew_toggles():
                {'action': 'set_auto_renew', 'auto_renew': False}, REN_TOKEN)
     assert off.get('ok') and off.get('auto_renew') is False, f'disable: {off}'
 
+
+def _post_cron(action):
+    req = urllib.request.Request(
+        f'{SUPABASE_URL}/functions/v1/payment_plans',
+        data=json.dumps({'action': action}).encode(),
+        headers={'content-type': 'application/json', 'x-cron-secret': CRON_SECRET or ''},
+        method='POST')
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read().decode())
+
+def _make_lapsed_plan(year):
+    """A lapsed plan for `year`, with the household's keyfobs currently on."""
+    mgmt_query(f"""update public.household_members set can_unlock_gate = true
+                    where household_id = '{REN_HH_ID}';""")
+    rows = mgmt_query(f"""
+        insert into public.applications
+          (tenant_id, household_id, is_renewal, membership_year, status, payment_status,
+           family_name, primary_name, primary_phone)
+        values ('{TENANT_A_ID}', '{REN_HH_ID}', true, {year}, 'approved', 'unpaid',
+                'Lapse E2E {STAMP}', 'Lapse {STAMP}', '+1555{STAMP}0088')
+        returning id;""")
+    app_id = rows[0]['id']; track('applications', app_id)
+    rows = mgmt_query(f"""
+        insert into public.payment_plans
+          (tenant_id, household_id, application_id, plan_type, total_cents, status, lapsed_at, family_name)
+        values ('{TENANT_A_ID}', '{REN_HH_ID}', '{app_id}', 'custom', 60000, 'lapsed', now(),
+                'Lapse E2E {STAMP}')
+        returning id;""")
+    return rows[0]['id']
+
+def dun_preseason_lapse_keeps_access():
+    # A card failing in September for NEXT summer must not switch off a keyfob
+    # for a season that has not started — the switch-off would still be in
+    # force on opening day, long after the family fixed the card.
+    plan_id = _make_lapsed_plan(NEXT_YEAR)
+    r = _post_cron('cron_run')
+    assert r.get('ok'), f'cron_run: {r}'
+    rows = mgmt_query(f"""select count(*) as n from public.household_members
+                          where household_id = '{REN_HH_ID}' and can_unlock_gate = false;""")
+    assert rows[0]['n'] == 0, 'pre-season lapse deactivated keyfobs'
+    rows = mgmt_query(f"select enforced_at from public.payment_plans where id = '{plan_id}';")
+    assert rows[0]['enforced_at'] is None, 'pre-season lapse was marked enforced'
+    mgmt_query(f"delete from public.payment_plans where id = '{plan_id}';")
+
+def dun_in_season_lapse_enforces():
+    # Same lapse, but for a season already underway: consequences apply.
+    plan_id = _make_lapsed_plan(time.gmtime().tm_year)
+    r = _post_cron('cron_run')
+    assert r.get('ok'), f'cron_run: {r}'
+    rows = mgmt_query(f"""select count(*) as n from public.household_members
+                          where household_id = '{REN_HH_ID}' and can_unlock_gate = false;""")
+    assert rows[0]['n'] > 0, 'in-season lapse did not deactivate keyfobs'
+    rows = mgmt_query(f"select enforced_at from public.payment_plans where id = '{plan_id}';")
+    assert rows[0]['enforced_at'] is not None, 'enforcement was not recorded'
+    mgmt_query(f"delete from public.payment_plans where id = '{plan_id}';")
+    mgmt_query(f"""update public.household_members set can_unlock_gate = true
+                    where household_id = '{REN_HH_ID}';""")
+
+def auto_renew_warns_before_charging():
+    # The renewal page promises "we'll email you first". Verify the first pass
+    # only notices, and records which season it warned about.
+    mgmt_query(f"""update public.households
+                      set auto_renew = true, paid_until_year = {NEXT_YEAR - 1},
+                          auto_renew_notice_year = null, auto_renew_notice_sent_at = null,
+                          auto_renew_customer_id = null, auto_renew_pm_id = null
+                    where id = '{REN_HH_ID}';""")
+    r = _post_cron('auto_renew_run')
+    assert r.get('ok'), f'auto_renew_run: {r}'
+    rows = mgmt_query(f"""select auto_renew_notice_year, auto_renew_notice_sent_at
+                          from public.households where id = '{REN_HH_ID}';""")
+    assert rows[0]['auto_renew_notice_year'] == NEXT_YEAR, f'no notice stamped: {rows[0]}'
+    assert rows[0]['auto_renew_sent_at'] if False else rows[0]['auto_renew_notice_sent_at'], 'notice time not recorded'
+
+def auto_renew_without_a_card_says_so():
+    # Opted in but no reusable card: the household must surface a reason a
+    # treasurer can act on, not be silently skipped forever.
+    mgmt_query(f"""update public.households
+                      set auto_renew_notice_sent_at = now() - interval '30 days'
+                    where id = '{REN_HH_ID}';""")
+    r = _post_cron('auto_renew_run')
+    assert r.get('ok'), f'auto_renew_run: {r}'
+    rows = mgmt_query(f"""select auto_renew_last_error from public.households
+                          where id = '{REN_HH_ID}';""")
+    assert rows[0]['auto_renew_last_error'], 'no reason recorded for the skipped charge'
+    assert 'card' in rows[0]['auto_renew_last_error'].lower(), f"unhelpful reason: {rows[0]}"
+    mgmt_query(f"""update public.households set auto_renew = false where id = '{REN_HH_ID}';""")
+
 def ren_restore_settings():
     # Leave the real club exactly as we found it — this suite runs against
     # production, so a stray "renewals are open" flag would be visible to
@@ -1594,6 +1682,10 @@ step('renewal never moves paid_until_year backwards', ren_year_never_moves_backw
 step("payment options all meet the club deadlines", ren_options_offers_valid_schedules)
 step('auto-renew toggles and persists',             ren_auto_renew_toggles)
 step('already-paid households cannot re-renew',     ren_already_paid_is_refused)
+step('pre-season lapse keeps gate access',          dun_preseason_lapse_keeps_access)
+step('in-season lapse enforces access loss',        dun_in_season_lapse_enforces)
+step('auto-renew warns before it charges',          auto_renew_warns_before_charging)
+step('auto-renew without a card reports why',       auto_renew_without_a_card_says_so)
 step('restore club settings',                       ren_restore_settings)
 
 # ── Cleanup ──────────────────────────────────────────────────────────────

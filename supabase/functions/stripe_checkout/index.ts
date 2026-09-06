@@ -69,6 +69,10 @@ async function stripeCheckout(params: {
   metadata: Record<string, string>;
   customerEmail?: string;
   feeBps: number;       // explicit so the caller picks the right rate per kind
+  // Keep the card usable later. Needed for auto-renew: without it Stripe takes
+  // the payment and forgets the card, and next season's charge has nothing to
+  // charge against.
+  saveCard?: boolean;
 }): Promise<{ ok: boolean; url?: string; session_id?: string; error?: string }> {
   if (!STRIPE_KEY) return { ok: false, error: 'STRIPE_SECRET_KEY not set' };
   const platformFee = Math.max(0, Math.floor(params.amountCents * params.feeBps / 10000));
@@ -84,6 +88,7 @@ async function stripeCheckout(params: {
   body.append('payment_intent_data[application_fee_amount]', String(platformFee));
   if (params.customerEmail) body.append('customer_email', params.customerEmail);
   for (const [k, v] of Object.entries(params.metadata)) body.append(`metadata[${k}]`, v);
+  if (params.saveCard) body.append('payment_intent_data[setup_future_usage]', 'off_session');
 
   try {
     const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
@@ -149,6 +154,19 @@ Deno.serve(async (req) => {
       amountCents = Math.ceil((baseCents + fixed) / (1 - pct));
     }
 
+    // A member who ticked "renew me automatically" is agreeing to a future
+    // charge, so this is the moment to keep the card.
+    let saveCard = false;
+    if (app.is_renewal) {
+      const { data: appHh } = await sb.from('applications')
+        .select('household_id').eq('id', app.id).maybeSingle();
+      if (appHh?.household_id) {
+        const { data: hh } = await sb.from('households')
+          .select('auto_renew').eq('id', appHh.household_id).maybeSingle();
+        saveCard = !!hh?.auto_renew;
+      }
+    }
+
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const session = await stripeCheckout({
       tenantStripeAccount: tenant.stripe_account_id,
@@ -172,6 +190,7 @@ Deno.serve(async (req) => {
       },
       customerEmail: app.primary_email || undefined,
       feeBps: FEE_BPS_DUES,
+      saveCard,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
 

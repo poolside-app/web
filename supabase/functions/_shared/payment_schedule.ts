@@ -296,3 +296,38 @@ function posInt(raw: unknown, fallback: number): number {
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
+
+/**
+ * The date from which missing a payment should actually cost a member
+ * something — normally the day the club opens.
+ *
+ * Deactivating a keyfob in January for the coming summer punishes nobody and
+ * then quietly persists into June, when it turns a family away at the gate
+ * over a card that expired six months earlier. So enforcement waits for the
+ * season: a club can set `enforce_from` explicitly, otherwise the first
+ * milestone (which is nearly always "pool opens") is the right default.
+ */
+export function enforcementDate(
+  planConfig: Record<string, unknown> | undefined,
+  year: number,
+): string | null {
+  const explicit = planConfig?.enforce_from;
+  if (typeof explicit === 'string' && explicit.trim()) {
+    const d = absoluteDate(explicit, year);
+    if (d) return d;
+  }
+  const rules = resolveRules(planConfig, year);
+  return rules.milestones.length ? rules.milestones[0].date : null;
+}
+
+/** True once consequences are fair to apply for this membership year. */
+export function seasonUnderway(
+  planConfig: Record<string, unknown> | undefined,
+  year: number,
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  const d = enforcementDate(planConfig, year);
+  // No deadlines configured at all: nothing to defer to, so behave as before
+  // rather than leaving a club unable to enforce anything.
+  return d === null ? true : today >= d;
+}

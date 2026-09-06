@@ -50,6 +50,46 @@ async function verifyStripeSignature(rawBody: string, sigHeader: string, secret:
   return mismatch === 0;
 }
 
+
+// Pull the reusable payment method off a completed Checkout session and keep it
+// on the household, so next season's auto-renew has a card to charge. Only
+// present when the session asked for it (setup_future_usage), which is only
+// when the member opted into auto-renew.
+async function rememberCardForAutoRenew(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  applicationId: string,
+  customerId: string | null,
+  paymentIntentId: string | null,
+): Promise<void> {
+  if (!customerId) return;
+  const { data: app } = await sb.from('applications')
+    .select('household_id').eq('id', applicationId).maybeSingle();
+  if (!app?.household_id) return;
+  const { data: hh } = await sb.from('households')
+    .select('id, auto_renew').eq('id', app.household_id).maybeSingle();
+  if (!hh?.auto_renew) return;
+
+  let pmId: string | null = null;
+  if (paymentIntentId && STRIPE_KEY) {
+    try {
+      const { data: t } = await sb.from('tenants')
+        .select('stripe_account_id').eq('id', tenantId).maybeSingle();
+      const r = await fetch(`https://api.stripe.com/v1/payment_intents/${paymentIntentId}`, {
+        headers: {
+          Authorization: `Bearer ${STRIPE_KEY}`,
+          'Stripe-Account': (t?.stripe_account_id as string) || '',
+        },
+      });
+      if (r.ok) pmId = (await r.json()).payment_method || null;
+    } catch { /* leave null — the cron reports "no saved card" rather than guessing */ }
+  }
+  await sb.from('households').update({
+    auto_renew_customer_id: customerId,
+    auto_renew_pm_id: pmId,
+  }).eq('id', hh.id);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return new Response('POST required', { status: 405 });
@@ -153,6 +193,12 @@ Deno.serve(async (req) => {
         }
       }
 
+      await rememberCardForAutoRenew(
+        sb, tenantId, md.application_id,
+        (session.customer as string) || null,
+        (session.payment_intent as string) || null,
+      );
+
       // Re-load household_id (approval just set it) and flip dues paid.
       const { data: appAfter } = await sb.from('applications')
         .select('household_id, membership_year').eq('id', md.application_id).maybeSingle();
@@ -228,6 +274,23 @@ Deno.serve(async (req) => {
         stripe_customer_id: customerId,
         stripe_payment_method_id: paymentMethodId,
       }).eq('id', md.plan_id);
+
+      // Same card serves next season if they also asked for auto-renew. The PM
+      // is already in hand here, so no second round trip to Stripe.
+      if (md.application_id && customerId) {
+        const { data: planApp } = await sb.from('applications')
+          .select('household_id').eq('id', md.application_id).maybeSingle();
+        if (planApp?.household_id) {
+          const { data: hh } = await sb.from('households')
+            .select('id, auto_renew').eq('id', planApp.household_id).maybeSingle();
+          if (hh?.auto_renew) {
+            await sb.from('households').update({
+              auto_renew_customer_id: customerId,
+              auto_renew_pm_id: paymentMethodId,
+            }).eq('id', hh.id);
+          }
+        }
+      }
 
       // Mark the application paid (status 'pending' for payment_status until BOTH
       // installments collected — but treat first-installment as 'pending' rather
