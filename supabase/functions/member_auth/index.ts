@@ -63,6 +63,48 @@ async function sha256Hex(s: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Everything the member home needs to decide between "Renew for 2027",
+// "You're all set for 2027" and showing nothing at all. Kept in one place so
+// the `me` payload and the renew_start guard can never disagree about whether
+// a member is allowed to renew.
+type RenewalState = {
+  open: boolean;
+  year: number;
+  already_paid: boolean;
+  application_id: string | null;
+  payment_status: string | null;
+};
+
+async function renewalStateFor(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  household: { id?: string; paid_until_year?: number | null } | null,
+): Promise<RenewalState> {
+  const { sellingYear, renewalOpen, isPaidThrough } = await import('../_shared/membership_year.ts');
+  const { data: settings } = await sb.from('settings')
+    .select('value').eq('tenant_id', tenantId).maybeSingle();
+
+  const year = sellingYear(settings?.value);
+  const already_paid = isPaidThrough(household?.paid_until_year, year);
+
+  // An in-flight renewal (started, not yet paid) is what turns the button into
+  // "Finish paying" instead of silently creating a second application.
+  let application_id: string | null = null;
+  let payment_status: string | null = null;
+  if (household?.id) {
+    const { data: open } = await sb.from('applications')
+      .select('id, payment_status')
+      .eq('tenant_id', tenantId).eq('household_id', household.id)
+      .eq('is_renewal', true).eq('membership_year', year)
+      .in('status', ['prefilled', 'pending'])
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    application_id = (open?.id as string) ?? null;
+    payment_status = (open?.payment_status as string) ?? null;
+  }
+
+  return { open: renewalOpen(settings?.value), year, already_paid, application_id, payment_status };
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 }
@@ -381,13 +423,79 @@ Deno.serve(async (req) => {
       );
     } catch { /* non-fatal — caller keeps the existing token */ }
 
+    // Renewal state travels with `me` so the member home can render the
+    // "Renew for 2027" card on first paint, with no second round trip and no
+    // flash of the wrong state on a slow phone at the pool.
+    const renewal = await renewalStateFor(sb, payload.tid as string, household);
+
     return jsonResponse({
       ok: true,
       user: member,
       tenant,
       household: { ...household, members: housemates ?? [] },
+      renewal,
       refreshed_token,
     });
+  }
+
+  // ── renew_start ────────────────────────────────────────────────────────
+  // One tap. Build a renewal application pre-filled from the household the
+  // member already has, so renewing is a confirmation rather than a second
+  // 22-field application. Returns the application id; the caller sends it
+  // straight to the existing Stripe checkout, which needs no changes because
+  // a renewal is just an application that already knows its household.
+  if (action === 'renew_start') {
+    const { data: household } = await sb.from('households')
+      .select('id, family_name, tier, address, city, zip, paid_until_year, active')
+      .eq('id', payload.hid as string).eq('tenant_id', payload.tid as string).maybeSingle();
+    if (!household || !household.active) {
+      return jsonResponse({ ok: false, error: 'Household not active' }, 403);
+    }
+
+    const state = await renewalStateFor(sb, payload.tid as string, household);
+    if (!state.open) {
+      return jsonResponse({ ok: false, error: 'Renewals aren\'t open yet for this club.' }, 409);
+    }
+    if (state.already_paid) {
+      return jsonResponse({ ok: false, error: `You're already paid through ${state.year}.` }, 409);
+    }
+    // Idempotent: tapping twice, or coming back after abandoning checkout,
+    // returns the same row rather than littering the admin queue with
+    // duplicates. The partial unique index backstops this at the DB level.
+    if (state.application_id) {
+      return jsonResponse({ ok: true, application_id: state.application_id, membership_year: state.year, reused: true });
+    }
+
+    const { data: members } = await sb.from('household_members')
+      .select('name, email, phone_e164, role').eq('household_id', household.id).eq('active', true);
+    const adults = (members ?? []).filter(m => ['primary', 'adult', 'teen'].includes(String(m.role)));
+    const kids   = (members ?? []).filter(m => String(m.role) === 'child');
+    const me     = (members ?? []).find(m => String(m.role) === 'primary') ?? adults[0] ?? null;
+
+    const { data: created, error: insErr } = await sb.from('applications').insert({
+      tenant_id: payload.tid,
+      household_id: household.id,
+      is_renewal: true,
+      is_new_member: false,
+      membership_year: state.year,
+      status: 'pending',
+      payment_status: 'unpaid',
+      family_name: household.family_name,
+      primary_name:  me?.name ?? household.family_name,
+      primary_email: me?.email ?? null,
+      primary_phone: me?.phone_e164 ?? null,
+      address: household.address, city: household.city, zip: household.zip,
+      tier_slug: household.tier,
+      num_adults: adults.length || 1,
+      num_kids: kids.length,
+      adults_json:   adults.map(a => ({ name: a.name, email: a.email, phone: a.phone_e164, signature_url: null })),
+      children_json: kids.map(k => ({ name: k.name })),
+    }).select('id').single();
+    if (insErr || !created) {
+      return jsonResponse({ ok: false, error: insErr?.message || 'Could not start renewal' }, 500);
+    }
+
+    return jsonResponse({ ok: true, application_id: created.id, membership_year: state.year, reused: false });
   }
 
   // ── list_my_parties ────────────────────────────────────────────────────

@@ -102,7 +102,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, claim_source, invited_at, claimed_at, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, claim_source, invited_at, claimed_at, created_at, updated_at';
 
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
@@ -424,8 +424,18 @@ Deno.serve(async (req) => {
     const sigPrimary  = typeof body.signature_primary  === 'string' ? String(body.signature_primary).slice(0, 200000)  : null;
     const sigGuardian = typeof body.signature_guardian === 'string' ? String(body.signature_guardian).slice(0, 200000) : null;
 
+    // Which season is this buying? Stamped once, here, so every downstream
+    // write (approve, Stripe webhook, installment charge) copies the year the
+    // member actually paid for instead of re-guessing it from the clock —
+    // which is wrong for anyone paying before the season they're joining.
+    const { data: yearSettings } = await sb.from('settings')
+      .select('value').eq('tenant_id', tenant.id).maybeSingle();
+    const { sellingYear } = await import('../_shared/membership_year.ts');
+    const membership_year = sellingYear(yearSettings?.value);
+
     const appData: Record<string, unknown> = {
       tenant_id: tenant.id,
+      membership_year,
       family_name, primary_name,
       primary_email: email,
       primary_phone: phone,
@@ -994,6 +1004,53 @@ Deno.serve(async (req) => {
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.status !== 'pending') return jsonResponse({ ok: false, error: `Already ${app.status}` }, 409);
+
+    // ── Renewal: the household already exists ────────────────────────────
+    // A renewal reuses the application row for payment, audit and receipts,
+    // but must NOT run the new-member path below: there is no household to
+    // create, the phone "clash" is the member's own number, and they already
+    // occupy a plan slot so the capacity gate would wrongly reject them at
+    // full clubs — the exact clubs most eager to keep everyone.
+    if (app.is_renewal && app.household_id) {
+      const renewYear = (app.membership_year as number | null) ?? new Date().getUTCFullYear();
+      const nowIso = new Date().toISOString();
+
+      await sb.from('applications').update({
+        status: 'approved',
+        decided_at: nowIso,
+        decided_by: payload.synthetic ? null : payload.sub,
+        admin_notes: strOrNull(body.admin_notes) ?? app.admin_notes,
+        updated_at: nowIso,
+      }).eq('id', id).eq('tenant_id', TID);
+
+      // Roll the season forward. Only ever forward: an admin approving a late
+      // 2026 renewal must not pull back a household already paid through 2027.
+      const { data: hh } = await sb.from('households')
+        .select('id, paid_until_year').eq('id', app.household_id).eq('tenant_id', TID).maybeSingle();
+      if (hh) {
+        const current = (hh.paid_until_year as number | null) ?? 0;
+        await sb.from('households').update({
+          paid_until_year: Math.max(current, renewYear),
+          dues_paid_for_year: app.payment_status === 'paid',
+          active: true,
+        }).eq('id', hh.id).eq('tenant_id', TID);
+      }
+
+      await sb.from('application_actions').insert({
+        application_id: id, tenant_id: TID,
+        kind: 'renewal_approved',
+        body: `Renewed through ${renewYear}`,
+        actor_id: payload.synthetic ? null : payload.sub,
+      });
+      await audit(sb, TID, payload.synthetic ? null : payload.sub, 'admin',
+        'application.renewed', id, `${app.family_name} renewed through ${renewYear}`);
+
+      await sb.from('admin_tasks').update({ completed_at: nowIso })
+        .eq('source_kind', 'application').eq('source_id', id).is('completed_at', null);
+
+      return jsonResponse({ ok: true, renewed: true, household_id: app.household_id, membership_year: renewYear });
+    }
+
     if (!app.primary_phone) {
       return jsonResponse({ ok: false, error: 'Need a phone number to create the household. Edit the application or ask the family for one.' }, 400);
     }
@@ -1024,14 +1081,16 @@ Deno.serve(async (req) => {
       ? Math.trunc(Number(ovr.paid_until_year) || 0) : null;
 
     // Create household. If we just verified the Venmo payment in this same
-    // call, mark the household's dues paid for the current year so the
-    // gate / member portal treat them as fully active immediately.
+    // call, mark the household's dues paid for the season the APPLICATION was
+    // for — not for "now". A December application for next summer must land as
+    // paid through next year, or the family shows up expired on opening day.
+    const appYear = (app.membership_year as number | null) ?? new Date().getUTCFullYear();
     const hhInsert: Record<string, unknown> = {
       tenant_id: TID,
       family_name: app.family_name,
       tier,
       fob_number,
-      paid_until_year: verifyVenmo ? new Date().getFullYear() : paid_until_year,
+      paid_until_year: verifyVenmo ? appYear : paid_until_year,
       address: app.address,
       city: app.city,
       zip: app.zip,
@@ -1287,11 +1346,11 @@ Deno.serve(async (req) => {
     }).eq('id', id).eq('tenant_id', TID);
     if (updErr) return jsonResponse({ ok: false, error: updErr.message }, 500);
 
-    // Flip the household's dues flag
+    // Flip the household's dues flag for the season this application bought.
     if (app.household_id) {
       await sb.from('households').update({
         dues_paid_for_year: true,
-        paid_until_year: new Date().getFullYear(),
+        paid_until_year: (app.membership_year as number | null) ?? new Date().getUTCFullYear(),
       }).eq('id', app.household_id).eq('tenant_id', TID);
     }
 

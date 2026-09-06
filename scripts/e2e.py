@@ -1405,6 +1405,147 @@ def today_checkins_counter_rises():
 step('party event genericized on public surface', party_event_genericized_in_public)
 step('today_checkins counter reflects a check-in', today_checkins_counter_rises)
 
+# ── 23. Renewal engine: membership year + one-tap renewal ────────────────
+section('Renewal engine')
+
+REN_HH_ID = None
+REN_MEMBER_ID = None
+REN_TOKEN = None
+REN_APP_ID = None
+NEXT_YEAR = time.gmtime().tm_year + 1
+
+def ren_setup_household():
+    # Put the club in the state it will be in come December: selling next
+    # season, renewals open. Without this the defaults correctly refuse — a
+    # club in September is still selling the current year — so configuring it
+    # here also proves the settings path works. Restored at the end.
+    global REN_HH_ID, REN_MEMBER_ID, REN_TOKEN
+    mgmt_query(f"""
+        update public.settings
+           set value = jsonb_set(value, '{{membership}}',
+                 '{{"year": {NEXT_YEAR}, "renewal_open": true}}'::jsonb, true)
+         where tenant_id = '{TENANT_A_ID}';""")
+    rows = mgmt_query(f"""
+        insert into public.households (tenant_id, family_name, tier, paid_until_year, active)
+        values ('{TENANT_A_ID}', 'Renew E2E {STAMP}', 'family', {NEXT_YEAR - 1}, true)
+        returning id;""")
+    REN_HH_ID = rows[0]['id']; track('households', REN_HH_ID)
+    rows = mgmt_query(f"""
+        insert into public.household_members
+          (tenant_id, household_id, name, email, phone_e164, role, active)
+        values ('{TENANT_A_ID}', '{REN_HH_ID}', 'Renew Tester {STAMP}',
+                'renew-{STAMP}@example.com', '+1555{STAMP}0077', 'primary', true)
+        returning id;""")
+    REN_MEMBER_ID = rows[0]['id']
+    REN_TOKEN = member_jwt(REN_MEMBER_ID, TENANT_A_ID, SLUG_A, REN_HH_ID)
+
+def ren_membership_year_is_stamped_on_submit():
+    # Every new application must carry the season it buys; nothing downstream
+    # should ever have to guess it from the clock again.
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'submit', 'slug': SLUG_A,
+        'family_name': f'Year Stamp {STAMP}', 'primary_name': f'Year Tester {STAMP}',
+        'primary_email': f'year-{STAMP}@example.com',
+        'primary_phone': f'+1555{STAMP}0078', 'payment_method': 'venmo',
+    })
+    assert r.get('ok'), f'submit: {r}'
+    track('applications', r['application_id'])
+    rows = mgmt_query(f"select membership_year from public.applications where id = '{r['application_id']}';")
+    assert rows and rows[0]['membership_year'], f'membership_year not stamped: {rows}'
+
+def ren_me_exposes_renewal_state():
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'me'}, REN_TOKEN)
+    assert r.get('ok'), f'me: {r}'
+    ren = r.get('renewal')
+    assert ren is not None, 'me did not return a renewal block'
+    assert isinstance(ren.get('year'), int), f'renewal.year missing: {ren}'
+    assert ren.get('already_paid') is False, f'should not be paid for {ren.get("year")}: {ren}'
+
+def ren_start_creates_prefilled_renewal():
+    global REN_APP_ID
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'renew_start'}, REN_TOKEN)
+    if not r.get('ok') and 'aren\'t open' in str(r.get('error', '')):
+        raise AssertionError(f'renewals closed for this club — set membership.renewal_open: {r}')
+    assert r.get('ok'), f'renew_start: {r}'
+    REN_APP_ID = r['application_id']; track('applications', REN_APP_ID)
+    rows = mgmt_query(f"""select is_renewal, household_id, membership_year, status, family_name, tier_slug
+                          from public.applications where id = '{REN_APP_ID}';""")
+    a = rows[0]
+    assert a['is_renewal'] is True, f'not flagged as a renewal: {a}'
+    assert a['household_id'] == REN_HH_ID, f'renewal not linked to the household: {a}'
+    assert a['status'] == 'pending', f'unexpected status: {a}'
+    # Pre-filled from the household — the whole point is that the member
+    # confirms rather than re-enters 22 fields.
+    assert a['tier_slug'] == 'family', f'tier not carried over: {a}'
+    assert STAMP in (a['family_name'] or ''), f'family name not carried over: {a}'
+
+def ren_start_is_idempotent():
+    # Tapping twice, or abandoning checkout and coming back, must not litter
+    # the admin queue with duplicate renewals.
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'renew_start'}, REN_TOKEN)
+    assert r.get('ok'), f'second renew_start: {r}'
+    assert r.get('reused') is True, f'expected the existing renewal to be reused: {r}'
+    assert r['application_id'] == REN_APP_ID, f'created a second renewal: {r}'
+    rows = mgmt_query(f"""select count(*) as n from public.applications
+                          where household_id = '{REN_HH_ID}' and is_renewal;""")
+    assert rows[0]['n'] == 1, f'expected exactly one renewal row, got {rows[0]["n"]}'
+
+def ren_approve_rolls_year_without_new_household():
+    before = mgmt_query(f"select count(*) as n from public.households where tenant_id = '{TENANT_A_ID}';")[0]['n']
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {
+        'action': 'approve', 'id': REN_APP_ID,
+    }, TOKEN_A)
+    assert r.get('ok') and r.get('renewed'), f'approve renewal: {r}'
+    after = mgmt_query(f"select count(*) as n from public.households where tenant_id = '{TENANT_A_ID}';")[0]['n']
+    assert after == before, f'renewal created a duplicate household ({before} -> {after})'
+    rows = mgmt_query(f"select paid_until_year from public.households where id = '{REN_HH_ID}';")
+    assert rows[0]['paid_until_year'] == r['membership_year'], \
+        f"paid_until_year not rolled forward: {rows[0]} vs {r['membership_year']}"
+
+def ren_year_never_moves_backwards():
+    # An admin approving a stale renewal must not pull back a household that
+    # has already paid further ahead.
+    mgmt_query(f"update public.households set paid_until_year = {NEXT_YEAR + 5} where id = '{REN_HH_ID}';")
+    rows = mgmt_query(f"""
+        insert into public.applications
+          (tenant_id, household_id, is_renewal, membership_year, status, payment_status,
+           family_name, primary_name, primary_phone)
+        values ('{TENANT_A_ID}', '{REN_HH_ID}', true, {NEXT_YEAR}, 'pending', 'unpaid',
+                'Stale Renew {STAMP}', 'Stale {STAMP}', '+1555{STAMP}0079')
+        returning id;""")
+    stale = rows[0]['id']; track('applications', stale)
+    r = post(f'{SUPABASE_URL}/functions/v1/applications', {'action': 'approve', 'id': stale}, TOKEN_A)
+    assert r.get('ok'), f'approve stale renewal: {r}'
+    rows = mgmt_query(f"select paid_until_year from public.households where id = '{REN_HH_ID}';")
+    assert rows[0]['paid_until_year'] == NEXT_YEAR + 5, \
+        f'stale renewal clawed the year backwards: {rows[0]}'
+
+def ren_already_paid_is_refused():
+    r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'renew_start'}, REN_TOKEN)
+    assert not r.get('ok'), f'expected refusal for an already-paid household: {r}'
+    assert 'already paid' in str(r.get('error', '')).lower(), f'unexpected error: {r}'
+
+def ren_restore_settings():
+    # Leave the real club exactly as we found it — this suite runs against
+    # production, so a stray "renewals are open" flag would be visible to
+    # actual members.
+    mgmt_query(f"""
+        update public.settings set value = value - 'membership'
+         where tenant_id = '{TENANT_A_ID}';""")
+    rows = mgmt_query(f"""select value ? 'membership' as still_there
+                          from public.settings where tenant_id = '{TENANT_A_ID}';""")
+    assert rows[0]['still_there'] is False, 'membership settings not cleaned up'
+
+step('setup: household paid through last season',   ren_setup_household)
+step('membership_year stamped on new applications', ren_membership_year_is_stamped_on_submit)
+step('me exposes renewal state',                    ren_me_exposes_renewal_state)
+step('renew_start creates a pre-filled renewal',    ren_start_creates_prefilled_renewal)
+step('renew_start is idempotent',                   ren_start_is_idempotent)
+step('approving a renewal rolls the year, no new household', ren_approve_rolls_year_without_new_household)
+step('renewal never moves paid_until_year backwards', ren_year_never_moves_backwards)
+step('already-paid households cannot re-renew',     ren_already_paid_is_refused)
+step('restore club settings',                       ren_restore_settings)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 
