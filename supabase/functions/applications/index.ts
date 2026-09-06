@@ -987,11 +987,11 @@ Deno.serve(async (req) => {
     const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
     const clubName = tenant?.display_name || 'your club';
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+    const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsideapp.com>';
     const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 
     let sent = 0, skipped_no_email = 0, skipped_already = 0, failed = 0;
-    let sent_email = 0, sent_sms = 0, sms_capped = 0;
+    let sent_email = 0, sent_sms = 0, sms_capped = 0, sms_capped_platform = 0;
     for (const app of (apps ?? [])) {
       if (onlyUninvited && app.invited_at) { skipped_already++; continue; }
       const canEmail = wantEmail && !!app.primary_email;
@@ -1023,7 +1023,7 @@ Deno.serve(async (req) => {
           body: `Hi ${firstNm} — ${clubName} here. We've moved to the Poolside app. Your info is already filled in: tap to confirm and pay your dues. ${claimUrl}`,
         });
         if (r.sent) { delivered = true; sent_sms++; }
-        else if (r.capped) sms_capped++;
+        else if (r.capped) { sms_capped++; if (r.capped_by === 'platform') sms_capped_platform++; }
       }
 
       if (!canEmail) {
@@ -1066,7 +1066,7 @@ Deno.serve(async (req) => {
     await audit(sb, TID, payload.synthetic ? null : payload.sub, 'tenant_admin', 'application.claim_invites_sent', null,
       `Sent ${sent} season invite${sent === 1 ? '' : 's'} (${sent_email} email, ${sent_sms} text)`);
     return jsonResponse({
-      ok: true, sent, sent_email, sent_sms, sms_capped,
+      ok: true, sent, sent_email, sent_sms, sms_capped, sms_capped_platform,
       // Named for what it means to a treasurer: households with neither an
       // email nor a phone, i.e. the ones they have to ring.
       skipped_no_contact: skipped_no_email,

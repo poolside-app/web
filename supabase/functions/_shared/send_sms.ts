@@ -13,7 +13,14 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch } from './sms_cap.ts';
 
-export type SmsResult = { sent: boolean; error?: string; capped?: boolean };
+export type SmsResult = {
+  sent: boolean;
+  error?: string;
+  capped?: boolean;
+  /** 'club' = this club's monthly allowance; 'platform' = the global daily
+   *  kill switch. Different owners, different fixes — do not merge them. */
+  capped_by?: 'club' | 'platform';
+};
 
 export async function sendSms(args: {
   sb: SupabaseClient;
@@ -32,11 +39,17 @@ export async function sendSms(args: {
 
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
   if (gate.blocked) {
-    return { sent: false, capped: true, error: `SMS paused (${gate.reason}: ${gate.used}/${gate.cap})` };
+    return {
+      sent: false, capped: true, capped_by: 'platform',
+      error: `Poolside's daily SMS safety limit was reached (${gate.used}/${gate.cap}). Texts resume automatically; contact Poolside to raise it for a big send.`,
+    };
   }
   const cap = await checkSmsCap(args.sb, args.tenantId, kind, args.tenantPlan ?? undefined);
   if (cap.blocked) {
-    return { sent: false, capped: true, error: `Monthly SMS cap reached (${cap.used}/${cap.cap})` };
+    return {
+      sent: false, capped: true, capped_by: 'club',
+      error: `This club's monthly SMS allowance is used up (${cap.used}/${cap.cap}). Resets in ${cap.days_until_reset} day${cap.days_until_reset === 1 ? '' : 's'}.`,
+    };
   }
 
   const sid = Deno.env.get('TWILIO_ACCOUNT_SID');

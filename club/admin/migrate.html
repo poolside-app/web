@@ -257,7 +257,11 @@ async function send(onlyUninvited, btn, ids) {
       let msg = parts.length ? `Sent ${parts.join(' + ')}.` : 'Nothing sent.';
       if (d.skipped_already)   msg += ` ${d.skipped_already} already invited (skipped).`;
       if (d.skipped_no_contact) msg += ` ${d.skipped_no_contact} have no email or phone — you'll need to reach those by hand.`;
-      if (d.sms_capped)        msg += ` ${d.sms_capped} text${d.sms_capped===1?'':'s'} held back by your monthly SMS cap.`;
+      if (d.sms_capped) {
+        msg += d.sms_capped_platform
+          ? ` ${d.sms_capped} text${d.sms_capped===1?'':'s'} held back by Poolside's daily safety limit — they'll go through if you send again tomorrow, or contact Poolside to lift it for a big migration.`
+          : ` ${d.sms_capped} text${d.sms_capped===1?'':'s'} held back by your club's monthly SMS allowance.`;
+      }
       if (d.failed)            msg += ` ${d.failed} failed.`;
       okEl.textContent = msg; okEl.classList.add('show');
     }
