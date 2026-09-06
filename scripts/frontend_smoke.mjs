@@ -28,7 +28,30 @@ const SUPA = ENV.SUPABASE_URL.replace(/\/$/, '');
 const SLUG = 'bishopestates';
 const HOST = `https://${SLUG}.poolsideapp.com`;
 const ROOT = 'https://poolsideapp.com';
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+// puppeteer-core ships no browser of its own, so we point it at an installed
+// Chrome. The path differs per machine, hence: CHROME_PATH first (set it when
+// yours lives somewhere unusual), then the standard location for each OS.
+const CHROME = (() => {
+  if (ENV.CHROME_PATH || process.env.CHROME_PATH) return ENV.CHROME_PATH || process.env.CHROME_PATH;
+  const candidates = {
+    darwin: [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ],
+    win32: [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ],
+    linux: ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/usr/bin/chromium'],
+  }[process.platform] || [];
+  const found = candidates.find(p => fs.existsSync(p));
+  if (!found) {
+    console.error(`No Chrome found for ${process.platform}. Looked in:\n  ${candidates.join('\n  ')}\nSet CHROME_PATH to override.`);
+    process.exit(1);
+  }
+  return found;
+})();
 
 const b64url = (b) => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 function signJwt(payload) {
@@ -97,7 +120,8 @@ const ADMIN_PAGES = ['', 'members.html', 'applications.html', 'application.html'
   'events.html', 'parties.html', 'programs.html', 'lifeguards.html', 'my-shifts.html', 'volunteer.html',
   'guest-passes.html', 'campaigns.html', 'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
   'audit.html', 'emails.html', 'feedback.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',
-  'change-password.html', 'health.html', 'help.html', 'impact.html', 'setup.html'];
+  'change-password.html', 'health.html', 'help.html', 'impact.html', 'setup.html',
+  'import.html', 'migrate.html'];
 
 const PAGES = [
   ...['/', '/home.html', '/pricing.html', '/signup.html', '/privacy.html', '/terms.html', '/governance.html', '/setup-service.html', '/wizard.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
