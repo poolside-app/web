@@ -125,7 +125,7 @@ const ADMIN_PAGES = ['', 'members.html', 'applications.html', 'application.html'
 
 const PAGES = [
   ...['/', '/home.html', '/pricing.html', '/signup.html', '/privacy.html', '/terms.html', '/governance.html', '/setup-service.html', '/wizard.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
-  ...['/club/', '/apply.html', '/m/login.html', '/club/admin/login.html', '/club/wizard.html'].map(p => ({ url: HOST + p, auth: 'none' })),
+  ...['/club/', '/apply.html', '/renew.html', '/m/login.html', '/club/admin/login.html', '/club/wizard.html'].map(p => ({ url: HOST + p, auth: 'none' })),
   ...['/admin/login.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
   ...ADMIN_PAGES.map(p => ({ url: `${HOST}/club/admin/${p}`, auth: 'admin' })),
   ...['/m/', '/m/family.html', '/m/renew.html'].map(p => ({ url: HOST + p, auth: 'member' })),

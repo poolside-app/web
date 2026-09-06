@@ -209,6 +209,127 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, blasts: data ?? [] });
   }
 
+  // ── send_renewal_links ─────────────────────────────────────────────────
+  // One button, one link each. For every household that has not paid for the
+  // season being sold, create a pre-filled renewal and text/email a one-time
+  // link to it. No sign-in anywhere in the chain, which is the whole point:
+  // the members hardest to collect from are the ones least likely to log in.
+  if (action === 'send_renewal_links') {
+    const channels = Array.isArray(body.channels) ? body.channels.map(String) : ['email'];
+    if (!channels.every(c => c === 'email' || c === 'sms')) {
+      return jsonResponse({ ok: false, error: 'channels must be email or sms' }, 400);
+    }
+    const dryRun = body.dry_run === true;
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name, plan').eq('id', payload.tid).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+
+    const { data: settingsRow } = await sb.from('settings')
+      .select('value').eq('tenant_id', tenant.id).maybeSingle();
+    const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
+    const { sellingYear } = await import('../_shared/membership_year.ts');
+    const year = sellingYear(sv);
+
+    const { data: households } = await sb.from('households')
+      .select('id, family_name, tier, paid_until_year')
+      .eq('tenant_id', tenant.id).eq('active', true)
+      .or(`paid_until_year.is.null,paid_until_year.lt.${year}`)
+      .limit(1000);
+
+    if (dryRun) {
+      return jsonResponse({ ok: true, year, would_send: (households ?? []).length });
+    }
+
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    let sent = 0, skipped = 0, reused = 0;
+
+    for (const hh of (households ?? [])) {
+      const { data: primary } = await sb.from('household_members')
+        .select('name, email, phone_e164').eq('household_id', hh.id)
+        .eq('role', 'primary').eq('active', true).maybeSingle();
+      if (!primary?.email && !primary?.phone_e164) { skipped++; continue; }
+
+      // Reuse an open renewal rather than minting a second one — a household
+      // that got a link last week and a reminder today should land on the
+      // same row, not two.
+      const { data: existing } = await sb.from('applications')
+        .select('id, claim_token_hash').eq('tenant_id', tenant.id)
+        .eq('household_id', hh.id).eq('is_renewal', true).eq('membership_year', year)
+        .in('status', ['prefilled', 'pending']).maybeSingle();
+
+      let appId = existing?.id as string | undefined;
+      const tok = randomToken();
+      const tokHash = await sha256Hex(tok);
+
+      if (appId) {
+        // Rotate the token so an old link in an old email stops working.
+        await sb.from('applications').update({
+          claim_token_hash: tokHash, invited_at: new Date().toISOString(),
+        }).eq('id', appId);
+        reused++;
+      } else {
+        const { data: created, error: insErr } = await sb.from('applications').insert({
+          tenant_id: tenant.id, household_id: hh.id,
+          is_renewal: true, is_new_member: false, membership_year: year,
+          status: 'prefilled', payment_status: 'unpaid',
+          family_name: hh.family_name,
+          primary_name: primary.name ?? hh.family_name,
+          primary_email: primary.email ?? null,
+          primary_phone: primary.phone_e164 ?? null,
+          tier_slug: hh.tier,
+          claim_token_hash: tokHash,
+          claim_source: 'renewal_link',
+          invited_at: new Date().toISOString(),
+        }).select('id').single();
+        if (insErr || !created) { skipped++; continue; }
+        appId = created.id as string;
+      }
+
+      const link = `${clubUrl}/renew.html?t=${tok}`;
+      let delivered = false;
+
+      if (channels.includes('email') && primary.email) {
+        try {
+          const { renderAndSend } = await import('../_shared/email_template.ts');
+          const r = await renderAndSend(sb, {
+            tenantId: tenant.id as string,
+            templateKey: 'renewal_invite',
+            to: primary.email as string,
+            variables: {
+              family_name: hh.family_name as string,
+              season: String(year),
+              renew_link: link,
+            },
+          });
+          delivered = delivered || !!r.sent;
+        } catch { /* fall through to SMS */ }
+      }
+      if (channels.includes('sms') && primary.phone_e164) {
+        const cap = await checkSmsCap(sb, tenant.id as string, 'campaign', tenant.plan as string);
+        if (!cap.blocked) {
+          // The existing helper already words this as "time to renew … pay
+          // here"; the earlyBirdLine slot carries the no-login reassurance,
+          // which is the part that gets a wary member to tap.
+          const r = await sendRenewalSms({
+            sb, to: primary.phone_e164 as string,
+            tenantName: tenant.display_name as string,
+            verifyLink: link,
+            earlyBirdLine: ' No login needed.',
+          });
+          if (r.sent) {
+            await recordSms(sb, tenant.id as string, 'campaign');
+            delivered = true;
+          }
+        }
+      }
+
+      if (delivered) sent++; else skipped++;
+    }
+
+    return jsonResponse({ ok: true, year, sent, skipped, reused });
+  }
+
   if (action === 'send_blast') {
     const audience = String(body.audience ?? 'lapsed');
     const channels = Array.isArray(body.channels) ? body.channels.map(String) : [];

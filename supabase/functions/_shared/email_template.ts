@@ -421,6 +421,25 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
     `),
   },
 
+  {
+    key: 'renewal_invite',
+    label: 'Renewal invite (no login needed)',
+    description: 'Sent when the board sends renewal links. Contains a one-time link that opens a pre-filled renewal the member can pay without signing in — the path for households that never use the app.',
+    audience: 'member',
+    variables: ['tenant_name', 'family_name', 'season', 'renew_link', 'club_url'],
+    default_subject: 'Time to renew your {{tenant_name}} membership for {{season}}',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🏊 Renew for {{season}}</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — it's time to renew your <b>{{tenant_name}}</b> membership for the {{season}} season.</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Everything is already filled in. Tap below, check it over, and pay — <b>no password, no app, no signing in</b>.</p>
+      <p style="margin:24px 0">
+        <a href="{{renew_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:14px 26px;border-radius:10px;font-weight:600;display:inline-block;font-size:16px">Renew my membership</a>
+      </p>
+      <p style="margin:0 0 8px;color:#64748b;font-size:13px">You can pay in full, or split it into smaller payments if your club offers that.</p>
+      <p style="margin:0;color:#64748b;font-size:13px">This link is just for your household — please don't forward it. Replying to this email reaches the board.</p>
+    `),
+  },
+
   // ─── Party booking lifecycle ──────────────────────────────────────────
   {
     key: 'party_request_received',

@@ -1692,6 +1692,70 @@ def auto_renew_emails_are_registered():
         blob = (pv.get('subject') or '') + (pv.get('html') or '')
         assert '{{' not in blob, f'{key} preview left placeholders unfilled'
 
+
+def link_renewal_works_without_login():
+    # The whole point: a household that never signs in can still renew. Send
+    # links, then use one exactly as a member would — no token, no session.
+    comms = sign_jwt({
+        'sub': '00000000-0000-0000-0000-000000000000',
+        'kind': 'tenant_admin', 'tid': TENANT_A_ID, 'slug': SLUG_A,
+        'synthetic': True, 'role_template': 'owner',
+        'scopes': ['communications', 'members'],
+        'exp': int(time.time()) + 3600,
+    })
+    # Email-only so the run cannot spend SMS credit or hit a real phone.
+    r = post(f'{SUPABASE_URL}/functions/v1/renewals',
+             {'action': 'send_renewal_links', 'channels': ['email']}, comms)
+    assert r.get('ok'), f'send_renewal_links: {r}'
+    assert r.get('year') == NEXT_YEAR, f'wrong season: {r}'
+
+    rows = mgmt_query(f"""select id, claim_token_hash, claim_source, invited_at
+                          from public.applications
+                          where household_id = '{REN_HH_ID}' and is_renewal
+                            and membership_year = {NEXT_YEAR}
+                            and status = 'prefilled'
+                          order by created_at desc limit 1;""")
+    assert rows, 'no renewal row created for the household'
+    assert rows[0]['claim_token_hash'], 'no link token stored'
+    assert rows[0]['invited_at'], 'invite time not recorded'
+    track('applications', rows[0]['id'])
+
+    # A hash is stored, never the token itself — so re-derive one the same way
+    # the function does to prove the lookup path, using a token we control.
+    raw = f'e2e-renew-{STAMP}'
+    h = hashlib.sha256(raw.encode()).hexdigest()
+    mgmt_query(f"""update public.applications set claim_token_hash = '{h}'
+                    where id = '{rows[0]['id']}';""")
+
+    got = post(f'{SUPABASE_URL}/functions/v1/applications',
+               {'action': 'get_renewal', 'slug': SLUG_A, 'token': raw})
+    assert got.get('ok'), f'get_renewal with no auth at all: {got}'
+    assert got.get('application_id') == rows[0]['id'], f'wrong application: {got}'
+    assert got.get('dues_cents', 0) > 0, f'no price quoted: {got}'
+    assert got.get('year') == NEXT_YEAR, f'wrong season quoted: {got}'
+    assert (got.get('options') or []), 'no payment options offered on the link path'
+
+def link_renewal_stamps_first_open():
+    # Boards need to tell "ignoring us" apart from "never arrived".
+    rows = mgmt_query(f"""select claimed_at from public.applications
+                          where household_id = '{REN_HH_ID}' and is_renewal
+                            and membership_year = {NEXT_YEAR}
+                            and status = 'prefilled'
+                          order by created_at desc limit 1;""")
+    assert rows[0]['claimed_at'], 'first open was not recorded'
+
+def link_renewal_price_matches_the_app():
+    # A member forwarding their link to a spouse must not see a different
+    # offer than the signed-in page shows.
+    raw = f'e2e-renew-{STAMP}'
+    link = post(f'{SUPABASE_URL}/functions/v1/applications',
+                {'action': 'get_renewal', 'slug': SLUG_A, 'token': raw})
+    app = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'renewal_options'}, REN_TOKEN)
+    assert link.get('dues_cents') == app.get('dues_cents'), \
+        f"link quotes {link.get('dues_cents')}, app quotes {app.get('dues_cents')}"
+    assert len(link.get('options') or []) == len(app.get('options') or []), \
+        'link and app offer different payment plans'
+
 def ren_restore_settings():
     # Leave the real club exactly as we found it — this suite runs against
     # production, so a stray "renewals are open" flag would be visible to
@@ -1719,6 +1783,9 @@ step('in-season lapse enforces access loss',        dun_in_season_lapse_enforces
 step('auto-renew warns before it charges',          auto_renew_warns_before_charging)
 step('auto-renew without a card reports why',       auto_renew_without_a_card_says_so)
 step('auto-renew emails exist and render',          auto_renew_emails_are_registered)
+step('renewal link works with no login',            link_renewal_works_without_login)
+step('renewal link records first open',             link_renewal_stamps_first_open)
+step('link and app quote the same price',           link_renewal_price_matches_the_app)
 step('restore club settings',                       ren_restore_settings)
 
 # ── Cleanup ──────────────────────────────────────────────────────────────

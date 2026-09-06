@@ -762,6 +762,62 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── get_renewal (public, token) ────────────────────────────────────────
+  // The no-login renewal path. A club texts or emails a one-time link; the
+  // member taps it and sees what they owe and how they can pay, without ever
+  // signing in. This matters most for the members least likely to sign in —
+  // older, less tech-comfortable households — who are also the ones a
+  // treasurer otherwise ends up chasing by phone.
+  if (action === 'get_renewal') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const token = String(body.token ?? '').trim();
+    if (!slug || !token) return jsonResponse({ ok: false, error: 'slug + token required' }, 400);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name, status').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+
+    const hash = await sha256Hex(token);
+    const { data: app } = await sb.from('applications')
+      .select('id, household_id, membership_year, status, payment_status, family_name, tier_slug, is_renewal')
+      .eq('tenant_id', tenant.id).eq('claim_token_hash', hash).eq('is_renewal', true).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'This renewal link is invalid or has expired.' }, 404);
+
+    if (app.payment_status === 'paid') {
+      return jsonResponse({
+        ok: true, already_paid: true, tenant_name: tenant.display_name,
+        family_name: app.family_name, year: app.membership_year,
+      });
+    }
+
+    const { data: household } = await sb.from('households')
+      .select('tier, paid_until_year, active').eq('id', app.household_id as string).maybeSingle();
+    if (!household?.active) {
+      return jsonResponse({ ok: false, error: 'This membership is no longer active. Please contact the club.' }, 409);
+    }
+
+    const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
+    const quote = await quoteRenewal(sb, tenant.id as string, household);
+
+    // Stamp first use so a board can see who has opened their link — the
+    // difference between "they are ignoring us" and "it never arrived".
+    if (!app.claimed_at) {
+      await sb.from('applications').update({ claimed_at: new Date().toISOString() }).eq('id', app.id);
+    }
+
+    return jsonResponse({
+      ok: true,
+      ...quote,
+      // The season was fixed when the link was created; honour that rather
+      // than whatever the club happens to be selling today.
+      year: (app.membership_year as number) ?? quote.year,
+      already_paid: false,
+      application_id: app.id,
+      family_name: app.family_name,
+      tenant_name: tenant.display_name,
+    });
+  }
+
   // ── get_claim (public) ─────────────────────────────────────────────────
   // A CSV-imported member opens apply.html?claim=<token>. We resolve the
   // pre-filled application and hand back its fields so the form starts

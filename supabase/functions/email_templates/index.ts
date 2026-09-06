@@ -97,6 +97,7 @@ const SAMPLE_VARS: Record<string, string> = {
   season:            '2027',
   charge_date:       'December 15, 2026',
   manage_url:        'https://bishopestates.poolsideapp.com/m/renew.html',
+  renew_link:        'https://bishopestates.poolsideapp.com/renew.html?t=sample-link',
   club_url:          'https://bishopestates.poolsideapp.com',
 };
 

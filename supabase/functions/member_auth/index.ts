@@ -449,62 +449,19 @@ Deno.serve(async (req) => {
       .eq('id', payload.hid as string).eq('tenant_id', payload.tid as string).maybeSingle();
     if (!household) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
 
-    const { data: settings } = await sb.from('settings')
-      .select('value').eq('tenant_id', payload.tid as string).maybeSingle();
-    const sv = (settings?.value ?? {}) as Record<string, unknown>;
-
     const state = await renewalStateFor(sb, payload.tid as string, household);
-
-    // Dues come from the household's tier, same source the apply form uses.
-    const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
-    const tier = tiers.find(t => t.slug === household.tier) || tiers[0];
-    const baseCents = Number(tier?.price_cents) || 0;
-
-    // If the club passes card fees to members, quote the grossed-up figure so
-    // the page never shows one number and the checkout another.
-    const pay = (sv.payments as Record<string, unknown> | undefined) ?? {};
-    const passFee = !!pay.pass_stripe_fee;
-    const pct = Number(pay.stripe_pct ?? 2.9) / 100;
-    const fixed = Number(pay.stripe_fixed_cents ?? 30);
-    const duesCents = passFee && baseCents > 0
-      ? Math.ceil((baseCents + fixed) / (1 - pct))
-      : baseCents;
-
-    const planCfg = (pay.plan as Record<string, unknown> | undefined) ?? {};
-    const plansEnabled = !!planCfg.enabled;
-
-    let rules = null as unknown;
-    let options: unknown[] = [];
-    if (plansEnabled && duesCents > 0) {
-      const { resolveRules, generateSchedule, suggestedCounts } =
-        await import('../_shared/payment_schedule.ts');
-      const today = new Date().toISOString().slice(0, 10);
-      const r = resolveRules(planCfg, state.year);
-      rules = {
-        milestones: r.milestones,
-        max_installments: r.maxInstallments,
-        min_installment_cents: r.minInstallmentCents,
-      };
-      options = suggestedCounts(r, today).map(count => {
-        const gen = generateSchedule({ totalCents: duesCents, rules: r, count, startDate: today });
-        return gen.ok ? { count, installments: gen.installments } : null;
-      }).filter(Boolean);
-    }
+    const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
+    const quote = await quoteRenewal(sb, payload.tid as string, household);
 
     return jsonResponse({
       ok: true,
-      year: state.year,
+      ...quote,
+      // renewalStateFor knows about an in-flight renewal; the quote does not.
       open: state.open,
       already_paid: state.already_paid,
       application_id: state.application_id,
       family_name: household.family_name,
-      tier_label: (tier?.label as string) ?? household.tier ?? 'Membership',
-      dues_cents: duesCents,
-      pass_fee: passFee,
       auto_renew: !!household.auto_renew,
-      plans_enabled: plansEnabled,
-      rules,
-      options,
     });
   }
 
