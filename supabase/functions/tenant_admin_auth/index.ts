@@ -1209,6 +1209,69 @@ Deno.serve(async (req) => {
   //    success Stripe fires customer.subscription.created → webhook handler
   //    flips tenants.plan. Until that webhook lands, the tenant stays on
   //    their current plan (atomic upgrade — never half-upgraded state).
+  // ── start_sms_topup: buy more texts ────────────────────────────────────
+  // A club that runs out of texts mid-season should not have to upgrade a
+  // whole tier for one busy month. Packs are prepaid, so a volunteer board
+  // never gets a surprise bill — the thing they fear most about usage pricing.
+  //
+  // Charged on the PLATFORM Stripe account, not the club's connected one:
+  // this is Poolside billing the club, the same as a plan upgrade, and must
+  // not flow through the account the club collects dues into.
+  if (action === 'start_sms_topup') {
+    const payload = await verifyAdmin(token);
+    if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
+    if (payload.role_template !== 'owner' && !payload.is_super) {
+      return jsonResponse({ ok: false, error: 'Only the club owner can buy texts' }, 403);
+    }
+    const PACKS: Record<string, { credits: number; cents: number; label: string }> = {
+      small:  { credits: 500,  cents: 1500, label: '500 texts' },
+      large:  { credits: 1500, cents: 3500, label: '1,500 texts' },
+    };
+    const pack = PACKS[String(body.pack ?? 'small')];
+    if (!pack) return jsonResponse({ ok: false, error: 'Unknown pack' }, 400);
+
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) return jsonResponse({ ok: false, error: 'Stripe not configured' }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug, display_name, stripe_customer_id').eq('id', payload.tid).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const params = new URLSearchParams();
+    params.append('mode', 'payment');
+    params.append('line_items[0][price_data][currency]', 'usd');
+    params.append('line_items[0][price_data][product_data][name]', `Poolside — ${pack.label}`);
+    params.append('line_items[0][price_data][product_data][description]',
+      `Text credits for ${tenant.display_name}. Used only after your monthly allowance runs out; they do not expire.`);
+    params.append('line_items[0][price_data][unit_amount]', String(pack.cents));
+    params.append('line_items[0][quantity]', '1');
+    params.append('success_url', `${clubUrl}/club/admin/billing.html?texts=1`);
+    params.append('cancel_url',  `${clubUrl}/club/admin/billing.html?texts=0`);
+    if (tenant.stripe_customer_id) params.append('customer', tenant.stripe_customer_id as string);
+    params.append('client_reference_id', `sms_topup:${tenant.id}:${pack.credits}`);
+    params.append('metadata[kind]', 'sms_topup');
+    params.append('metadata[tenant_id]', String(tenant.id));
+    params.append('metadata[credits]', String(pack.credits));
+    params.append('metadata[admin_id]', payload.synthetic ? '' : String(payload.sub));
+
+    try {
+      const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${stripeKey}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+      const data = await res.json();
+      if (!res.ok) return jsonResponse({ ok: false, error: data?.error?.message || `Stripe ${res.status}` }, 500);
+      return jsonResponse({ ok: true, url: data.url, credits: pack.credits });
+    } catch (e) {
+      return jsonResponse({ ok: false, error: String(e) }, 500);
+    }
+  }
+
   if (action === 'start_plan_upgrade') {
     const payload = await verifyAdmin(token);
     if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);

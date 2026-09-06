@@ -48,6 +48,11 @@ export type SmsCapStatus = {
   remaining: number;              // cap - used (clamped >= 0)
   blocked: boolean;               // true if a campaign send would exceed cap
   days_until_reset: number;
+  // Purchased top-up, spent only once the monthly allowance is gone. A club
+  // that runs out mid-season can keep going without upgrading a whole tier
+  // for one busy month.
+  credits: number;
+  using_credits: boolean;         // this send will draw on the top-up balance
 };
 
 // Returns the tenant's current capped usage and whether further sends in the
@@ -64,6 +69,7 @@ export async function checkSmsCap(
       used: 0, cap, category_uncapped: true,
       remaining: cap, blocked: false,
       days_until_reset: daysUntilReset(),
+      credits: 0, using_credits: false,
     };
   }
   const since = startOfUtcMonth().toISOString();
@@ -74,12 +80,38 @@ export async function checkSmsCap(
     .neq('category', 'transactional')
     .gte('sent_at', since);
   const used = count ?? 0;
+  const overAllowance = used >= cap;
+
+  let credits = 0;
+  if (overAllowance) {
+    const { data: t } = await sb.from('tenants')
+      .select('sms_credits').eq('id', tenantId).maybeSingle();
+    credits = Number(t?.sms_credits ?? 0);
+  }
+
   return {
     used, cap, category_uncapped: false,
     remaining: Math.max(0, cap - used),
-    blocked: used >= cap,
+    // Only truly blocked once the allowance AND any purchased credits are gone.
+    blocked: overAllowance && credits <= 0,
+    using_credits: overAllowance && credits > 0,
+    credits,
     days_until_reset: daysUntilReset(),
   };
+}
+
+/**
+ * Spend one purchased credit. Called only when a send actually went out while
+ * over the monthly allowance, so a club is never charged for a text a carrier
+ * refused. Uses a guarded update rather than read-then-write: two blasts
+ * running at once must not both spend the last credit.
+ */
+export async function consumeSmsCredit(
+  sb: SupabaseClient,
+  tenantId: string,
+): Promise<boolean> {
+  const { data } = await sb.rpc('consume_sms_credit', { p_tenant: tenantId });
+  return data === true;
 }
 
 function daysUntilReset(): number {

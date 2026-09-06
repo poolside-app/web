@@ -134,14 +134,47 @@
     <h1>Announcements</h1>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input id="search" type="search" placeholder="🔍 Search posts…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
+      <button class="btn btn-ghost" onclick="openBlast()">💬 Text all members</button>
       <button class="btn" onclick="openCreate()">+ New post</button>
     </div>
   </div>
+
+  <!-- Pending texts. Shown above everything because it is somebody else's
+       job to act on, and a message waiting on approval is time-sensitive. -->
+  <div id="blast-pending"></div>
 
   <div id="list">
     <div class="empty">Loading…</div>
   </div>
 </main>
+
+<!-- Text all members -->
+<div class="scrim" id="blast-scrim">
+  <div class="modal" style="max-width:560px">
+    <h2>Text all members</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.55">
+      Goes to every adult with a phone number on file. Texts can't be unsent, so
+      <b>another admin has to release it</b> before it goes out.
+    </p>
+
+    <label for="blast-body">Message</label>
+    <textarea id="blast-body" rows="3" maxlength="400" oninput="measureBlast()"
+      placeholder="Pool is closed today for weather. We reopen tomorrow at 10am."
+      style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--r-md);font:14px/1.5 'Inter'"></textarea>
+
+    <div id="blast-preview" style="margin-top:10px;padding:12px 14px;background:var(--bg-2);border-radius:var(--r-md);font-size:13px;line-height:1.6">
+      <div id="blast-rendered" style="color:var(--text)"></div>
+      <div id="blast-meter" style="margin-top:8px;font-size:12.5px;color:var(--muted)"></div>
+      <div id="blast-warn" style="margin-top:6px;font-size:12.5px;color:var(--red);display:none"></div>
+    </div>
+
+    <div class="err" id="blast-err" style="margin-top:10px"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeBlast()">Cancel</button>
+      <button class="btn" id="blast-send" onclick="queueBlast()" disabled>Queue for approval</button>
+    </div>
+  </div>
+</div>
 
 <!-- Create / edit modal -->
 <div class="scrim" id="scrim">
@@ -193,6 +226,165 @@ async function logout() {
   window.location.href = '/club/admin/login.html';
 }
 document.getElementById('signout').addEventListener('click', logout);
+
+
+// ── Text all members ──────────────────────────────────────────────────────
+// The counter is the point of this screen. Volunteers have no reason to know
+// that an em-dash costs money, so the page does the arithmetic for them and
+// quietly fixes the characters a phone keyboard inserts.
+const BLAST_URL = `${SUPABASE_URL}/functions/v1/sms_blasts`;
+let BLAST_STATE = { recipients: 0, admins: 1, me: null, cap: null };
+
+async function callBlast(action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(BLAST_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  return res.json();
+}
+
+const GSM = new Set("@£$¥èéùìòÇ\n\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüàØø");
+function normalizeSms(t) {
+  return String(t || '')
+    .replace(/[\u2018\u2019\u201B]/g, "'").replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014\u2212]/g, '-').replace(/\u2026/g, '...')
+    .replace(/\u00A0/g, ' ').replace(/[\u2022\u00B7]/g, '-').replace(/\u2192/g, '>');
+}
+
+function measureBlast() {
+  const raw = document.getElementById('blast-body').value;
+  const clean = normalizeSms(raw);
+  const club = (JSON.parse(localStorage.getItem('poolside_tenant_tenant') || '{}').display_name) || 'Your club';
+  const rendered = clean ? `${club}: ${clean}` : '';
+  const bad = [...new Set([...rendered].filter(c => !GSM.has(c)))];
+  const len = rendered.length;
+  const oneText = bad.length === 0 && len <= 160;
+  const left = 160 - len;
+
+  document.getElementById('blast-rendered').textContent = rendered || 'Your message will appear here.';
+  const people = BLAST_STATE.recipients;
+  const cost = (people * 0.83 / 100).toFixed(2);
+  document.getElementById('blast-meter').textContent = rendered
+    ? `${len} of 160 characters · 1 text · about $${cost} to ${people} member${people === 1 ? '' : 's'}`
+    : '';
+
+  const warn = document.getElementById('blast-warn');
+  let msg = '';
+  if (bad.length) msg = `Remove ${bad.map(c => `"${c}"`).join(', ')} — characters like these double the cost of every text.`;
+  else if (len > 160) msg = `${len - 160} characters too long. Keep it to one text so it stays cheap and readable.`;
+  warn.style.display = msg ? '' : 'none';
+  warn.textContent = msg;
+
+  document.getElementById('blast-send').disabled = !rendered || !oneText || people === 0;
+  return { oneText, left };
+}
+
+async function openBlast() {
+  document.getElementById('blast-body').value = '';
+  document.getElementById('blast-err').classList.remove('show');
+  document.getElementById('blast-scrim').classList.add('show');
+  const p = await callBlast('preview', { body: 'x' });
+  if (p.ok) {
+    BLAST_STATE.recipients = p.recipient_count;
+    BLAST_STATE.admins = p.admin_count;
+    if (p.recipient_count === 0) {
+      document.getElementById('blast-err').textContent =
+        'Nobody on your roster has a phone number on file yet, so there is no one to text.';
+      document.getElementById('blast-err').classList.add('show');
+    }
+  }
+  measureBlast();
+}
+function closeBlast() { document.getElementById('blast-scrim').classList.remove('show'); }
+
+async function queueBlast() {
+  const btn = document.getElementById('blast-send');
+  const errEl = document.getElementById('blast-err');
+  errEl.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'Queueing…';
+  try {
+    const d = await callBlast('create', { body: document.getElementById('blast-body').value });
+    if (!d.ok) throw new Error(d.error || 'Could not queue the message');
+    closeBlast();
+    await loadBlasts();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Queue for approval';
+  }
+}
+
+async function loadBlasts() {
+  const host = document.getElementById('blast-pending');
+  let d;
+  try { d = await callBlast('list'); } catch (_) { host.innerHTML = ''; return; }
+  if (!d.ok) { host.innerHTML = ''; return; }
+  BLAST_STATE.admins = d.admin_count; BLAST_STATE.me = d.me; BLAST_STATE.cap = d.cap;
+
+  const pending = (d.blasts || []).filter(b => b.status === 'pending_approval');
+  if (!pending.length) { host.innerHTML = ''; return; }
+
+  host.innerHTML = pending.map(b => {
+    // Whoever did NOT write it is the person who can release it. Saying so
+    // plainly beats a disabled button with no explanation.
+    const mine = b.is_mine;
+    const soloClub = d.admin_count <= 1;
+    const canRelease = !mine || soloClub;
+    const who = escapeHtml(b.created_by_name);
+    const cost = (b.est_cost_cents / 100).toFixed(2);
+    return `
+      <div class="card" style="border-left:4px solid var(--sun);margin-bottom:14px">
+        <div style="font:700 11px 'Inter';letter-spacing:.06em;text-transform:uppercase;color:var(--sun);margin-bottom:6px">
+          Waiting to be released
+        </div>
+        <p style="margin:0 0 10px;font-size:15px;line-height:1.5"><b>${who}</b> wants to text
+          <b>${b.recipient_count}</b> member${b.recipient_count === 1 ? '' : 's'} — about $${cost}.</p>
+        <div style="padding:12px 14px;background:var(--bg-2);border-radius:var(--r-md);font-size:14px;line-height:1.55;margin-bottom:12px">
+          ${escapeHtml(b.body)}
+        </div>
+        ${canRelease ? `
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button class="btn" onclick="releaseBlast('${b.id}', ${soloClub && mine})">Send it now →</button>
+            <button class="btn btn-ghost" onclick="binBlast('${b.id}')">Discard</button>
+            ${soloClub && mine ? `<span style="font-size:12.5px;color:var(--muted)">You're the only admin, so you're releasing your own message.</span>` : ''}
+          </div>`
+        : `
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button class="btn" disabled title="Someone else has to release this">Waiting for another admin</button>
+            <button class="btn btn-ghost" onclick="binBlast('${b.id}')">Discard</button>
+            <span style="font-size:12.5px;color:var(--muted)">You wrote this one — another admin needs to release it.</span>
+          </div>`}
+        <div class="err" id="blast-row-err-${b.id}" style="margin-top:10px"></div>
+      </div>`;
+  }).join('');
+}
+
+async function releaseBlast(id, solo) {
+  const confirmMsg = solo
+    ? "You're the only admin, so nobody else can check this. Send it to every member now?"
+    : 'Send this text to every member now? It cannot be unsent.';
+  if (!confirm(confirmMsg)) return;
+  const errEl = document.getElementById('blast-row-err-' + id);
+  try {
+    const d = await callBlast('approve', { id, solo_confirm: !!solo });
+    if (!d.ok) throw new Error(d.error || 'Send failed');
+    await loadBlasts();
+    alert(`Sent to ${d.sent} member${d.sent === 1 ? '' : 's'}.` +
+      (d.capped ? ` ${d.capped} held back by your text limit.` : '') +
+      (d.failed ? ` ${d.failed} failed.` : ''));
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message; errEl.classList.add('show'); }
+  }
+}
+
+async function binBlast(id) {
+  if (!confirm('Discard this message without sending?')) return;
+  await callBlast('cancel', { id });
+  await loadBlasts();
+}
 
 async function call(action, extra = {}) {
   const t = token();
@@ -332,6 +524,9 @@ async function quickPin(id, pinned) {
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   } catch { logout(); return; }
   await refresh();
+  // Pending texts load after the posts so a slow SMS lookup never delays the
+  // page an admin actually came here for.
+  loadBlasts();
 })();
 </script>
 </body>

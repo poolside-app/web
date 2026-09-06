@@ -1859,6 +1859,109 @@ step('renewal link records first open',             link_renewal_stamps_first_op
 step('link and app quote the same price',           link_renewal_price_matches_the_app)
 step('restore club settings',                       ren_restore_settings)
 
+
+# ── 24. Club-wide texts: the two-person gate ─────────────────────────────
+section('SMS blasts')
+
+def _admin_tok(sub):
+    return sign_jwt({'sub': sub, 'kind': 'tenant_admin', 'tid': TENANT_A_ID, 'slug': SLUG_A,
+                     'role_template': 'owner', 'scopes': ['communications'],
+                     'exp': int(time.time()) + 3600})
+
+BLAST_URL = f'{SUPABASE_URL}/functions/v1/sms_blasts'
+ADMIN_A = '11111111-1111-1111-1111-111111111111'
+ADMIN_B = '22222222-2222-2222-2222-222222222222'
+BLAST_ID = None
+
+def blast_setup_two_admins():
+    # Two real admin rows: the gate is "a different person", so it cannot be
+    # tested with synthetic tokens that have no identity.
+    for aid, nm in ((ADMIN_A, 'Blast A'), (ADMIN_B, 'Blast B')):
+        mgmt_query(f"""insert into public.admin_users
+                         (id, tenant_id, username, display_name, password_hash, role_template, active)
+                       values ('{aid}', '{TENANT_A_ID}', 'blast-{aid[:8]}-{STAMP}@example.com',
+                               '{nm} {STAMP}', 'x', 'owner', true)
+                       on conflict (id) do nothing;""")
+    # Someone to receive it.
+    rows = mgmt_query(f"""insert into public.households (tenant_id, family_name, active)
+                          values ('{TENANT_A_ID}', 'Blast Target {STAMP}', true) returning id;""")
+    hh = rows[0]['id']; track('households', hh)
+    mgmt_query(f"""insert into public.household_members
+                     (tenant_id, household_id, name, phone_e164, role, active)
+                   values ('{TENANT_A_ID}', '{hh}', 'Blast Member {STAMP}',
+                           '+1555{STAMP}0095', 'primary', true);""")
+
+def blast_preview_costs_and_reach():
+    r = post(BLAST_URL, {'action': 'preview', 'body': 'Pool is closed today for weather.'}, _admin_tok(ADMIN_A))
+    assert r.get('ok'), f'preview: {r}'
+    assert r['segments'] == 1, f'should be one text: {r}'
+    assert r['recipient_count'] >= 1, f'nobody would receive it: {r}'
+    assert r['est_cost_cents'] > 0, f'no cost estimated: {r}'
+
+def blast_rejects_two_segment_messages():
+    r = post(BLAST_URL, {'action': 'create', 'body': 'x' * 300}, _admin_tok(ADMIN_A))
+    assert not r.get('ok'), 'an over-long message was accepted'
+    assert r.get('too_long'), f'not flagged as too long: {r}'
+
+def blast_normalizes_expensive_characters():
+    # An em-dash would flip the whole message to the pricey encoding. The
+    # server stores the cleaned version so the send stays one segment.
+    global BLAST_ID
+    r = post(BLAST_URL, {'action': 'create', 'body': f'Closed today \u2014 back at 10am {STAMP}'}, _admin_tok(ADMIN_A))
+    assert r.get('ok'), f'create: {r}'
+    BLAST_ID = r['id']
+    row = mgmt_query(f"select body, status from public.sms_blasts where id = '{BLAST_ID}';")[0]
+    assert '\u2014' not in row['body'], f'em-dash survived into the stored body: {row}'
+    assert '-' in row['body'], f'not normalized: {row}'
+    assert row['status'] == 'pending_approval', f'should await approval: {row}'
+
+def blast_author_cannot_release_their_own():
+    # The whole point of the feature.
+    r = post(BLAST_URL, {'action': 'approve', 'id': BLAST_ID}, _admin_tok(ADMIN_A))
+    assert not r.get('ok'), 'the author released their own blast'
+    assert r.get('needs_second_admin'), f'wrong refusal: {r}'
+    row = mgmt_query(f"select status, sent_at from public.sms_blasts where id = '{BLAST_ID}';")[0]
+    assert row['status'] == 'pending_approval' and row['sent_at'] is None, f'it sent anyway: {row}'
+
+def blast_solo_confirm_does_not_bypass_when_others_exist():
+    # A club with two admins must not be able to self-approve by passing the
+    # sole-admin flag.
+    r = post(BLAST_URL, {'action': 'approve', 'id': BLAST_ID, 'solo_confirm': True}, _admin_tok(ADMIN_A))
+    assert not r.get('ok'), 'solo_confirm bypassed the second-admin rule'
+
+def blast_second_admin_can_release():
+    r = post(BLAST_URL, {'action': 'approve', 'id': BLAST_ID}, _admin_tok(ADMIN_B))
+    assert r.get('ok'), f'second admin could not release: {r}'
+    row = mgmt_query(f"""select status, approved_by, sent_at from public.sms_blasts
+                         where id = '{BLAST_ID}';""")[0]
+    assert row['approved_by'] == ADMIN_B, f'approver not recorded: {row}'
+    assert row['sent_at'] is not None, f'never marked sent: {row}'
+
+def blast_expired_cannot_be_released():
+    rows = mgmt_query(f"""insert into public.sms_blasts
+          (tenant_id, body, created_by, recipient_count, segment_count, expires_at)
+        values ('{TENANT_A_ID}', 'Stale {STAMP}', '{ADMIN_A}', 1, 1, now() - interval '1 hour')
+        returning id;""")
+    stale = rows[0]['id']
+    r = post(BLAST_URL, {'action': 'approve', 'id': stale}, _admin_tok(ADMIN_B))
+    assert not r.get('ok'), 'a day-old message was still released'
+    assert 'expired' in str(r.get('error','')).lower(), f'wrong reason: {r}'
+    mgmt_query(f"delete from public.sms_blasts where id = '{stale}';")
+
+def blast_cleanup():
+    mgmt_query(f"delete from public.sms_blasts where tenant_id = '{TENANT_A_ID}';")
+    mgmt_query(f"delete from public.admin_users where id in ('{ADMIN_A}','{ADMIN_B}');")
+
+step('setup: two admins + a member with a phone', blast_setup_two_admins)
+step('preview reports cost and reach',            blast_preview_costs_and_reach)
+step('two-segment messages are refused',          blast_rejects_two_segment_messages)
+step('expensive characters are normalized away',  blast_normalizes_expensive_characters)
+step('the author cannot release their own blast', blast_author_cannot_release_their_own)
+step('solo_confirm cannot bypass a co-admin',     blast_solo_confirm_does_not_bypass_when_others_exist)
+step('a second admin can release it',             blast_second_admin_can_release)
+step('an expired message cannot be released',     blast_expired_cannot_be_released)
+step('cleanup blast fixtures',                    blast_cleanup)
+
 # ── Cleanup ──────────────────────────────────────────────────────────────
 section('Cleanup')
 

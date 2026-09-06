@@ -152,6 +152,35 @@ Deno.serve(async (req) => {
     const kind = md.kind;
     const tenantId = md.tenant_id;
 
+    // ── SMS top-up: credit the club's balance ────────────────────────────
+    if (kind === 'sms_topup' && md.tenant_id) {
+      const credits = Math.max(0, Math.trunc(Number(md.credits) || 0));
+      const sessionId = String(session.id || '');
+      if (credits > 0 && sessionId) {
+        // The unique index on stripe_session_id is what makes a replayed
+        // webhook harmless — the insert fails and no credits are added twice.
+        const { error: purchaseErr } = await sb.from('sms_credit_purchases').insert({
+          tenant_id: md.tenant_id,
+          credits,
+          amount_cents: Number(session.amount_total) || 0,
+          stripe_session_id: sessionId,
+          purchased_by: md.admin_id || null,
+        });
+        if (!purchaseErr) {
+          const { data: t } = await sb.from('tenants')
+            .select('sms_credits').eq('id', md.tenant_id).maybeSingle();
+          await sb.from('tenants').update({
+            sms_credits: Number(t?.sms_credits ?? 0) + credits,
+          }).eq('id', md.tenant_id);
+          await sb.from('audit_log').insert({
+            tenant_id: md.tenant_id, kind: 'sms.credits_purchased',
+            summary: `Bought ${credits} text credits`,
+            actor_kind: 'system', actor_label: 'stripe',
+          });
+        }
+      }
+    }
+
     if (kind === 'application' && md.application_id) {
       const now = new Date().toISOString();
       await sb.from('applications').update({
