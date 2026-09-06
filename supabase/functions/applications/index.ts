@@ -219,7 +219,64 @@ Deno.serve(async (req) => {
         console.error('cleanup error for', a.id, (e as Error).message);
       }
     }
-    return jsonResponse({ ok: true, deleted, scanned: (abandoned ?? []).length });
+    // Ghost tasks. A task points at a row (an application, a household, a
+    // party); when that row goes away — an admin hard-deletes a household, a
+    // club prunes old applications — the task survives and sits in the queue
+    // forever pointing at nothing. Nobody can action it and nobody can clear
+    // it, so it just accumulates. Sweep them here rather than making every
+    // delete path remember to.
+    let orphaned = 0;
+    const ORPHAN_KINDS: Array<{ kind: string; table: string }> = [
+      { kind: 'application',      table: 'applications' },
+      { kind: 'household',        table: 'households' },
+      { kind: 'household_member', table: 'household_members' },
+      { kind: 'party_booking',    table: 'party_bookings' },
+      { kind: 'photo',            table: 'photos' },
+      { kind: 'payment_plan',     table: 'payment_plans' },
+      { kind: 'feedback',         table: 'feedback_submissions' },
+      { kind: 'referral',         table: 'referrals' },
+    ];
+    for (const { kind, table } of ORPHAN_KINDS) {
+      const { data: openTasks } = await sb.from('admin_tasks')
+        .select('id, source_id').eq('source_kind', kind)
+        .is('completed_at', null).not('source_id', 'is', null).limit(500);
+      if (!openTasks?.length) continue;
+      const ids = [...new Set(openTasks.map(t => t.source_id as string))];
+      const { data: alive } = await sb.from(table).select('id').in('id', ids);
+      const aliveSet = new Set((alive ?? []).map(r => r.id as string));
+      const dead = openTasks.filter(t => !aliveSet.has(t.source_id as string)).map(t => t.id as string);
+      if (!dead.length) continue;
+      const { error: delErr } = await sb.from('admin_tasks').delete().in('id', dead);
+      if (!delErr) orphaned += dead.length;
+    }
+
+    // Orphaned renewals. A renewal points at a household; delete the household
+    // and the renewal is left behind, unpayable and un-actionable, still
+    // showing up in the club's renewal view and open balances. Only unpaid
+    // ones are swept — a paid renewal is a financial record and stays put even
+    // if the household is later removed.
+    // applications.household_id is ON DELETE SET NULL, so a deleted household
+    // leaves its renewal behind with a null link rather than a dangling one.
+    // A renewal with no household cannot be anything else — it is unpayable
+    // and un-actionable, so it goes. A NEW member's application legitimately
+    // has no household yet, hence the is_renewal guard; and a paid renewal is
+    // a financial record, so only unpaid ones are swept.
+    let orphanedRenewals = 0;
+    const { data: orphanRenewals } = await sb.from('applications')
+      .select('id').eq('is_renewal', true)
+      .neq('payment_status', 'paid').is('household_id', null).limit(500);
+    if (orphanRenewals?.length) {
+      const deadIds = orphanRenewals.map(r => r.id as string);
+      await sb.from('application_actions').delete().in('application_id', deadIds);
+      await sb.from('admin_tasks').delete().eq('source_kind', 'application').in('source_id', deadIds);
+      const { error } = await sb.from('applications').delete().in('id', deadIds);
+      if (!error) orphanedRenewals = deadIds.length;
+    }
+
+    return jsonResponse({
+      ok: true, deleted, orphaned, orphaned_renewals: orphanedRenewals,
+      scanned: (abandoned ?? []).length,
+    });
   }
 
   // ── submit (no auth — anyone with the form can apply) ─────────────────
@@ -990,8 +1047,20 @@ Deno.serve(async (req) => {
     // become a single one-click inline-button row in the UI.
     if (status === 'needs_attention') {
       q = q.or('status.eq.pending,and(status.eq.approved,payment_status.in.("unpaid","pending"))');
+    } else if (status === 'renewals') {
+      // Renewals in flight — existing members who owe money, not decisions.
+      q = q.eq('is_renewal', true).neq('payment_status', 'paid');
     } else if (status !== 'all') {
       q = q.eq('status', status);
+    }
+
+    // An unpaid renewal is a payment to collect, not an application to judge.
+    // Left in the review queue it would bury the handful of real decisions
+    // under one row per renewing household — 150 of them at a mid-size club,
+    // every spring. They get their own view (status='renewals') instead.
+    const includeRenewals = body.include_renewals === true || status === 'renewals' || status === 'all';
+    if (!includeRenewals) {
+      q = q.or('is_renewal.is.false,is_renewal.is.null,payment_status.eq.paid');
     }
     if (filter === 'unpaid')  q = q.in('payment_status', ['unpaid', 'pending']);
     if (filter === 'overdue') {

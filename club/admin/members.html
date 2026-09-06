@@ -238,17 +238,24 @@
     </div>
 
     <div class="card" style="padding:18px">
-      <h2 style="margin-bottom:6px">Compose & send</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Each recipient gets a personalized 7-day single-use sign-in link. Default body uses your tenant name and current year.</p>
+      <h2 style="margin-bottom:6px">Compose &amp; send</h2>
+      <label style="margin:0 0 6px">What the link does</label>
+      <div class="filter-row" id="ren-linktype" style="margin-bottom:10px">
+        <button class="on" data-linktype="pay">💳 Pay now — no login</button>
+        <button data-linktype="signin">🔑 Sign in first</button>
+      </div>
+      <p id="ren-linktype-note" style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">
+        Each household gets its own link straight to a pre-filled renewal — they tap, check it over, and pay.
+        No password, no app, nothing to remember. Best for reaching members who never sign in.</p>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
         <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-email" checked><span>📧 Email</span></label>
         <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-sms"><span>💬 SMS</span></label>
       </div>
       <div id="ren-sms-meter" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--muted)"></div>
-      <label>Custom intro <span style="color:var(--muted);font-weight:500">(optional — overrides default body)</span></label>
-      <textarea id="ren-message" rows="3" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your membership level and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
+      <label id="ren-message-label" style="display:none">Custom intro <span style="color:var(--muted);font-weight:500">(optional — overrides default body)</span></label>
+      <textarea id="ren-message" rows="3" style="display:none" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your membership level and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
       <div style="display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap">
-        <button class="btn" id="ren-send" type="button" onclick="Renewals.send()">Send blast →</button>
+        <button class="btn" id="ren-send" type="button" onclick="Renewals.send()">Send renewal links →</button>
         <span id="ren-result" style="font-size:13px;color:var(--muted)"></span>
       </div>
       <div class="err" id="ren-err" style="margin-top:10px"></div>
@@ -1390,6 +1397,14 @@ const Tiers = (() => {
 // previews count, fires email/SMS via the renewals edge function.
 const Renewals = (() => {
   const RENEWALS_URL = `${SUPABASE_URL}/functions/v1/renewals`;
+  // 'pay' sends a no-login link straight to a pre-filled renewal; 'signin'
+  // is the older sign-in-link blast. Pay is the default because the members
+  // hardest to collect from are precisely the ones who never sign in.
+  let LINK_TYPE = 'pay';
+  const LINK_NOTES = {
+    pay: 'Each household gets its own link straight to a pre-filled renewal — they tap, check it over, and pay. No password, no app, nothing to remember. Best for reaching members who never sign in.',
+    signin: 'Each household gets a 7-day single-use sign-in link. They land in their member home and pay from there. Use this when you also want them back in the app.',
+  };
   let HOUSEHOLDS = [];
   let CURRENT_AUDIENCE = 'lapsed';
 
@@ -1482,7 +1497,23 @@ const Renewals = (() => {
   }
 
   function bindAudience() {
-    document.querySelectorAll('#ren-audience button').forEach(b => {
+    document.querySelectorAll('#ren-linktype button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#ren-linktype button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      LINK_TYPE = b.dataset.linktype;
+      document.getElementById('ren-linktype-note').textContent = LINK_NOTES[LINK_TYPE];
+      // The custom intro only applies to the sign-in blast — the pay link
+      // uses the "Renewal invite" email template, editable under Emails.
+      const showMsg = LINK_TYPE === 'signin';
+      document.getElementById('ren-message').style.display = showMsg ? '' : 'none';
+      document.getElementById('ren-message-label').style.display = showMsg ? '' : 'none';
+      document.getElementById('ren-send').textContent =
+        showMsg ? 'Send sign-in links →' : 'Send renewal links →';
+    });
+  });
+
+  document.querySelectorAll('#ren-audience button').forEach(b => {
       b.onclick = () => {
         document.querySelectorAll('#ren-audience button').forEach(x => x.classList.toggle('on', x === b));
         CURRENT_AUDIENCE = b.dataset.audience;
@@ -1592,13 +1623,25 @@ const Renewals = (() => {
     if (!rows.length) {
       errEl.textContent = 'No households match this audience — nothing to send.'; errEl.classList.add('show'); return;
     }
-    if (!confirm(`Send a renewal blast to ${rows.length} household${rows.length === 1 ? '' : 's'} via ${channels.join(' + ')}? This counts against your monthly SMS cap (if SMS).`)) return;
+    const what = LINK_TYPE === 'pay'
+      ? `Send a pay-now renewal link to every household that hasn't paid for the coming season, via ${channels.join(' + ')}?`
+      : `Send a renewal blast to ${rows.length} household${rows.length === 1 ? '' : 's'} via ${channels.join(' + ')}?`;
+    if (!confirm(`${what}${channels.includes('sms') ? ' This counts against your monthly SMS cap.' : ''}`)) return;
 
     const btn = document.getElementById('ren-send');
     const orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Sending…';
     document.getElementById('ren-result').textContent = '';
     try {
+      if (LINK_TYPE === 'pay') {
+        const data = await call(RENEWALS_URL, 'send_renewal_links', { channels });
+        if (!data.ok) throw new Error(data.error || 'Send failed');
+        document.getElementById('ren-result').innerHTML =
+          `✓ Sent <b>${data.sent}</b> renewal link${data.sent === 1 ? '' : 's'} for the ${data.year} season` +
+          (data.reused ? ` · ${data.reused} refreshed an existing link` : '') +
+          (data.skipped ? ` · skipped ${data.skipped} (no email or phone on file)` : '');
+        return;
+      }
       const message = document.getElementById('ren-message').value.trim();
       const data = await call(RENEWALS_URL, 'send_blast', {
         audience: CURRENT_AUDIENCE,

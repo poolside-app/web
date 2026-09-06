@@ -173,6 +173,15 @@ for (const pg of PAGES) {
 
 await browser.close();
 
+// Remove the throwaway household this run created. Without this the club's
+// members list and open-payments queue collect one fake row per run, which is
+// the first thing anyone sees on the admin dashboard.
+if (HID) {
+  await mgmt(`delete from admin_tasks where source_id = '${HID}' or summary like '%Smoke ${STAMP}%'`);
+  await mgmt(`delete from applications where household_id = '${HID}'`);
+  await mgmt(`delete from households where id = '${HID}'`);
+}
+
 // Cleanup the throwaway household.
 if (HID) await mgmt(`delete from households where id='${HID}'`);
 

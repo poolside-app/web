@@ -1818,6 +1818,23 @@ def cleanup_all():
     mgmt_query(f"delete from public.admin_users where username like 'roletest-e2e-%@example.com';")
     # Test-created custom policy (archived above, hard-delete here)
     mgmt_query(f"delete from public.policies where title like 'E2E Pet Policy %';")
+    # Admin tasks this run spawned. Deleting the household or application a
+    # task points at does NOT remove the task, so without this the real club's
+    # queue fills up with test rows — one per run, forever. (The orphan sweep
+    # in cron_cleanup_abandoned catches stragglers; this stops us relying on it.)
+    mgmt_query(f"""delete from public.admin_tasks
+                    where summary like '%{STAMP}%'
+                       or summary ~* '(e2e|smoke)';""")
+    # Payment plans + their installments created by the dunning tests.
+    mgmt_query(f"delete from public.payment_plans where family_name like '%{STAMP}%';")
+    # send_renewal_links deliberately covers EVERY unpaid household in the club,
+    # so it creates a renewal for each test household too. Deleting those
+    # households nulls the link (ON DELETE SET NULL) rather than removing the
+    # renewal. The cron sweep would clear them within 30 minutes, but a suite
+    # should not leave the real club's data to be tidied later.
+    mgmt_query("""delete from public.applications
+                   where is_renewal and household_id is null
+                     and payment_status <> 'paid';""")
     # Auto-created admin tasks for tracked applications cascade via FK on tenant delete,
     # but tenant A persists across runs — clean tasks tied to tracked apps.
     for app_id in RESOURCES['applications']:

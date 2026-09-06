@@ -616,6 +616,20 @@ async function loadPlanConfig() {
       ? c.milestones.map(m => ({ date: monthDay(m.date), min_pct: Number(m.min_pct) || 100, label: m.label || '' }))
       : legacyToMilestones(c);
     renderMilestones();
+
+    // Plans on but no deadlines means members are offered payment plans the
+    // system cannot actually build. Open the section and say so, rather than
+    // leaving it folded behind a chevron nobody has a reason to click.
+    if (c.enabled && !MILESTONES.length) {
+      const card = document.getElementById('plans-card');
+      const det = card && card.closest('details');
+      if (det) det.open = true;
+      const warn = document.getElementById('ms-err');
+      if (warn) {
+        warn.textContent = 'Payment plans are on, but you have not set any deadlines yet — members cannot start a plan until you do.';
+        warn.classList.add('show');
+      }
+    }
   } catch (e) {
     document.getElementById('plan-err').textContent = e.message;
     document.getElementById('plan-err').classList.add('show');
@@ -672,7 +686,7 @@ async function loadPlansList() {
     const plans = r.plans || [];
     const installments = r.installments || [];
     if (!plans.length) {
-      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No plans yet. They'll appear as members sign up with the 2-installment option.</div>`;
+      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No plans yet. They'll appear as members choose to spread their dues over several payments.</div>`;
       return;
     }
     const byPlan = {};

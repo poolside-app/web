@@ -127,6 +127,7 @@
         <button data-status="pending">Pending</button>
         <button data-status="approved">Approved</button>
         <button data-status="rejected">Rejected</button>
+        <button data-status="renewals">Renewals <span id="renew-count" style="opacity:.7"></span></button>
         <button data-status="all">All</button>
       </div>
       <div class="filter-row" id="payment-filter" style="border-left:1px solid var(--border);padding-left:14px">
@@ -197,6 +198,13 @@ const APPS_URL = `${SUPABASE_URL}/functions/v1/applications`;
 const ME_URL   = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
 let STATUS = 'needs_attention';
+
+// Copy shown above the list, per view. The renewals note exists because the
+// natural instinct on seeing a list of applications is to start approving
+// them, and approving a renewal before it is paid is exactly wrong.
+const VIEW_NOTE = {
+  renewals: 'Existing members part-way through renewing. These are payments to collect, not applications to approve — they approve themselves the moment they pay.',
+};
 let FILTER = '';
 let SELECTED = null;
 let CACHE = [];
@@ -260,11 +268,17 @@ document.querySelectorAll('#payment-filter button').forEach(b => {
 
 function render(rows) {
   const list = document.getElementById('list');
+  const note = VIEW_NOTE[STATUS]
+    ? `<div style="padding:12px 14px;background:var(--blue-l,#e6eef5);border-radius:10px;font-size:13px;color:var(--blue,#0a3b5c);margin-bottom:14px;line-height:1.5">${VIEW_NOTE[STATUS]}</div>`
+    : '';
   if (!rows.length) {
-    list.innerHTML = `<div class="empty">No ${STATUS === 'all' ? '' : STATUS + ' '}applications.</div>`;
+    const empty = STATUS === 'renewals'
+      ? 'No renewals in progress.'
+      : `No ${STATUS === 'all' ? '' : STATUS + ' '}applications.`;
+    list.innerHTML = note + `<div class="empty">${empty}</div>`;
     return;
   }
-  list.innerHTML = rows.map(a => {
+  list.innerHTML = note + rows.map(a => {
     const total = (a.num_adults || 0) + (a.num_kids || 0);
     const isPending = a.status === 'pending';
     const isVenmo   = a.payment_method === 'venmo';
