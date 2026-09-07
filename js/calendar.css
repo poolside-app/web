@@ -32,7 +32,13 @@
   display: flex; flex-direction: column; gap: 2px; overflow: hidden;
 }
 .pcal-other { background: #fafbfc; }
-.pcal-other .pcal-num { color: #cbd5e1; }
+/* Adjacent-month day numbers. #cbd5e1 on the #fafbfc cell was 1.43:1 —
+   de-emphasised past the point of being readable, so you couldn't tell
+   which date you were looking at. #94a3b8 is 2.47:1: still obviously
+   secondary against the 17:1 in-month days, but legible. Not held to
+   4.5:1 on purpose — making these full-contrast would defeat the
+   greying that tells you they're outside the current month. */
+.pcal-other .pcal-num { color: #94a3b8; }
 .pcal-today-cell .pcal-num { background: var(--blue, #0a3b5c); color: #fff; }
 .pcal-num {
   width: 22px; height: 22px; border-radius: 50%;
