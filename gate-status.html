@@ -190,8 +190,10 @@ async function load() {
     return;
   }
 
-  $('ask-title').textContent = `${r.club_name || 'Your club'}: gate bridge is offline`;
-  $('ask-status').textContent = `It stopped checking in about ${r.offline_label} ago. Doug at Poolside already knows and is looking into it.`;
+  // Club name goes in the supporting line, not the headline — as an H1 it
+  // wrapped to two lines on a phone and pushed the buttons further down.
+  $('ask-title').textContent = 'Gate bridge is offline';
+  $('ask-status').textContent = `${r.club_name || 'Your club'} — it stopped checking in about ${r.offline_label} ago. Doug at Poolside already knows and is looking into it.`;
   if (r.fobs_note) $('fobs-note').textContent = r.fobs_note;
 
   const ol = $('ask-steps');
