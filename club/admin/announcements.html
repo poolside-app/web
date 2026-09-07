@@ -169,6 +169,11 @@
       <div id="blast-warn" style="margin-top:6px;font-size:12.5px;color:var(--red);display:none"></div>
     </div>
 
+    <!-- Balance was fetched into BLAST_STATE.cap and never shown, so the
+         first a club heard about running out was a blast being refused.
+         Shown here, at the moment it matters, with a way to top up. -->
+    <div id="blast-balance" style="margin-top:10px;font-size:12.5px;color:var(--muted)"></div>
+
     <div class="err" id="blast-err" style="margin-top:10px"></div>
     <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeBlast()">Cancel</button>
@@ -284,6 +289,7 @@ function measureBlast() {
 }
 
 async function openBlast() {
+  paintBlastBalance();
   document.getElementById('blast-body').value = '';
   document.getElementById('blast-err').classList.remove('show');
   document.getElementById('blast-scrim').classList.add('show');
@@ -318,12 +324,33 @@ async function queueBlast() {
   }
 }
 
+// Show what's left, and offer the top-up before they hit the wall rather
+// than after. Purchased credits are only spent once the monthly allowance
+// is gone, so they're reported separately.
+function paintBlastBalance() {
+  const el = document.getElementById('blast-balance');
+  const c = BLAST_STATE.cap;
+  if (!el) return;
+  if (!c) { el.textContent = ''; return; }
+  const credits = Number(c.credits || 0);
+  const remaining = Number(c.remaining || 0);
+  const low = remaining <= 25;
+  const topUp = ' · <a href="/club/admin/billing.html">Buy more texts →</a>';
+  el.innerHTML = c.category_uncapped
+    ? ''
+    : `<b>${remaining}</b> of ${c.cap} texts left this month`
+      + (credits ? ` · <b>${credits}</b> purchased in reserve` : '')
+      + ((low && !credits) ? topUp : '');
+  el.style.color = (low && !credits) ? 'var(--red)' : 'var(--muted)';
+}
+
 async function loadBlasts() {
   const host = document.getElementById('blast-pending');
   let d;
   try { d = await callBlast('list'); } catch (_) { host.innerHTML = ''; return; }
   if (!d.ok) { host.innerHTML = ''; return; }
   BLAST_STATE.admins = d.admin_count; BLAST_STATE.me = d.me; BLAST_STATE.cap = d.cap;
+  paintBlastBalance();
 
   const pending = (d.blasts || []).filter(b => b.status === 'pending_approval');
   if (!pending.length) { host.innerHTML = ''; return; }
