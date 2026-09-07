@@ -1253,7 +1253,7 @@ function renderGatePitch() {
         <li>You send the request below — just a name + phone number, no payment.</li>
         <li>Doug calls you within 1 business day to walk through your gate panel, talk through wiring, and confirm we can actually integrate.</li>
         <li>If everything checks out, we ship a small Pi bridge that sits on your club's network and run the on-site test together.</li>
-        <li>Only after the integration is in place — and you've said yes — do we send the invoice ($250 setup + $25/mo). Pay it, members start seeing the unlock button.</li>
+        <li>Only after the integration is in place — and you've said yes — do we send the invoice. On a panel we've already certified that's <b>$1,200 setup + $75/mo</b>; on a panel we haven't, we start with a <b>$500 compatibility check</b> (credited toward the install, typically $2,500 all in) so nobody commits before we know it works. Pay it, members start seeing the unlock button.</li>
       </ol>
     </div>
     <div style="margin:14px 0;padding:14px 16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;font-size:13px;line-height:1.6">
@@ -1684,7 +1684,7 @@ const ACCESS_METHODS = [
   { key: 'paper_roster',     label: 'Paper roster',                desc: 'A lifeguard or gate attendant checks a printed list. We can generate a fresh PDF every morning.' },
   { key: 'member_pass',      label: 'Member shows phone pass',     desc: 'Members open the app at the gate and show a screen with their photo, family name, paid status, and a live ticking clock. No hardware.' },
   { key: 'lifeguard_tablet', label: 'Lifeguard tablet check-in',   desc: 'A shared iPad at the gate. Lifeguard searches by name, sees the family + paid status, taps "Check in". Invite the lifeguard as a scoped admin from Co-admins.' },
-  { key: 'keyfob',           label: 'Keyfob / RFID gate',          desc: 'Hardware integration with a panel like MENGQI. $250 setup + $25/mo as an add-on. Best for 24/7 unattended access.' },
+  { key: 'keyfob',           label: 'Keyfob / RFID gate',          desc: 'Hardware integration with a panel like MENGQI. $1,200 setup + $75/mo as an add-on, monitoring included. Best for 24/7 unattended access.' },
   { key: 'pin_codes',        label: 'PIN codes at a keypad',       desc: 'A 4-digit code per household. Cheaper than keyfobs but code-sharing is a real risk. Coming soon.', disabled: true },
   { key: 'printable_cards',  label: 'Printable membership cards',  desc: 'Generate PDF cards (photo + QR) for members without smartphones. Coming soon.', disabled: true },
   { key: 'self_kiosk',       label: 'Self check-in kiosk',         desc: 'Shared iPad at the gate — members tap their own name. No lifeguard needed. Coming soon.', disabled: true },

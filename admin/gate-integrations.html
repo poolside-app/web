@@ -432,7 +432,7 @@
     <input id="invoice-email" type="email" placeholder="(use default)" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%;margin-bottom:14px">
 
     <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Note <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">(optional — shown in the email)</span></label>
-    <textarea id="invoice-note" rows="3" placeholder="$250 setup fee + first month ($25). Net 14 days." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:13.5px 'Inter';width:100%;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
+    <textarea id="invoice-note" rows="3" placeholder="$1,200 setup fee + first month ($75). Net 14 days." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:13.5px 'Inter';width:100%;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
 
     <div style="padding:10px 14px;background:var(--bg-2);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:18px">
       The tenant gets an email with the amount + note, plus an in-app banner ("Invoice received"). Status is <b>not</b> changed — you can still flip status separately if you want.
@@ -1043,7 +1043,7 @@ async function openInvoiceModal(tenantId) {
   document.getElementById('invoice-email').placeholder = panel?.contact_email
     ? `default: ${panel.contact_email}`
     : '(use owner email)';
-  document.getElementById('invoice-note').value = panel?.invoice_note || '$250 setup fee + first month ($25). Reply to confirm payment method.';
+  document.getElementById('invoice-note').value = panel?.invoice_note || '$1,200 setup fee + first month ($75). Reply to confirm payment method.';
   document.getElementById('invoice-status').textContent = '';
   document.getElementById('invoice-scrim').classList.add('open');
   document.body.style.overflow = 'hidden';

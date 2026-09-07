@@ -1,27 +1,53 @@
 // =============================================================================
 // plan_caps.ts — single source of truth for plan-tier capacity gates
 // =============================================================================
-// Capacity caps (households per tier). Free Forever for ≤20 households;
-// everything past that requires a paid plan. NO feature paywalls — every
-// tier gets every feature; only headcount differs. SMS caps live in
-// _shared/sms_cap.ts.
+// Capacity caps (households per tier). NO feature paywalls — every tier gets
+// every feature; only headcount differs. SMS caps live in _shared/sms_cap.ts.
+//
+// The "Free Forever ≤20 households" tier was retired 2026-09-07 and replaced
+// by a free FIRST SEASON. Twenty households is smaller than almost any real
+// pool club, so the old tier mostly advertised a plan nobody could actually
+// run a club on; a free first season is a real trial of the whole product.
+//
+// A trialling club has NO cap — that is the point of the offer, and a cap
+// would make "free season" false for any club above the number. Enforcement
+// lives in getHouseholdCapStatus, because until today nothing anywhere read
+// trial_ends_at: it was written at signup, shown on screen, and never
+// checked. Bishop's trial expired in June 2026 with no effect whatsoever.
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export const PLAN_HOUSEHOLD_CAPS: Record<string, number> = {
-  free:       20,    // matches pricing memory ("Free Forever ≤20 households")
+  // Legacy value. Tenants created before the free tier was retired still
+  // carry plan='free'; once their trial ends they land on the Starter cap
+  // rather than being locked out mid-season, and get an upgrade prompt.
+  free:       75,
   starter:    75,    // tightened 100->75 (2026-05-18) so median 100-150 cluster lands in Pro
   pro:        200,   // dropped 300->200 (2026-05-18) — clubs actually cluster at 100-150
   enterprise: Number.POSITIVE_INFINITY,
 };
 
 export const PLAN_LABELS: Record<string, string> = {
-  free:       'Free Forever',
+  free:       'Trial ended',
   starter:    'Starter',
   pro:        'Pro',
   enterprise: 'Enterprise',
 };
+
+/** Shown while a club is inside its free first season. */
+export const TRIAL_LABEL = 'First season free';
+
+/** True while the club is still inside its free first season. */
+export function inFreeSeason(
+  status: string | null | undefined,
+  trialEndsAt: string | null | undefined,
+): boolean {
+  if (String(status || '').toLowerCase() !== 'trial') return false;
+  if (!trialEndsAt) return true;   // no end date recorded = still trialling
+  const end = new Date(trialEndsAt).getTime();
+  return Number.isFinite(end) ? end > Date.now() : true;
+}
 
 export function householdCap(plan: string | null | undefined): number {
   const p = String(plan || 'free').toLowerCase();
@@ -60,18 +86,25 @@ export async function getHouseholdCapStatus(
     sb.from('households').select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenantId).eq('active', true),
     sb.from('tenants')
-      .select('plan_label_override, household_cap_override')
+      .select('plan_label_override, household_cap_override, status, trial_ends_at')
       .eq('id', tenantId).maybeSingle(),
   ]);
   const used = count ?? 0;
   const labelOverride = (tenantRes.data?.plan_label_override as string | null) ?? null;
   const capOverride   = (tenantRes.data?.household_cap_override as number | null) ?? null;
+  const trialling = inFreeSeason(
+    tenantRes.data?.status as string | null,
+    tenantRes.data?.trial_ends_at as string | null,
+  );
 
-  // Cap precedence: override → plan default. Sentinel: a huge override value
-  // (e.g. 999999) acts as "unlimited" for display purposes.
+  // Cap precedence: explicit override → free first season → plan default.
+  // The override stays on top so a comped or grandfathered club keeps its
+  // capacity after the trial window closes.
   const cap = capOverride != null
     ? (capOverride >= 100000 ? Number.POSITIVE_INFINITY : capOverride)
-    : householdCap(plan);
+    : trialling
+      ? Number.POSITIVE_INFINITY
+      : householdCap(plan);
   const at_cap = used >= cap;
   const remaining = cap === Number.POSITIVE_INFINITY
     ? Number.POSITIVE_INFINITY
@@ -86,7 +119,7 @@ export async function getHouseholdCapStatus(
     at_cap,
     percent,
     plan: String(plan || 'free').toLowerCase(),
-    plan_label: labelOverride || planLabel(plan),
+    plan_label: labelOverride || (trialling ? TRIAL_LABEL : planLabel(plan)),
   };
 }
 

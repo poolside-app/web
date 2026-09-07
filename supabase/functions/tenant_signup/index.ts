@@ -180,11 +180,20 @@ Deno.serve(async (req) => {
   }
 
   // ── Create tenant ──────────────────────────────────────────────────────
+  // The tenants.trial_ends_at column defaults to now() + 14 days, which was
+  // right for a "try it out" trial and wrong for the free FIRST SEASON we
+  // now sell — a pool season is months long, and a club that signs up in
+  // September is not opening until May. Set a full year explicitly so the
+  // offer means what the pricing page says.
+  const trialEnds = new Date();
+  trialEnds.setUTCFullYear(trialEnds.getUTCFullYear() + 1);
+
   const { data: tenant, error: tErr } = await sb.from('tenants').insert({
     slug,
     display_name,
     plan,
     status: 'trial',
+    trial_ends_at: trialEnds.toISOString(),
     notes: `Self-served signup at ${new Date().toISOString()}`,
   }).select('id, slug, display_name, status, plan, trial_ends_at').single();
 
