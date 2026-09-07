@@ -461,6 +461,13 @@
       </div>
     </label>
     <label class="feature">
+      <input type="checkbox" id="feat_lifeguard_scheduling">
+      <div>
+        <div class="ftitle">🏊 Lifeguard scheduling</div>
+        <div class="fsub">Build the weekly schedule. Lifeguards claim open shifts on their own login. No payroll — just scheduling.</div>
+      </div>
+    </label>
+    <label class="feature">
       <input type="checkbox" id="feat_campaigns">
       <div>
         <div class="ftitle">📣 Pop-up campaigns</div>
@@ -1059,6 +1066,10 @@ function populate(s) {
   setChk('feat_parties',      s.features?.parties      ?? true);
   setChk('feat_volunteer',    s.features?.volunteer    ?? true);
   setChk('feat_campaigns',    s.features?.campaigns    ?? true);
+  // Opt-IN, unlike the rest of this list — most clubs have no lifeguards.
+  // Must match defaultOn:false for lifeguard_scheduling in admin-flags.js,
+  // or the nav and this checkbox disagree about an unset flag.
+  setChk('feat_lifeguard_scheduling', s.features?.lifeguard_scheduling ?? false);
   // guest_passes removed 2026-05-08
   // keyfobs + gate are provider-controlled. Stash existing values in
   // module-scope so collect() can preserve them across saves without a
@@ -1124,6 +1135,7 @@ function collect(prevSettings) {
       parties:      !!document.getElementById('feat_parties').checked,
       volunteer:    !!document.getElementById('feat_volunteer').checked,
       campaigns:    !!document.getElementById('feat_campaigns').checked,
+      lifeguard_scheduling: !!document.getElementById('feat_lifeguard_scheduling').checked,
       // guest_passes removed 2026-05-08
       // Provider-controlled — preserve via the stash from populate().
       keyfobs:      !!(window.__EXISTING_FEATURES_KEYFOBS__ === true),
