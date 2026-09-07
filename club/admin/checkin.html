@@ -14,7 +14,7 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
     --border:#e5e7eb; --green:#16a34a; --red:#dc2626; --amber:#92400e;
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
   }
@@ -23,7 +23,14 @@
   header { padding:14px 20px; background:var(--blue); color:#fff; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 8px rgba(10,59,92,.18) }
   header h1 { margin:0; font-family:'Fraunces',Georgia,serif; font-weight:600; font-size:20px; letter-spacing:-.015em }
   header .stats { font-size:13px; opacity:.9; font-variant-numeric:tabular-nums }
-  header .signout { color:#fff; opacity:.7; font-size:12px; cursor:pointer; text-decoration:underline; margin-left:14px }
+  /* This page is the shared iPad at the gate, tapped by lifeguards with wet
+     hands. The old rule was bare 12px underlined text with no padding —
+     a 17px-tall target. Padded to the 44px minimum without making it
+     visually louder, since it should be findable but not eye-catching. */
+  header .signout { color:#fff; opacity:.7; font-size:13px; cursor:pointer; text-decoration:underline;
+                    display:inline-flex; align-items:center; min-height:44px; padding:0 12px;
+                    border-radius:10px; margin-left:6px; -webkit-tap-highlight-color:transparent }
+  header .signout:active { opacity:1; background:rgba(255,255,255,.14) }
   main { flex:1; padding:18px 16px 100px; max-width:980px; width:100%; margin:0 auto }
   .search-bar { display:flex; gap:10px; margin-bottom:16px; position:sticky; top:0; padding:12px 0; background:var(--bg); z-index:50; border-bottom:1px solid var(--border) }
   .search-bar input { flex:1; padding:18px 22px; font:600 22px 'Inter',sans-serif; border:2px solid var(--blue); border-radius:14px; background:#fff }

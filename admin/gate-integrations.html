@@ -8,7 +8,7 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e5e7eb;
+    --bg:#f8fafc; --text:#0f172a; --muted:#5d6b81; --border:#e5e7eb;
     --green:#16a34a; --red:#dc2626; --amber:#d97706; --purple:#7e22ce;
     --shadow:0 1px 2px rgba(10,59,92,.04), 0 4px 12px rgba(10,59,92,.06);
     --r-md:12px; --r-lg:18px;
@@ -121,6 +121,15 @@
   .stat-label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
   .stat-num { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; color: var(--blue); margin-top: 2px; line-height: 1.1; }
   .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Flex items default to min-width:auto, which means a wide table inside
+     <main> cannot shrink and instead forces the WHOLE page wider than the
+     viewport. On a phone that produced 588px of unreachable page with the
+     banner text cut mid-word. min-width:0 lets main shrink; .table-scroll
+     then gives wide tables their own scroll area inside the card. */
+  main { min-width: 0; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-scroll > .table { min-width: 620px; }
 </style>
 </head>
 <body>
@@ -273,7 +282,7 @@
           </div>
         </div>
         <p class="lede" style="margin-top:0;margin-bottom:14px">Tenants whose panels aren't on the verified list yet. Each row is a panel-information submission. Review, evaluate, quote — or decline.</p>
-        <table class="table">
+        <div class="table-scroll"><table class="table">
           <thead>
             <tr><th>Tenant</th><th>Panel</th><th>Protocol</th><th>Submitted</th><th>Status</th><th>Action</th></tr>
           </thead>
@@ -311,7 +320,7 @@
               <td><button class="btn-sm">View notes</button></td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div class="card" style="background:linear-gradient(120deg,var(--blue-l),#fff);border-color:#cae0ef">
@@ -333,14 +342,14 @@
           <h2>Tenant deployments</h2>
           <button class="btn-sm" onclick="loadDeployments()">↻ Refresh</button>
         </div>
-        <table class="table" id="deployments-table">
+        <div class="table-scroll"><table class="table" id="deployments-table">
           <thead>
             <tr><th>Tenant</th><th>Contact</th><th>Status</th><th>Invoice</th><th>Bridge health</th><th>Actions</th></tr>
           </thead>
           <tbody id="deployments-tbody">
             <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div class="card" style="background:var(--blue-l); border-color:#cae0ef">
@@ -365,7 +374,7 @@
         <p class="lede" style="margin-bottom: 16px">
           Pre-flashed bridges sitting on the shelf, ready to ship. Reorder threshold = 3.
         </p>
-        <table class="table">
+        <div class="table-scroll"><table class="table">
           <thead>
             <tr><th>SKU</th><th>Variant</th><th>In stock</th><th>Reserved</th><th>Available</th><th>Action</th></tr>
           </thead>
@@ -379,7 +388,7 @@
               <td><button class="btn-sm">Reorder parts</button></td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
       <p class="lede" style="text-align:center;margin-top:20px;font-size:12px">
         💡 Future: automate parts re-ordering when threshold hit. For now, manual.

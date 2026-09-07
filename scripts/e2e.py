@@ -382,8 +382,14 @@ def settings_round_trip():
         if k == marker_key: continue
         assert k in after, f'lost key on round-trip: {k}'
 
-    # Cleanup marker
-    cleaned = {k: v for k, v in after.items() if k != marker_key}
+    # Cleanup. Strip EVERY _e2e_marker_* key, not just this run's.
+    # The old version removed only marker_key, but each run copies `before`
+    # forward wholesale, so any run that died between save and cleanup left
+    # its marker in the tenant's settings permanently and every later run
+    # faithfully preserved it. That accumulated 37 junk keys in Bishop's
+    # live settings blob before anyone looked. Sweeping the whole prefix
+    # makes the test clean up after its own past failures too.
+    cleaned = {k: v for k, v in after.items() if not k.startswith('_e2e_marker_')}
     post(f'{SUPABASE_URL}/functions/v1/tenant_settings', {
         'action': 'save', 'value': cleaned,
     }, TOKEN_A)

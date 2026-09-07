@@ -11,12 +11,18 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
     --border:#e5e7eb; --green:#16a34a;
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
     --r-md: 12px; --r-lg: 18px; --max: 760px;
   }
-  .tier-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 28px; }
+  /* Four tiers in a 716px content box: minmax(180px) needs 756px to fit
+     four columns, so it fell to three and left Enterprise orphaned on a
+     row of its own beside a hole. minmax(280px) resolves to a balanced
+     2x2 here and collapses to a single column on a phone. If the free
+     tier is ever removed, three cards will sit in a row again on their
+     own — auto-fit handles that without another change. */
+  .tier-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 16px 0 28px; }
   .tier-card { padding: 18px; border: 1.5px solid var(--border); border-radius: var(--r-md); background: #fff; position: relative; }
   .tier-card.featured { border-color: var(--sun); box-shadow: 0 4px 16px rgba(245,158,11,.12); }
   .tier-card .badge { position: absolute; top: -10px; right: 12px; background: var(--sun); color: #422006; font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 999px; letter-spacing: .04em; }

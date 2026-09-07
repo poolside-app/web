@@ -8,7 +8,7 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e5e7eb;
+    --bg:#f8fafc; --text:#0f172a; --muted:#5d6b81; --border:#e5e7eb;
     --green:#16a34a; --red:#dc2626; --amber:#d97706;
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 4px 12px rgba(10,59,92,.06);
     --r-md:12px; --r-lg:18px;
@@ -57,6 +57,15 @@
   .btn-sm { padding: 6px 12px; font-size: 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; font-weight: 500; }
   .btn-sm:hover { background: var(--blue-l); border-color: var(--blue); color: var(--blue); }
   .banner { background: var(--sun); color: #422006; padding: 14px 18px; border-radius: var(--r-md); margin-bottom: 22px; font-size: 14px; }
+
+  /* Flex items default to min-width:auto, which means a wide table inside
+     <main> cannot shrink and instead forces the WHOLE page wider than the
+     viewport. On a phone that produced 588px of unreachable page with the
+     banner text cut mid-word. min-width:0 lets main shrink; .table-scroll
+     then gives wide tables their own scroll area inside the card. */
+  main { min-width: 0; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-scroll > .table { min-width: 560px; }
 </style>
 </head>
 <body>
@@ -122,27 +131,27 @@
         <h2>🏊 Tenants</h2>
         <input id="tenant-search" placeholder="🔍 Search…" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 220px;" oninput="renderTenants()">
       </div>
-      <table class="table">
+      <div class="table-scroll"><table class="table">
         <thead>
           <tr><th>Club</th><th>Subdomain</th><th>Plan</th><th>Status</th><th>Households</th><th></th></tr>
         </thead>
         <tbody id="tenants-tbody">
           <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">Loading…</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
 
     <div class="card" id="integrations">
       <div class="card-head"><h2>🔌 Integrations</h2></div>
       <p style="color:var(--muted);font-size:13px;margin-top:0">Provider-shared services. Configured once on the platform, every tenant inherits.</p>
-      <table class="table">
+      <div class="table-scroll"><table class="table">
         <thead>
           <tr><th>Service</th><th>Status</th><th>What it powers</th></tr>
         </thead>
         <tbody id="integrations-tbody">
           <tr><td colspan="3" style="text-align:center;color:#9ca3af;padding:18px">Loading…</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p style="color:var(--muted);font-size:12px;margin-top:10px">To set or rotate keys: <code>tools/supabase.exe secrets set KEY=VALUE --project-ref sdewylbddkcvidwosgxo</code> · or use <code>scripts/setup-stripe-platform.sh</code>.</p>
     </div>
 
@@ -863,7 +872,7 @@
       }
       const esc = s => String(s ?? '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
       list.innerHTML = `
-        <table class="table">
+        <div class="table-scroll"><table class="table">
           <thead><tr><th>Club</th><th>Admin email</th><th>Requested</th><th>Status</th><th></th></tr></thead>
           <tbody>
             ${requests.map(req => {
@@ -891,7 +900,7 @@
               `;
             }).join('')}
           </tbody>
-        </table>
+        </table></div>
       `;
     } catch (e) {
       list.innerHTML = `<div style="color:var(--red);font-size:13px">${String(e.message || e).replace(/[<>&"']/g, '')}</div>`;

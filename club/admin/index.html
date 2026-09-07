@@ -10,7 +10,7 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
     --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
     --r-md: 12px; --r-lg: 18px;
@@ -440,7 +440,13 @@ document.getElementById('signout').addEventListener('click', logout);
     if (!card) {
       card = document.createElement('div');
       card.id = 'onboarding-card';
-      card.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:20px 24px;margin:0 22px 18px';
+      // This card lives OUTSIDE <main> because main.innerHTML is replaced
+      // wholesale on render, which would wipe it. That means it does not
+      // inherit main's max-width:880px + 22px padding, so it has to
+      // reproduce that content box itself — otherwise it spans the full
+      // window while every card below it stops at 836px, and the page
+      // reads as a ragged left edge.
+      card.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:20px 24px;width:calc(100% - 44px);max-width:836px;margin:0 auto 18px';
       const main = document.getElementById('main');
       main.parentNode.insertBefore(card, main);
     }

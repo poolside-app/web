@@ -21,7 +21,7 @@
 <style>
   :root {
     --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
-    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
     --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
     --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
     --r-md: 12px; --r-lg: 18px;
@@ -1477,8 +1477,13 @@ function renderMemberCountTicker(count, pubCfg) {
   if (!count) return '';
   if (pubCfg && pubCfg.show_member_count === false) return '';
   if (!count.households && !count.members) return '';
-  return `<div style="font-size:12.5px;color:var(--muted);margin-top:10px;letter-spacing:.02em">
-    <b style="color:var(--blue)">${count.households}</b> households · <b style="color:var(--blue)">${count.members}</b> members
+  // This ticker renders inside .hero-card, which is a dark navy gradient.
+  // It previously used --muted for the label and --blue for the numbers —
+  // and --blue IS the hero's own navy, so the counts were invisible against
+  // their own background. Light-on-dark, and don't say "1 households".
+  const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? '' : 's'}`;
+  return `<div style="font-size:12.5px;color:rgba(255,255,255,.75);margin-top:10px;letter-spacing:.02em">
+    <b style="color:#fff">${plural(count.households, 'household')}</b> · <b style="color:#fff">${plural(count.members, 'member')}</b>
   </div>`;
 }
 
