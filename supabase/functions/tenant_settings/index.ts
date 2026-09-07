@@ -328,7 +328,7 @@ Deno.serve(async (req) => {
           ? 'Members with paid dues see the "Unlock gate" button on their home.'
           : (gateRequested
               ? 'Once we\'ve coordinated hardware + verified payment, we activate this for your club.'
-              : 'Paid add-on ($1,200 + $75/mo). We coordinate manually — request it and we\'ll reach out.'),
+              : 'Paid add-on ($1,500 + $75/mo). We coordinate manually — request it and we\'ll reach out.'),
         optional: true,
       },
     ];
