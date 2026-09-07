@@ -382,10 +382,7 @@ document.getElementById('signout').addEventListener('click', logout);
           const orig = copyBtn.textContent;
           copyBtn.textContent = '✓ Copied';
           copyBtn.style.background = '#16a34a';
-          // Mark "share apply link" step complete in localStorage so the
-          // onboarding checklist can check it off.
-          localStorage.setItem('poolside_onboarding_share_apply_link', '1');
-          paintOnboardingChecklist();   // re-paint if visible
+          markApplyLinkShared();
           setTimeout(() => {
             copyBtn.textContent = orig;
             copyBtn.style.background = '';
@@ -393,7 +390,12 @@ document.getElementById('signout').addEventListener('click', logout);
         } catch {
           // navigator.clipboard can fail in non-HTTPS or older browsers —
           // fall back to selecting the text so the user can Ctrl+C.
+          // Tick the step here too: the intent to share is the same, and
+          // before this the flag was only set on the success path, so an
+          // admin whose browser blocks the clipboard API could never
+          // complete the step and the checklist never went away.
           if (inputEl) { inputEl.focus(); inputEl.select(); }
+          markApplyLinkShared();
           alert('Press Ctrl+C (or ⌘C on Mac) to copy.');
         }
       });
@@ -402,10 +404,29 @@ document.getElementById('signout').addEventListener('click', logout);
 
   // ── Onboarding checklist: 5-step first-run guide. Hidden once dismissed
   // (localStorage poolside_onboarding_dismissed=1) or once all 5 steps are
-  // complete. The "share your apply link" step uses localStorage; the rest
-  // come from the onboarding_status endpoint. Provider impersonation hides
+  // complete. All five steps now come from the onboarding_status endpoint;
+  // "share your apply link" used to be localStorage-only, which made it
+  // per-browser. Provider impersonation hides
   // the checklist entirely so Doug doesn't see his "club" checklist on
   // every tenant he visits.
+  // Records the "shared the apply link" step against the CLUB, not the
+  // browser. It used to be localStorage-only, which meant every admin (and
+  // every device) had to copy the link themselves before the checklist
+  // would go away. Local flag is still set so the tick is instant and so
+  // clubs that already completed it this way don't regress.
+  async function markApplyLinkShared() {
+    localStorage.setItem('poolside_onboarding_share_apply_link', '1');
+    if (ONBOARDING_STATE?.steps) ONBOARDING_STATE.steps.share_apply_link = true;
+    paintOnboardingChecklist();
+    try {
+      await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'mark_onboarding_step', step: 'apply_link_shared' }),
+      });
+    } catch { /* the local flag already ticked it; next load re-syncs */ }
+  }
+
   let ONBOARDING_STATE = null;
   async function paintOnboardingChecklist() {
     if (user.impersonated) return;
@@ -423,7 +444,10 @@ document.getElementById('signout').addEventListener('click', logout);
       } catch { return; }
     }
     const s = ONBOARDING_STATE.steps || {};
-    const shareApplyLink = localStorage.getItem('poolside_onboarding_share_apply_link') === '1';
+    // Server value is authoritative; the legacy local flag is honoured so
+    // clubs that ticked this before it moved server-side stay ticked.
+    const shareApplyLink = !!s.share_apply_link
+      || localStorage.getItem('poolside_onboarding_share_apply_link') === '1';
     const steps = [
       { key: 'tiers_set',        done: !!s.tiers_set,        label: 'Set membership levels',                href: '/club/admin/tiers.html',   cta: 'Set up' },
       { key: 'payment_set',      done: !!s.payment_set,      label: 'Add Venmo handle (or connect Stripe)', href: '/club/admin/payments.html',         cta: 'Add' },

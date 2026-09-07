@@ -1083,6 +1083,7 @@ Deno.serve(async (req) => {
     const sv = (settings?.value as Record<string, unknown> | undefined) ?? {};
     const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
     const payments = (sv.payments as Record<string, unknown> | undefined) ?? {};
+    const onboarding = (sv.onboarding as Record<string, unknown> | undefined) ?? {};
     const venmoHandle = String(payments.venmo_handle ?? '').trim();
     const slug = tenant?.slug ?? payload.slug ?? '';
     return jsonResponse({
@@ -1093,8 +1094,42 @@ Deno.serve(async (req) => {
         payment_set:      !!venmoHandle || !!tenant?.stripe_charges_enabled,
         self_signup_done: !!admin?.linked_member_id,
         invite_board:     (adminCount ?? 0) > 1,
+        // Was tracked in localStorage, which made it per-browser: the
+        // treasurer copied the link and the president still saw "4 of 5"
+        // on their phone, forever. Club-level fact, so it lives with the
+        // club's settings.
+        share_apply_link: !!onboarding.apply_link_shared,
       },
     });
+  }
+
+  // Mark an onboarding checklist step done. Deliberately open to any
+  // tenant_admin rather than owners only: tenant_settings.save is
+  // owner-gated, but a treasurer copying the apply link should be able to
+  // tick the box. The only writable value is a boolean flag under
+  // settings.onboarding, so there is nothing here worth abusing.
+  if (action === 'mark_onboarding_step') {
+    const ALLOWED = new Set(['apply_link_shared']);
+    const step = String(body.step ?? '');
+    if (!ALLOWED.has(step)) {
+      return jsonResponse({ ok: false, error: 'Unknown onboarding step' }, 400);
+    }
+    const { data: row } = await sb.from('settings')
+      .select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const current = (row?.value ?? {}) as Record<string, unknown>;
+    const onboarding = {
+      ...((current.onboarding as Record<string, unknown> | undefined) ?? {}),
+      [step]: true,
+    };
+    if (row) {
+      await sb.from('settings')
+        .update({ value: { ...current, onboarding } })
+        .eq('tenant_id', payload.tid);
+    } else {
+      await sb.from('settings')
+        .insert({ tenant_id: payload.tid, value: { onboarding } });
+    }
+    return jsonResponse({ ok: true });
   }
 
   if (action === 'reset_admin_password') {
