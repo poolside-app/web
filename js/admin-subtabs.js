@@ -119,6 +119,26 @@
       .admin-subtabs a:hover { color: var(--blue); }
       .admin-subtabs .badge { background: var(--sun); color: #fff; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; min-width: 20px; text-align: center; }
       .admin-subtabs .badge.zero { background: var(--bg-2); color: var(--muted); }
+
+      /* A 5-item strip cannot fit 390px: Members needs ~207px more than it
+         has. The page itself does not overflow — the strip scrolls — but a
+         silent scroller is barely better than no link, because nothing tells
+         you two tabs exist off the right edge. Tighten the padding on narrow
+         screens and fade whichever edge has more behind it. */
+      @media (max-width: 560px) {
+        .admin-subtabs { padding: 0 12px; }
+        .admin-subtabs a { padding: 13px 11px; font-size: 13.5px; }
+      }
+      .admin-subtabs-wrap { position: relative; }
+      .admin-subtabs-wrap::before,
+      .admin-subtabs-wrap::after {
+        content: ''; position: absolute; top: 0; bottom: 1px; width: 26px;
+        pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 1;
+      }
+      .admin-subtabs-wrap::before { left: 0;  background: linear-gradient(to right, #fff, rgba(255,255,255,0)); }
+      .admin-subtabs-wrap::after  { right: 0; background: linear-gradient(to left,  #fff, rgba(255,255,255,0)); }
+      .admin-subtabs-wrap.more-left::before  { opacity: 1; }
+      .admin-subtabs-wrap.more-right::after  { opacity: 1; }
     `;
     document.head.appendChild(style);
   }
@@ -127,9 +147,27 @@
     const el = document.getElementById('admin-subtabs');
     if (!el) return;
     const active = activeKey();
-    el.innerHTML = `<div class="admin-subtabs">${items.map(t => `
+    el.innerHTML = `<div class="admin-subtabs-wrap"><div class="admin-subtabs">${items.map(t => `
       <a href="${t.href}" class="${active === t.key ? 'on' : ''}" data-scope="${t.scope}" data-subtab="${t.key}">${t.label}${t.key === 'applications' ? ' <span class="badge zero" id="apps-badge">0</span>' : ''}</a>
-    `).join('')}</div>`;
+    `).join('')}</div></div>`;
+
+    // Show the edge fades only when there is genuinely more to see, and
+    // keep the active tab in view — landing on Money > Sponsors with the
+    // strip scrolled to the left would look like Sponsors isn't there.
+    const wrap = el.querySelector('.admin-subtabs-wrap');
+    const strip = el.querySelector('.admin-subtabs');
+    const sync = () => {
+      const max = strip.scrollWidth - strip.clientWidth;
+      wrap.classList.toggle('more-left', strip.scrollLeft > 2);
+      wrap.classList.toggle('more-right', strip.scrollLeft < max - 2);
+    };
+    strip.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    const on = strip.querySelector('a.on');
+    if (on && strip.scrollWidth > strip.clientWidth) {
+      on.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }
+    sync();
   }
 
   // Rendered synchronously: the <script> sits immediately after its

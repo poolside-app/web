@@ -116,9 +116,12 @@ const LS = {
 };
 
 // ── Page manifest ────────────────────────────────────────────────────────
-const ADMIN_PAGES = ['', 'members.html', 'applications.html', 'application.html', 'payments.html', 'billing.html',
+// applications.html / households.html / guest-passes.html retired to
+// redirect stubs 2026-09-07 — dropped here so the smoke run isn't just
+// re-testing members.html three times under different names.
+const ADMIN_PAGES = ['', 'members.html', 'tiers.html', 'application.html', 'payments.html', 'billing.html',
   'events.html', 'parties.html', 'programs.html', 'lifeguards.html', 'my-shifts.html', 'volunteer.html',
-  'guest-passes.html', 'campaigns.html', 'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
+  'campaigns.html', 'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
   'audit.html', 'emails.html', 'feedback.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',
   'change-password.html', 'health.html', 'help.html', 'impact.html', 'setup.html',
   'import.html', 'migrate.html'];
