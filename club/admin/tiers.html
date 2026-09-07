@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Policies — Poolside</title>
+<title>Membership levels — Poolside</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -70,8 +70,8 @@
 </header>
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
-  <a href="/club/admin/members.html" class="on">Members</a>
-  <a href="/club/admin/payments.html">Money</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/payments.html" class="on">Money</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
   <a href="/club/admin/impact.html">Insights</a>
@@ -82,53 +82,29 @@
 <script src="/js/admin-flags.js"></script>
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
-<script>
-  // ?focus=policies → highlight the toolbar (which has the +Add button)
-  window.FOCUS_FALLBACKS = { policies: '.toolbar, main' };
-</script>
 
 <main>
-  <div class="toolbar" data-focus="policies">
+  <div class="toolbar" data-focus="tiers">
     <div>
-      <h1>Policies</h1>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">The text members agree to when they apply. Required policies show as gated checkboxes during signup.</div>
+      <h1>Membership levels</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">The levels applicants pick from on the apply form. The first one is the default. Leave the price blank if you bill per-household manually.</div>
     </div>
-    <button class="btn" onclick="openCreate()">+ Add policy</button>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn btn-ghost" type="button" onclick="Tiers.add()">+ Add level</button>
+      <button class="btn" id="tiers-save" type="button" onclick="Tiers.save()">Save levels</button>
+    </div>
   </div>
-  <div id="list"><div class="empty">Loading…</div></div>
+  <div class="card" style="padding:18px">
+    <div id="tiers-list"><div class="empty" style="padding:30px">Loading…</div></div>
+  </div>
+  <div class="err" id="tiers-err" style="margin-top:14px"></div>
 </main>
-
-<div class="scrim" id="scrim">
-  <div class="modal">
-    <h2 id="m-title">Edit policy</h2>
-    <label>Title *</label>
-    <input id="m-title-input" maxlength="140" placeholder="e.g. Pool Rules">
-    <label>Body *</label>
-    <textarea id="m-body" maxlength="20000" placeholder="The full text members will read and agree to."></textarea>
-    <div style="display:flex;gap:14px;align-items:center;margin-top:14px;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:13px;margin:0">
-        <input id="m-required" type="checkbox" style="width:auto;margin:0">
-        Required to apply (gates the signup form)
-      </label>
-    </div>
-    <div class="err" id="m-err"></div>
-    <div class="modal-foot">
-      <button class="btn btn-danger left" id="m-delete" style="display:none" onclick="del()">Archive</button>
-      <button class="btn btn-ghost" onclick="closeM()">Cancel</button>
-      <button class="btn" id="m-save" onclick="save()">Save</button>
-    </div>
-  </div>
-</div>
 
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
-const URL_BASE     = `${SUPABASE_URL}/functions/v1/policies`;
-const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
-
-let CACHE = [];
-let EDITING = null;
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -152,9 +128,10 @@ async function logout() {
 }
 document.getElementById('signout').addEventListener('click', logout);
 
-async function call(action, extra = {}) {
-  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
-  const res = await fetch(URL_BASE, {
+async function call(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
     body: JSON.stringify({ action, ...extra }),
@@ -163,112 +140,102 @@ async function call(action, extra = {}) {
   return res.json();
 }
 
-function render() {
-  const list = document.getElementById('list');
-  if (!CACHE.length) { list.innerHTML = `<div class="empty">No policies yet. <b>+ Add policy</b> to write your first one.</div>`; return; }
-  list.innerHTML = CACHE.map((p, i) => `
-    <div class="pol" data-id="${p.id}" data-idx="${i}">
-      <div class="pol-row">
-        <div style="flex:1;min-width:0">
-          <h3>${escapeHtml(p.title)} ${p.required_for_apply ? '<span class="pill req">Required</span>' : '<span class="pill info">Info only</span>'} ${p.active ? '' : '<span class="pill off">Archived</span>'}</h3>
-          <div class="meta">Updated ${escapeHtml(new Date(p.updated_at).toLocaleDateString())}</div>
-          <div class="body" onclick="this.parentElement.parentElement.classList.toggle('expanded')">${escapeHtml(p.body)}</div>
-        </div>
-        <div class="actions">
-          <div class="reorder">
-            <button title="Move up" onclick="moveBy(${i}, -1)" ${i === 0 ? 'disabled style="opacity:.4"' : ''}>↑</button>
-            <button title="Move down" onclick="moveBy(${i}, 1)" ${i === CACHE.length - 1 ? 'disabled style="opacity:.4"' : ''}>↓</button>
-          </div>
-          <button class="btn btn-sm btn-ghost" onclick="openEdit('${p.id}')">Edit</button>
-        </div>
+// ── Tiers namespace ────────────────────────────────────────────────────
+// Moved out of members.html on 2026-09-07. Tiers were a hash-addressed
+// panel there (#tiers) with no sub-tab pointing at them, so the only way
+// to reach this screen was to already know the URL. Prices belong with
+// the rest of the money surfaces, so it now lives under Money.
+//
+// Save sends only `{ membership_tiers: [...] }` — tenant_settings.save
+// shallow-merges, so every other settings key survives.
+const Tiers = (() => {
+  const TIER_DEFAULTS = [
+    { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members' },
+    { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },
+    { slug: 'senior', label: 'Senior',  price_cents: 25000, description: '65+' },
+  ];
+  let LOADED = false;
+
+  function paint(tiers) {
+    const list = document.getElementById('tiers-list');
+    if (!list) return;
+    const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
+    list.innerHTML = rows.map((t, i) => `
+      <div class="tier-row" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)" data-i="${i}">
+        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Name shown to applicants</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <div><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Annual price ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <button type="button" onclick="this.parentElement.remove()" title="Remove tier" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">×</button>
+        <div style="grid-column:1/-1"><label style="font-size:11px;font-weight:600;margin:0 0 4px;display:block">Description (optional)</label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="What this tier covers" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
       </div>
-    </div>
-  `).join('');
-}
-
-async function refresh() {
-  try {
-    const data = await call('list');
-    if (!data.ok) throw new Error(data.error || 'Failed to load');
-    CACHE = data.policies || [];
-    render();
-  } catch (e) {
-    document.getElementById('list').innerHTML = `<div class="empty" style="border-color:#fecaca;color:#7f1d1d">${escapeHtml(e.message)}</div>`;
+    `).join('');
   }
-}
-
-async function moveBy(idx, delta) {
-  const target = idx + delta;
-  if (target < 0 || target >= CACHE.length) return;
-  const order = CACHE.map(p => p.id);
-  [order[idx], order[target]] = [order[target], order[idx]];
-  const r = await call('reorder', { order });
-  if (!r.ok) { alert(r.error || 'Reorder failed'); return; }
-  await refresh();
-}
-
-function openCreate() {
-  EDITING = null;
-  document.getElementById('m-title').textContent = 'Add policy';
-  document.getElementById('m-delete').style.display = 'none';
-  document.getElementById('m-title-input').value = '';
-  document.getElementById('m-body').value = '';
-  document.getElementById('m-required').checked = true;
-  document.getElementById('m-err').classList.remove('show');
-  document.getElementById('scrim').classList.add('open');
-}
-function openEdit(id) {
-  const p = CACHE.find(x => x.id === id);
-  if (!p) return;
-  EDITING = p;
-  document.getElementById('m-title').textContent = `Edit: ${p.title}`;
-  document.getElementById('m-delete').style.display = p.active ? 'inline-block' : 'none';
-  document.getElementById('m-title-input').value = p.title || '';
-  document.getElementById('m-body').value = p.body || '';
-  document.getElementById('m-required').checked = !!p.required_for_apply;
-  document.getElementById('m-err').classList.remove('show');
-  document.getElementById('scrim').classList.add('open');
-}
-function closeM() { document.getElementById('scrim').classList.remove('open'); }
-
-async function save() {
-  const errEl = document.getElementById('m-err'); errEl.classList.remove('show');
-  const payload = {
-    title: document.getElementById('m-title-input').value.trim(),
-    body:  document.getElementById('m-body').value.trim(),
-    required_for_apply: document.getElementById('m-required').checked,
-  };
-  if (!payload.title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
-  if (!payload.body)  { errEl.textContent = 'Body is required'; errEl.classList.add('show'); return; }
-  try {
-    const r = EDITING ? await call('update', { id: EDITING.id, ...payload }) : await call('create', payload);
-    if (!r.ok) throw new Error(r.error || 'Save failed');
-    closeM(); await refresh();
-  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
-}
-
-async function del() {
-  if (!EDITING) return;
-  if (!confirm(`Archive "${EDITING.title}"? It'll stop appearing on the apply form.`)) return;
-  const r = await call('delete', { id: EDITING.id });
-  if (!r.ok) { document.getElementById('m-err').textContent = r.error || 'Delete failed'; document.getElementById('m-err').classList.add('show'); return; }
-  closeM(); await refresh();
-}
+  function collect() {
+    const out = [];
+    document.querySelectorAll('#tiers-list .tier-row').forEach(row => {
+      const get = (f) => (row.querySelector(`[data-field="${f}"]`) || {}).value || '';
+      const label = get('label').trim();
+      if (!label) return;
+      const slug = (get('slug').trim() || label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const price = parseFloat(get('price'));
+      const desc = get('description').trim();
+      out.push({
+        slug, label,
+        price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0,
+        description: desc || null,
+      });
+    });
+    return out;
+  }
+  function add() {
+    const tiers = collect();
+    tiers.push({ slug: '', label: '', price_cents: 0, description: '' });
+    paint(tiers);
+  }
+  async function refresh() {
+    const errEl = document.getElementById('tiers-err');
+    errEl.classList.remove('show');
+    try {
+      const data = await call(SETTINGS_URL, 'get');
+      if (!data.ok) throw new Error(data.error || 'Failed to load');
+      const tiers = Array.isArray(data.settings?.membership_tiers) ? data.settings.membership_tiers : null;
+      paint(tiers);
+      LOADED = true;
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+    }
+  }
+  async function save() {
+    const btn = document.getElementById('tiers-save');
+    const errEl = document.getElementById('tiers-err');
+    errEl.classList.remove('show');
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Saving…';
+    try {
+      const tiers = collect();
+      const data = await call(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
+      if (!data.ok) throw new Error(data.error || 'Save failed');
+      btn.textContent = '✓ Saved';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
+  }
+  return { refresh, paint, add, save };
+})();
 
 (async () => {
-  if (!token()) { logout(); return; }
   try {
-    const me = await fetch(ME_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
-      body: JSON.stringify({ action: 'me' }),
-    }).then(r => r.json());
+    const me = await call(`${SUPABASE_URL}/functions/v1/tenant_admin_auth`, 'me');
     if (!me.ok) { logout(); return; }
-    document.title = `Policies — ${me.tenant.display_name}`;
-    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
-    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
-  } catch { logout(); return; }
-  await refresh();
+    document.getElementById('whoami').textContent = me.user?.display_name || me.user?.username || '';
+  } catch (_) { /* header name is cosmetic; don't block the page */ }
+  Tiers.refresh();
 })();
 </script>
 </body>

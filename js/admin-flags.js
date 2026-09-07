@@ -70,18 +70,13 @@
         nav.tabs::-webkit-scrollbar { display: none; }
         nav.tabs a { white-space: nowrap; flex-shrink: 0; }
 
-        /* Sub-tab strips rendered by /js/members-subtabs.js,
-           /js/content-subtabs.js, /js/calendar-subtabs.js,
-           /js/insights-subtabs.js — same pattern across the board. */
-        .members-subtabs, .content-subtabs, .calendar-subtabs, .insights-subtabs, .payments-subtabs {
+        /* Sub-tab strip, rendered by /js/admin-subtabs.js. Was five
+           per-section class names; one strip file now serves them all. */
+        .admin-subtabs {
           overflow-x: auto !important; -webkit-overflow-scrolling: touch; scrollbar-width: none;
         }
-        .members-subtabs::-webkit-scrollbar,
-        .content-subtabs::-webkit-scrollbar,
-        .calendar-subtabs::-webkit-scrollbar,
-        .insights-subtabs::-webkit-scrollbar,
-        .payments-subtabs::-webkit-scrollbar { display: none; }
-        .members-subtabs a, .content-subtabs a, .calendar-subtabs a, .insights-subtabs a, .payments-subtabs a { white-space: nowrap; flex-shrink: 0; }
+        .admin-subtabs::-webkit-scrollbar { display: none; }
+        .admin-subtabs a { white-space: nowrap; flex-shrink: 0; }
 
         /* Tables inside cards: let them scroll horizontally on narrow
            viewports instead of either clipping (when card has overflow:hidden)
@@ -192,9 +187,14 @@
   // Scope → nav selector (per-admin role assignments).
   // Pages without a scope mapping (like the dashboard) are always visible.
   const SCOPE_NAV = {
-    households:    'a[href="/club/admin/households.html"]',
-    applications: ['a[href="/club/admin/applications.html"]'],
+    // households.html / applications.html were retired 2026-09-07 — their
+    // views live on members.html behind #hashes. These selectors had been
+    // pointing at links that no longer existed, so gating on either scope
+    // was a silent no-op.
+    households:    'a[href="/club/admin/members.html#households"]',
+    applications: ['a[href="/club/admin/members.html#applications"]'],
     payments:      'a[href="/club/admin/payments.html"]',
+    tiers:         'a[href="/club/admin/tiers.html"]',
     // 'members' is the merged hub — visible if the user has EITHER
     // households OR applications scope. Handled separately below since
     // it needs OR-logic, not the per-scope hide loop.
@@ -415,8 +415,11 @@
         if (!hasAnyMembers) {
           document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });
         }
-        // Per-subtab scope hiding (renders by /js/members-subtabs.js)
-        document.querySelectorAll('.members-subtabs a[data-scope]').forEach(el => {
+        // Per-subtab scope hiding. This used to target .members-subtabs
+        // only, so sub-tabs in Content/Calendar/Insights were never scope
+        // gated at all — a comms-only admin still saw every Calendar tab.
+        // One strip class now covers all sections, including new Money.
+        document.querySelectorAll('.admin-subtabs a[data-scope]').forEach(el => {
           const need = el.dataset.scope;
           if (need && !scopes.has(need)) el.style.display = 'none';
         });
@@ -512,7 +515,7 @@
   window.PoolsideAuth = { meOrLogout, logout: poolsideLogout };
 
   // ── Top-nav badges (2026-05-23) ───────────────────────────────────────
-  // The Members > Pipeline subtab gets a badge from members-subtabs.js,
+  // The Members > Pipeline subtab gets a badge from admin-subtabs.js,
   // but the TOP-level "Members" tab in nav.tabs had no equivalent —
   // Doug 2026-05-23: pending application visible on Pipeline but not on
   // the parent Members tab, so admins on any other top-level page (e.g.

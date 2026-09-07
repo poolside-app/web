@@ -1,76 +1,114 @@
 #!/usr/bin/env python3
-"""Rewrite <nav class="tabs">…</nav> across all club/admin/*.html files
-with the canonical 7-item top nav, marking the right tab `class="on"`
-based on which page is being rendered.
+"""Rewrite the top nav + sub-tab strip across every club/admin/*.html file.
 
-Also injects a Content / Insights sub-tab container immediately AFTER
-</nav> for pages that fall under those wrapper sections (so users land
-on a Content sub-tab page and see the strip; the wrapper "Content" top
-tab is just a link to the first Content sub-tab page).
+Idempotent — running twice produces no diff. Pass --dry-run to see what
+would change without writing.
 
-Idempotent — running twice produces no diff.
+2026-09-07 reorganisation
+-------------------------
+Previously this script had drifted badly out of sync with the live pages:
+its canonical list still had an "Application" top tab and no "Lifeguards",
+so RUNNING IT WOULD HAVE SILENTLY REVERTED the nav. It also mapped
+documents.html, which does not exist. Anyone who ran it to fix one page
+would have broken every other page's nav. Keeping this file honest matters
+more than the nav change itself.
+
+What changed in the nav:
+  * New "Money" tab. Financial surfaces were spread over four top tabs —
+    dues under Members, campaigns/donations/sponsors under Content, program
+    fees under Calendar, and billing under nothing at all. A treasurer had
+    to learn three tabs plus a URL nobody had written down.
+  * Lifeguards demoted from a top-level tab into Calendar, next to
+    Volunteer. They are the same job (staffing the pool); Lifeguards had
+    the same visual weight as Settings while Volunteer was two levels down.
+  * Content stops being a junk drawer: it keeps publishing + listening
+    surfaces only.
+  * Sub-tab strips are now ONE file (/js/admin-subtabs.js) that picks the
+    right strip from the path, so this script injects an identical block on
+    every page instead of tracking per-section page sets.
 """
 
+import argparse
 import re
 from pathlib import Path
 
 ADMIN = Path(__file__).resolve().parents[1] / "club" / "admin"
 
-# Canonical 7-tab top nav. Order is meaningful — daily-ops first, setup,
-# then content, insights, settings.
+# Canonical top nav. Order is meaningful: daily ops first, then money,
+# then scheduling, then publishing, then reporting, then configuration.
 CANONICAL_TABS = [
-    ("dashboard",   "/club/admin/",                   "Dashboard"),
-    ("members",     "/club/admin/members.html",       "Members"),
-    ("application", "/club/admin/application.html",   "Application"),
-    ("calendar",    "/club/admin/events.html",        "Calendar"),
-    ("content",     "/club/admin/announcements.html", "Content"),
-    ("insights",    "/club/admin/impact.html",        "Insights"),
-    ("settings",    "/club/admin/settings.html",      "Settings"),
+    ("dashboard", "/club/admin/",                   "Dashboard"),
+    ("members",   "/club/admin/members.html",       "Members"),
+    ("money",     "/club/admin/payments.html",      "Money"),
+    ("calendar",  "/club/admin/events.html",        "Calendar"),
+    ("content",   "/club/admin/announcements.html", "Content"),
+    ("insights",  "/club/admin/impact.html",        "Insights"),
+    ("settings",  "/club/admin/settings.html",      "Settings"),
 ]
 
-# Each filename maps to which top-tab gets `class="on"`. Pages not listed
-# here keep no tab marked active.
+# filename -> which top tab is marked active. Must stay in step with
+# PAGE_SECTION in /js/admin-subtabs.js; test_nav_consistency() checks it.
 PAGE_TO_TAB = {
-    "index.html":         "dashboard",
-    "members.html":       "members",
-    "applications.html":  "members",   # legacy redirect
-    "households.html":    "members",   # legacy redirect
-    "payments.html":      "members",
-    "programs.html":      "members",
-    "parties.html":       "members",
-    "volunteer.html":     "members",
-    "guest-passes.html":  "members",
-    "documents.html":     "members",
-    "emails.html":        "members",   # member-lifecycle emails live under Members
-    "application.html":   "application",
-    "policies.html":      "application",  # deep page, embedded in Application editor
-    "events.html":        "calendar",
-    "announcements.html": "content",
-    "campaigns.html":     "content",
-    "sponsors.html":      "content",
-    "feedback.html":      "content",
-    "photos.html":        "content",
-    "impact.html":        "insights",
-    "health.html":        "insights",
-    "audit.html":         "insights",
-    "settings.html":      "settings",
-    "billing.html":       "settings",
-    "admins.html":        "settings",
-    "help.html":          None,  # accessed via floating fab; no top tab
+    "index.html":          "dashboard",
+    # Members — people and the paperwork that makes them members
+    "members.html":        "members",
+    "policies.html":       "members",
+    "application.html":    "members",
+    "import.html":         "members",
+    "migrate.html":        "members",
+    "emails.html":         "members",
+    # Money
+    "payments.html":       "money",
+    "tiers.html":          "money",
+    "campaigns.html":      "money",
+    "donations.html":      "money",
+    "sponsors.html":       "money",
+    # Calendar — things that happen at the pool on a date
+    "events.html":         "calendar",
+    "programs.html":       "calendar",
+    "parties.html":        "calendar",
+    "volunteer.html":      "calendar",
+    "lifeguards.html":     "calendar",
+    "my-shifts.html":      "calendar",
+    # Content — publishing and listening
+    "announcements.html":  "content",
+    "photos.html":         "content",
+    "board-meetings.html": "content",
+    "feedback.html":       "content",
+    # Insights
+    "impact.html":         "insights",
+    "audit.html":          "insights",
+    "health.html":         "insights",
+    # Settings — configuration and the club's account with Poolside
+    "settings.html":       "settings",
+    "admins.html":         "settings",
+    "billing.html":        "settings",
+    # Deliberately no active tab: reached from the dashboard, a FAB, or an
+    # emailed link rather than from the nav.
+    "checkin.html":        None,
+    "help.html":           None,
+    "setup.html":          None,
+    "change-password.html": None,
+    "activate.html":       None,
 }
 
-# Pages that should render the Content sub-tab strip beneath the top nav.
-CONTENT_PAGES = {"announcements.html", "campaigns.html", "sponsors.html",
-                 "feedback.html", "photos.html"}
-# Pages that render the Insights sub-tab strip.
-INSIGHTS_PAGES = {"impact.html", "health.html", "audit.html"}
+SKIP = {"login.html"}
 
-# Regex to match the existing nav block (greedy-safe: matches the first
-# </nav> after <nav class="tabs">).
 NAV_RE = re.compile(r'<nav class="tabs">.*?</nav>', re.DOTALL)
 
+# Any previously-injected strip: the old per-section containers and their
+# script tags, in either order, plus the new unified one. Matched so the
+# rewrite stays idempotent and never stacks two strips on a page.
+OLD_STRIP_RE = re.compile(
+    r'\s*(?:<div id="(?:members|calendar|content|insights|money|settings|admin)-subtabs"></div>'
+    r'|<script src="/js/(?:members|calendar|content|insights|money|settings|admin)-subtabs\.js"></script>)',
+)
 
-def render_nav(active_key: str | None) -> str:
+SUBTAB_BLOCK = ('\n<div id="admin-subtabs"></div>'
+                '\n<script src="/js/admin-subtabs.js"></script>')
+
+
+def render_nav(active_key):
     parts = ['<nav class="tabs">']
     for key, href, label in CANONICAL_TABS:
         cls = ' class="on"' if key == active_key else ""
@@ -79,49 +117,52 @@ def render_nav(active_key: str | None) -> str:
     return "\n".join(parts)
 
 
-def render_subtab_block(filename: str) -> str:
-    """Return the sub-tab container + script tag if this page belongs to a
-    wrapper section, else empty string."""
-    if filename in CONTENT_PAGES:
-        return '\n<div id="content-subtabs"></div>\n<script src="/js/content-subtabs.js"></script>'
-    if filename in INSIGHTS_PAGES:
-        return '\n<div id="insights-subtabs"></div>\n<script src="/js/insights-subtabs.js"></script>'
-    return ""
-
-
-def rewrite_file(path: Path) -> bool:
-    text = path.read_text(encoding="utf-8")
+def rewrite_file(path: Path, dry_run: bool = False):
     name = path.name
-    if name == "login.html":
-        return False
+    if name in SKIP:
+        return None
+    text = path.read_text(encoding="utf-8")
     if not NAV_RE.search(text):
-        return False
-    active = PAGE_TO_TAB.get(name)
-    new_nav = render_nav(active) + render_subtab_block(name)
-    new_text = NAV_RE.sub(lambda _m: new_nav, text, count=1)
-    # Strip any pre-existing duplicate sub-tab container immediately
-    # following — keeps the file idempotent on subsequent runs.
-    if name in CONTENT_PAGES:
-        new_text = re.sub(
-            r'(<script src="/js/content-subtabs\.js"></script>)\s*<div id="content-subtabs"></div>\s*<script src="/js/content-subtabs\.js"></script>',
-            r'\1', new_text, flags=re.DOTALL)
-    if name in INSIGHTS_PAGES:
-        new_text = re.sub(
-            r'(<script src="/js/insights-subtabs\.js"></script>)\s*<div id="insights-subtabs"></div>\s*<script src="/js/insights-subtabs\.js"></script>',
-            r'\1', new_text, flags=re.DOTALL)
+        return None
+    if name not in PAGE_TO_TAB:
+        return ("unmapped", name)
+
+    # Strip every previously-injected strip first, wherever it sits, so the
+    # only one left is the one we add back.
+    body = OLD_STRIP_RE.sub("", text)
+    block = SUBTAB_BLOCK if name in PAGE_TO_TAB and PAGE_TO_TAB[name] else ""
+    # Pages with no active tab still get no strip.
+    new_nav = render_nav(PAGE_TO_TAB[name]) + (block if PAGE_TO_TAB[name] else "")
+    new_text = NAV_RE.sub(lambda _m: new_nav, body, count=1)
+
     if new_text == text:
-        return False
-    path.write_text(new_text, encoding="utf-8")
-    return True
+        return None
+    if not dry_run:
+        path.write_text(new_text, encoding="utf-8")
+    return ("rewrote", name)
 
 
-def main() -> None:
-    count = 0
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true",
+                    help="report what would change without writing")
+    args = ap.parse_args()
+
+    rewrote, unmapped = [], []
     for p in sorted(ADMIN.glob("*.html")):
-        if rewrite_file(p):
-            print(f"  rewrote {p.name}")
-            count += 1
-    print(f"{count} files rewritten")
+        r = rewrite_file(p, dry_run=args.dry_run)
+        if not r:
+            continue
+        (unmapped if r[0] == "unmapped" else rewrote).append(r[1])
+
+    verb = "would rewrite" if args.dry_run else "rewrote"
+    for n in rewrote:
+        print(f"  {verb} {n}")
+    if unmapped:
+        print("\n  NOT IN PAGE_TO_TAB (nav left untouched — add them or delete the page):")
+        for n in unmapped:
+            print(f"    {n}")
+    print(f"\n{len(rewrote)} files {verb}")
 
 
 if __name__ == "__main__":
