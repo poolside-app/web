@@ -102,7 +102,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, claim_source, invited_at, claimed_at, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at';
 
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
@@ -522,6 +522,11 @@ Deno.serve(async (req) => {
       // applicant's underlying capability — they can always opt into the
       // app later via /m/login.html.
       no_app_member: body.no_app_member === true,
+      // Auto-renew opt-in, taken while they are already entering a card.
+      // Only offered for card payments — Venmo and offline have no saved
+      // card to charge next season, so ticking it would be a lie.
+      wants_auto_renew: body.wants_auto_renew === true
+        && (body.payment_method === 'stripe' || body.payment_method === 'stripe_plan'),
     };
 
     // Claim → UPDATE the pre-filled row (flip to 'pending', stamp claimed_at).
@@ -1264,7 +1269,12 @@ Deno.serve(async (req) => {
       city: app.city,
       zip: app.zip,
       active: true,
+      // Honour the opt-in taken at signup. The charge run additionally
+      // requires a saved card (auto_renew_pm_id), which the Stripe webhook
+      // records — so this flag alone never charges anyone.
+      auto_renew: app.wants_auto_renew === true,
     };
+    if (app.wants_auto_renew === true) hhInsert.auto_renew_set_at = new Date().toISOString();
     if (verifyVenmo) hhInsert.dues_paid_for_year = true;
     const { data: hh, error: hhErr } = await sb.from('households').insert(hhInsert).select('id').single();
     if (hhErr || !hh) return jsonResponse({ ok: false, error: hhErr?.message || 'Could not create household' }, 500);

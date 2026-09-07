@@ -265,6 +265,15 @@
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Two card charges. Card saved for the second one.</div>
       </label>
       <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't fully wired — we'll email you a payment link after the board approves.</p>
+      <!-- Auto-renew, offered at the one moment the family is demonstrably
+           willing to set up recurring payment: while they are already
+           entering a card. Hidden for Venmo/offline, where there is no
+           saved card to charge next season. -->
+      <label class="pay-opt" id="auto-renew-opt" style="display:none;margin-top:10px;background:#f0fdf4;border-color:#86efac">
+        <input type="checkbox" id="wants_auto_renew">
+        🔁 <b>Renew me automatically each season</b>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">We'll charge this card when next season's dues open, and email you a receipt beforehand. Cancel any time from your member home.</div>
+      </label>
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
         <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Pay with Venmo</div>
@@ -397,7 +406,20 @@ function paintTiers() {
   }).join('');
 }
 
+// Auto-renew only applies to card payments; keep it in step with the
+// selected method so a Venmo applicant is never offered something that
+// cannot happen.
+function syncAutoRenewOpt() {
+  const m = (document.querySelector('input[name="payment_method"]:checked') || {}).value;
+  const box = document.getElementById('auto-renew-opt');
+  if (!box) return;
+  const show = m === 'stripe' || m === 'stripe_plan';
+  box.style.display = show ? '' : 'none';
+  if (!show) { const cb = document.getElementById('wants_auto_renew'); if (cb) cb.checked = false; }
+}
+
 function paintVenmoQR() {
+  syncAutoRenewOpt();
   const block = document.getElementById('venmo-block');
   const method = document.querySelector('input[name="payment_method"]:checked')?.value || '';
   const handle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
@@ -505,6 +527,23 @@ function validateDob(el) {
   }
 }
 
+// Adult #1 IS the primary contact — the heading says so — but the row was
+// built empty, so every applicant retyped the name, phone and email they had
+// just entered on step 1. Copy them across, but only into blank fields, so a
+// deliberate edit on step 2 is never overwritten.
+function prefillPrimaryAdult() {
+  const src = {
+    name:  (document.getElementById('primary_name')  || {}).value || '',
+    phone: (document.getElementById('primary_phone') || {}).value || '',
+    email: (document.getElementById('primary_email') || {}).value || '',
+  };
+  for (const [field, val] of Object.entries(src)) {
+    if (!val.trim()) continue;
+    const el = document.querySelector(`[data-adult="0"][data-field="${field}"]`);
+    if (el && !el.value.trim()) el.value = val;
+  }
+}
+
 // Step 2 — dynamic adult/child rows
 function rebuildPeople() {
   const a = parseInt(document.getElementById('acount').value, 10) || 1;
@@ -533,6 +572,7 @@ function rebuildPeople() {
       </div>
     `);
   }
+  prefillPrimaryAdult();
   cBox.innerHTML = '';
   for (let i = 0; i < c; i++) {
     cBox.insertAdjacentHTML('beforeend', `
@@ -701,6 +741,9 @@ function clearSig(which, idx) {
 // Wizard navigation
 function showStep(n) {
   CURRENT_STEP = n;
+  // Landing on the people step: pick up anything typed (or corrected) on
+  // step 1 since the rows were last built.
+  if (n === 2) prefillPrimaryAdult();
   document.querySelectorAll('.step').forEach(el => {
     el.style.display = (parseInt(el.dataset.step) === n) ? 'block' : 'none';
   });
@@ -887,6 +930,10 @@ async function submitApplication() {
     // pick the _no_app welcome email template + show a pill in the
     // admin Pipeline.
     no_app_member: (document.querySelector('input[name="signup_mode"]:checked')?.value === 'no_app'),
+    // Auto-renew opt-in. The backend re-checks the payment method before
+    // storing it, so a stale checkbox can never enable auto-renew on a
+    // Venmo application.
+    wants_auto_renew: !!document.getElementById('wants_auto_renew')?.checked,
   };
 
   const btn = document.getElementById('next-btn');
