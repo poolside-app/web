@@ -163,6 +163,10 @@
     };
     strip.addEventListener('scroll', sync, { passive: true });
     window.addEventListener('resize', sync);
+    // Fraunces/Inter land after first paint and change the strip's width,
+    // so a sync that only runs now can leave a fade showing on a strip
+    // with nothing hidden behind it (Calendar did exactly that at 390px).
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(sync).catch(() => {});
     const on = strip.querySelector('a.on');
     if (on && strip.scrollWidth > strip.clientWidth) {
       on.scrollIntoView({ block: 'nearest', inline: 'center' });
