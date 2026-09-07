@@ -21,7 +21,7 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { measureSms, renderBlast, estimateCostCents, normalizeForSms } from '../_shared/sms_text.ts';
-import { checkSmsCap, consumeSmsCredit } from '../_shared/sms_cap.ts';
+import { checkSmsCap } from '../_shared/sms_cap.ts';
 import { sendSms } from '../_shared/send_sms.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     const rendered = renderBlast(clubName, raw);
     const m = measureSms(rendered);
     const people = await recipients(sb, TID);
-    const cap = await checkSmsCap(sb, TID, 'campaign', tenant.plan as string);
+    const cap = await checkSmsCap(sb, TID, 'campaign', tenant.plan as string, m.segments);
 
     const tooLong = m.segments > MAX_SEGMENTS;
     const info = {
@@ -155,13 +155,18 @@ Deno.serve(async (req) => {
     // members is worse than one that never sends: the board believes they told
     // everyone, and 108 families turn up to a closed pool. Checked here so the
     // admin finds out while writing, not after a second admin has released it.
+    // Headroom and demand are both in SEGMENTS now. A 3-segment message to
+    // 200 members needs 600 — checking recipients alone let a long blast
+    // start, burn the allowance a third of the way through, and strand the
+    // rest of the club mid-send.
+    const needed = people.length * m.segments;
     const headroom = cap.remaining + cap.credits;
-    if (headroom < people.length) {
+    if (headroom < needed) {
       return j({
         ok: false,
-        error: `You have ${headroom} text${headroom === 1 ? '' : 's'} left but ${people.length} members to reach. ` +
+        error: `This message is ${m.segments} segment${m.segments === 1 ? '' : 's'} to ${people.length} member${people.length === 1 ? '' : 's'} — ${needed} texts — and you have ${headroom} left. ` +
                `A message that reaches only some of them is worse than none — buy more texts in Billing, or wait ${cap.days_until_reset} day${cap.days_until_reset === 1 ? '' : 's'} for your monthly allowance to reset.`,
-        short_by: people.length - headroom,
+        short_by: needed - headroom,
         ...info,
       }, 429);
     }
@@ -234,18 +239,16 @@ Deno.serve(async (req) => {
     let sent = 0, failed = 0, capped = 0;
 
     for (const p of people) {
-      const cap = await checkSmsCap(sb, TID, 'campaign', tenant.plan as string);
-      if (cap.blocked) { capped++; continue; }
+      // sendSms now checks the allowance, records the segment count, and
+      // spends purchased credits itself. Doing any of that here as well
+      // would charge the club twice for the same message.
       const r = await sendSms({
         sb, tenantId: TID, tenantPlan: tenant.plan as string,
         to: p.phone_e164, body: rendered, kind: 'campaign',
+        source: 'sms_blasts.send',
       });
-      if (r.sent) {
-        sent++;
-        // Only spend a purchased credit on a text that actually went out, and
-        // only once the monthly allowance is already gone.
-        if (cap.using_credits) await consumeSmsCredit(sb, TID);
-      } else if (r.capped) capped++;
+      if (r.sent) sent++;
+      else if (r.capped) capped++;
       else failed++;
     }
 

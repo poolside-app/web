@@ -272,9 +272,21 @@ function measureBlast() {
 
   document.getElementById('blast-rendered').textContent = rendered || 'Your message will appear here.';
   const people = BLAST_STATE.recipients;
-  const cost = (people * 0.83 / 100).toFixed(2);
+  // Mirror the server's segment maths. GSM-7 fits 160 in one text, 153 each
+  // once it splits; a single non-GSM character drops that to 70 and 67, and
+  // is billed in UTF-16 units so an emoji counts twice. Showing the real
+  // number is what stops a club sending a 3-segment blast by accident.
+  const segments = !rendered ? 0
+    : bad.length
+      ? (len <= 70 ? 1 : Math.ceil(len / 67))
+      : (len <= 160 ? 1 : Math.ceil(len / 153));
+  const willUse = people * segments;
+  const cost = (willUse * 0.83 / 100).toFixed(2);
+  const capLeft = BLAST_STATE.cap ? Number(BLAST_STATE.cap.remaining || 0) : null;
   document.getElementById('blast-meter').textContent = rendered
-    ? `${len} of 160 characters · 1 text · about $${cost} to ${people} member${people === 1 ? '' : 's'}`
+    ? `${len} characters · ${segments} text${segments === 1 ? '' : 's'} each · `
+      + `${willUse} from your allowance · about $${cost} to ${people} member${people === 1 ? '' : 's'}`
+      + (capLeft !== null ? ` · ${Math.max(0, capLeft - willUse)} left after` : '')
     : '';
 
   const warn = document.getElementById('blast-warn');
@@ -325,7 +337,7 @@ async function queueBlast() {
 }
 
 // Show what's left, and offer the top-up before they hit the wall rather
-// than after. Purchased credits are only spent once the monthly allowance
+// than after. Purchased credits are only spent once the yearly allowance
 // is gone, so they're reported separately.
 function paintBlastBalance() {
   const el = document.getElementById('blast-balance');
@@ -338,7 +350,7 @@ function paintBlastBalance() {
   const topUp = ' · <a href="/club/admin/billing.html">Buy more texts →</a>';
   el.innerHTML = c.category_uncapped
     ? ''
-    : `<b>${remaining}</b> of ${c.cap} texts left this month`
+    : `<b>${remaining}</b> of ${c.cap} texts left this year`
       + (credits ? ` · <b>${credits}</b> purchased in reserve` : '')
       + ((low && !credits) ? topUp : '');
   el.style.color = (low && !credits) ? 'var(--red)' : 'var(--muted)';

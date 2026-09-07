@@ -12,7 +12,8 @@
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import type { SmsCategory } from './sms_cap.ts';
-import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch } from './sms_cap.ts';
+import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch, consumeSmsCredit } from './sms_cap.ts';
+import { measureSms } from './sms_text.ts';
 
 export type SmsResult = {
   sent: boolean;
@@ -55,6 +56,10 @@ export async function sendSms(args: {
 }): Promise<SmsResult> {
   const kind: SmsCategory = args.kind ?? 'campaign';
   const source = args.source ?? null;
+  // Measure once. Twilio bills per segment, so this is what the allowance
+  // must be checked against and what the log must record — counting
+  // messages let a 400-character blast cost 3x while spending 1x.
+  const segments = measureSms(args.body).segments;
 
   if (Deno.env.get('SMS_DEV_MODE') === '1') {
     return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
@@ -69,11 +74,11 @@ export async function sendSms(args: {
         : `Poolside's daily SMS safety limit was reached (${gate.used}/${gate.cap}). Texts resume automatically; contact Poolside to raise it for a big send.`,
     };
   }
-  const cap = await checkSmsCap(args.sb, args.tenantId, kind, args.tenantPlan ?? undefined);
+  const cap = await checkSmsCap(args.sb, args.tenantId, kind, args.tenantPlan ?? undefined, segments);
   if (cap.blocked) {
     return {
       sent: false, capped: true, capped_by: 'club',
-      error: `This club's monthly SMS allowance is used up (${cap.used}/${cap.cap}). Resets in ${cap.days_until_reset} day${cap.days_until_reset === 1 ? '' : 's'}.`,
+      error: `This club's text allowance is used up (${cap.used} of ${cap.cap} for the year). Buy more texts, or it resets in ${cap.days_until_reset} day${cap.days_until_reset === 1 ? '' : 's'}.`,
     };
   }
 
@@ -105,20 +110,23 @@ export async function sendSms(args: {
       // which is indistinguishable from one that was never tried.
       await recordSms(args.sb, {
         tenantId: args.tenantId, category: kind, toPhone: args.to,
-        success: false, error, source,
+        success: false, error, source, segments,
       });
       return { sent: false, error };
     }
     await recordSms(args.sb, {
       tenantId: args.tenantId, category: kind, toPhone: args.to,
-      success: true, source,
+      success: true, source, segments,
     });
+    // Spend purchased credits only when the allowance was already gone and
+    // the message actually went out — never for one a carrier refused.
+    if (cap.using_credits) await consumeSmsCredit(args.sb, args.tenantId, segments);
     return { sent: true };
   } catch (e) {
     const error = String(e);
     await recordSms(args.sb, {
       tenantId: args.tenantId, category: kind, toPhone: args.to,
-      success: false, error, source,
+      success: false, error, source, segments,
     });
     return { sent: false, error };
   }

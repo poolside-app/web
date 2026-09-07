@@ -1,29 +1,48 @@
 // =============================================================================
-// sms_cap.ts — monthly SMS cap enforcement + audit logging
+// sms_cap.ts — annual SMS segment allowance + audit logging
 // =============================================================================
 // Imported by every edge function that fires Twilio SMS. Single source of
-// truth for: (1) which tenant plans get which monthly cap, (2) which
-// categories count against the cap, (3) the actual count + insert.
+// truth for: (1) which plan gets which allowance, (2) which categories draw
+// on it, (3) the usage query + the log insert.
 //
-// Categories — auth + transactional NEVER counted (would brick app or hurt
-// trust). Campaign + reminder are counted and gated.
+// Metered in SEGMENTS, not messages (changed 2026-09-07). The allowance used
+// to count rows in sms_log — one row per recipient regardless of length —
+// while Twilio bills per 160-character GSM-7 segment, dropping to 70 if the
+// message contains any non-GSM character. So one emoji tripled the real cost
+// of a blast while consuming exactly the same allowance. Worst case on Pro
+// was ~$747/yr of Twilio inside a plan that includes texting.
 //
-// Plan → cap table mirrors project_sms_caps memory:
-//   free:       250
-//   starter:    1000
-//   pro:        2500
-//   enterprise: 2500
+// ANNUAL, not monthly. Pool clubs blast hard from May to September and go
+// quiet the rest of the year; a monthly cap wasted most of the budget and
+// then pinched in exactly the weeks it was needed. Calendar year, so it is
+// easy to state and easy to reason about.
+//
+// Categories:
+//   auth           never counted — capping sign-in would lock members out
+//   transactional  never counted — approvals, receipts, gate alerts
+//   reminder       never counted as of 2026-09-07. Dues reminders are the
+//                  product working, not the club broadcasting. Capping them
+//                  meant a club that overspent on blasts stopped chasing its
+//                  own dues — breaking the thing it pays us for. ~$10/season.
+//   campaign       counted. This is the discretionary one: a club choosing
+//                  to text everybody, which is the only spend it controls.
+//
+// Allowances are sized at roughly 8% of plan revenue at Twilio's $0.0083 a
+// segment, so a club that spends its entire allowance is still comfortably
+// profitable.
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export type SmsCategory = 'auth' | 'transactional' | 'campaign' | 'reminder';
 
+/** Segments per CALENDAR YEAR, by plan. */
 export const PLAN_CAPS: Record<string, number> = {
-  free: 250,
-  starter: 1000,
-  pro: 2500,
-  enterprise: 2500,
+  free:        3000,   // free first season + legacy 'free' tenants
+  starter:     6000,   // $600 plan  -> ~$50 of Twilio at full spend
+  pro:        15000,   // $1,400     -> ~$125
+  enterprise: 25000,   // $2,500     -> ~$208. Was identical to Pro, which
+                       // made no sense for a plan with unlimited households.
 };
 
 export function capForPlan(plan: string | null | undefined): number {
@@ -31,13 +50,16 @@ export function capForPlan(plan: string | null | undefined): number {
 }
 
 export function isCapped(category: SmsCategory): boolean {
-  return category === 'campaign' || category === 'reminder';
+  return category === 'campaign';
 }
 
-function startOfUtcMonth(d = new Date()): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+function startOfUtcYear(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
 }
-function startOfNextUtcMonth(d = new Date()): Date {
+function startOfNextUtcYear(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear() + 1, 0, 1));
+}
+function _unusedStartOfNextMonth(d = new Date()): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
 }
 
@@ -48,7 +70,7 @@ export type SmsCapStatus = {
   remaining: number;              // cap - used (clamped >= 0)
   blocked: boolean;               // true if a campaign send would exceed cap
   days_until_reset: number;
-  // Purchased top-up, spent only once the monthly allowance is gone. A club
+  // Purchased top-up, spent only once the yearly allowance is gone. A club
   // that runs out mid-season can keep going without upgrading a whole tier
   // for one busy month.
   credits: number;
@@ -62,6 +84,8 @@ export async function checkSmsCap(
   tenantId: string,
   category: SmsCategory,
   plan: string | null | undefined,
+  /** Segments the caller is about to send. Checked against what's left. */
+  segments = 1,
 ): Promise<SmsCapStatus> {
   const cap = capForPlan(plan);
   if (!isCapped(category)) {
@@ -72,15 +96,22 @@ export async function checkSmsCap(
       credits: 0, using_credits: false,
     };
   }
-  const since = startOfUtcMonth().toISOString();
-  const { count } = await sb.from('sms_log')
-    .select('*', { count: 'exact', head: true })
+  // Sum SEGMENTS, not rows. Only capped categories are summed, so the
+  // filter and the allowance agree about what is being measured.
+  const since = startOfUtcYear().toISOString();
+  const { data: rows } = await sb.from('sms_log')
+    .select('segments')
     .eq('tenant_id', tenantId)
-    .neq('category', 'auth')
-    .neq('category', 'transactional')
+    .eq('category', 'campaign')
     .gte('sent_at', since);
-  const used = count ?? 0;
-  const overAllowance = used >= cap;
+  const used = (rows ?? []).reduce(
+    (n, r) => n + Math.max(1, Number((r as { segments?: number }).segments ?? 1)), 0);
+
+  // Judge the send that is about to happen, not just what has already gone.
+  // A 3-segment blast with 2 segments left must not slip through.
+  const want = Math.max(1, Math.trunc(segments));
+  const remaining = Math.max(0, cap - used);
+  const overAllowance = remaining < want;
 
   let credits = 0;
   if (overAllowance) {
@@ -91,32 +122,38 @@ export async function checkSmsCap(
 
   return {
     used, cap, category_uncapped: false,
-    remaining: Math.max(0, cap - used),
-    // Only truly blocked once the allowance AND any purchased credits are gone.
-    blocked: overAllowance && credits <= 0,
-    using_credits: overAllowance && credits > 0,
+    remaining,
+    // Blocked only once the allowance AND the purchased balance are too
+    // small for this message. Credits are denominated in segments too.
+    blocked: overAllowance && credits < want,
+    using_credits: overAllowance && credits >= want,
     credits,
     days_until_reset: daysUntilReset(),
   };
 }
 
 /**
- * Spend one purchased credit. Called only when a send actually went out while
- * over the monthly allowance, so a club is never charged for a text a carrier
- * refused. Uses a guarded update rather than read-then-write: two blasts
- * running at once must not both spend the last credit.
+ * Spend purchased credits, denominated in segments. Called only after a send
+ * actually went out while over the annual allowance, so a club is never
+ * charged for a text a carrier refused. The RPC does a guarded, all-or-
+ * nothing update rather than read-then-write: two blasts running at once
+ * must not both spend the last credit, and a 3-segment message must never
+ * half-charge against a 2-credit balance.
  */
 export async function consumeSmsCredit(
   sb: SupabaseClient,
   tenantId: string,
+  segments = 1,
 ): Promise<boolean> {
-  const { data } = await sb.rpc('consume_sms_credit', { p_tenant: tenantId });
+  const { data } = await sb.rpc('consume_sms_credits', {
+    p_tenant: tenantId, p_n: Math.max(1, Math.trunc(segments)),
+  });
   return data === true;
 }
 
 function daysUntilReset(): number {
   const now = new Date();
-  const next = startOfNextUtcMonth(now);
+  const next = startOfNextUtcYear(now);
   return Math.ceil((next.getTime() - now.getTime()) / 86400_000);
 }
 
@@ -197,6 +234,9 @@ export async function recordSms(
     success: boolean;
     error?: string | null;
     source?: string;
+    /** Billable Twilio segments. Defaults to 1 for callers that don't
+     *  measure — the meter then undercounts rather than over-charging. */
+    segments?: number;
   },
 ): Promise<void> {
   await sb.from('sms_log').insert({
@@ -206,5 +246,6 @@ export async function recordSms(
     success: args.success,
     error: args.error ?? null,
     source: args.source ?? null,
+    segments: Math.max(1, Math.trunc(args.segments ?? 1)),
   });
 }

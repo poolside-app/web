@@ -101,13 +101,15 @@
   <div class="card">
     <h2>Text credits</h2>
     <p style="font-size:13px;color:var(--muted);margin:0 0 4px">
-      Your plan includes a monthly allowance of texts for renewal invites and
-      club-wide messages. Sign-in links never count against it.
+      Your plan includes a yearly allowance of texts for club-wide messages.
+      Sign-in codes, approvals and dues reminders never count against it —
+      only messages you choose to blast to everybody.
     </p>
     <p id="sms-balance" style="font-size:14px;margin:0 0 12px">Loading…</p>
     <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
-      Buy extra if you run out mid-season — they're used only after your monthly
-      allowance is gone, and they don't expire. Prepaid, so there's never a surprise bill.
+      Buy extra if you run out mid-season — they're used only after your yearly
+      allowance is gone, and they don't expire. Prepaid, so there's never a
+      surprise bill. A text is 160 characters; longer messages and emoji use more than one.
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" onclick="buyTexts('small')">500 texts — $15</button>
@@ -172,7 +174,7 @@ async function loadSmsBalance() {
     if (!d.ok || !d.cap) { el.textContent = 'Balance unavailable right now.'; return; }
     const c = d.cap;
     el.innerHTML =
-      `<b>${c.remaining}</b> of ${c.cap} monthly texts left` +
+      `<b>${c.remaining}</b> of ${c.cap} texts left this year` +
       (c.credits ? ` · <b>${c.credits}</b> purchased credits in reserve` : '');
   } catch (_) {
     // Was a bare return, which left the card reading "Loading…" forever.

@@ -52,7 +52,12 @@ export function measureSms(raw: string): SmsMeasure {
     const capacity = segments === 1 ? 160 : segments * 153;
     return { chars: units, segments, encoding: 'GSM-7', offenders, remaining: capacity - units };
   }
-  const n = [...text].length;
+  // UCS-2 is billed in UTF-16 CODE UNITS, not code points. An emoji outside
+  // the BMP is a surrogate pair and costs two. [...text].length counts code
+  // points, so it reported 36 emoji as 36 units (one segment) where Twilio
+  // bills 72 units (two) — undercounting exactly the messages most likely to
+  // be emoji-heavy. String.length is the UTF-16 unit count.
+  const n = text.length;
   const segments = n <= 70 ? 1 : Math.ceil(n / 67);
   const capacity = segments === 1 ? 70 : segments * 67;
   return { chars: n, segments, encoding: 'UCS-2', offenders, remaining: capacity - n };
