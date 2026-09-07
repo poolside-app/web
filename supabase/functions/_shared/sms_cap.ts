@@ -143,11 +143,20 @@ export type GlobalCapStatus = {
 export async function checkGlobalSmsKillSwitch(
   sb: SupabaseClient,
   toPhone: string,
+  opts: {
+    /**
+     * Skip the platform-wide daily cap for an operational alert that is
+     * itself the product (currently only gate-outage escalation). The
+     * per-recipient hourly cap still applies, so an exempt caller stuck in
+     * a loop still cannot hammer one phone. See send_sms.ts `critical`.
+     */
+    skipDailyCap?: boolean;
+  } = {},
 ): Promise<GlobalCapStatus> {
   const dailyCap = Number(Deno.env.get('SMS_GLOBAL_DAILY_CAP') ?? '25');
   const hourCap  = Number(Deno.env.get('SMS_PER_RECIPIENT_HOUR_CAP') ?? '5');
 
-  if (dailyCap > 0) {
+  if (dailyCap > 0 && !opts.skipDailyCap) {
     const since = new Date(Date.now() - 24 * 3600_000).toISOString();
     const { count } = await sb.from('sms_log')
       .select('*', { count: 'exact', head: true })

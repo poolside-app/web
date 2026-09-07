@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gate bridge status — Poolside</title>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0a3b5c">
+<meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ==========================================================================
+     Gate outage reply page.
+
+     Read by a volunteer standing at a pool, on a phone, while something is
+     visibly broken. Every design choice here follows from that:
+       - the reassurance ("fobs still work") is the first thing on screen,
+         above the problem, because otherwise they skim, panic, and call
+       - two buttons, thumb-sized, no free text to compose
+       - no login, no scrolling required to reach the buttons
+       - one tap ends the interaction with an unambiguous confirmation
+     ========================================================================== */
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#64748b;
+    --border:#e5e7eb; --green:#16a34a; --green-bg:#f0fdf4; --green-br:#86efac;
+    --red:#dc2626; --amber-bg:#fffbeb; --amber-br:#fcd34d;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  h1,h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size:24px; } h2 { font-size:17px; margin-bottom:8px; }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; align-items:center; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  main { flex:1; padding:22px 16px 40px; max-width:560px; width:100%; margin:0 auto; }
+  footer { padding:18px; text-align:center; font-size:12px; color:var(--muted); }
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:20px 22px; margin-bottom:14px; box-shadow:var(--shadow); }
+
+  /* The reassurance banner. Sits above everything, including the headline. */
+  .reassure { background:var(--green-bg); border:1px solid var(--green-br); color:#166534; border-radius:var(--r-md); padding:14px 16px; margin-bottom:16px; font-size:15px; line-height:1.5; }
+  .reassure b { display:block; font-size:16px; margin-bottom:3px; }
+
+  .status-line { color:var(--muted); font-size:14.5px; margin:6px 0 0; }
+  .steps { margin:0; padding-left:20px; font-size:14.5px; line-height:1.75; color:var(--text); }
+  .steps li { margin-bottom:6px; }
+
+  /* Thumb-sized targets: 60px tall, full width, generous gap so a hurried
+     tap can't hit the wrong one. */
+  .choices { display:flex; flex-direction:column; gap:12px; margin-top:4px; }
+  .choice { display:flex; align-items:center; gap:14px; width:100%; min-height:62px; padding:14px 18px; text-align:left;
+            background:#fff; border:2px solid var(--border); border-radius:var(--r-md); cursor:pointer;
+            font:600 15.5px 'Inter', system-ui, sans-serif; color:var(--text); transition:border-color .12s, background .12s, transform .06s; }
+  .choice:hover { border-color:var(--blue-2); background:#fbfdff; }
+  .choice:active { transform:scale(.99); }
+  .choice:disabled { opacity:.5; cursor:default; transform:none; }
+  .choice .ico { font-size:24px; line-height:1; flex:none; }
+  .choice .sub { display:block; font-weight:400; font-size:13px; color:var(--muted); margin-top:2px; }
+
+  .done { text-align:center; padding:12px 0 4px; }
+  .done .big { font-size:44px; line-height:1; margin-bottom:12px; }
+  .muted { color:var(--muted); font-size:13.5px; }
+  .err { color:var(--red); font-size:14px; }
+  .skel { color:var(--muted); font-size:14.5px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header><span class="logo"><span class="logo-dot"></span> Poolside</span></header>
+
+<main>
+  <!-- Loading -->
+  <div id="view-loading" class="card"><div class="skel">Checking the gate bridge…</div></div>
+
+  <!-- Something is wrong with the link (or the outage already ended) -->
+  <div id="view-message" class="card" hidden>
+    <div id="message-icon" class="done"><div class="big">✓</div></div>
+    <h1 id="message-title"></h1>
+    <p id="message-body" class="status-line"></p>
+  </div>
+
+  <!-- The ask -->
+  <div id="view-ask" hidden>
+    <div class="reassure">
+      <b>Nobody is locked out.</b>
+      <span id="fobs-note">Key fobs and keypad codes still work normally. Only phone unlock is affected.</span>
+    </div>
+
+    <div class="card">
+      <h1 id="ask-title">Gate bridge is offline</h1>
+      <p id="ask-status" class="status-line"></p>
+    </div>
+
+    <div class="card">
+      <h2>Could you check these?</h2>
+      <ol id="ask-steps" class="steps"></ol>
+    </div>
+
+    <div class="card">
+      <h2>What did you find?</h2>
+      <p class="muted" style="margin:0 0 14px">One tap. This goes straight to Doug at Poolside.</p>
+      <div class="choices">
+        <button class="choice" data-reply="power_outage">
+          <span class="ico">⚡</span>
+          <span>The power is out here
+            <span class="sub">Or the internet is down for the whole club</span>
+          </span>
+        </button>
+        <button class="choice" data-reply="please_check">
+          <span class="ico">🔎</span>
+          <span>Power looks fine, please check it
+            <span class="sub">Everything else seems normal from our side</span>
+          </span>
+        </button>
+      </div>
+      <p id="ask-err" class="err" style="margin:12px 0 0" hidden></p>
+      <p id="ask-already" class="muted" style="margin:12px 0 0" hidden></p>
+    </div>
+  </div>
+
+  <!-- Thanks -->
+  <div id="view-done" class="card" hidden>
+    <div class="done">
+      <div class="big">✓</div>
+      <h1>Thank you</h1>
+      <p class="status-line" id="done-body"></p>
+      <p class="muted" style="margin-top:16px">You can close this page. We'll email the board as soon as the bridge is back online.</p>
+    </div>
+  </div>
+</main>
+
+<footer>Poolside · gate monitoring</footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const GATE_URL = `${SUPABASE_URL}/functions/v1/gate_admin`;
+
+// The club is identified by the subdomain this page was served from, which
+// is why the token in the SMS only has to cover the outage itself and stays
+// short enough not to add an extra message segment.
+const SLUG  = location.hostname.split('.')[0];
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+
+const $ = (id) => document.getElementById(id);
+function show(which) {
+  for (const v of ['loading', 'message', 'ask', 'done']) $(`view-${v}`).hidden = (v !== which);
+}
+function message(title, body, icon) {
+  $('message-title').textContent = title;
+  $('message-body').textContent = body || '';
+  $('message-icon').hidden = !icon;
+  if (icon) $('message-icon').querySelector('.big').textContent = icon;
+  show('message');
+}
+
+async function api(payload) {
+  const res = await fetch(GATE_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'outage_reply', slug: SLUG, token: TOKEN, ...payload }),
+  });
+  return res.json();
+}
+
+// Step 1: ask what's going on before showing any buttons. Deliberately a
+// separate round trip from recording the answer — some carriers and security
+// products pre-fetch links in text messages, and a page that recorded an
+// answer just from being loaded would report whatever the scanner touched.
+async function load() {
+  if (!TOKEN) {
+    message('This link is incomplete', 'Please open the link exactly as it appeared in the text message.', '⚠️');
+    return;
+  }
+  let r;
+  try {
+    r = await api({});
+  } catch {
+    message("Couldn't reach Poolside", 'Check your connection and try the link again.', '⚠️');
+    return;
+  }
+
+  if (!r.ok) {
+    if (r.resolved) {
+      message('All clear', `The gate bridge at ${r.club_name || 'your club'} is back online. Phone unlock is working again — nothing else to do.`, '✓');
+    } else {
+      message('This link has expired', r.error || 'Please contact Poolside directly.', '⚠️');
+    }
+    return;
+  }
+
+  $('ask-title').textContent = `${r.club_name || 'Your club'}: gate bridge is offline`;
+  $('ask-status').textContent = `It stopped checking in about ${r.offline_label} ago. Doug at Poolside already knows and is looking into it.`;
+  if (r.fobs_note) $('fobs-note').textContent = r.fobs_note;
+
+  const ol = $('ask-steps');
+  ol.innerHTML = '';
+  for (const s of (r.steps || [])) {
+    const li = document.createElement('li');
+    li.textContent = s;
+    ol.appendChild(li);
+  }
+
+  // Answering twice is allowed — the first answer can turn out to be wrong
+  // once someone actually walks over and looks.
+  if (r.already) {
+    $('ask-already').hidden = false;
+    $('ask-already').textContent = 'You already answered this one. Tapping again will update your answer.';
+  }
+
+  show('ask');
+}
+
+async function reply(choice, btn) {
+  const buttons = document.querySelectorAll('.choice');
+  buttons.forEach(b => b.disabled = true);
+  $('ask-err').hidden = true;
+  const original = btn.querySelector('span:last-child').firstChild.textContent;
+  btn.querySelector('span:last-child').firstChild.textContent = 'Sending…';
+
+  let r;
+  try {
+    r = await api({ reply: choice });
+  } catch {
+    r = { ok: false, error: 'Network error' };
+  }
+
+  if (!r || !r.ok) {
+    btn.querySelector('span:last-child').firstChild.textContent = original;
+    buttons.forEach(b => b.disabled = false);
+    $('ask-err').hidden = false;
+    $('ask-err').textContent = (r && r.error) || "Couldn't send that. Please try again.";
+    return;
+  }
+
+  $('done-body').textContent = choice === 'power_outage'
+    ? "Got it — we'll wait for your power to come back and check that the bridge reconnects on its own."
+    : "Got it — Doug has been alerted that the power looks fine, and will take it from here.";
+  show('done');
+}
+
+document.querySelectorAll('.choice').forEach(btn => {
+  btn.addEventListener('click', () => reply(btn.dataset.reply, btn));
+});
+
+load();
+</script>
+</body>
+</html>

@@ -76,6 +76,20 @@ function publicGatePanel(row: Record<string, unknown> | null): Record<string, un
     bridge_secret_set: !!row.bridge_secret_hash,
     bridge_last_seen_at: row.bridge_last_seen_at,
     bridge_version: row.bridge_version,
+    // Outage escalation state. The provider dashboard uses these to show
+    // which clubs are mid-outage and whether the club has been told yet;
+    // the club's own settings page uses them to explain why they got a text.
+    bridge_alert_state:      row.bridge_alert_state ?? 'ok',
+    bridge_provider_alerted_at: row.bridge_provider_alerted_at ?? null,
+    bridge_club_alerted_at:  row.bridge_club_alerted_at ?? null,
+    bridge_outage_reply:     row.bridge_outage_reply ?? null,
+    bridge_outage_reply_at:  row.bridge_outage_reply_at ?? null,
+    bridge_link_type:        row.bridge_link_type ?? 'unknown',
+    // Flap history. A bridge cycling repeatedly is a hardware problem, and
+    // the dashboard should surface that differently from "currently down".
+    bridge_flap_count:        row.bridge_flap_count ?? 0,
+    bridge_flap_window_start: row.bridge_flap_window_start ?? null,
+    bridge_flap_alerted_at:   row.bridge_flap_alerted_at ?? null,
     notes: row.notes,
     config_locked: !!row.config_locked,
     config_locked_at: row.config_locked_at ?? null,
@@ -120,11 +134,23 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '');
 
   // ── cron_check_bridges (no admin auth — gated by CRON_SECRET) ──────
-  // Runs every 5 minutes via pg_cron. Detects newly-offline and newly-
-  // recovered bridges across all active panels and notifies the affected
-  // clubs (admin_task + push + email) plus the provider. State machine
-  // on gate_panels.bridge_alert_state ensures we don't alert twice for
-  // the same outage.
+  // Runs every 5 minutes via pg_cron. Two-stage escalation:
+  //
+  //   ok               -- 10 min silent --> alerted_provider  (Doug only)
+  //   alerted_provider -- 30 min silent --> alerted_club       (text + email)
+  //   either           -- bridge back   --> ok
+  //
+  // The middle state is the product. Most outages are a router blip or a
+  // brief power flicker; giving Doug a 20-minute head start means the ones
+  // that self-heal are never seen by the customer at all. A club that is
+  // told about every transient blip stops reading the alerts, which is
+  // exactly when a real outage gets ignored.
+  //
+  // NOTE (deliberate gap): there are no quiet hours. Doing that properly
+  // needs a per-tenant timezone, which the tenants table doesn't have yet,
+  // and guessing one would mean texting a volunteer at 3am while believing
+  // it was mid-afternoon. Until a timezone exists, a 2am outage texts the
+  // gate contact at 2am. See the follow-up note in NOTES-gate-pi.md.
   if (action === 'cron_check_bridges') {
     const cronSecret = Deno.env.get('CRON_SECRET');
     const got = req.headers.get('x-cron-secret');
@@ -132,168 +158,428 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Forbidden' }, 403);
     }
 
-    const OFFLINE_THRESHOLD_MS = 10 * 60 * 1000;  // 10 minutes
-    const ONLINE_THRESHOLD_MS  = 2 * 60 * 1000;   //  2 minutes (recovery)
-    const now = Date.now();
-    const offlineCutoff = new Date(now - OFFLINE_THRESHOLD_MS).toISOString();
+    const GA = await import('../_shared/gate_alert.ts');
+    const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+    const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+    const { sendSms } = await import('../_shared/send_sms.ts');
 
+    const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
+    const PROVIDER_PHONE = Deno.env.get('PROVIDER_NOTIFY_PHONE') ?? '';
+
+    const now = Date.now();
     const { data: panels } = await sb.from('gate_panels')
-      .select('tenant_id, status, bridge_last_seen_at, bridge_alert_state, bridge_alert_first_offline_at, panel_host')
+      .select('tenant_id, status, panel_host, bridge_last_seen_at, bridge_alert_state, bridge_alert_first_offline_at, bridge_club_alerted_at, contact_phone, contact_name, bridge_flap_count, bridge_flap_window_start, bridge_flap_alerted_at, bridge_last_offline_alert_at')
       .eq('status', 'active');
 
-    let newly_offline = 0;
-    let newly_recovered = 0;
-    const results: Array<{ tenant_id: string; transition: string; ago_min?: number }> = [];
+    let newly_offline = 0, newly_escalated = 0, newly_recovered = 0;
+    const results: Array<Record<string, unknown>> = [];
+
+    // Notify Doug on both channels. Email is the record; SMS is the one that
+    // actually wakes him up. Never throws — a notification failure must not
+    // stop the loop from processing the remaining clubs.
+    async function notifyProvider(args: {
+      tenantId: string; subject: string; html: string; sms: string;
+    }) {
+      try {
+        await sendEmail({ to: PROVIDER_EMAIL, subject: args.subject, html: args.html });
+      } catch (e) {
+        console.error('provider email (non-fatal):', (e as Error).message);
+      }
+      if (PROVIDER_PHONE) {
+        try {
+          // critical: this alert is the thing the monitoring fee buys. It
+          // must not be swallowed by the platform-wide daily safety cap,
+          // which exists to stop runaway roster loops, not single alerts.
+          const r = await sendSms({
+            sb, tenantId: args.tenantId, to: PROVIDER_PHONE, body: args.sms,
+            kind: 'transactional', critical: true, source: 'gate_admin.provider_alert',
+          });
+          if (!r.sent) console.error('provider sms not sent:', r.error);
+        } catch (e) {
+          console.error('provider sms (non-fatal):', (e as Error).message);
+        }
+      }
+    }
 
     for (const p of (panels ?? [])) {
-      const lastSeen = p.bridge_last_seen_at ? new Date(p.bridge_last_seen_at as string).getTime() : 0;
-      const isOffline = !lastSeen || (now - lastSeen) > OFFLINE_THRESHOLD_MS;
-      const isOnline  = !!lastSeen && (now - lastSeen) < ONLINE_THRESHOLD_MS;
-      const wasAlerted = p.bridge_alert_state === 'alerted_offline';
+      const tenantId = p.tenant_id as string;
+      const lastSeenIso = p.bridge_last_seen_at as string | null;
+      const state = String(p.bridge_alert_state ?? 'ok');
 
-      // ── ok → alerted_offline ────────────────────────────────────────
-      if (isOffline && !wasAlerted && p.panel_host) {
-        // Skip never-seen-yet panels (panel_host gating filters new
-        // installs that haven't even checked in once — those are the
-        // provider's problem, not the club's, until first contact).
-        const firstSeen = p.bridge_last_seen_at ?? null;
-        if (!firstSeen) continue;
+      // A panel that has never checked in isn't an outage, it's an install
+      // that hasn't finished. That's the provider's problem to chase, not
+      // something to alarm a club about.
+      if (!lastSeenIso) continue;
 
-        const agoMin = Math.floor((now - lastSeen) / 60000);
+      const lastSeen = new Date(lastSeenIso).getTime();
+      const offlineMin = (now - lastSeen) / 60000;
+      const isOnline = offlineMin < GA.RECOVERY_MIN;
+
+      const { data: tenant } = await sb.from('tenants')
+        .select('slug, display_name').eq('id', tenantId).maybeSingle();
+      const clubName = (tenant?.display_name as string) || 'your club';
+      const slug = (tenant?.slug as string) || '';
+
+      // ── recovery: any alerted state → ok ────────────────────────────
+      if (isOnline && state !== 'ok') {
+        const clubWasTold = state === 'alerted_club';
+        const startedAt = p.bridge_alert_first_offline_at as string | null;
+        const downMin = startedAt
+          ? (now - new Date(startedAt).getTime()) / 60000
+          : offlineMin;
+
         await sb.from('gate_panels').update({
-          bridge_alert_state: 'alerted_offline',
-          bridge_alert_first_offline_at: firstSeen,
+          bridge_alert_state: 'ok',
+          bridge_alert_first_offline_at: null,
+          bridge_club_alerted_at: null,
+          bridge_outage_reply: null,
+          bridge_outage_reply_at: null,
           bridge_last_alert_at: new Date().toISOString(),
-        }).eq('tenant_id', p.tenant_id);
+        }).eq('tenant_id', tenantId);
 
-        // Notify the club + the provider.
-        try {
-          const { data: tenant } = await sb.from('tenants')
-            .select('slug, display_name').eq('id', p.tenant_id).maybeSingle();
-          const clubName = tenant?.display_name || 'your club';
-
-          // 1) Admin task + push (board-side ops scope)
-          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-          await enqueueAdminTask(sb, {
-            tenant_id: p.tenant_id,
-            target_scopes: ['operations'],
-            kind: 'gate.bridge_offline',
-            summary: `🚪 Gate bridge offline (${agoMin} min) — try the troubleshooting steps in Settings`,
-            link_url: '/club/admin/settings.html#gate',
-            source_kind: 'gate_panel', source_id: p.tenant_id,
-            push_title: `🔴 Gate bridge offline at ${clubName}`,
-            push_body: `Last seen ${agoMin} min ago. Open Settings > Remote keyfob access for the 3-step fix (Pi power, internet, reboot).`,
+        // Two reasons to stay quiet: this outage was never announced (so an
+        // "it's back" is describing a problem nobody knew about), or the
+        // bridge is flapping and the flap alert already covers it.
+        const tellProvider = GA.shouldSendRecovery({
+          count: Number(p.bridge_flap_count ?? 0),
+          windowStart: p.bridge_flap_window_start as string | null,
+          lastOfflineAlertAt: p.bridge_last_offline_alert_at as string | null,
+          outageStartedAt: startedAt,
+        });
+        if (tellProvider) {
+          await notifyProvider({
+            tenantId,
+            subject: `[bridge recovered] ${clubName} after ${GA.humanDuration(downMin)}`,
+            html: `<div style="font-family:Inter,Arial,sans-serif;padding:18px">
+              <p><b>${escHtml(clubName)}</b> gate bridge is back online after <b>${GA.humanDuration(downMin)}</b>.</p>
+              <p>${clubWasTold ? 'The club was texted during this outage, so they have had an all-clear.' : 'The club was never notified. As far as they know, nothing happened.'}</p>
+            </div>`,
+            sms: GA.providerRecoverySms({ clubName, downMin, clubWasTold }),
           });
-
-          // 2) Email club owner admins with the troubleshooting steps
-          const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
-          const { data: owners } = await sb.from('admin_users')
-            .select('email')
-            .eq('tenant_id', p.tenant_id).eq('active', true)
-            .or('role_template.eq.owner,role_template.eq.gate_manager');
-          const html = `
-            <div style="font-family:Inter,Arial,sans-serif;max-width:560px;padding:24px;color:#0f172a">
-              <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 12px">🔴 Gate bridge offline</h2>
-              <p style="margin:0 0 12px;color:#475569;line-height:1.55">The on-site Pi bridge for <b>${escHtml(clubName)}</b> stopped checking in <b>${agoMin} minutes ago</b>. Members can't unlock the gate from their phones until it's back online.</p>
-              <h3 style="font-family:Georgia,serif;color:#0a3b5c;font-size:15px;margin:18px 0 6px">Try these in order — most issues fix in 2 minutes:</h3>
-              <ol style="margin:0 0 14px;padding-left:22px;font-size:14px;line-height:1.8;color:#0f172a">
-                <li><b>Check the Pi's power LED.</b> It should be solid green. If it's off or red, plug the power back in.</li>
-                <li><b>Check the club's internet.</b> Open any website on a phone connected to the club Wi-Fi. If it doesn't load, restart the club's router.</li>
-                <li><b>Reboot the Pi.</b> Unplug the power for <b>10 seconds</b>, plug back in, then wait <b>60 seconds</b>. The bridge phones home automatically once the network is up.</li>
-              </ol>
-              <p style="margin:0 0 16px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px;color:#166534">If the bridge comes back online during your troubleshooting, you'll get an "all clear" email from us within ~5 minutes — no need to do anything else.</p>
-              <p style="margin:14px 0 0;font-size:13.5px;color:#475569">Tried all three and still offline? Email <a href="mailto:doug@poolsideapp.com?subject=Gate%20bridge%20still%20offline">doug@poolsideapp.com</a> with: club name, when it went down, and what you tried.</p>
-            </div>
-          `;
-          for (const o of (owners ?? [])) {
-            if (o.email) await sendEmail({ to: o.email, subject: `🔴 Gate bridge offline at ${clubName}`, html });
-          }
-
-          // 3) Provider email — short, actionable.
-          const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
-          await sendEmail({
-            to: PROVIDER_EMAIL,
-            subject: `[bridge offline] ${clubName} — ${agoMin} min`,
-            html: `
-              <div style="font-family:Inter,Arial,sans-serif;padding:18px">
-                <p><b>${escHtml(clubName)}</b> bridge offline ${agoMin} min. Last seen <code>${escHtml(p.bridge_last_seen_at as string)}</code>.</p>
-                <p>Owner admins were notified with the 3-step troubleshooting email. Watch for a recovery alert; if none in ~30 min, follow up.</p>
-                <p><a href="https://poolsideapp.com/admin/gate-integrations.html">Open provider gate-integrations →</a></p>
-              </div>
-            `,
-          });
-        } catch (e) {
-          console.error('bridge offline notify (non-fatal):', (e as Error).message);
         }
 
-        results.push({ tenant_id: p.tenant_id, transition: 'offline', ago_min: agoMin });
+        // Only tell the club it's fixed if they were ever told it was
+        // broken. An unprompted "all clear" for an outage nobody mentioned
+        // just generates a confused reply.
+        if (clubWasTold) {
+          try {
+            await fetch(`${SUPABASE_URL}/functions/v1/push_admin`, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'authorization': `Bearer ${SERVICE_ROLE}`,
+                'x-poolside-internal': SERVICE_ROLE,
+              },
+              body: JSON.stringify({
+                action: 'send_scoped', tenant_id: tenantId, scopes: ['operations'],
+                title: `Gate bridge back online at ${clubName}`,
+                body: 'Phone unlock is working again. Nothing else to do.',
+                url: '/club/admin/settings.html#gate',
+                tag: `gate.recovery:${tenantId}`,
+              }),
+            });
+            const { data: owners } = await sb.from('admin_users')
+              .select('email').eq('tenant_id', tenantId).eq('active', true)
+              .or('role_template.eq.owner,role_template.eq.gate_manager');
+            const html = `
+              <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
+                <h2 style="font-family:Georgia,serif;color:#14532d;margin:0 0 12px">Gate bridge back online</h2>
+                <p style="margin:0 0 8px;color:#475569;line-height:1.55">The bridge at <b>${escHtml(clubName)}</b> is checking in again, after ${escHtml(GA.humanDuration(downMin))} offline. Members can unlock the gate from their phones again.</p>
+                <p style="margin:0;color:#475569;line-height:1.55">Nothing further to do. Thanks for checking on it.</p>
+              </div>`;
+            for (const o of (owners ?? [])) {
+              if (o.email) await sendEmail({ to: o.email as string, subject: `Gate bridge back online - ${clubName}`, html });
+            }
+          } catch (e) {
+            console.error('club recovery notify (non-fatal):', (e as Error).message);
+          }
+        }
+
+        results.push({ tenant_id: tenantId, transition: 'recovered', down_min: Math.round(downMin), club_was_told: clubWasTold, provider_notified: tellProvider });
+        newly_recovered++;
+        continue;
+      }
+
+      // ── stage 1: ok → alerted_provider ──────────────────────────────
+      // panel_host gating keeps half-configured installs quiet: without a
+      // host the bridge has nothing to talk to and "offline" is expected.
+      if (state === 'ok' && offlineMin >= GA.PROVIDER_ALERT_MIN && p.panel_host) {
+        const nowIso = new Date().toISOString();
+
+        // Fold this outage into the rolling flap window BEFORE deciding
+        // what to send. A bridge cycling every few minutes is a different
+        // problem from one that is simply down, and wants a different
+        // message sent once — not the same message every cycle.
+        const flap = GA.advanceFlapWindow(
+          Number(p.bridge_flap_count ?? 0),
+          p.bridge_flap_window_start as string | null,
+          nowIso,
+        );
+        const decision = GA.decideOfflineAlert({
+          newCount: flap.count,
+          windowStart: flap.windowStart,
+          lastOfflineAlertAt: p.bridge_last_offline_alert_at as string | null,
+          flapAlertedAt: p.bridge_flap_alerted_at as string | null,
+        });
+
+        const patch: Record<string, unknown> = {
+          bridge_alert_state: 'alerted_provider',
+          bridge_alert_first_offline_at: lastSeenIso,
+          bridge_provider_alerted_at: nowIso,
+          bridge_last_alert_at: nowIso,
+          bridge_flap_count: flap.count,
+          bridge_flap_window_start: flap.windowStart,
+        };
+        // Only a delivered alert moves these — the cooldown and the flap
+        // re-alert gap both have to measure real sends, not transitions.
+        if (decision === 'normal') patch.bridge_last_offline_alert_at = nowIso;
+        if (decision === 'flap')   patch.bridge_flap_alerted_at = nowIso;
+        await sb.from('gate_panels').update(patch).eq('tenant_id', tenantId);
+
+        const clubAlertInMin = Math.max(1, Math.round(GA.CLUB_ALERT_MIN - offlineMin));
+
+        if (decision === 'normal') {
+          await notifyProvider({
+            tenantId,
+            subject: `[bridge offline] ${clubName} - ${GA.humanDuration(offlineMin)} (club not told yet)`,
+            html: `<div style="font-family:Inter,Arial,sans-serif;padding:18px">
+              <p><b>${escHtml(clubName)}</b> bridge offline <b>${GA.humanDuration(offlineMin)}</b>. Last seen <code>${escHtml(lastSeenIso)}</code>.</p>
+              <p><b>The club has not been notified.</b> They get an automatic text at ${GA.CLUB_ALERT_MIN} minutes, roughly ${clubAlertInMin} min from now, unless the bridge comes back first.</p>
+              <p>Gate contact on file: ${escHtml(String(p.contact_name ?? 'none'))} ${escHtml(String(p.contact_phone ?? ''))}</p>
+              <p><a href="https://poolsideapp.com/admin/gate-integrations.html">Open provider gate-integrations</a></p>
+            </div>`,
+            sms: GA.providerOutageSms({ clubName, offlineMin, clubAlertInMin }),
+          });
+        } else if (decision === 'flap') {
+          await notifyProvider({
+            tenantId,
+            subject: `[bridge FLAPPING] ${clubName} - ${flap.count} outages in the last hour`,
+            html: `<div style="font-family:Inter,Arial,sans-serif;padding:18px">
+              <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 10px">Bridge is flapping, not just offline</h2>
+              <p><b>${escHtml(clubName)}</b> has gone offline <b>${flap.count} times</b> since ${escHtml(String(flap.windowStart))}.</p>
+              <p>Repeated short outages usually mean <b>failing hardware</b>, not a one-off event. In rough order of likelihood: a dying power supply, a corrupting SD card, a loose or damaged network cable, or a Pi overheating in an equipment room.</p>
+              <p><b>Further offline alerts for this bridge are paused for ${Math.round(GA.FLAP_REALERT_MIN / 60)} hours</b> so this doesn't bury your inbox. The pause is not a fix — the bridge is still cycling.</p>
+              <p>Gate contact on file: ${escHtml(String(p.contact_name ?? 'none'))} ${escHtml(String(p.contact_phone ?? ''))}</p>
+              <p><a href="https://poolsideapp.com/admin/gate-integrations.html">Open provider gate-integrations</a></p>
+            </div>`,
+            sms: GA.providerFlapSms({ clubName, count: flap.count }),
+          });
+        }
+
+        results.push({
+          tenant_id: tenantId, transition: 'alerted_provider',
+          offline_min: Math.round(offlineMin),
+          flap_count: flap.count, alert: decision,
+        });
         newly_offline++;
         continue;
       }
 
-      // ── alerted_offline → ok ────────────────────────────────────────
-      if (isOnline && wasAlerted) {
+      // ── stage 2: alerted_provider → alerted_club ────────────────────
+      if (state === 'alerted_provider' && offlineMin >= GA.CLUB_ALERT_MIN) {
+        const startedAt = (p.bridge_alert_first_offline_at as string | null) ?? lastSeenIso;
         await sb.from('gate_panels').update({
-          bridge_alert_state: 'ok',
-          bridge_alert_first_offline_at: null,
+          bridge_alert_state: 'alerted_club',
+          bridge_club_alerted_at: new Date().toISOString(),
           bridge_last_alert_at: new Date().toISOString(),
-        }).eq('tenant_id', p.tenant_id);
+        }).eq('tenant_id', tenantId);
+
+        let smsOk = false, smsErr: string | null = null;
+        // Normalise before sending: this column holds whatever the board
+        // typed, and Twilio rejects anything that isn't E.164.
+        const contactPhone = GA.toE164(p.contact_phone as string | null);
 
         try {
-          const { data: tenant } = await sb.from('tenants')
-            .select('slug, display_name').eq('id', p.tenant_id).maybeSingle();
-          const clubName = tenant?.display_name || 'your club';
+          // One-tap reply link, signed against this specific outage.
+          const token = await GA.mintReplyToken(slug, startedAt);
+          const link = GA.replyLink(slug, token);
 
-          // Push to admins (cheap; just reassurance)
-          await fetch(`${SUPABASE_URL}/functions/v1/push_admin`, {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'authorization': `Bearer ${SERVICE_ROLE}`,
-              'x-poolside-internal': SERVICE_ROLE,
-            },
-            body: JSON.stringify({
-              action: 'send_scoped',
-              tenant_id: p.tenant_id,
-              scopes: ['operations'],
-              title: `✓ Gate bridge back online at ${clubName}`,
-              body: 'Members can unlock the gate again. Whatever you did, it worked.',
-              url: '/club/admin/settings.html#gate',
-              tag: `gate.recovery:${p.tenant_id}`,
-            }),
+          if (contactPhone) {
+            const r = await sendSms({
+              sb, tenantId, to: contactPhone,
+              body: GA.clubOutageSms({ clubName, offlineMin, link }),
+              kind: 'transactional', critical: true, source: 'gate_admin.outage',
+            });
+            smsOk = r.sent;
+            smsErr = r.error ?? null;
+          } else {
+            smsErr = p.contact_phone
+              ? `contact_phone "${p.contact_phone}" is not a usable number`
+              : 'no contact_phone on file';
+          }
+
+          // Board dashboard task + push.
+          await enqueueAdminTask(sb, {
+            tenant_id: tenantId,
+            target_scopes: ['operations'],
+            kind: 'gate.bridge_offline',
+            summary: `Gate bridge offline ${GA.humanDuration(offlineMin)} - key fobs still work, phone unlock is down`,
+            link_url: '/club/admin/settings.html#gate',
+            source_kind: 'gate_panel', source_id: tenantId,
+            push_title: `Gate bridge offline at ${clubName}`,
+            push_body: `${GA.FOBS_STILL_WORK} Check the bridge has power and the internet is up.`,
           });
 
-          // Brief email — reassuring, no action needed
-          const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+          // Email the owners with the same three checks as the text.
           const { data: owners } = await sb.from('admin_users')
-            .select('email')
-            .eq('tenant_id', p.tenant_id).eq('active', true)
+            .select('email').eq('tenant_id', tenantId).eq('active', true)
             .or('role_template.eq.owner,role_template.eq.gate_manager');
+          const steps = GA.CHECK_STEPS.map(s => `<li>${escHtml(s)}</li>`).join('');
           const html = `
-            <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
-              <h2 style="font-family:Georgia,serif;color:#14532d;margin:0 0 12px">✓ Gate bridge back online</h2>
-              <p style="margin:0 0 8px;color:#475569;line-height:1.55">The bridge at <b>${escHtml(clubName)}</b> is checking in again. Members can unlock the gate from their phones. No further action needed.</p>
-            </div>
-          `;
+            <div style="font-family:Inter,Arial,sans-serif;max-width:560px;padding:24px;color:#0f172a">
+              <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 12px">Gate bridge offline</h2>
+              <p style="margin:0 0 14px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:14px;color:#166534"><b>${escHtml(GA.FOBS_STILL_WORK)}</b> Nobody is locked out.</p>
+              <p style="margin:0 0 12px;color:#475569;line-height:1.55">The bridge for <b>${escHtml(clubName)}</b> stopped checking in <b>${escHtml(GA.humanDuration(offlineMin))}</b> ago. Until it is back, members can't open the gate from the Poolside app.</p>
+              <h3 style="font-family:Georgia,serif;color:#0a3b5c;font-size:15px;margin:18px 0 6px">Three things to check</h3>
+              <ol style="margin:0 0 14px;padding-left:22px;font-size:14px;line-height:1.8;color:#0f172a">${steps}</ol>
+              <p style="margin:0 0 16px;font-size:13.5px;color:#475569">If none of that helps, reply to this email or tap the link in the text we sent ${escHtml(String(p.contact_name ?? 'your gate contact'))}. Doug has already been alerted and is looking at it.</p>
+              <p style="margin:0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#475569">You'll get an all-clear from us automatically once the bridge is back, usually within 5 minutes of it reconnecting.</p>
+            </div>`;
           for (const o of (owners ?? [])) {
-            if (o.email) await sendEmail({ to: o.email, subject: `✓ Gate bridge back online — ${clubName}`, html });
+            if (o.email) await sendEmail({ to: o.email as string, subject: `Gate bridge offline at ${clubName} (fobs still work)`, html });
           }
         } catch (e) {
-          console.error('bridge recovery notify (non-fatal):', (e as Error).message);
+          console.error('club escalation notify (non-fatal):', (e as Error).message);
         }
 
-        results.push({ tenant_id: p.tenant_id, transition: 'recovered' });
-        newly_recovered++;
+        await notifyProvider({
+          tenantId,
+          subject: `[bridge escalated] ${clubName} - club texted at ${GA.humanDuration(offlineMin)}`,
+          html: `<div style="font-family:Inter,Arial,sans-serif;padding:18px">
+            <p><b>${escHtml(clubName)}</b> still offline after <b>${GA.humanDuration(offlineMin)}</b>. The gate contact has now been texted.</p>
+            <p>Text to ${escHtml(contactPhone ?? 'nobody - no number on file')}: <b>${smsOk ? 'delivered' : 'NOT SENT'}</b>${smsErr ? ` (${escHtml(smsErr)})` : ''}</p>
+            <p>Their one-tap reply will show up on the gate-integrations dashboard.</p>
+            <p><a href="https://poolsideapp.com/admin/gate-integrations.html">Open provider gate-integrations</a></p>
+          </div>`,
+          sms: GA.providerEscalatedSms({ clubName, offlineMin, contactPhone }),
+        });
+
+        results.push({
+          tenant_id: tenantId, transition: 'alerted_club',
+          offline_min: Math.round(offlineMin), club_sms_sent: smsOk, club_sms_error: smsErr,
+        });
+        newly_escalated++;
       }
     }
 
     return jsonResponse({
       ok: true,
       checked: (panels ?? []).length,
-      newly_offline,
-      newly_recovered,
+      newly_offline, newly_escalated, newly_recovered,
       results,
     });
+  }
+
+  // ── outage_reply (public, no auth — token-gated) ────────────────────
+  // The one-tap answer from the club's outage text. Deliberately open: the
+  // person tapping is a volunteer standing at a pool, on a phone that is
+  // not signed in to anything, during the exact moment things are going
+  // wrong. Requiring a login here would mean nobody ever answers.
+  //
+  // The token is HMAC-signed over the club slug plus the outage start time,
+  // so it can only be minted by us and only answers the outage in progress.
+  // Worst case for a leaked token is a wrong hint about a power cut.
+  if (action === 'outage_reply') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const token = String(body.token ?? '');
+    const reply = String(body.reply ?? '');
+    if (!slug || !token) return jsonResponse({ ok: false, error: 'Missing link details' }, 400);
+    if (reply && reply !== 'power_outage' && reply !== 'please_check') {
+      return jsonResponse({ ok: false, error: 'Unknown reply' }, 400);
+    }
+
+    const GA = await import('../_shared/gate_alert.ts');
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, display_name').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Link not valid' }, 404);
+
+    const { data: panel } = await sb.from('gate_panels')
+      .select('tenant_id, bridge_alert_state, bridge_alert_first_offline_at, bridge_last_seen_at, bridge_outage_reply')
+      .eq('tenant_id', tenant.id as string).maybeSingle();
+    if (!panel) return jsonResponse({ ok: false, error: 'Link not valid' }, 404);
+
+    const startedAt = panel.bridge_alert_first_offline_at as string | null;
+    const valid = await GA.verifyReplyToken(slug, token, startedAt);
+    if (!valid) {
+      // The common cause is a good link tapped after the bridge recovered,
+      // which is genuinely good news — say so rather than showing an error.
+      const backOnline = panel.bridge_alert_state === 'ok';
+      return jsonResponse({
+        ok: false, resolved: backOnline,
+        club_name: tenant.display_name,
+        error: backOnline
+          ? 'This outage is already resolved - the bridge is back online.'
+          : 'This link has expired. Please contact Poolside directly.',
+      }, 200);
+    }
+
+    // The cron only runs every 5 minutes, so a bridge can be back for
+    // several minutes before the state machine notices and clears the
+    // outage. Someone tapping the link in that window is holding a valid
+    // token for a problem that no longer exists — tell them it's fixed
+    // rather than asking them to go check a bridge that is already up.
+    const lastSeen = panel.bridge_last_seen_at as string | null;
+    const seenMinAgo = lastSeen ? (Date.now() - new Date(lastSeen).getTime()) / 60000 : Infinity;
+    if (seenMinAgo < GA.RECOVERY_MIN) {
+      return jsonResponse({
+        ok: false, resolved: true, club_name: tenant.display_name,
+        error: 'The bridge is back online.',
+      }, 200);
+    }
+
+    // GET-shaped preflight: the page asks about the outage before showing
+    // buttons, so a link scanner prefetching the URL can't record an answer.
+    if (!reply) {
+      // Measured from when the outage started, not from the last heartbeat.
+      // Same number while it is genuinely down, but it stays truthful if a
+      // stray heartbeat lands mid-outage.
+      const offlineMin = (Date.now() - new Date(startedAt as string).getTime()) / 60000;
+      return jsonResponse({
+        ok: true, club_name: tenant.display_name,
+        offline_label: GA.humanDuration(offlineMin),
+        fobs_note: GA.FOBS_STILL_WORK,
+        steps: GA.CHECK_STEPS,
+        already: panel.bridge_outage_reply ?? null,
+      });
+    }
+
+    await sb.from('gate_panels').update({
+      bridge_outage_reply: reply,
+      bridge_outage_reply_at: new Date().toISOString(),
+    }).eq('tenant_id', tenant.id as string);
+
+    // Tell Doug what they said. This is the whole reason for the link: it
+    // turns "the bridge is down" into "the bridge is down and the power is
+    // out", which is the difference between driving over and waiting.
+    try {
+      const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+      const { sendSms } = await import('../_shared/send_sms.ts');
+      const label = GA.REPLY_LABELS[reply] ?? reply;
+      const clubName = String(tenant.display_name ?? 'A club');
+      const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
+      const PROVIDER_PHONE = Deno.env.get('PROVIDER_NOTIFY_PHONE') ?? '';
+      await sendEmail({
+        to: PROVIDER_EMAIL,
+        subject: `[bridge reply] ${clubName}: ${label}`,
+        html: `<div style="font-family:Inter,Arial,sans-serif;padding:18px">
+          <p><b>${escHtml(clubName)}</b> answered the outage text:</p>
+          <p style="font-size:17px"><b>${escHtml(label)}</b></p>
+          <p><a href="https://poolsideapp.com/admin/gate-integrations.html">Open provider gate-integrations</a></p>
+        </div>`,
+      });
+      if (PROVIDER_PHONE) {
+        await sendSms({
+          sb, tenantId: tenant.id as string, to: PROVIDER_PHONE,
+          body: `Poolside: ${clubName} replied to the gate outage text: "${label}".`,
+          kind: 'transactional', critical: true, source: 'gate_admin.outage_reply',
+        });
+      }
+    } catch (e) {
+      console.error('outage reply notify (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({ ok: true, recorded: reply, club_name: tenant.display_name });
   }
 
   const payload = action.startsWith('super_')

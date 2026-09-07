@@ -24,24 +24,50 @@ export PATH="/opt/homebrew/bin:$PATH"
 
 command -v node >/dev/null || { echo "node not on PATH — skipping syntax check"; exit 0; }
 
+# Changed files are collected as PATHS, not slugs, so _shared/ modules can be
+# checked too. A SyntaxError in _shared takes down every function importing
+# it at once, and those files are frequently reached by a dynamic import
+# inside a branch — which means importing the function's index.ts does NOT
+# parse them. They have to be checked on their own.
 if [ $# -gt 0 ]; then
-  targets=("$@")
+  targets=()
+  for a in "$@"; do
+    if [ -f "$a" ]; then targets+=("$a")
+    elif [ -f "supabase/functions/$a/index.ts" ]; then targets+=("supabase/functions/$a/index.ts")
+    fi
+  done
 else
   targets=($(
     { git diff --name-only --ignore-all-space; git ls-files --others --exclude-standard; } \
-      | sed -n 's|^supabase/functions/\([^_/][^/]*\)/.*|\1|p' | sort -u
+      | sed -n -e 's|^\(supabase/functions/[^_/][^/]*/index\.ts\)$|\1|p' \
+               -e 's|^\(supabase/functions/_shared/.*\.ts\)$|\1|p' \
+      | sort -u
   ))
+  # A changed function directory that did not itself touch index.ts still
+  # needs its entrypoint parsed.
+  for d in $(
+    { git diff --name-only --ignore-all-space; git ls-files --others --exclude-standard; } \
+      | sed -n 's|^supabase/functions/\([^_/][^/]*\)/.*|\1|p' | sort -u
+  ); do
+    f="supabase/functions/$d/index.ts"
+    [ -f "$f" ] && case " ${targets[*]:-} " in *" $f "*) ;; *) targets+=("$f");; esac
+  done
 fi
 [ ${#targets[@]} -eq 0 ] && { echo "No edge functions changed."; exit 0; }
 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 fail=0
-for slug in "${targets[@]}"; do
-  src="supabase/functions/$slug/index.ts"
+for src in "${targets[@]}"; do
   [ -f "$src" ] || continue
-  cp "$src" "$tmp/$slug.mts"
+  # Label: 'gate_admin' for a function, '_shared/send_sms.ts' for a module.
+  case "$src" in
+    supabase/functions/_shared/*) slug="_shared/$(basename "$src")" ;;
+    *) slug=$(basename "$(dirname "$src")") ;;
+  esac
+  safe=$(echo "$slug" | tr '/.' '__')
+  cp "$src" "$tmp/$safe.mts"
   out=$(node --experimental-strip-types -e "
-    import('file://$tmp/$slug.mts')
+    import('file://$tmp/$safe.mts')
       .then(() => process.exit(0))
       .catch(e => {
         // Anything that is not a parse failure means the file parsed — the

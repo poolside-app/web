@@ -318,7 +318,13 @@ Deno.serve(async (req) => {
             earlyBirdLine: ' No login needed.',
           });
           if (r.sent) {
-            await recordSms(sb, tenant.id as string, 'campaign');
+            await recordSms(sb, {
+              tenantId: tenant.id as string,
+              category: 'campaign',
+              toPhone: primary.phone_e164 as string,
+              success: true,
+              source: 'renewals.send_renewal_links',
+            });
             delivered = true;
           }
         }
