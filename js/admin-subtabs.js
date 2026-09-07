@@ -167,6 +167,15 @@
     // so a sync that only runs now can leave a fade showing on a strip
     // with nothing hidden behind it (Calendar did exactly that at 390px).
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(sync).catch(() => {});
+    // admin-flags.js hides tabs asynchronously once it has the tenant's
+    // feature flags and the admin's scopes — it sets style.display on the
+    // <a> elements. Calendar showed a fade over nothing because Lifeguards
+    // (flag defaults off) was removed after the first sync. Watch for it.
+    if (window.MutationObserver) {
+      new MutationObserver(sync).observe(strip, {
+        attributes: true, subtree: true, attributeFilter: ['style', 'class'],
+      });
+    }
     const on = strip.querySelector('a.on');
     if (on && strip.scrollWidth > strip.clientWidth) {
       on.scrollIntoView({ block: 'nearest', inline: 'center' });
