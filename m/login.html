@@ -110,6 +110,19 @@
       Sign in with Google
     </a>
 
+    <!-- Shown only after a phone sign-in, when the backend reports it sent a
+         code. Typing six digits keeps the member inside the installed app;
+         tapping the link in the text would hand them to Safari and leave
+         the app itself signed out. -->
+    <div id="code-box" style="display:none;margin-top:16px">
+      <label for="code" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">6-digit code</label>
+      <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="6" pattern="[0-9]*" placeholder="123456"
+             style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font:600 20px/1.2 'Inter';letter-spacing:.28em;text-align:center">
+      <button class="btn" id="code-submit" type="button" style="margin-top:10px;width:100%">Sign in →</button>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0">Didn't get it? Check the text — you can also just tap the link in it.</p>
+    </div>
+
     <div id="err" class="err"></div>
     <div id="ok" class="ok"></div>
     <div id="dev" class="dev"></div>
@@ -289,10 +302,20 @@ async function doStart() {
       `;
       devEl.classList.add('show');
     } else {
-      okEl.innerHTML = `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in.`;
+      const byCode = data.mode === 'code';
+      okEl.innerHTML = byCode
+        ? `✓ ${escapeHtml(data.message || 'A sign-in code is on the way.')} Enter the 6 digits below.`
+        : `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in.`;
       okEl.classList.add('show');
+      if (byCode) {
+        LAST_IDENTIFIER = raw;
+        document.getElementById('code-box').style.display = '';
+        document.getElementById('code').focus();
+      }
     }
-    document.getElementById('email').value = '';
+    // Keep the phone number on screen for the code path — it is the second
+    // half of the credential, and clearing it makes the form look reset.
+    if (data.mode !== 'code') document.getElementById('email').value = '';
   } catch (e) {
     errEl.textContent = e.name === 'AbortError' ? 'Request timed out — try again.' : e.message;
     errEl.classList.add('show');
@@ -301,6 +324,51 @@ async function doStart() {
     btn.textContent = orig;
   }
 }
+
+// ── 6-digit code sign-in ────────────────────────────────────────────────
+let LAST_IDENTIFIER = '';
+
+async function submitCode() {
+  const errEl = document.getElementById('err');
+  const btn   = document.getElementById('code-submit');
+  const code  = (document.getElementById('code').value || '').replace(/\D/g, '');
+  errEl.classList.remove('show');
+  if (code.length !== 6) {
+    errEl.textContent = 'Enter all 6 digits.';
+    errEl.classList.add('show');
+    return;
+  }
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Signing in…';
+  try {
+    const res = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'verify_code', slug: SLUG,
+        identifier: LAST_IDENTIFIER || document.getElementById('email').value.trim(),
+        code,
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'That code did not work');
+    localStorage.setItem('poolside_member_token', data.token);
+    window.location.href = '/m/';
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+document.getElementById('code-submit').addEventListener('click', submitCode);
+document.getElementById('code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitCode(); }
+});
+// Auto-submit once six digits are in — including when the phone's SMS
+// autofill drops the whole code in at once.
+document.getElementById('code').addEventListener('input', (e) => {
+  if ((e.target.value || '').replace(/\D/g, '').length === 6) submitCode();
+});
+
 </script>
 </body>
 </html>

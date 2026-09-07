@@ -111,7 +111,15 @@ function escapeHtml(s: string): string {
 
 // Twilio SMS sender — returns { sent, error? } so callers can fall back
 // to a dev_link when keys aren't set.
-async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string; sb: ReturnType<typeof createClient> }): Promise<{ sent: boolean; error?: string }> {
+// Cryptographically random 6-digit code, 100000-999999 so it never has a
+// leading zero to lose. Same generator as tenant_admin_auth uses for admins.
+function generateOtpCode(): string {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return String(100000 + (buf[0] % 900000));
+}
+
+async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string; code?: string; sb: ReturnType<typeof createClient> }): Promise<{ sent: boolean; error?: string }> {
   // SMS_DEV_MODE forces dev_link fallback for testing while waiting for
   // A2P 10DLC approval. The function does NOT call Twilio when set.
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
@@ -124,7 +132,13 @@ async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLi
   // 10DLC Campaign so US carriers accept the message (error 30034 fix).
   const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
   if (!sid || !token || (!messagingServiceSid && !fromN)) return { sent: false, error: 'TWILIO_* env vars not set' };
-  const body = `Sign in to ${args.tenantName}: ${args.verifyLink}\n(Link expires in 15 minutes.)`;
+  // Code first, link second. Someone in the installed app types the code;
+  // someone reading the text on a laptop taps the link. Leading with the
+  // code also means the useful part survives a truncated preview.
+  // GSM-7 only — one curly quote or dash doubles the segment count.
+  const body = args.code
+    ? `${args.code} is your ${args.tenantName} sign-in code. Enter it in the app.\n\nOr tap: ${args.verifyLink}\n(Expires in 15 minutes.)`
+    : `Sign in to ${args.tenantName}: ${args.verifyLink}\n(Link expires in 15 minutes.)`;
   const params: Record<string, string> = { To: args.to, Body: body };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (fromN) params.From = fromN;
@@ -182,6 +196,63 @@ async function sendMagicLinkEmail(args: {
   } catch (e) {
     return { sent: false, error: String(e) };
   }
+}
+
+
+// Mint a member session from a validated magic-link row. Shared by `verify`
+// (link tapped in an email or text) and `verify_code` (six digits typed into
+// the installed app) so both paths burn the row, stamp the member, and issue
+// an identical token — there is no second place for one of them to drift.
+async function completeMemberLogin(
+  sb: ReturnType<typeof createClient>,
+  link: { id: string; tenant_id: string; member_id: string },
+  expectedSlug: string,
+): Promise<Response> {
+  const { data: tenant } = await sb.from('tenants')
+    .select('id, slug, display_name').eq('id', link.tenant_id).maybeSingle();
+  if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
+  // Cross-tenant guard: require a non-empty slug that matches. An earlier
+  // version short-circuited on `slug &&`, so an empty slug skipped the check.
+  if (!expectedSlug || expectedSlug !== tenant.slug) {
+    return jsonResponse({ ok: false, error: 'Link does not match this club' }, 401);
+  }
+
+  const { data: member } = await sb.from('household_members')
+    .select('id, name, email, phone_e164, role, household_id, can_unlock_gate, can_book_parties, active')
+    .eq('id', link.member_id).maybeSingle();
+  if (!member || !member.active) {
+    return jsonResponse({ ok: false, error: 'Your member record is no longer active' }, 401);
+  }
+
+  const now = new Date().toISOString();
+  await sb.from('member_magic_links').update({ used_at: now }).eq('id', link.id);
+  await sb.from('household_members').update({ last_seen_at: now, confirmed_at: now }).eq('id', member.id);
+
+  const key = await getKey();
+  // Long-lived JWT — members are expected to stay signed in once they install
+  // the app. The `me` action slides the window so active users effectively
+  // never see a login form again.
+  const jwt = await create(
+    { alg: 'HS256', typ: 'JWT' },
+    {
+      sub: member.id, kind: 'member',
+      tid: tenant.id, slug: tenant.slug, hid: member.household_id,
+      exp: getNumericDate(60 * 60 * 24 * 365 * 5),
+    },
+    key,
+  );
+  return jsonResponse({
+    ok: true,
+    token: jwt,
+    user: {
+      id: member.id, name: member.name, email: member.email,
+      phone_e164: member.phone_e164, role: member.role,
+      can_unlock_gate: member.can_unlock_gate,
+      can_book_parties: member.can_book_parties,
+    },
+    household: { id: member.household_id },
+    tenant: { slug: tenant.slug, display_name: tenant.display_name },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -269,8 +340,25 @@ Deno.serve(async (req) => {
     const verifyLink = `${clubUrl}/m/verify.html#token=${encodeURIComponent(tok)}`;
 
     if (phone_e164) {
+      // Also issue a 6-digit code. Tapping a link in a text opens the
+      // phone's BROWSER, so a member who installed the PWA ended up signed
+      // in inside Safari while the installed app stayed logged out — the
+      // most confusing thing in the whole member flow. A code they can type
+      // into the app they are already looking at sidesteps that entirely.
+      //
+      // Stored as its own row, so the link keeps working for everyone who
+      // is not using the installed app. Hash is salted with the member id:
+      // six digits is only a million guesses, and without the salt a
+      // brute-forced hash could match ANY member at ANY club.
+      const code = generateOtpCode();
+      await sb.from('member_magic_links').insert({
+        tenant_id: tenant.id, member_id: member.id,
+        token_hash: await sha256Hex(`${code}:${member.id}`),
+        expires_at: expiresAt,
+      });
+
       const send = await sendMagicLinkSms({
-        to: phone_e164, tenantName: tenant.display_name, verifyLink, sb,
+        to: phone_e164, tenantName: tenant.display_name, verifyLink, code, sb,
       });
       // Auth-category SMS — uncapped per project_sms_caps memory, but
       // logged for audit + visibility in admin dashboards.
@@ -278,7 +366,12 @@ Deno.serve(async (req) => {
         tenant_id: tenant.id, category: 'auth', to_phone: phone_e164,
         success: send.sent, error: send.error ?? null, source: 'member_auth.start',
       });
-      if (send.sent) { await padTime(); return jsonResponse(generic); }
+      if (send.sent) {
+        await padTime();
+        // mode:'code' switches m/login.html to the "enter the 6 digits"
+        // form instead of "check your texts for a link".
+        return jsonResponse({ ...generic, mode: 'code' });
+      }
       return jsonResponse({
         ok: true, sent: false,
         message: 'SMS sending is not configured. Use the link below to sign in.',
@@ -315,57 +408,80 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'This sign-in link has expired' }, 401);
     }
 
-    const { data: tenant } = await sb.from('tenants')
-      .select('id, slug, display_name').eq('id', link.tenant_id).maybeSingle();
-    if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
-    // Tighten cross-tenant guard: previously `slug &&` short-circuited so an
-    // empty slug bypassed the check. Now require the slug to be non-empty
-    // AND match. m/verify.html always sends a slug from the subdomain.
-    if (!slug || slug !== tenant.slug) {
-      return jsonResponse({ ok: false, error: 'Link does not match this club' }, 401);
+    return await completeMemberLogin(sb, link, slug);
+  }
+
+  // ── verify_code ────────────────────────────────────────────────────────
+  // Six digits typed into the installed app. The link path still exists and
+  // is unchanged; this is for the member who tapped "install" and would
+  // otherwise be signed in inside Safari while the app stayed logged out.
+  //
+  // Scoped deliberately: the code hash is salted with the member id, so the
+  // caller must ALSO know the phone number. Six digits on its own is a
+  // million guesses, and an unsalted hash could be brute-forced against
+  // every member of every club at once.
+  if (action === 'verify_code') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const raw  = String(body.identifier ?? body.phone ?? '').trim();
+    const code = String(body.code ?? '').replace(/\D/g, '');
+    if (!slug || !raw || code.length !== 6) {
+      return jsonResponse({ ok: false, error: 'Enter the 6-digit code we texted you' }, 400);
     }
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('id, slug').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+
+    const digits = raw.replace(/[^\d+]/g, '');
+    let phone_e164: string | null = null;
+    if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) phone_e164 = digits;
+    else if (/^\d{10}$/.test(digits)) phone_e164 = '+1' + digits;
+    else if (/^1\d{10}$/.test(digits)) phone_e164 = '+' + digits;
+    if (!phone_e164) return jsonResponse({ ok: false, error: 'That phone number doesn\'t look right' }, 400);
 
     const { data: member } = await sb.from('household_members')
-      .select('id, name, email, phone_e164, role, household_id, can_unlock_gate, can_book_parties, active')
-      .eq('id', link.member_id).maybeSingle();
-    if (!member || !member.active) {
-      return jsonResponse({ ok: false, error: 'Your member record is no longer active' }, 401);
+      .select('id').eq('tenant_id', tenant.id)
+      .eq('phone_e164', phone_e164).eq('active', true).maybeSingle();
+    // Same wording whether the member or the code is wrong, so this cannot
+    // be used to discover who is a member of a club.
+    const WRONG = { ok: false, error: 'That code is not right, or it has expired' };
+    if (!member) return jsonResponse(WRONG, 401);
+
+    const codeHash = await sha256Hex(`${code}:${member.id}`);
+    const { data: link } = await sb.from('member_magic_links')
+      .select('id, tenant_id, member_id, expires_at, used_at, code_attempts')
+      .eq('tenant_id', tenant.id).eq('member_id', member.id)
+      .eq('token_hash', codeHash)
+      .is('used_at', null)
+      .maybeSingle();
+
+    if (!link) {
+      // Wrong code: burn an attempt against this member's newest live code
+      // so guessing is bounded even though we cannot identify which row was
+      // being aimed at.
+      const { data: live } = await sb.from('member_magic_links')
+        .select('id, code_attempts')
+        .eq('tenant_id', tenant.id).eq('member_id', member.id)
+        .is('used_at', null).gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (live) {
+        const attempts = Number(live.code_attempts ?? 0) + 1;
+        await sb.from('member_magic_links')
+          .update(attempts >= 5
+            ? { code_attempts: attempts, used_at: new Date().toISOString() }
+            : { code_attempts: attempts })
+          .eq('id', live.id);
+      }
+      return jsonResponse(WRONG, 401);
+    }
+    if (Number(link.code_attempts ?? 0) >= 5) {
+      return jsonResponse({ ok: false, error: 'Too many tries. Ask for a new code.' }, 429);
+    }
+    if (new Date(link.expires_at) < new Date()) {
+      return jsonResponse({ ok: false, error: 'That code has expired. Ask for a new one.' }, 401);
     }
 
-    // Burn the link and bump last_seen_at on the member.
-    const now = new Date().toISOString();
-    await sb.from('member_magic_links').update({ used_at: now }).eq('id', link.id);
-    await sb.from('household_members').update({
-      last_seen_at: now,
-      confirmed_at: now,
-    }).eq('id', member.id);
-
-    const key = await getKey();
-    // Long-lived JWT — members are expected to "stay logged in forever"
-    // once they install the app. Sliding renewal in the `me` action below
-    // keeps active users on a rolling window so they effectively never
-    // see a login form again.
-    const jwt = await create(
-      { alg: 'HS256', typ: 'JWT' },
-      {
-        sub: member.id, kind: 'member',
-        tid: tenant.id, slug: tenant.slug, hid: member.household_id,
-        exp: getNumericDate(60 * 60 * 24 * 365 * 5),  // 5 years
-      },
-      key,
-    );
-    return jsonResponse({
-      ok: true,
-      token: jwt,
-      user: {
-        id: member.id, name: member.name, email: member.email,
-        phone_e164: member.phone_e164, role: member.role,
-        can_unlock_gate: member.can_unlock_gate,
-        can_book_parties: member.can_book_parties,
-      },
-      household: { id: member.household_id },
-      tenant: { slug: tenant.slug, display_name: tenant.display_name },
-    });
+    return await completeMemberLogin(sb, link, slug);
   }
 
   // For me / logout we need a valid member token.
