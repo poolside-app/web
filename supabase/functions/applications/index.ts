@@ -1446,10 +1446,42 @@ Deno.serve(async (req) => {
       } catch { /* fall through to dev mode */ }
       if (!welcome_sent) welcome_dev_link = verifyLink;
 
+      // Text them as well as emailing. Approval is the one moment a family
+      // is actively waiting to hear back, and club email lands in spam or
+      // goes unread for days — Doug asked for this after watching the flow
+      // himself. Transactional, so it does not draw on the club's monthly
+      // campaign allowance; roughly one segment per approval.
+      let welcome_sms_sent = false;
+      try {
+        const { toE164 } = await import('../_shared/phone.ts');
+        const to = toE164(app.primary_phone as string | null);
+        if (to) {
+          const { sendSms } = await import('../_shared/send_sms.ts');
+          const firstNm = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
+          // GSM-7 only. One curly quote or dash doubles the segment count.
+          const owes = app.payment_status !== 'paid';
+          const body = owes
+            ? `Hi ${firstNm}, your membership at ${clubName} is approved. Last step is your dues - tap to sign in and pay: ${verifyLink}`
+            : `Hi ${firstNm}, you're all set - your membership at ${clubName} is approved and paid. Tap to sign in: ${verifyLink}`;
+          const r = await sendSms({
+            // No tenantPlan: 'transactional' is never counted against the
+            // club's monthly allowance, so the plan is not consulted.
+            sb, tenantId: TID, to, body,
+            kind: 'transactional', source: 'applications.approve',
+          });
+          welcome_sms_sent = r.sent;
+        }
+      } catch (e) {
+        console.error('approval sms (non-fatal):', (e as Error).message);
+      }
+
       await sb.from('application_actions').insert({
         application_id: id, tenant_id: TID,
         kind: 'welcome_sent',
-        body: welcome_sent ? 'email via Resend' : 'dev mode (link returned)',
+        body: [
+          welcome_sent ? 'email via Resend' : 'dev mode (link returned)',
+          welcome_sms_sent ? 'sms via Twilio' : null,
+        ].filter(Boolean).join(' + '),
         actor_id: decided_by,
       });
     }

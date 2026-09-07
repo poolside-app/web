@@ -96,6 +96,13 @@ Deno.serve(async (req) => {
     const { data: tenant } = await sb.from('tenants').select('id').eq('slug', slug).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
 
+    // Same gap Programs had: the admin tab hid when the club unticked
+    // Volunteer, but the public list kept serving opportunities to members.
+    const { featureEnabled } = await import('../_shared/tenant_features.ts');
+    if (!(await featureEnabled(sb, tenant.id as string, 'volunteer'))) {
+      return jsonResponse({ ok: true, opportunities: [] });
+    }
+
     const now = new Date().toISOString();
     const { data: opps } = await sb.from('volunteer_opportunities').select(OPP_FIELDS)
       .eq('tenant_id', tenant.id).eq('active', true)

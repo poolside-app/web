@@ -133,6 +133,14 @@ Deno.serve(async (req) => {
       .eq('slug', slug).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
 
+    // A club that unticked Programs in Settings should not still be listing
+    // them to members. Empty list rather than an error: the member page just
+    // renders nothing, which is what "feature off" should look like.
+    const { featureEnabled } = await import('../_shared/tenant_features.ts');
+    if (!(await featureEnabled(sb, tenant.id as string, 'programs'))) {
+      return jsonResponse({ ok: true, programs: [] });
+    }
+
     const { data: programs } = await sb.from('programs').select(PROGRAM_FIELDS)
       .eq('tenant_id', tenant.id).eq('active', true)
       .order('start_date', { ascending: true, nullsFirst: false });

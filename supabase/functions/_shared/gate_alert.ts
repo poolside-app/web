@@ -220,29 +220,10 @@ export function replyLink(slug: string, token: string): string {
   return `https://${slug}.poolsideapp.com/gate-status.html?t=${encodeURIComponent(token)}`;
 }
 
-// ── Phone normalisation ──────────────────────────────────────────────────
-// gate_panels.contact_phone is whatever the board typed into the settings
-// form, which formats for display as "(925)-771-9074" and stores that string
-// verbatim. Twilio needs E.164. Without this the outage text — the one
-// message the monitoring fee exists to deliver — fails silently with a
-// Twilio 21211 and nobody finds out until the next outage.
-//
-// Deliberately conservative: anything that isn't recognisably a US 10- or
-// 11-digit number, or already E.164, returns null rather than a guess. A
-// null is visible in the provider alert ("no number on file"); a wrong
-// number is not.
-export function toE164(raw: string | null | undefined): string | null {
-  const s = String(raw ?? '').trim();
-  if (!s) return null;
-  if (s.startsWith('+')) {
-    const kept = '+' + s.slice(1).replace(/\D/g, '');
-    return kept.length >= 8 ? kept : null;
-  }
-  const d = s.replace(/\D/g, '');
-  if (d.length === 10) return `+1${d}`;
-  if (d.length === 11 && d.startsWith('1')) return `+${d}`;
-  return null;
-}
+// Phone normalisation moved to _shared/phone.ts once a second caller needed
+// it (application approval texts). Re-exported so existing imports from this
+// module keep working.
+export { toE164 } from './phone.ts';
 
 // ── Message bodies ───────────────────────────────────────────────────────
 
