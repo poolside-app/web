@@ -249,7 +249,8 @@ function renderList() {
   const list = document.getElementById('template-list');
   if (!TEMPLATES.length) { list.innerHTML = '<div class="empty-state">No templates registered.</div>'; return; }
   // Honor ?audience= so /club/admin/emails.html?audience=member only shows
-  // member-lifecycle templates (when accessed via Members → Emails sub-tab).
+  // member-lifecycle templates. Emails has no sub-tab of its own — it is
+  // reached from Apply form and Payments (see js/admin-subtabs.js).
   // Default = no filter (system-wide reference view, kept for completeness).
   const wanted = new URL(window.location.href).searchParams.get('audience');
   const filtered = wanted

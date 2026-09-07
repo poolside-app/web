@@ -101,15 +101,52 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: '`value` must be a JSON object' }, 400);
     }
 
-    // Upsert settings row. Shallow-merge with existing so a save from one
-    // surface (wizard, settings page, members→tiers) doesn't clobber keys
-    // managed by another. Top-level keys present in `value` win; any keys
-    // only in the existing row (e.g. membership_tiers seeded at signup, or
-    // saved from a different page) are preserved.
+    // Upsert settings row, merging with what's already there so a save from
+    // one surface doesn't clobber keys managed by another.
+    //
+    // This used to be a TOP-LEVEL shallow merge — `{...existing, ...value}` —
+    // which preserved sibling groups but replaced any group it touched
+    // wholesale. Different surfaces write different subsets of the same
+    // group, so each one silently deleted the other's fields:
+    //
+    //   * payments: the Payments page writes venmo_handle, paypal_link,
+    //     offline_verify_window_days and pass_stripe_fee. The setup wizard
+    //     writes only the first two. Re-running the wizard therefore reset
+    //     pass_stripe_fee — which stripe_checkout, renewal_quote and
+    //     payment_plans all read to decide whether the MEMBER pays the
+    //     Stripe fee. A club could re-run setup and quietly start eating
+    //     card fees it had chosen to pass on.
+    //   * club: the wizard writes city/state/country; the settings page
+    //     does not, so saving Club info dropped them. (That one self-heals,
+    //     because the wizard re-derives them by splitting `location`.)
+    //
+    // Now merges plain objects recursively. Arrays and scalars are replaced
+    // outright, which is what callers expect: membership_tiers is an array
+    // and must be settable to a shorter list, and an explicit `null` has to
+    // stay a real "clear this field" instruction rather than being ignored.
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v);
+
+    function deepMerge(
+      base: Record<string, unknown>,
+      patch: Record<string, unknown>,
+    ): Record<string, unknown> {
+      const out: Record<string, unknown> = { ...base };
+      for (const [k, v] of Object.entries(patch)) {
+        out[k] = isPlainObject(v) && isPlainObject(base[k])
+          ? deepMerge(base[k] as Record<string, unknown>, v)
+          : v;
+      }
+      return out;
+    }
+
     const { data: existing } = await sb.from('settings')
       .select('value').eq('tenant_id', payload.tid).maybeSingle();
     if (existing) {
-      const merged = { ...(existing.value ?? {}), ...value } as Record<string, unknown>;
+      const merged = deepMerge(
+        (existing.value ?? {}) as Record<string, unknown>,
+        value,
+      );
       const { error } = await sb.from('settings')
         .update({ value: merged }).eq('tenant_id', payload.tid);
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);

@@ -162,7 +162,8 @@
   <!-- Section order set by Doug 2026-05-22:
        1. Club info → 2. Front-page intro → 3. Branding → 4. Season &
        memberships → 5. Pool location & hours → 6. Backup & archive →
-       7. Features → 8. Integrations → 9. Pool access (not listed by
+       7. Features → 8. Pool access (not listed by  (Integrations card removed 2026-05-22;
+    Drive now lives under "Backups & archive")
        Doug; placed at end). Conditional cards stay outside that order:
        push-card at the top (when shown — it's an attention-grabbing
        opt-in), gate-card at the bottom (when active — paid add-on). -->
@@ -391,7 +392,7 @@
     </div>
   </details>
 
-  <!-- Fundraiser thermometer card moved 2026-05-08 to Content > Donations
+  <!-- Fundraiser thermometer card moved 2026-05-08 to Money > Donations
        (donations.html). It's a fundraising/content surface, not Settings. -->
 
   <!-- "Public page extras" card removed 2026-05-08 — clutter; defaults are fine.
@@ -532,7 +533,7 @@
     <button class="btn" id="save-btn-2" onclick="save()">Save changes</button>
   </div>
 
-  <!-- Club admins card removed 2026-05-08 — Members → Admins is the canonical
+  <!-- Club admins card removed 2026-05-08 — Settings → Admins is the canonical
        home, this Settings stub was redundant. -->
 
   <!-- Gate add-on card — stateful: shows different UI for "not requested",
@@ -1128,8 +1129,8 @@ function collect(prevSettings) {
       end_date:           val('season_end_date')   || null,
     },
     // Fundraiser, public, apply, payments keys are all omitted — managed in
-    // their dedicated screens (Content > Donations, Members > Apply form,
-    // Members > Payments). Server-side shallow-merge leaves them untouched.
+    // their dedicated screens (Money > Donations, Members > Apply form,
+    // Money > Payments). Server-side shallow-merge leaves them untouched.
     features: {
       programs:     !!document.getElementById('feat_programs').checked,
       parties:      !!document.getElementById('feat_parties').checked,

@@ -425,7 +425,7 @@ document.getElementById('signout').addEventListener('click', logout);
     const s = ONBOARDING_STATE.steps || {};
     const shareApplyLink = localStorage.getItem('poolside_onboarding_share_apply_link') === '1';
     const steps = [
-      { key: 'tiers_set',        done: !!s.tiers_set,        label: 'Set membership levels',                href: '/club/admin/members.html#tiers',   cta: 'Set up' },
+      { key: 'tiers_set',        done: !!s.tiers_set,        label: 'Set membership levels',                href: '/club/admin/tiers.html',   cta: 'Set up' },
       { key: 'payment_set',      done: !!s.payment_set,      label: 'Add Venmo handle (or connect Stripe)', href: '/club/admin/payments.html',         cta: 'Add' },
       { key: 'self_signup_done', done: !!s.self_signup_done, label: 'Sign up your own family',              href: '/apply.html?prefill=admin',         cta: 'Apply' },
       { key: 'share_apply_link', done: shareApplyLink,       label: 'Share your apply link with members',   href: '#apply-link-card',                 cta: 'Show me' },

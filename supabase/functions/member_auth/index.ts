@@ -887,7 +887,7 @@ Deno.serve(async (req) => {
         target_scopes: ['applications'],
         kind: 'household_member.member_added',
         summary: `New household member added: ${name} (${role}) — by ${me.data.name}`,
-        link_url: '/club/admin/households.html',
+        link_url: '/club/admin/members.html#households',
         source_kind: 'household_member', source_id: created.id,
       });
     } catch { /* best-effort */ }
@@ -1242,7 +1242,7 @@ Deno.serve(async (req) => {
         target_scopes: ['membership'],
         kind: 'household.transfer_primary',
         summary: `Primary role transferred to ${target.name}`,
-        link_url: '/club/admin/households.html',
+        link_url: '/club/admin/members.html#households',
         source_kind: 'household_member', source_id: newId,
       });
     } catch { /* best-effort */ }
