@@ -150,6 +150,22 @@ PROVIDER_ID = prov_rows[0]['id'] if prov_rows else None
 
 # Spin up an isolated test tenant ('e2etest-{stamp}') for isolation testing.
 STAMP = str(int(time.time()))[-6:]
+# ── Feature flags ────────────────────────────────────────────────────────
+# SLUG_A is bishopestates — a REAL club whose flags Doug changes. Programs
+# and Volunteer are switched off there today, and since 2026-09-07 the
+# public endpoints honour that, so tests asserting "the public list shows
+# it" started failing on a correctly-working app. A test must set up its own
+# preconditions rather than inherit whatever the club happens to be set to.
+def _set_feature(flag: str, on: bool):
+    mgmt_query(f"""update public.settings
+                      set value = jsonb_set(coalesce(value,'{{}}'::jsonb),
+                                            '{{features,{flag}}}', '{str(on).lower()}'::jsonb, true)
+                    where tenant_id = '{TENANT_A_ID}';""")
+
+def _clear_feature(flag: str):
+    mgmt_query(f"""update public.settings set value = value #- '{{features,{flag}}}'
+                    where tenant_id = '{TENANT_A_ID}';""")
+
 SLUG_B = f'e2etest{STAMP}'
 mgmt_query(f"""
   insert into public.tenants (slug, display_name, status, plan)
@@ -708,12 +724,22 @@ def prog_admin_create():
     track('programs', PROG_ID)
     assert r['program']['spots_left'] == 2, f'expected 2 spots, got {r["program"]["spots_left"]}'
 
+
 def prog_public_list_visible():
-    r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list_public', 'slug': SLUG_A })
-    assert r.get('ok'), f'list_public: {r}'
-    found = next((p for p in r.get('programs', []) if p['id'] == PROG_ID), None)
-    assert found, 'program not exposed via list_public'
-    assert found['spots_left'] == 2
+    _set_feature('programs', True)
+    try:
+        r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list_public', 'slug': SLUG_A })
+        assert r.get('ok'), f'list_public: {r}'
+        found = next((p for p in r.get('programs', []) if p['id'] == PROG_ID), None)
+        assert found, 'program not exposed via list_public'
+        assert found['spots_left'] == 2
+        # And the flag genuinely gates it, which is the point of the switch.
+        _set_feature('programs', False)
+        r2 = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list_public', 'slug': SLUG_A })
+        assert not any(p['id'] == PROG_ID for p in r2.get('programs', [])), \
+            'programs still public with the feature switched off'
+    finally:
+        _clear_feature('programs')
 
 def prog_member_book():
     global PROG_BOOKING_ID
@@ -915,10 +941,20 @@ def vol_admin_create():
     track('volunteer_opps', VOL_OPP_ID)
 
 def vol_public_list():
-    r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'list_public', 'slug': SLUG_A })
-    assert r.get('ok'), f'list_public: {r}'
-    found = next((o for o in r.get('opportunities', []) if o['id'] == VOL_OPP_ID), None)
-    assert found, 'opportunity not in public list'
+    # Same reason as programs: Volunteer is switched off at bishopestates,
+    # and the public list has honoured that since 2026-09-07.
+    _set_feature('volunteer', True)
+    try:
+        r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'list_public', 'slug': SLUG_A })
+        assert r.get('ok'), f'list_public: {r}'
+        found = next((o for o in r.get('opportunities', []) if o['id'] == VOL_OPP_ID), None)
+        assert found, 'opportunity not in public list'
+        _set_feature('volunteer', False)
+        r2 = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'list_public', 'slug': SLUG_A })
+        assert not any(o['id'] == VOL_OPP_ID for o in r2.get('opportunities', [])), \
+            'volunteer opportunities still public with the feature switched off'
+    finally:
+        _clear_feature('volunteer')
     assert found['slots_filled'] == 0
 
 def vol_member_signup():
@@ -1959,14 +1995,22 @@ def blast_refuses_a_partial_send():
     # All-or-nothing. Reaching some of the club is worse than reaching none:
     # the board thinks everyone was told.
     mgmt_query(f"""update public.tenants set sms_credits = 0 where id = '{TENANT_A_ID}';""")
-    # Burn the monthly allowance down to almost nothing by logging sends.
-    cap_rows = mgmt_query(f"""select count(*) as n from public.sms_log
-                              where tenant_id = '{TENANT_A_ID}' and category = 'campaign'
-                                and sent_at >= date_trunc('month', now() at time zone 'utc');""")
-    to_add = 250 - int(cap_rows[0]['n']) - 0   # free plan cap is 250
-    mgmt_query(f"""insert into public.sms_log (tenant_id, category, to_phone, success, source)
-                   select '{TENANT_A_ID}', 'campaign', '+15550000000', true, 'e2e-fill'
-                   from generate_series(1, {max(to_add,0)});""")
+    # Burn the allowance down to one segment of headroom.
+    #
+    # Rewritten 2026-09-07: this used to add 250 ROWS against a hardcoded
+    # free-plan monthly cap, counting messages. The allowance is now measured
+    # in SEGMENTS over the calendar year, and the plan is read from the
+    # tenant — so a hardcoded 250 left ~24,750 segments spare and the guard
+    # (correctly) let the blast through. Read the real cap instead of
+    # assuming one, and fill with a single high-segment row rather than
+    # tens of thousands of inserts.
+    cap = post(BLAST_URL, {'action': 'list'}, _admin_tok(ADMIN_A)).get('cap') or {}
+    gap = int(cap.get('remaining', 0)) - 1
+    if gap > 0:
+        mgmt_query(f"""insert into public.sms_log
+                       (tenant_id, category, to_phone, success, source, segments)
+                       values ('{TENANT_A_ID}', 'campaign', '+15550000000', true,
+                               'e2e-fill', {gap});""")
     r = post(BLAST_URL, {'action': 'create', 'body': f'Closed today {STAMP}'}, _admin_tok(ADMIN_A))
     assert not r.get('ok'), f'a blast was queued with no allowance left: {r}'
     assert r.get('short_by', 0) >= 1, f'shortfall not reported: {r}'

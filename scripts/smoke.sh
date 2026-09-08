@@ -217,13 +217,13 @@ check_post "volunteer.list_public returns ok" \
 check_status "admin /club/admin/volunteer" "${HOST}/club/admin/volunteer.html" "200"
 check       "admin volunteer page wires the API" "${HOST}/club/admin/volunteer.html" "/functions/v1/volunteer"
 
-check_post "guest_passes.list rejects anon" \
-  "${SUPA}/functions/v1/guest_passes" \
-  '{"action":"list"}' \
-  'Not authenticated'
-
-check_status "admin /club/admin/guest-passes" "${HOST}/club/admin/guest-passes.html" "200"
-check       "admin guest-passes page wires the API" "${HOST}/club/admin/guest-passes.html" "/functions/v1/guest_passes"
+# Guest passes was retired 2026-09-07 (settings had said "not on the roadmap"
+# since May; the admin page and the member-side calls were finally removed).
+# guest-passes.html is now a redirect stub, so it cannot "wire the API" — the
+# check below asserts it redirects instead of 404ing, since board members may
+# still have it bookmarked.
+check_status "retired /club/admin/guest-passes still resolves" "${HOST}/club/admin/guest-passes.html" "200"
+check       "retired guest-passes redirects to payments" "${HOST}/club/admin/guest-passes.html" "/club/admin/payments.html"
 
 check_post "payments_admin.list rejects anon" \
   "${SUPA}/functions/v1/payments_admin" \
