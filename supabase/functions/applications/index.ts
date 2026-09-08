@@ -467,6 +467,11 @@ Deno.serve(async (req) => {
       children_json.push({
         name: nm,
         dob: c?.dob ? String(c.dob) : null,
+        // Optional. A phone is what lets a kid sign in to the member portal
+        // on their own device — the same door their parents use. Whether it
+        // also opens the GATE is decided by age below, not by having a
+        // phone: teens (13+) get gate access, younger children do not.
+        phone: c?.phone ? String(c.phone).trim().slice(0, 32) : null,
         allergies: c?.allergies ? String(c.allergies).slice(0, 500) : null,
       });
     }
@@ -1302,15 +1307,10 @@ Deno.serve(async (req) => {
     const children = Array.isArray(app.children_json) ? app.children_json as Array<Record<string, unknown>> : [];
 
     // Normalize whatever the apply form's formatPhoneInput rendered (e.g.
-    // "(555) 123-4567") into E.164 so future SMS magic-link lookups can match.
-    function toE164(raw: string | null | undefined): string | null {
-      if (!raw) return null;
-      const digits = String(raw).replace(/[^\d+]/g, '');
-      if (digits.startsWith('+') && /^\+\d{8,15}$/.test(digits)) return digits;
-      if (/^\d{10}$/.test(digits)) return '+1' + digits;
-      if (/^1\d{10}$/.test(digits)) return '+' + digits;
-      return null;
-    }
+    // "(555) 123-4567") into E.164 so SMS lookups can match. Shared with the
+    // gate contact and approval-text paths — a second private copy is how
+    // two callers end up disagreeing about what a valid number looks like.
+    const { toE164 } = await import('../_shared/phone.ts');
 
     let createdExtraMembers = 0;
     // Surface failed inserts so admin knows if the 8-member household cap (or
@@ -1348,9 +1348,17 @@ Deno.serve(async (req) => {
         const yrs = (Date.now() - new Date(String(c.dob)).getTime()) / (365.25 * 86400_000);
         if (yrs >= 13) role = 'teen';
       }
+      // A duplicate phone would violate hm_tenant_phone_active_unique and
+      // fail the whole insert, so drop a child's number if it collides with
+      // a parent's — a family sharing one handset is common, and losing the
+      // child's record over it would be worse than losing the login.
+      const cPhone = toE164(c?.phone as string | null);
+      const phoneTaken = !!cPhone && (cPhone === app.primary_phone
+        || adults.some((a: Record<string, unknown>) => toE164(a?.phone as string | null) === cPhone));
       const { error: chErr } = await sb.from('household_members').insert({
         tenant_id: TID, household_id: hh.id,
         name: cName,
+        phone_e164: phoneTaken ? null : cPhone,
         role,
         can_unlock_gate: role === 'teen',
         can_book_parties: false,

@@ -32,18 +32,37 @@ const cors = {
 const DEFAULT_ICON_192 = 'https://poolsideapp.com/icon-192.png';
 const DEFAULT_ICON_512 = 'https://poolsideapp.com/icon-512.png';
 
-function manifest(name: string, themeColor: string, icon192: string, icon512: string, opts?: { admin?: boolean }) {
-  const isAdmin = !!opts?.admin;
-  // Admin pages get start_url=/club/admin/ so saving an admin page to the
-  // iOS home screen opens the admin dashboard (not the member portal) when
-  // tapped. Doug 2026-05-22: he was getting "logged out" after Add to Home
-  // Screen — actual cause was start_url='/m/' sending him to the member
-  // sign-in page where his admin session didn't apply.
+type ManifestKind = 'member' | 'admin' | 'kiosk';
+
+function manifest(
+  name: string, themeColor: string, icon192: string, icon512: string,
+  opts?: { admin?: boolean; kiosk?: boolean },
+) {
+  // Three variants, because they are three genuinely different things:
+  //
+  //   member  the app a family installs. start_url=/m/
+  //   admin   the board's view. start_url=/club/admin/ — Doug 2026-05-22 was
+  //           getting "logged out" after Add to Home Screen, and the actual
+  //           cause was start_url='/m/' dropping him on the member sign-in
+  //           page where his admin session did not apply.
+  //   kiosk   the shared tablet at the gate. start_url points straight at
+  //           check-in, because that device does one job and whoever picks
+  //           it up should not have to navigate.
+  //
+  // Distinct `id` per variant matters on Android: Chrome keys an installed
+  // app off the manifest id, so without it a second install would replace
+  // the first instead of sitting beside it. iOS keys off the URL and would
+  // have worked either way.
+  const kind: ManifestKind = opts?.kiosk ? 'kiosk' : opts?.admin ? 'admin' : 'member';
+  const suffix = { member: '', admin: ' — Board', kiosk: ' — Check-in' }[kind];
+  const start  = { member: '/m/', admin: '/club/admin/', kiosk: '/club/admin/checkin.html' }[kind];
+  const base   = name.length > 12 ? name.slice(0, 12) : name;
   return {
-    name: isAdmin ? `${name} — Admin` : name,
-    short_name: name.length > 12 ? name.slice(0, 12) : name,
+    id: `/poolside-${kind}`,
+    name: `${name}${suffix}`,
+    short_name: kind === 'member' ? base : `${base}${kind === 'admin' ? ' Board' : ' Gate'}`,
     description: `${name} — pool club app`,
-    start_url: isAdmin ? '/club/admin/' : '/m/',
+    start_url: start,
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
@@ -64,10 +83,12 @@ Deno.serve(async (req) => {
   // ?admin=1 → admin-side manifest with start_url=/club/admin/. Set by
   // admin-flags.js on every admin page (search params on the <link rel="manifest">).
   const isAdmin = url.searchParams.get('admin') === '1';
+  // ?kiosk=1 → the gate tablet's own icon, opening straight to check-in.
+  const isKiosk = url.searchParams.get('kiosk') === '1';
 
   // Generic Poolside manifest if no slug — when someone hits poolsideapp.com root.
   if (!slug) {
-    return new Response(JSON.stringify(manifest('Poolside', '#0a3b5c', DEFAULT_ICON_192, DEFAULT_ICON_512, { admin: isAdmin })), {
+    return new Response(JSON.stringify(manifest('Poolside', '#0a3b5c', DEFAULT_ICON_192, DEFAULT_ICON_512, { admin: isAdmin, kiosk: isKiosk })), {
       headers: {
         ...cors,
         'content-type': 'application/manifest+json; charset=utf-8',
@@ -82,7 +103,7 @@ Deno.serve(async (req) => {
     .eq('slug', slug).maybeSingle();
 
   if (!tenant || tenant.status === 'churned') {
-    return new Response(JSON.stringify(manifest('Poolside', '#0a3b5c', DEFAULT_ICON_192, DEFAULT_ICON_512, { admin: isAdmin })), {
+    return new Response(JSON.stringify(manifest('Poolside', '#0a3b5c', DEFAULT_ICON_192, DEFAULT_ICON_512, { admin: isAdmin, kiosk: isKiosk })), {
       status: 200,
       headers: {
         ...cors,
@@ -102,7 +123,7 @@ Deno.serve(async (req) => {
   const icon512    = (branding.icon_512_url as string | null) || DEFAULT_ICON_512;
   const name       = tenant.display_name || 'Poolside';
 
-  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin })), {
+  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk })), {
     headers: {
       ...cors,
       'content-type': 'application/manifest+json; charset=utf-8',

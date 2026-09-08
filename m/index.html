@@ -223,7 +223,16 @@
       else el.textContent = '';
     })();
   </script>
-  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+  <div class="who">
+    <span id="whoami">…</span>
+    <!-- Shown only when this member is also on the board. Grants
+         nothing: the two tokens stay separate and a member token
+         still cannot reach an admin endpoint. Without it the board
+         side is invisible from inside the installed app, and the
+         one-app model quietly stops working after first sign-in. -->
+    <a id="board-switch" href="/club/admin/" style="display:none">Board tools &rarr;</a>
+    <a id="signout">Sign out</a>
+  </div>
 </header>
 
 <main id="main">
@@ -1876,6 +1885,11 @@ async function submitProfile() {
   ME_USER = me.user;
   document.title = `${me.tenant.display_name} — My Club`;
   document.getElementById('whoami').textContent = me.user.name || me.user.email;
+  // me.is_board_member is matched server-side on linked_member_id, phone
+  // OR email — an admin created after they joined has no link, and would
+  // otherwise never see the door they're entitled to walk through.
+  const boardSwitch = document.getElementById('board-switch');
+  if (boardSwitch && me.is_board_member) boardSwitch.style.display = '';
   const brandEl = document.getElementById('brand-name');
   // Only repaint if the cached/synchronous paint differs — avoids visible flash.
   if (brandEl && brandEl.textContent !== me.tenant.display_name) brandEl.textContent = me.tenant.display_name;

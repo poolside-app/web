@@ -136,9 +136,10 @@ async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLi
   // someone reading the text on a laptop taps the link. Leading with the
   // code also means the useful part survives a truncated preview.
   // GSM-7 only — one curly quote or dash doubles the segment count.
+  // Says MEMBER explicitly — see the matching note in tenant_admin_auth.
   const body = args.code
-    ? `${args.code} is your ${args.tenantName} sign-in code. Enter it in the app.\n\nOr tap: ${args.verifyLink}\n(Expires in 15 minutes.)`
-    : `Sign in to ${args.tenantName}: ${args.verifyLink}\n(Link expires in 15 minutes.)`;
+    ? `${args.code} is your ${args.tenantName} MEMBER sign-in code. Enter it in the app.\n\nOr tap: ${args.verifyLink}\n(Expires in 15 minutes.)`
+    : `Member sign-in for ${args.tenantName}: ${args.verifyLink}\n(Link expires in 15 minutes.)`;
   const params: Record<string, string> = { To: args.to, Body: body };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (fromN) params.From = fromN;
@@ -544,12 +545,32 @@ Deno.serve(async (req) => {
     // flash of the wrong state on a slow phone at the pool.
     const renewal = await renewalStateFor(sb, payload.tid as string, household);
 
+    // Is this member also on the board? Purely so the member portal can show
+    // a "Board tools" link — it grants nothing. The two tokens stay strictly
+    // separate; a member token still cannot touch an admin endpoint.
+    //
+    // Matched three ways because linked_member_id is only set when an
+    // approved application happens to match an existing admin. Someone made
+    // an admin AFTER they joined as a member has no link, and would
+    // otherwise never see the door they are entitled to walk through.
+    let is_board_member = false;
+    try {
+      const or = [`linked_member_id.eq.${member.id}`];
+      if (member.phone_e164) or.push(`phone_e164.eq.${member.phone_e164}`);
+      if (member.email)      or.push(`email.eq.${String(member.email).toLowerCase()}`);
+      const { data: adminRow } = await sb.from('admin_users')
+        .select('id').eq('tenant_id', payload.tid).eq('active', true)
+        .or(or.join(',')).limit(1).maybeSingle();
+      is_board_member = !!adminRow;
+    } catch { /* cosmetic link only — never block sign-in over it */ }
+
     return jsonResponse({
       ok: true,
       user: member,
       tenant,
       household: { ...household, members: housemates ?? [] },
       renewal,
+      is_board_member,
       refreshed_token,
     });
   }

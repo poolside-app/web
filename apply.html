@@ -580,8 +580,11 @@ function rebuildPeople() {
         <h3>Child #${i+1}</h3>
         <label>Full name *</label>
         <input data-child="${i}" data-field="name">
-        <label>Date of birth *</label>
-        <input data-child="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)">
+        <div class="row2">
+          <div><label>Date of birth *</label><input data-child="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)"></div>
+          <div><label>Phone (optional)</label><input data-child="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin:6px 0 2px;line-height:1.45">Only if they have their own phone and you'd like them to sign in. 13 and over can also open the gate.</div>
       </div>
     `);
   }
@@ -880,9 +883,10 @@ function collectChildren() {
   const out = [];
   const c = parseInt(document.getElementById('ccount').value, 10) || 0;
   for (let i = 0; i < c; i++) {
-    const name = document.querySelector(`[data-child="${i}"][data-field="name"]`)?.value.trim() || '';
-    const dob  = document.querySelector(`[data-child="${i}"][data-field="dob"]`)?.value || null;
-    if (name) out.push({ name, dob: dob || null });
+    const name  = document.querySelector(`[data-child="${i}"][data-field="name"]`)?.value.trim() || '';
+    const dob   = document.querySelector(`[data-child="${i}"][data-field="dob"]`)?.value || null;
+    const phone = document.querySelector(`[data-child="${i}"][data-field="phone"]`)?.value.trim() || '';
+    if (name) out.push({ name, dob: dob || null, phone: phone || null });
   }
   return out;
 }
@@ -1226,6 +1230,7 @@ async function prefillFromClaim(token) {
   children.forEach((ch, i) => {
     const n   = document.querySelector(`[data-child="${i}"][data-field="name"]`); if (n   && ch.name) n.value   = ch.name;
     const dob = document.querySelector(`[data-child="${i}"][data-field="dob"]`);  if (dob && ch.dob)  dob.value = ch.dob;
+    const ph  = document.querySelector(`[data-child="${i}"][data-field="phone"]`); if (ph && ch.phone) ph.value = ch.phone;
   });
   if (a.tier_slug) {
     try {

@@ -97,7 +97,11 @@ async function sendAdminSmsCode(args: { to: string; tenantName: string; code: st
   if (!sid || !tok || (!messagingServiceSid && !from)) {
     return { sent: false, error: 'TWILIO_* env vars not set' };
   }
-  const smsBody = `Your ${args.tenantName} sign-in code is ${args.code}. Expires in 10 min. If you didn't ask for it, ignore this message.`;
+  // Says BOARD explicitly. A board member is usually also a member, so the
+  // same phone can hold two live codes for the same club minutes apart.
+  // Without the word, the two texts are indistinguishable and the right
+  // code typed into the wrong form just says "that code is not right".
+  const smsBody = `Your ${args.tenantName} BOARD sign-in code is ${args.code}. Expires in 10 min. If you didn't ask for it, ignore this message.`;
   const params: Record<string, string> = { To: args.to, Body: smsBody };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (from) params.From = from;

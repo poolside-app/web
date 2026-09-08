@@ -93,7 +93,7 @@
 <main>
   <form class="card" onsubmit="event.preventDefault(); doStart()">
     <h1 id="title">Member sign in</h1>
-    <p class="lede" id="sub">Enter the email your club has on file. We'll send you a one-tap sign-in link.</p>
+    <p class="lede" id="sub">Every adult and teen in your household can sign in with their own phone or email — whatever the club has on file for them.</p>
 
     <label for="email">Email or phone</label>
     <input id="email" type="text" autocomplete="email" required placeholder="you@example.com or (555) 123-4567">
@@ -127,7 +127,12 @@
     <div id="ok" class="ok"></div>
     <div id="dev" class="dev"></div>
 
-    <p class="small">Are you an admin? <a href="/club/admin/login.html">Sign in here →</a></p>
+    <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--border)">
+      <p class="small" style="margin:0">
+        On the board? <a href="/club/admin/login.html">Board sign in &rarr;</a><br>
+        <span style="color:var(--muted)">Different login, different code — the text will say <b>BOARD</b>.</span>
+      </p>
+    </div>
   </form>
 </main>
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <a href="https://poolsideapp.com/privacy.html">Privacy</a> · <a href="https://poolsideapp.com/terms.html">Terms</a></footer>

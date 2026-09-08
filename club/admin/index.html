@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Board manifest: name "… — Board", start_url /club/admin/. Without
+     this the dashboard could not be installed at all, and iOS made a
+     plain bookmark with no icon. -->
+<link rel="manifest" href="/manifest.webmanifest?admin=1">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Board">
 <title>Admin — Poolside</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -90,6 +97,8 @@
   <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
   <div class="who">
     <span id="whoami">…</span>
+    <!-- Shown when this admin is also a member (linked_member_id set). -->
+    <a id="member-switch" href="/m/" style="display:none">Member view &rarr;</a>
     <a id="signout">Sign out</a>
   </div>
 </header>
@@ -217,6 +226,10 @@ document.getElementById('signout').addEventListener('click', logout);
 
   document.title = `Admin — ${tenant.display_name}`;
   document.getElementById('whoami').textContent = `${user.display_name || user.email}`;
+  // Only for admins who are also members — otherwise /m/ would just be a
+  // sign-in page they have no account for.
+  const memberSwitch = document.getElementById('member-switch');
+  if (memberSwitch && user.linked_member_id) memberSwitch.style.display = '';
     if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant, data.usage);
 
   // Impersonation banner now painted globally by PoolsideFlags.apply()

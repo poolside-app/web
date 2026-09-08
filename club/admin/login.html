@@ -74,8 +74,8 @@
        holding); email also works (link in inbox). Password form is below
        as a fallback for users who prefer it. -->
   <form class="card" id="magic-form" onsubmit="event.preventDefault(); doMagic()">
-    <h1 id="m-title">Sign in</h1>
-    <p class="lede">Enter your phone or email — we'll send a one-tap sign-in link.</p>
+    <h1 id="m-title">Board sign in</h1>
+    <p class="lede">For club admins. Enter your phone or email &mdash; we'll text or email you a <b>BOARD</b> sign-in code.</p>
     <label for="m-id">Phone or email</label>
     <input id="m-id" type="text" required placeholder="(555) 123-4567 or you@example.com" autocomplete="username">
     <p style="font-size:11.5px;color:#0a3b5c;font-weight:500;margin:4px 0 0">📱 Phone is fastest — we text you a 6-digit code.</p>
@@ -111,6 +111,12 @@
     <div id="m-ok" class="err" style="background:#dcfce7;border-color:#86efac;color:#14532d"></div>
     <div id="m-dev" class="err" style="background:#fef3c7;border-color:#fde68a;color:#78350f"></div>
     <p class="small">Wrong club? <a href="/">Back to club home</a></p>
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <p class="small" style="margin:0">
+        Just here to see the pool schedule or pay dues? <a href="/m/login.html">Member sign in &rarr;</a><br>
+        <span style="color:#64748b">Board and member codes are separate. A member code won't work on this page.</span>
+      </p>
+    </div>
   </form>
 
   <!-- Password form — fallback for users who prefer it. Hidden by default. -->
