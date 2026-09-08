@@ -59,9 +59,6 @@ function startOfUtcYear(d = new Date()): Date {
 function startOfNextUtcYear(d = new Date()): Date {
   return new Date(Date.UTC(d.getUTCFullYear() + 1, 0, 1));
 }
-function _unusedStartOfNextMonth(d = new Date()): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
-}
 
 export type SmsCapStatus = {
   used: number;
