@@ -162,9 +162,23 @@ def _set_feature(flag: str, on: bool):
                                             '{{features,{flag}}}', '{str(on).lower()}'::jsonb, true)
                     where tenant_id = '{TENANT_A_ID}';""")
 
-def _clear_feature(flag: str):
-    mgmt_query(f"""update public.settings set value = value #- '{{features,{flag}}}'
-                    where tenant_id = '{TENANT_A_ID}';""")
+def _read_feature(flag: str):
+    rows = mgmt_query(f"""select value->'features'->>'{flag}' as v from public.settings
+                           where tenant_id = '{TENANT_A_ID}';""")
+    if not rows or rows[0]['v'] is None:
+        return None
+    return rows[0]['v'] == 'true'
+
+def _restore_feature(flag: str, prev):
+    # Restore the PRIOR value, not "absent". SLUG_A is a real club, and most
+    # of these flags default to ON when the key is missing — so clearing a
+    # flag that was explicitly false silently switches the feature back on
+    # for Doug's club. That happened once; hence this function.
+    if prev is None:
+        mgmt_query(f"""update public.settings set value = value #- '{{features,{flag}}}'
+                        where tenant_id = '{TENANT_A_ID}';""")
+    else:
+        _set_feature(flag, prev)
 
 SLUG_B = f'e2etest{STAMP}'
 mgmt_query(f"""
@@ -726,6 +740,7 @@ def prog_admin_create():
 
 
 def prog_public_list_visible():
+    _prev = _read_feature('programs')
     _set_feature('programs', True)
     try:
         r = post(f'{SUPABASE_URL}/functions/v1/programs', { 'action': 'list_public', 'slug': SLUG_A })
@@ -739,7 +754,7 @@ def prog_public_list_visible():
         assert not any(p['id'] == PROG_ID for p in r2.get('programs', [])), \
             'programs still public with the feature switched off'
     finally:
-        _clear_feature('programs')
+        _restore_feature('programs', _prev)
 
 def prog_member_book():
     global PROG_BOOKING_ID
@@ -943,6 +958,7 @@ def vol_admin_create():
 def vol_public_list():
     # Same reason as programs: Volunteer is switched off at bishopestates,
     # and the public list has honoured that since 2026-09-07.
+    _prev = _read_feature('volunteer')
     _set_feature('volunteer', True)
     try:
         r = post(f'{SUPABASE_URL}/functions/v1/volunteer', { 'action': 'list_public', 'slug': SLUG_A })
@@ -954,7 +970,7 @@ def vol_public_list():
         assert not any(o['id'] == VOL_OPP_ID for o in r2.get('opportunities', [])), \
             'volunteer opportunities still public with the feature switched off'
     finally:
-        _clear_feature('volunteer')
+        _restore_feature('volunteer', _prev)
     assert found['slots_filled'] == 0
 
 def vol_member_signup():
