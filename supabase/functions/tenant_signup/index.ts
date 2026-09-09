@@ -93,7 +93,8 @@ Deno.serve(async (req) => {
   const display_name = String(body.display_name ?? '').trim();
   const emailRaw     = String(body.email ?? '').trim().toLowerCase();
   const password     = String(body.password ?? '');
-  const plan         = String(body.plan ?? 'free').toLowerCase();
+  // What they CLICKED. Recorded, never granted — see the tenants insert.
+  const desiredPlan  = String(body.plan ?? 'free').toLowerCase();
   // When the founder signed up via "Sign up with Google", we get the
   // verified Google sub from the OAuth callback. We link it to the new
   // admin row so future sign-ins match by sub. Password is auto-generated
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Password must be at least 10 characters' });
     }
   }
-  if (!VALID_PLANS.includes(plan)) {
+  if (!VALID_PLANS.includes(desiredPlan)) {
     return jsonResponse({ ok: false, error: 'Invalid plan' });
   }
 
@@ -191,7 +192,13 @@ Deno.serve(async (req) => {
   const { data: tenant, error: tErr } = await sb.from('tenants').insert({
     slug,
     display_name,
-    plan,
+    // ALWAYS the entry tier, whatever they clicked. The plan is granted by
+    // stripe_webhook on payment and by nothing else. Before this, a club
+    // could arrive via signup.html?plan=enterprise and hold Enterprise
+    // capacity — 25,000 texts, unlimited households — for free, and since
+    // nothing ends a trial it never corrected itself.
+    plan: 'free',
+    desired_plan: desiredPlan,
     status: 'trial',
     trial_ends_at: trialEnds.toISOString(),
     notes: `Self-served signup at ${new Date().toISOString()}`,

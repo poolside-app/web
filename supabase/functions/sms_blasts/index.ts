@@ -284,6 +284,53 @@ Deno.serve(async (req) => {
   }
 
   // ── list: what is waiting, and what went out ────────────────────────────
+  // ── history: every text this club has sent ─────────────────────────────
+  // sms_log has recorded category, recipient, source and (since the segment
+  // metering) cost for a long time, and no screen read any of it. A board
+  // could see the last 20 blasts and nothing else — so "who texted my
+  // members on Tuesday, and what did it say" had no answer at all.
+  //
+  // Bodies are deliberately not stored, so this shows what KIND of message
+  // went out and to how many people, not its text. Blast wording is on the
+  // blast itself.
+  if (action === 'history') {
+    const days = Math.min(365, Math.max(1, Number(body.days ?? 90)));
+    const since = new Date(Date.now() - days * 86400_000).toISOString();
+    const { data: rows } = await sb.from('sms_log')
+      .select('sent_at, category, source, success, segments, to_phone')
+      .eq('tenant_id', TID).gte('sent_at', since)
+      .order('sent_at', { ascending: false }).limit(500);
+
+    // Group by day + kind: a 300-recipient blast is one thing that happened,
+    // not 300 rows a treasurer has to scroll past.
+    const buckets = new Map<string, {
+      day: string; category: string; source: string;
+      messages: number; segments: number; failed: number;
+    }>();
+    for (const r of (rows ?? [])) {
+      const day = String(r.sent_at).slice(0, 10);
+      const key = `${day}|${r.category}|${r.source ?? ''}`;
+      const b = buckets.get(key) ?? {
+        day, category: String(r.category), source: String(r.source ?? ''),
+        messages: 0, segments: 0, failed: 0,
+      };
+      b.messages += 1;
+      b.segments += Math.max(1, Number(r.segments ?? 1));
+      if (r.success === false) b.failed += 1;
+      buckets.set(key, b);
+    }
+    const items = [...buckets.values()]
+      .sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
+      .map(b => ({ ...b, cost_cents: Math.round(b.segments * 0.83) }));
+
+    const totals = items.reduce(
+      (t, i) => ({ messages: t.messages + i.messages, segments: t.segments + i.segments,
+                   cost_cents: t.cost_cents + i.cost_cents }),
+      { messages: 0, segments: 0, cost_cents: 0 });
+
+    return jsonResponse({ ok: true, days, items, totals });
+  }
+
   if (action === 'list') {
     // Expire stale drafts on read, so the queue never shows something that
     // could not be released anyway.

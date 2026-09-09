@@ -14,6 +14,7 @@
 //   { action: 'auto_renew_run' }              → { ok, noticed, charged, failed, skipped }
 // =============================================================================
 
+import { platformFeeCents } from '../_shared/fees.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
@@ -227,7 +228,7 @@ async function chargeInstallment(
     'metadata[installment_id]': installmentId,
     'metadata[tenant_id]': plan.tenant_id as string,
     'metadata[kind]': 'payment_plan_installment',
-    application_fee_amount: Math.round((installment.amount_cents as number) * 0.005),  // 0.5% on dues per fee memory
+    application_fee_amount: platformFeeCents(installment.amount_cents as number, 'dues'),
   };
   // Idempotency-Key prevents double-charge if cron retries within Stripe's 24h dedup window
   if (!STRIPE_KEY) return { paid: false, lapsed: false, error: 'STRIPE_SECRET_KEY not set' };
@@ -509,7 +510,7 @@ Deno.serve(async (req) => {
           'metadata[kind]': 'application',
           'metadata[application_id]': appId,
           'metadata[tenant_id]': String(tenant.id),
-          application_fee_amount: Math.round(amountCents * 0.005),
+          application_fee_amount: platformFeeCents(amountCents, 'dues'),
         }, tenant.stripe_account_id as string);
 
         if (charge.ok && charge.data?.status === 'succeeded') {
@@ -686,7 +687,66 @@ Deno.serve(async (req) => {
       enforced++;
     }
 
-    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced });
+    // ── Free-season warnings ─────────────────────────────────────────
+    // Folded into this daily run rather than given its own schedule: it is
+    // one query a day, and another cron is another thing to forget exists.
+    //
+    // Nothing read trial_ends_at until 2026-09-08 — it was written at signup
+    // and never acted on. Now that the household and SMS allowances really
+    // do fall back when the free season ends, a club could otherwise arrive
+    // one morning unable to approve a family, with nothing having told them
+    // why. This does not block or downgrade anything; it just means the end
+    // of the free season is never a surprise.
+    let trial_notices = 0;
+    try {
+      const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
+      const { data: trials } = await sb.from('tenants')
+        .select('id, slug, display_name, trial_ends_at, trial_notice_stage')
+        .eq('status', 'trial').not('trial_ends_at', 'is', null);
+
+      for (const t of (trials ?? [])) {
+        const daysLeft = Math.ceil(
+          (new Date(t.trial_ends_at as string).getTime() - Date.now()) / 86400_000);
+        // Furthest milestone reached, and only if we have not sent it yet.
+        const stage = daysLeft <= 0 ? 'expired' : daysLeft <= 7 ? 't7' : daysLeft <= 30 ? 't30' : null;
+        if (!stage) continue;
+        const ORDER = { t30: 1, t7: 2, expired: 3 } as Record<string, number>;
+        const sent = t.trial_notice_stage as string | null;
+        if (sent && ORDER[sent] >= ORDER[stage]) continue;
+
+        const { data: owners } = await sb.from('admin_users')
+          .select('email').eq('tenant_id', t.id as string).eq('active', true)
+          .eq('role_template', 'owner');
+        const club = escHtml(String(t.display_name ?? 'your club'));
+        const billing = `https://${t.slug}.poolsideapp.com/club/admin/billing.html`;
+        const subject = stage === 'expired'
+          ? `Your free season at ${t.display_name} has ended`
+          : `${daysLeft} days left in your free season at ${t.display_name}`;
+        const lead = stage === 'expired'
+          ? `<p>Your free first season at <b>${club}</b> has ended. Nothing has been deleted and your members can still sign in — but your household and text allowances have dropped to the entry tier, so you may not be able to approve new families until you pick a plan.</p>`
+          : `<p>Your free first season at <b>${club}</b> ends in <b>${daysLeft} days</b>. Nothing happens automatically and no card is on file — but after that your household and text allowances drop to the entry tier.</p>`;
+        const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:560px;padding:24px;color:#0f172a">
+            <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 12px">${escHtml(subject)}</h2>
+            ${lead}
+            <p style="margin:16px 0"><a href="${billing}" style="display:inline-block;padding:11px 20px;background:#0a3b5c;color:#fff;text-decoration:none;border-radius:10px;font-weight:600">Choose a plan</a></p>
+            <p style="font-size:13px;color:#475569;margin:0">Not sure which one? Reply to this email and we'll work it out from your household count.</p>
+          </div>`;
+        let any = false;
+        for (const o of (owners ?? [])) {
+          if (!o.email) continue;
+          try { const r = await sendEmail({ to: o.email as string, subject, html }); any = any || r.sent; }
+          catch { /* one bad address must not stop the rest */ }
+        }
+        // Stamp regardless of delivery, so a permanently bouncing address
+        // cannot make this club the only thing the cron ever does.
+        await sb.from('tenants').update({ trial_notice_stage: stage }).eq('id', t.id as string);
+        if (any) trial_notices++;
+      }
+    } catch (e) {
+      console.error('trial notices (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices });
   }
 
   // ── Admin actions below — verify tenant admin ────────────────────────────
@@ -794,7 +854,7 @@ Deno.serve(async (req) => {
       'metadata[kind]': 'payment_plan_reactivation',
       'metadata[plan_id]': planId,
       'metadata[tenant_id]': payload.tid,
-      application_fee_amount: String(Math.round(total * 0.005)),
+      application_fee_amount: String(platformFeeCents(total, 'dues')),
     };
     if (plan.primary_email) params.customer_email = plan.primary_email as string;
     const r = await stripe<{ url: string }>('/checkout/sessions', params, tenant.stripe_account_id);

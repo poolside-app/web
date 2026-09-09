@@ -33,6 +33,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { inFreeSeason } from './plan_caps.ts';
 
 export type SmsCategory = 'auth' | 'transactional' | 'campaign' | 'reminder';
 
@@ -84,7 +85,24 @@ export async function checkSmsCap(
   /** Segments the caller is about to send. Checked against what's left. */
   segments = 1,
 ): Promise<SmsCapStatus> {
-  const cap = capForPlan(plan);
+  // Resolve the allowance BEFORE the category shortcut, because a trialling
+  // club's plan is not what it pays for.
+  //
+  // tenant_signup takes the plan straight from the client, and home.html
+  // links signup.html?plan=enterprise — so anyone could click "Start free"
+  // under Enterprise and, paying nothing for a year, draw on the 25,000
+  // allowance that plan is meant to fund. About $207 of Twilio on a club
+  // that has not paid a penny. Households are deliberately uncapped during
+  // the free season because they cost nothing to hold; texts are not, so a
+  // free season gets the free-season allowance whatever plan was selected.
+  const { data: tenantRow } = await sb.from('tenants')
+    .select('status, trial_ends_at, sms_credits').eq('id', tenantId).maybeSingle();
+  const trialling = inFreeSeason(
+    tenantRow?.status as string | null,
+    tenantRow?.trial_ends_at as string | null,
+  );
+  const cap = trialling ? PLAN_CAPS.free : capForPlan(plan);
+
   if (!isCapped(category)) {
     return {
       used: 0, cap, category_uncapped: true,
@@ -110,12 +128,8 @@ export async function checkSmsCap(
   const remaining = Math.max(0, cap - used);
   const overAllowance = remaining < want;
 
-  let credits = 0;
-  if (overAllowance) {
-    const { data: t } = await sb.from('tenants')
-      .select('sms_credits').eq('id', tenantId).maybeSingle();
-    credits = Number(t?.sms_credits ?? 0);
-  }
+  // Already fetched above — no second round trip.
+  const credits = overAllowance ? Number(tenantRow?.sms_credits ?? 0) : 0;
 
   return {
     used, cap, category_uncapped: false,

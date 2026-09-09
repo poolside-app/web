@@ -116,6 +116,17 @@
       <button class="btn btn-ghost" onclick="buyTexts('large')">1,500 texts — $35</button>
     </div>
     <div class="err" id="sms-err" style="margin-top:10px"></div>
+
+    <!-- Every text this club has sent. sms_log has held this for months and
+         nothing read it, so "who texted my members on Tuesday" had no
+         answer. Grouped by day and kind — a 300-person blast is one event,
+         not 300 rows. -->
+    <details style="margin-top:16px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13.5px;color:var(--blue)">
+        📨 Text history <span style="font-weight:400;color:var(--muted);font-size:12px">— last 90 days</span>
+      </summary>
+      <div id="sms-history" style="margin-top:10px;font-size:13px">Loading…</div>
+    </details>
     <p style="margin-top:14px;font-size:12px;color:var(--muted)">Stuck or need a custom arrangement? Email <a href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">hello@poolsideapp.com</a>.</p>
   </div>
 
@@ -159,6 +170,63 @@ async function buyTexts(pack) {
     window.location.href = d.url;
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+
+// Plain-English label per source. A treasurer should not have to know that
+// 'member_auth.start' is somebody signing in.
+const SMS_KIND = {
+  'member_auth.start':        'Member sign-in codes',
+  'tenant_admin_auth.start_link': 'Board sign-in codes',
+  'tenant_admin_auth.invite_admin': 'Admin invitations',
+  'applications.approve':     'Approval texts',
+  'sms_blasts.send':          'Club-wide text',
+  'renewals.send_blast':      'Renewal invitations',
+  'renewals.send_renewal_links': 'Renewal links',
+  'applications.claim_invite': 'Membership invitations',
+  'gate_admin.outage':        'Gate offline alert',
+};
+
+async function loadSmsHistory() {
+  const el = document.getElementById('sms-history');
+  if (!el) return;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/sms_blasts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${localStorage.getItem('poolside_tenant_token')}` },
+      body: JSON.stringify({ action: 'history', days: 90 }),
+    });
+    const d = await r.json();
+    if (!d.ok) { el.textContent = 'Could not load your text history.'; return; }
+    if (!d.items.length) { el.textContent = 'No texts sent in the last 90 days.'; return; }
+    const money = (c) => `$${(c / 100).toFixed(2)}`;
+    el.innerHTML = `
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:420px">
+        <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">
+          <th style="padding:6px 8px">Date</th><th style="padding:6px 8px">What</th>
+          <th style="padding:6px 8px;text-align:right">People</th>
+          <th style="padding:6px 8px;text-align:right">Texts</th>
+          <th style="padding:6px 8px;text-align:right">Cost</th>
+        </tr></thead>
+        <tbody>${d.items.map(i => `
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px;white-space:nowrap">${escapeHtml(i.day)}</td>
+            <td style="padding:6px 8px">${escapeHtml(SMS_KIND[i.source] || i.category)}${i.failed ? ` <span style="color:var(--red)">(${i.failed} failed)</span>` : ''}</td>
+            <td style="padding:6px 8px;text-align:right">${i.messages}</td>
+            <td style="padding:6px 8px;text-align:right">${i.segments}</td>
+            <td style="padding:6px 8px;text-align:right">${money(i.cost_cents)}</td>
+          </tr>`).join('')}</tbody>
+        <tfoot><tr style="border-top:2px solid var(--border);font-weight:700">
+          <td style="padding:6px 8px" colspan="2">90-day total</td>
+          <td style="padding:6px 8px;text-align:right">${d.totals.messages}</td>
+          <td style="padding:6px 8px;text-align:right">${d.totals.segments}</td>
+          <td style="padding:6px 8px;text-align:right">${money(d.totals.cost_cents)}</td>
+        </tr></tfoot>
+      </table></div>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0">Sign-in codes, approvals and dues reminders don't count against your allowance — only club-wide texts do. "Texts" is billable segments; a message over 160 characters counts as more than one.</p>`;
+  } catch (_) {
+    el.textContent = 'Could not load your text history.';
   }
 }
 
@@ -365,6 +433,7 @@ const TIERS = [
     });
   }
   loadSmsBalance();
+  loadSmsHistory();
 })();
 </script>
 </body>

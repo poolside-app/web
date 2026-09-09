@@ -35,9 +35,13 @@ const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 // 5% late fees. Dues fee MUST match payment_plans/index.ts (which uses 0.5%
 // for installments + reactivation) so a family pays the same fee regardless
 // of full-pay vs installment path.
-const FEE_BPS_DUES     = 50;    // 0.5% — application full-pay + plan installments
-const FEE_BPS_PROGRAMS = 150;   // 1.5% — programs, swim lessons, parties, passes
-const FEE_BPS_DEFAULT  = 150;   // safety net for unknown kinds
+// Rates live in _shared/fees.ts — they were duplicated across this file and
+// three literals in payment_plans, so a change here alone silently missed
+// every installment payment.
+import { FEE_BPS } from '../_shared/fees.ts';
+const FEE_BPS_DUES     = FEE_BPS.dues;
+const FEE_BPS_PROGRAMS = FEE_BPS.programs;
+const FEE_BPS_DEFAULT  = FEE_BPS.default;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
