@@ -240,7 +240,7 @@ Deno.serve(async (req) => {
     // Two shapes share this action. A member who picked a payment count on the
     // renewal page gets a milestone-driven schedule of that length; anyone
     // arriving from the old apply form (no count) keeps the original
-    // pay-half-now behaviour, so nothing that worked before changes.
+    // pay-half-now behavior, so nothing that worked before changes.
     const { resolveRules, generateSchedule, validateSchedule } =
       await import('../_shared/payment_schedule.ts');
     const { data: appYearRow } = await sb.from('applications')
@@ -312,7 +312,7 @@ Deno.serve(async (req) => {
 
     // Stripe Checkout — mode=payment + setup_future_usage=off_session so we
     // can charge the second installment without the member returning.
-    // The member is charged the dues instalment plus its share of the plan
+    // The member is charged the dues installment plus its share of the plan
     // fee; application_fee_amount carries our dues cut PLUS the whole plan
     // fee, so the club nets exactly the dues either way.
     const firstPlanFee = planFeeSchedule(schedule.length)[0] ?? 0;

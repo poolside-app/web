@@ -6,7 +6,7 @@
 -- have the conversation. This puts it in the product.
 --
 -- Three deliberate constraints, because a late fee on a volunteer community
--- pool is socially loaded in a way a programme fee is not:
+-- pool is socially loaded in a way a program fee is not:
 --
 --   OFF BY DEFAULT. late_fee_enabled defaults to false for every tenant,
 --   including existing ones. A club opts in; nothing is ever charged because

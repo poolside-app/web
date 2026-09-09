@@ -2,7 +2,7 @@
 -- gate_integration_requests — "tell us what you have and we'll call you"
 -- =============================================================================
 -- Replaces the model this add-on was originally designed around. That design
--- was a catalogue of verified panel templates: a club picked its panel from a
+-- was a catalog of verified panel templates: a club picked its panel from a
 -- published compatibility list and got a one-click install. Two problems with
 -- it, both structural:
 --
@@ -14,7 +14,7 @@
 --
 -- The replacement makes no promise at all. A club ticks a box, tells us what
 -- it has in whatever detail it happens to know, attaches photos, and we call
--- them. The catalogue disappears; triage happens per request, by a human, on
+-- them. The catalog disappears; triage happens per request, by a human, on
 -- the evidence. Nothing is quoted before someone has actually looked.
 --
 -- Deliberately: every field describing the hardware is nullable. The board

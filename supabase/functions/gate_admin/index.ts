@@ -30,7 +30,7 @@
 //       doesn't auto-collect for the gate add-on yet).
 //
 // Gate integration enquiries (added 2026-09-09). The intake that replaced
-// the verified-template catalogue — see the migration header for why:
+// the verified-template catalog — see the migration header for why:
 //   { action: 'submit_integration_request', contact_name, contact_phone, ... }
 //     → owner-only. Every hardware field is optional; photos come in as
 //       base64 and land in club-assets. One open request per club.
@@ -400,7 +400,7 @@ Deno.serve(async (req) => {
         }).eq('tenant_id', tenantId);
 
         let smsOk = false, smsErr: string | null = null;
-        // Normalise before sending: this column holds whatever the board
+        // Normalize before sending: this column holds whatever the board
         // typed, and Twilio rejects anything that isn't E.164.
         const contactPhone = GA.toE164(p.contact_phone as string | null);
 

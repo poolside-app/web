@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
   // Scope gate: ADMIN actions require the 'volunteer' scope. Gate admin tokens
   // ONLY — members are authorized by membership and handled in the isMember
   // branch below (with its own catch-all). Without the `kind` guard this 403'd
-  // real members out of signing up / cancelling. Synthetic/super/owner bypass.
+  // real members out of signing up / canceling. Synthetic/super/owner bypass.
   if (payload.kind === 'tenant_admin' && !(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'volunteer'))) {
     return jsonResponse({ ok: false, error: 'Missing required scope: volunteer' }, 403);
   }

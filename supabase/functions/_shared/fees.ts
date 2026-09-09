@@ -9,7 +9,7 @@
 // payment_plans (one per installment path). Raising the rate in the constant
 // alone would have left every installment charging the old number, and
 // nothing would have flagged it: the money would simply have been lower than
-// intended for the clubs paying in instalments.
+// intended for the clubs paying in installments.
 //
 // Basis points, so the rates read the way they are quoted: 100 bps = 1%.
 // =============================================================================
@@ -42,7 +42,7 @@ export const FEE_BPS = {
    *  with the payment it is late on, not be a separate errand), then add
    *  the row to the public table. */
   late: 500,
-  /** Safety net for a kind we do not recognise — err on the known-good
+  /** Safety net for a kind we do not recognize — err on the known-good
    *  higher rate rather than silently taking nothing. */
   default: 150,
 } as const;
@@ -60,26 +60,26 @@ export function platformFeeCents(amountCents: number, kind: FeeKind): number {
 
 // ── Payment-plan convenience fee ─────────────────────────────────────────
 // Members who choose to spread dues over the season pay a small fee for the
-// convenience, the way they would for an instalment plan on insurance or a
+// convenience, the way they would for an installment plan on insurance or a
 // utility bill. The CLUB is not charged it and its books are unaffected:
 // installments keep amount_cents as the pure dues portion, and the fee rides
 // alongside as plan_fee_cents. The member pays dues + fee; the fee is added
 // to application_fee_amount, so it reaches the platform rather than the club.
 //
-// Capped per plan, which matters: without a cap an 8-instalment plan at a
+// Capped per plan, which matters: without a cap an 8-installment plan at a
 // flat $4 would take $32 on $600 of dues — over 5%, which is the sort of
-// number that makes a board tell its members to pay by cheque instead.
+// number that makes a board tell its members to pay by check instead.
 
-/** Fee per instalment, before the per-plan cap. */
+/** Fee per installment, before the per-plan cap. */
 export const PLAN_FEE_CENTS = 400;
-/** Most any single plan can be charged, however many instalments it has. */
+/** Most any single plan can be charged, however many installments it has. */
 export const PLAN_FEE_MAX_CENTS = 1600;
 
 /**
- * Per-instalment fee for a plan of `n` instalments, spread as evenly as
+ * Per-installment fee for a plan of `n` installments, spread as evenly as
  * cents allow with any remainder on the first payment.
  *
- * Returns one entry per instalment, so callers store it per row rather than
+ * Returns one entry per installment, so callers store it per row rather than
  * recomputing — a plan's fee must not change if the constants later do.
  */
 export function planFeeSchedule(n: number): number[] {

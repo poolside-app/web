@@ -1,5 +1,5 @@
 // =============================================================================
-// phone.ts — normalise a typed-in phone number to E.164
+// phone.ts — normalize a typed-in phone number to E.164
 // =============================================================================
 // Several columns hold whatever a human typed: gate_panels.contact_phone comes
 // from a form that formats as "(925)-771-9074", and applications.primary_phone

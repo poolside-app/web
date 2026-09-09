@@ -218,7 +218,7 @@ async function chargeInstallment(
   const installmentId = installment.id as string;
   const idempotencyKey = `installment_${installmentId}_attempt_${(installment.attempt_count as number ?? 0) + 1}`;
   const params: Record<string, string | number> = {
-    // Dues plus this instalment's share of the plan fee. The club nets the
+    // Dues plus this installment's share of the plan fee. The club nets the
     // dues either way — the fee is added to application_fee_amount below,
     // so it comes to the platform rather than out of the club's money.
     amount: (installment.amount_cents as number) + Number(installment.plan_fee_cents ?? 0),
@@ -902,7 +902,7 @@ Deno.serve(async (req) => {
     const { data: outstanding } = await sb.from('payment_plan_installments').select('amount_cents, plan_fee_cents, id, sequence')
       .eq('plan_id', planId).neq('status', 'paid').neq('status', 'manual').order('sequence');
     const balance = (outstanding ?? []).reduce((s, i) => s + (i.amount_cents as number), 0);
-    // Plan fees for the instalments being caught up. Skipping them would
+    // Plan fees for the installments being caught up. Skipping them would
     // hand a lapsed member the plan for free — precisely the family whose
     // payments already needed chasing.
     const planFees = (outstanding ?? []).reduce((s, i) => s + Number(i.plan_fee_cents ?? 0), 0);
