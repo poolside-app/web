@@ -730,82 +730,12 @@ document.getElementById('signout').addEventListener('click', logout);
     }).join('');
   } catch { /* non-critical */ }
 
-  // Phone-alerts opt-in card. Only paint if AdminPush is loaded (defer) AND
-  // browser supports it AND admin hasn't dismissed/enabled. State machine:
-  //   permission=default + not subscribed → "Turn on" CTA
-  //   permission=granted + subscribed → "Test" / "Turn off"
-  //   permission=denied → hide CTA (browser block, can't request again)
-  //   user dismissed via localStorage flag → hide entirely until they reset.
-  try {
-    if (window.AdminPush) {
-      const dismissed = localStorage.getItem('poolside_push_dismissed') === '1';
-      const card = document.getElementById('push-card');
-      const stat = await window.AdminPush.status();
-      if (!stat.supported || stat.permission === 'denied') {
-        // Hide silently — nothing the user can do here from this UI.
-      } else if (dismissed && !stat.subscribed) {
-        // User said "not now" before — respect that.
-      } else {
-        card.style.display = 'block';
-        const onBtn = document.getElementById('push-on-btn');
-        const offBtn = document.getElementById('push-off-btn');
-        const testBtn = document.getElementById('push-test-btn');
-        const dismissBtn = document.getElementById('push-dismiss-btn');
-        const stEl = document.getElementById('push-status');
-        function paint(s) {
-          if (s.subscribed) {
-            onBtn.style.display = 'none';
-            offBtn.style.display = 'inline-block';
-            testBtn.style.display = 'inline-block';
-            dismissBtn.style.display = 'none';
-            stEl.textContent = '✓ Phone alerts are on.';
-            stEl.style.color = '#15803d';
-          } else {
-            onBtn.style.display = 'inline-block';
-            offBtn.style.display = 'none';
-            testBtn.style.display = 'none';
-            dismissBtn.style.display = 'inline-block';
-            stEl.textContent = '';
-          }
-        }
-        paint(stat);
-        onBtn.addEventListener('click', async () => {
-          stEl.textContent = 'Asking your browser for permission…';
-          stEl.style.color = '#92400e';
-          const r = await window.AdminPush.subscribe();
-          if (r.ok) {
-            paint(await window.AdminPush.status());
-          } else {
-            stEl.textContent = r.error || 'Couldn\'t enable alerts.';
-            stEl.style.color = '#7f1d1d';
-          }
-        });
-        offBtn.addEventListener('click', async () => {
-          await window.AdminPush.unsubscribe();
-          paint(await window.AdminPush.status());
-        });
-        testBtn.addEventListener('click', async () => {
-          stEl.textContent = 'Sending test notification…';
-          stEl.style.color = '#92400e';
-          const r = await window.AdminPush.test();
-          if (r.ok && r.sent > 0) {
-            stEl.textContent = `✓ Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}. Check your phone.`;
-            stEl.style.color = '#15803d';
-          } else if (r.no_subscribers) {
-            stEl.textContent = 'No active subscriptions on file. Try Turn off + Turn on again.';
-            stEl.style.color = '#7f1d1d';
-          } else {
-            stEl.textContent = r.error || 'Test failed.';
-            stEl.style.color = '#7f1d1d';
-          }
-        });
-        dismissBtn.addEventListener('click', () => {
-          localStorage.setItem('poolside_push_dismissed', '1');
-          card.style.display = 'none';
-        });
-      }
-    }
-  } catch (_) { /* never break the dashboard */ }
+  // The phone-alerts opt-in used to be wired here, but its markup has always
+  // lived on settings.html — "a one-time setup, not daily content" — which is
+  // also the only page that loads /js/admin-push.js. So this page held the
+  // wiring and no elements, settings.html held the elements and no wiring, and
+  // between them nobody was ever shown the opt-in. Moved to settings.html
+  // 2026-09-09. Do not re-add it here without moving the markup too.
 })();
 
 async function completeTask(id) {

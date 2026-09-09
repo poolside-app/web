@@ -536,8 +536,11 @@ function validateDob(el) {
 // just entered on step 1. Copy them across, but only into blank fields, so a
 // deliberate edit on step 2 is never overwritten.
 function prefillPrimaryAdult() {
+  // Only phone and email exist on step 1. There is no #primary_name input —
+  // step 1 asks for the FAMILY name, and the primary contact's own name is
+  // adult #1 itself, which is what this function fills. Asking for a
+  // primary_name here silently produced '' and the name never prefilled.
   const src = {
-    name:  (document.getElementById('primary_name')  || {}).value || '',
     phone: (document.getElementById('primary_phone') || {}).value || '',
     email: (document.getElementById('primary_email') || {}).value || '',
   };
@@ -1452,10 +1455,12 @@ async function prefillFromClaim(token) {
       if (gName) {
         const parts = gName.split(/\s+/).filter(Boolean);
         const last = parts[parts.length - 1];
-        const pn = document.getElementById('primary_name');
-        if (pn && !pn.value) pn.value = gName;
         const fn = document.getElementById('family_name');
         if (fn && !fn.value && last) fn.value = last;
+        // Their full name belongs on adult #1, not on a #primary_name field
+        // that has never existed on this form.
+        const a0 = document.querySelector('[data-adult="0"][data-field="name"]');
+        if (a0 && !a0.value) a0.value = gName;
       }
       // Strip the hash so a refresh doesn't keep re-filling and the
       // PII doesn't linger in browser history.
@@ -1508,8 +1513,8 @@ async function prefillFromClaim(token) {
             const lastName = parts[parts.length - 1];
             const fn = document.getElementById('family_name');
             if (fn && !fn.value) fn.value = lastName;
-            const pn = document.getElementById('primary_name');
-            if (pn && !pn.value) pn.value = dn;
+            const a0 = document.querySelector('[data-adult="0"][data-field="name"]');
+            if (a0 && !a0.value) a0.value = dn;
           }
           if (u.email) {
             const e = document.getElementById('primary_email');

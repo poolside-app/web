@@ -815,15 +815,6 @@ async function paintIconPreview() {
   if (ci) drawIconAt(ci, 192);
 }
 
-function onIconModeChange() {
-  const mode = currentIconMode();
-  document.getElementById('icon-text-row').style.display    = mode === 'text'   ? 'block' : 'none';
-  document.getElementById('icon-upload-row').style.display  = mode === 'upload' ? 'block' : 'none';
-  document.getElementById('icon-color-row').style.display   = mode === 'upload' ? 'none'  : 'block';
-  document.getElementById('icon-fg-color-wrap').style.display = mode === 'logo' ? 'none' : 'block';
-  paintIconPreview();
-}
-
 function resetIconColors() {
   setVal('icon_bg_color', val('primary_color') || '#0a3b5c');
   setVal('icon_fg_color', '#ffffff');
@@ -1609,24 +1600,6 @@ async function requestGateAddon() {
   }
 }
 
-async function saveGateConfig() {
-  const errEl = document.getElementById('gate-err');
-  errEl.classList.remove('show');
-  const host = document.getElementById('gp-host').value.trim();
-  const user = document.getElementById('gp-user').value.trim();
-  const pass = document.getElementById('gp-pass').value;
-  if (!host) { errEl.textContent = 'Panel IP / hostname is required.'; errEl.classList.add('show'); return; }
-  try {
-    const body = { panel_host: host, panel_admin_user: user };
-    if (pass) body.panel_admin_password = pass;     // only update if user typed a new one
-    const r = await gateApi('update_config', body);
-    if (!r.ok) throw new Error(r.error || 'Save failed');
-    document.getElementById('gate-saved').textContent = '✓ Saved';
-    document.getElementById('gate-saved').style.display = '';
-    setTimeout(() => { document.getElementById('gate-saved').style.display = 'none'; loadGate(); }, 1500);
-  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
-}
-
 async function testGateUnlock() {
   const errEl = document.getElementById('gate-err');
   errEl.classList.remove('show');
@@ -1931,6 +1904,94 @@ async function retryDriveQueue() {
     btn.disabled = false; btn.textContent = orig;
   }
 }
+// ── Phone alerts (web push) ────────────────────────────────────────────
+// The markup for #push-card has been on this page all along and the wiring
+// was on club/admin/index.html, which does not load /js/admin-push.js and
+// has none of these elements. So the card never un-hid itself on either
+// page and no board member was ever offered the opt-in — which is the real
+// reason there are no push subscribers. Reunited here 2026-09-09.
+//
+// State machine:
+//   unsupported, or permission denied  → stay hidden, nothing we can do
+//   dismissed before and not subscribed → stay hidden, respect the choice
+//   otherwise                           → show, with the right buttons
+async function initPushCard() {
+  try {
+    // /js/admin-push.js is deferred, so it executes AFTER this inline script
+    // during parsing and BEFORE DOMContentLoaded. Calling this immediately
+    // would find window.AdminPush undefined and bail — which is the exact
+    // failure being fixed here. Hence the readyState gate at the bottom.
+    if (!window.AdminPush) return;
+    const card = document.getElementById('push-card');
+    if (!card) return;
+
+    const stat = await window.AdminPush.status();
+    const dismissed = localStorage.getItem('poolside_push_dismissed') === '1';
+    if (!stat.supported || stat.permission === 'denied') return;
+    if (dismissed && !stat.subscribed) return;
+
+    const onBtn      = document.getElementById('push-on-btn');
+    const offBtn     = document.getElementById('push-off-btn');
+    const testBtn    = document.getElementById('push-test-btn');
+    const dismissBtn = document.getElementById('push-dismiss-btn');
+    const stEl       = document.getElementById('push-status');
+    if (!onBtn || !offBtn || !testBtn || !dismissBtn || !stEl) return;
+
+    card.style.display = 'block';
+
+    function paint(st) {
+      const on = !!st.subscribed;
+      onBtn.style.display      = on ? 'none' : 'inline-block';
+      offBtn.style.display     = on ? 'inline-block' : 'none';
+      testBtn.style.display    = on ? 'inline-block' : 'none';
+      dismissBtn.style.display = on ? 'none' : 'inline-block';
+      stEl.textContent = on ? '✓ Phone alerts are on.' : '';
+      stEl.style.color = on ? '#15803d' : '#92400e';
+    }
+    paint(stat);
+
+    onBtn.addEventListener('click', async () => {
+      stEl.textContent = 'Asking your browser for permission…';
+      stEl.style.color = '#92400e';
+      const r = await window.AdminPush.subscribe();
+      if (r.ok) { paint(await window.AdminPush.status()); }
+      else { stEl.textContent = r.error || "Couldn't turn alerts on."; stEl.style.color = '#7f1d1d'; }
+    });
+
+    offBtn.addEventListener('click', async () => {
+      await window.AdminPush.unsubscribe();
+      paint(await window.AdminPush.status());
+    });
+
+    testBtn.addEventListener('click', async () => {
+      stEl.textContent = 'Sending a test notification…';
+      stEl.style.color = '#92400e';
+      const r = await window.AdminPush.test();
+      if (r.ok && r.sent > 0) {
+        stEl.textContent = `✓ Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}. Check your phone.`;
+        stEl.style.color = '#15803d';
+      } else if (r.no_subscribers) {
+        stEl.textContent = 'No active subscriptions on file. Try Turn off, then Turn on again.';
+        stEl.style.color = '#7f1d1d';
+      } else {
+        stEl.textContent = r.error || 'Test failed.';
+        stEl.style.color = '#7f1d1d';
+      }
+    });
+
+    dismissBtn.addEventListener('click', () => {
+      localStorage.setItem('poolside_push_dismissed', '1');
+      card.style.display = 'none';
+    });
+  } catch (_) { /* an opt-in card must never break Settings */ }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPushCard);   // deferred scripts have run by now
+} else {
+  initPushCard();
+}
+
 </script>
 </body>
 </html>
