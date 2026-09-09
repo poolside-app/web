@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Every fee we charge — Poolside</title>
+<meta name="description" content="Every fee Poolside charges, in one place: the subscription, the slice we take when a member pays by card, what Stripe takes that isn't ours, and a worked example for a 150-household club.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
+    --border:#e5e7eb; --green:#16a34a;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px; --max: 760px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin: 0 0 16px; }
+  h1 { font-size: 38px; line-height: 1.15; }
+  h2 { font-size: 26px; margin-top: 48px; }
+  h3 { font-size: 19px; margin-top: 28px; }
+  p { margin: 0 0 16px; }
+  header.site { padding: 18px 22px; border-bottom: 1px solid var(--border); background:#fff; }
+  .container { max-width: var(--max); margin: 0 auto; padding: 0 22px; }
+  .logo { display: inline-flex; align-items: center; gap: 8px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--blue); text-decoration: none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  main { padding: 56px 0 80px; }
+  .lede { font-size: 19px; color: var(--muted); max-width: 600px; margin: 0 0 32px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 28px; font-size: 14px; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; }
+  /* Prices must not break mid-number ($900 / yr splitting after the slash).
+     Every table is inside .table-wrap, which scrolls instead. */
+  td.right { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table th:first-child, table td:first-child { min-width: 9rem; }
+  td.win { color: var(--green); font-weight: 600; }
+  tr.total td { border-top: 2px solid var(--blue); border-bottom: none; font-weight: 700; background: var(--bg-2); }
+  .table-wrap { overflow-x: auto; }
+  .callout { padding: 18px 22px; background: var(--blue-l); border-left: 4px solid var(--blue); border-radius: 0 var(--r-md) var(--r-md) 0; margin: 24px 0; }
+  .callout p:last-child { margin: 0; }
+  .flag { padding: 16px 20px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: var(--r-md); margin: 24px 0; font-size: 15px; }
+  .flag p:last-child { margin: 0; }
+  .flag b { color: #92400e; }
+  ul { padding-left: 22px; }
+  ul li { margin: 8px 0; }
+  code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; background: var(--bg-2); padding: 1px 5px; border-radius: 4px; }
+  .btn { padding: 12px 22px; border-radius: var(--r-md); font: 600 15px 'Inter'; cursor: pointer; border: 1.5px solid transparent; background: var(--blue); color: #fff; text-decoration: none; display: inline-block; }
+  .btn:hover { background: var(--blue-2); }
+  footer { padding: 32px 22px; text-align: center; font-size: 13px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 64px; background: #fff; }
+  footer a { margin: 0 8px; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="container" style="display:flex;justify-content:space-between;align-items:center">
+    <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+    <a href="/signup.html" class="btn" style="padding:8px 16px;font-size:13px">Start free →</a>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <h1>Every fee we charge</h1>
+    <p class="lede">All of them, on one page, including the ones most software companies bury. If we charge for it, it is listed here.</p>
+
+    <div class="callout">
+      <p><b>The short version:</b> you pay us a flat annual subscription. On top of that, when one of your members pays you <i>by card</i>, we take a small percentage. That is the entire business. There are no per-member fees, no setup requirement, no charge for support, and nothing is gated behind a higher tier.</p>
+    </div>
+
+    <h2>1. What you pay us directly</h2>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>What</th><th class="right">Cost</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><b>Your first season</b></td><td class="right win">$0</td><td>Every feature, no household limit, no card up front.</td></tr>
+        <tr><td>Starter</td><td class="right">$900 / yr</td><td>Up to 75 households.</td></tr>
+        <tr><td><b>Pro</b></td><td class="right">$2,400 / yr</td><td>Up to 200 households. Where most clubs land.</td></tr>
+        <tr><td>Enterprise</td><td class="right">$4,200 / yr</td><td>Unlimited households. Multi-pool clubs.</td></tr>
+        <tr><td>Setup &amp; audit <i>(optional)</i></td><td class="right">$500 / $750</td><td>One-off. We import your roster and configure the club for you. $500 up to 100 households, $750 above. Most clubs do it themselves in an afternoon and pay nothing.</td></tr>
+        <tr><td>Gate / keyfob add-on <i>(optional)</i></td><td class="right">from $1,200<br>+ $75 / mo</td><td>Quoted per site after we look at photos of your gate. Every gate is different, so there is no fixed price. Monitoring is included — if the bridge drops offline we know before you do.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>Subscriptions are billed annually in advance. Outgrowing a tier is a click, and your data and settings stay put.</p>
+
+    <h2>2. What we take when a member pays by card</h2>
+
+    <p>These apply only to money that moves through Poolside via Stripe. If your members pay by Venmo, cheque or cash, none of this applies and you only ever pay the subscription.</p>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>What is being paid for</th><th class="right">Our cut</th></tr></thead>
+      <tbody>
+        <tr><td>Annual dues — including renewals and every payment-plan instalment</td><td class="right">1.0%</td></tr>
+        <tr><td>Programs, swim lessons, clinics</td><td class="right">1.5%</td></tr>
+        <tr><td>Parties, events, guest passes</td><td class="right">1.5%</td></tr>
+        <tr><td>Reactivating a lapsed payment plan</td><td class="right">1.0%</td></tr>
+        <tr><td><b>Donations to your club</b></td><td class="right win">0% — always</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>Donations are free because skimming a donation to a volunteer-run pool club looks bad and earns almost nothing. That is the whole reasoning.</p>
+
+    <h2>3. The one fee your members see</h2>
+
+    <p>A member who would rather spread dues across the season than pay in one go can choose a payment plan. That costs them <b>$4 per payment, capped at $16 for the entire plan</b> — the way an instalment plan works on insurance or a utility bill.</p>
+
+    <ul>
+      <li><b>Your books do not move.</b> Each instalment is the pure dues figure. The fee rides alongside and comes to us, so your club nets exactly the same whether a household pays once or six times.</li>
+      <li><b>Paying in full avoids it entirely.</b> It is a fee for the convenience, not a fee for paying.</li>
+      <li><b>The cap is the point.</b> Without it, a flat fee across an eight-payment plan would take $32 on $600 of dues — over 5%, which is the sort of number that makes a board tell its members to write cheques instead.</li>
+    </ul>
+
+    <h2>4. What Stripe takes, which is not ours</h2>
+
+    <p>Card processing costs <b>2.9% + 30¢</b> per transaction in the US. That goes to Stripe, not to Poolside. We mention it because it is the largest number on this page and you should not be surprised by it on your statement.</p>
+
+    <p>You can pass that cost to members who choose to pay by card — a $600 dues bill then shows as <b>$618.23</b> on a card and <b>$600.00</b> by Venmo. One switch in Settings → Payments.</p>
+
+    <div class="flag">
+      <p><b>Worth knowing:</b> that pass-through covers Stripe's fee only. <b>Our percentage always comes out of the club's side</b>, never the member's. We are not going to quietly add our cut to a member's bill and let you find out about it later.</p>
+    </div>
+
+    <h2>5. What a real year looks like</h2>
+
+    <p>A 150-household club on Pro, dues at $600, where 60% of households choose to pay by card in the first year and 40 of those use a payment plan. Your numbers will differ — the point is the shape.</p>
+
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Line</th><th class="right">Amount</th><th class="right">To Poolside</th></tr></thead>
+      <tbody>
+        <tr><td>Pro subscription</td><td class="right">—</td><td class="right">$2,400</td></tr>
+        <tr><td>Dues paid by card — $54,000 at 1.0%</td><td class="right">$54,000</td><td class="right">$540</td></tr>
+        <tr><td>Programs and swim lessons at 1.5%</td><td class="right">$12,000</td><td class="right">$180</td></tr>
+        <tr><td>Parties and events at 1.5%</td><td class="right">$4,000</td><td class="right">$60</td></tr>
+        <tr><td>Guest passes at 1.5%</td><td class="right">$2,000</td><td class="right">$30</td></tr>
+        <tr><td>Donations at 0%</td><td class="right">$3,000</td><td class="right win">$0</td></tr>
+        <tr class="total"><td>What the club pays Poolside</td><td class="right"></td><td class="right">$3,210</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>Separately, the 40 households that <i>chose</i> a payment plan pay $16 each — <b>$640</b> — which comes from those members, not from the club's budget.</p>
+
+    <p>Stripe's own processing on the $75,000 that moved by card comes to roughly <b>$2,200</b>, which you can pass to card-paying members if you want to.</p>
+
+    <div class="callout">
+      <p>So the club's own cost for the year is about <b>$3,210</b> against <b>$111,000</b> collected — a little under 3%. Roughly three quarters of that is the flat subscription, which does not grow as your club grows.</p>
+    </div>
+
+    <h2>6. What we never charge for</h2>
+
+    <ul>
+      <li><b>Per member or per contact.</b> The tiers are capacity bands, not headcount meters. 74 households or 200, the price is the price.</li>
+      <li><b>Features.</b> Every tier gets every feature. No "upgrade to Pro to send SMS".</li>
+      <li><b>Extra board members or admins.</b> Add the whole board.</li>
+      <li><b>Support.</b> Email a person, get a person.</li>
+      <li><b>Getting your data out.</b> Export any time, including on the way out the door.</li>
+      <li><b>Text messages and emails</b>, within your plan's annual allowance — which is sized so that a club sending normal reminders never touches it.</li>
+      <li><b>Cancelling.</b> No termination fee, no notice period, no exit interview.</li>
+    </ul>
+
+    <h2>7. Things a club sets, which we do not take a cut of</h2>
+
+    <p>Some fees on your Poolside account are <b>yours</b>. You set them, you keep them, and they never appear on our invoice:</p>
+
+    <ul>
+      <li><b>Late fees.</b> You choose the amount, the due date and the grace period, and you can waive any of them in one click. Charged once per household per season, never more.</li>
+      <li><b>Your own reactivation fee</b> on a lapsed payment plan.</li>
+      <li><b>Guest pass and party prices</b>, membership tiers, programme fees — all yours to set.</li>
+    </ul>
+
+    <h2>Money-back, no drama</h2>
+    <p>If you are not happy in the first 30 days, email us and we will refund your subscription. No forms, no exit interview. We would rather you found the right tool than felt stuck in this one.</p>
+
+    <div class="callout">
+      <p style="font-family:'Fraunces',serif;font-size:18px;color:var(--blue);font-style:italic">"If a fee isn't on this page, we don't charge it. If we ever add one, it goes on this page before it goes on your invoice."</p>
+      <p style="margin-top:8px;font-size:13px;color:var(--muted)">— Doug, founder</p>
+    </div>
+
+    <p style="margin-top:40px">Want the reasoning behind the numbers rather than the numbers themselves? That is on <a href="/pricing.html">why we charge what we charge</a>.</p>
+
+    <p style="margin-top:40px;text-align:center">
+      <a class="btn" href="/signup.html">Start free →</a>
+    </p>
+
+  </div>
+</main>
+
+<footer>
+  <a href="/">Home</a> · <a href="/pricing.html">Pricing</a> · <a href="/fees.html">Fees</a> · <a href="/terms.html">Terms</a>
+  <div style="margin-top:10px">Poolside — built for volunteer-run pool clubs.</div>
+</footer>
+</body>
+</html>

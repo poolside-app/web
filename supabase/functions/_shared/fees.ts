@@ -31,8 +31,16 @@ export const FEE_BPS = {
    *  the return on late fees is the dues arriving at all, which is where the
    *  1% lives. Taking a meaningful share of a penalty charged to a family
    *  that is already behind is not a business worth being in, and a board
-   *  that noticed would switch the feature off. Published on /pricing.html
-   *  as 5% — change both together. */
+   *  that noticed would switch the feature off.
+   *
+   *  NOT ON A COLLECTION PATH YET (2026-09-09). late_fees rows are assessed
+   *  and tracked, but nothing charges one through Stripe — a club collects
+   *  it however it collects dues and marks it paid. So this rate currently
+   *  earns nothing, and it is deliberately NOT published on /fees.html:
+   *  advertising a rate that cannot be charged is worse than omitting it.
+   *  Wire it into the dues checkout (an outstanding fee should ride along
+   *  with the payment it is late on, not be a separate errand), then add
+   *  the row to the public table. */
   late: 500,
   /** Safety net for a kind we do not recognise — err on the known-good
    *  higher rate rather than silently taking nothing. */
