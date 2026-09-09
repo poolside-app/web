@@ -38,7 +38,7 @@ const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 // Rates live in _shared/fees.ts — they were duplicated across this file and
 // three literals in payment_plans, so a change here alone silently missed
 // every installment payment.
-import { FEE_BPS } from '../_shared/fees.ts';
+import { FEE_BPS, planFeeSchedule } from '../_shared/fees.ts';
 const FEE_BPS_DUES     = FEE_BPS.dues;
 const FEE_BPS_PROGRAMS = FEE_BPS.programs;
 const FEE_BPS_DEFAULT  = FEE_BPS.default;
@@ -293,14 +293,18 @@ Deno.serve(async (req) => {
       }).select('id').single();
       if (planErr || !newPlan) return jsonResponse({ ok: false, error: planErr?.message || 'plan create failed' }, 500);
       planId = newPlan.id as string;
+      // Convenience fee for spreading the payment, fixed now so it cannot
+      // move under a family part-way through a season.
+      const planFees = planFeeSchedule(schedule.length);
       await sb.from('payment_plan_installments').insert(
-        schedule.map(inst => ({
+        schedule.map((inst, i) => ({
           plan_id: planId, tenant_id: app.tenant_id,
           sequence: inst.sequence,
           // Installment 1 is collected by this Checkout session, so it is due
           // today regardless of where the schedule nominally starts.
           due_date: inst.sequence === 1 ? today : inst.due_date,
           amount_cents: inst.amount_cents,
+          plan_fee_cents: planFees[i] ?? 0,
           status: 'pending',
         })),
       );
@@ -308,7 +312,12 @@ Deno.serve(async (req) => {
 
     // Stripe Checkout — mode=payment + setup_future_usage=off_session so we
     // can charge the second installment without the member returning.
-    const platformFee = Math.max(0, Math.floor(firstCents * FEE_BPS_DUES / 10000));
+    // The member is charged the dues instalment plus its share of the plan
+    // fee; application_fee_amount carries our dues cut PLUS the whole plan
+    // fee, so the club nets exactly the dues either way.
+    const firstPlanFee = planFeeSchedule(schedule.length)[0] ?? 0;
+    const firstChargeCents = firstCents + firstPlanFee;
+    const platformFee = Math.max(0, Math.floor(firstCents * FEE_BPS_DUES / 10000)) + firstPlanFee;
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
@@ -322,10 +331,13 @@ Deno.serve(async (req) => {
     params.append('line_items[0][price_data][product_data][name]',
       `${tenant.display_name} dues — payment 1 of ${schedule.length} (${(tier?.label as string) || 'family'})`);
     params.append('line_items[0][price_data][product_data][description]',
-      laterCount === 1
+      (laterCount === 1
         ? `The remaining $${(secondCents / 100).toFixed(2)} auto-charges on ${finalDueDate}.`
-        : `${laterCount} more payments totalling $${(secondCents / 100).toFixed(2)} auto-charge through ${finalDueDate}.`);
-    params.append('line_items[0][price_data][unit_amount]', String(firstCents));
+        : `${laterCount} more payments totalling $${(secondCents / 100).toFixed(2)} auto-charge through ${finalDueDate}.`)
+      + (firstPlanFee > 0
+        ? ` Includes a $${(firstPlanFee / 100).toFixed(2)} payment-plan fee per payment.`
+        : ''));
+    params.append('line_items[0][price_data][unit_amount]', String(firstChargeCents));
     params.append('line_items[0][quantity]', '1');
     params.append('payment_intent_data[application_fee_amount]', String(platformFee));
     params.append('payment_intent_data[setup_future_usage]', 'off_session');

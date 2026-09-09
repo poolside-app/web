@@ -218,7 +218,10 @@ async function chargeInstallment(
   const installmentId = installment.id as string;
   const idempotencyKey = `installment_${installmentId}_attempt_${(installment.attempt_count as number ?? 0) + 1}`;
   const params: Record<string, string | number> = {
-    amount: installment.amount_cents as number,
+    // Dues plus this instalment's share of the plan fee. The club nets the
+    // dues either way — the fee is added to application_fee_amount below,
+    // so it comes to the platform rather than out of the club's money.
+    amount: (installment.amount_cents as number) + Number(installment.plan_fee_cents ?? 0),
     currency: 'usd',
     customer: plan.stripe_customer_id as string,
     payment_method: plan.stripe_payment_method_id as string,
@@ -228,7 +231,8 @@ async function chargeInstallment(
     'metadata[installment_id]': installmentId,
     'metadata[tenant_id]': plan.tenant_id as string,
     'metadata[kind]': 'payment_plan_installment',
-    application_fee_amount: platformFeeCents(installment.amount_cents as number, 'dues'),
+    application_fee_amount: platformFeeCents(installment.amount_cents as number, 'dues')
+      + Number(installment.plan_fee_cents ?? 0),
   };
   // Idempotency-Key prevents double-charge if cron retries within Stripe's 24h dedup window
   if (!STRIPE_KEY) return { paid: false, lapsed: false, error: 'STRIPE_SECRET_KEY not set' };
@@ -836,10 +840,14 @@ Deno.serve(async (req) => {
     const config = await getPlanConfig(sb, payload.tid);
 
     // Sum unpaid installments + reactivation fee
-    const { data: outstanding } = await sb.from('payment_plan_installments').select('amount_cents, id, sequence')
+    const { data: outstanding } = await sb.from('payment_plan_installments').select('amount_cents, plan_fee_cents, id, sequence')
       .eq('plan_id', planId).neq('status', 'paid').neq('status', 'manual').order('sequence');
     const balance = (outstanding ?? []).reduce((s, i) => s + (i.amount_cents as number), 0);
-    const total = balance + config.reactivation_fee_cents;
+    // Plan fees for the instalments being caught up. Skipping them would
+    // hand a lapsed member the plan for free — precisely the family whose
+    // payments already needed chasing.
+    const planFees = (outstanding ?? []).reduce((s, i) => s + Number(i.plan_fee_cents ?? 0), 0);
+    const total = balance + planFees + config.reactivation_fee_cents;
     if (total <= 0) return jsonResponse({ ok: false, error: 'Nothing owed' }, 400);
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
@@ -854,7 +862,8 @@ Deno.serve(async (req) => {
       'metadata[kind]': 'payment_plan_reactivation',
       'metadata[plan_id]': planId,
       'metadata[tenant_id]': payload.tid,
-      application_fee_amount: String(platformFeeCents(total, 'dues')),
+      // Our cut on the dues portion only, plus the plan fees in full.
+      application_fee_amount: String(platformFeeCents(balance, 'dues') + planFees),
     };
     if (plan.primary_email) params.customer_email = plan.primary_email as string;
     const r = await stripe<{ url: string }>('/checkout/sessions', params, tenant.stripe_account_id);

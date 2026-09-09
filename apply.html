@@ -332,7 +332,11 @@ function paintPlanLabel() {
     const first = Math.round(totalCents * pct / 100);
     const second = totalCents - first;
     const finalDue = String(plan.final_due_date || '').slice(0, 10);
-    labelEl.innerHTML = `Pay in 2 installments via Stripe — $${(first/100).toFixed(0)} now, $${(second/100).toFixed(0)} auto-charged on ${escapeHtml(finalDue)}`;
+    // Disclose the convenience fee here, where the choice is actually made
+    // — not first at Stripe checkout, where it reads as a surprise.
+    const PLAN_FEE = 4;
+    labelEl.innerHTML = `Pay in 2 installments via Stripe — $${((first/100) + PLAN_FEE).toFixed(0)} now, $${((second/100) + PLAN_FEE).toFixed(0)} auto-charged on ${escapeHtml(finalDue)}`
+      + `<span style="display:block;font-weight:400;color:var(--muted);font-size:11.5px;margin-top:2px">Includes a $${PLAN_FEE}.00 payment-plan fee per payment. Paying in full avoids it.</span>`;
   } else {
     labelEl.textContent = 'Pay in 2 installments via Stripe';
   }

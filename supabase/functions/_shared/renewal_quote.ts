@@ -12,6 +12,8 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sellingYear, renewalOpen, isPaidThrough } from './membership_year.ts';
 import { resolveRules, generateSchedule, suggestedCounts } from './payment_schedule.ts';
 
+import { planFeeTotal, planFeeSchedule } from './fees.ts';
+
 export type RenewalQuote = {
   year: number;
   open: boolean;
@@ -21,7 +23,7 @@ export type RenewalQuote = {
   pass_fee: boolean;
   plans_enabled: boolean;
   rules: unknown | null;
-  options: Array<{ count: number; installments: unknown[] }>;
+  options: Array<{ count: number; installments: unknown[]; plan_fee_cents?: number; plan_fee_per_payment_cents?: number }>;
 };
 
 export async function quoteRenewal(
@@ -64,9 +66,18 @@ export async function quoteRenewal(
       max_installments: r.maxInstallments,
       min_installment_cents: r.minInstallmentCents,
     };
+    // Each option carries its plan fee, so the signed-in renewal page and
+    // the no-login link quote the same number. This file exists precisely
+    // because those two once disagreed about price.
     options = suggestedCounts(r, today).map(count => {
       const gen = generateSchedule({ totalCents: duesCents, rules: r, count, startDate: today });
-      return gen.ok ? { count, installments: gen.installments } : null;
+      if (!gen.ok) return null;
+      return {
+        count,
+        installments: gen.installments,
+        plan_fee_cents: planFeeTotal(count),
+        plan_fee_per_payment_cents: planFeeSchedule(count)[1] ?? 0,
+      };
     }).filter(Boolean) as Array<{ count: number; installments: unknown[] }>;
   }
 

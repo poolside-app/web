@@ -243,6 +243,12 @@ function planHtml() {
   const msByDate = {};
   (o.rules?.milestones || []).forEach(m => { msByDate[m.date] = m; });
 
+  // Show the amount the card is ACTUALLY charged — dues plus the plan fee.
+  // A schedule that lists $150 and then bills $154 is the kind of surprise
+  // that gets a board a phone call, and the fee is theirs to avoid by
+  // paying in full.
+  const feePer = Number(sel.plan_fee_per_payment_cents || 0);
+  const feeTotal = Number(sel.plan_fee_cents || 0);
   const rows = sel.installments.map((inst, i) => {
     const isMs = msDates.has(inst.due_date);
     const note = isMs && msByDate[inst.due_date].label
@@ -250,8 +256,11 @@ function planHtml() {
     const when = i === 0
       ? `Today<div class="first-note">Charged now</div>`
       : `${prettyDate(inst.due_date)}${note}`;
-    return `<tr class="${isMs ? 'milestone' : ''}"><td>${when}</td><td class="amt">${money(inst.amount_cents)}</td></tr>`;
+    return `<tr class="${isMs ? 'milestone' : ''}"><td>${when}</td><td class="amt">${money(inst.amount_cents + feePer)}</td></tr>`;
   }).join('');
+  const feeNote = feeTotal > 0
+    ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Includes a ${money(feePer)} payment-plan fee per payment (${money(feeTotal)} in total). Paying in full avoids it.</div>`
+    : '';
 
   return `
     <div style="margin-top:16px">
@@ -263,6 +272,7 @@ function planHtml() {
         <thead><tr><th>When</th><th style="text-align:right">Amount</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ${feeNote}
       <p style="color:var(--muted);font-size:12.5px;margin:12px 0 0">
         Payments after the first are charged automatically to the card you use today.
         We'll email you before each one.</p>

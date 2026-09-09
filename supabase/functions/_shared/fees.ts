@@ -40,3 +40,42 @@ export function platformFeeCents(amountCents: number, kind: FeeKind): number {
   const bps = FEE_BPS[kind] ?? FEE_BPS.default;
   return Math.max(0, Math.floor((Number(amountCents) || 0) * bps / 10000));
 }
+
+// ── Payment-plan convenience fee ─────────────────────────────────────────
+// Members who choose to spread dues over the season pay a small fee for the
+// convenience, the way they would for an instalment plan on insurance or a
+// utility bill. The CLUB is not charged it and its books are unaffected:
+// installments keep amount_cents as the pure dues portion, and the fee rides
+// alongside as plan_fee_cents. The member pays dues + fee; the fee is added
+// to application_fee_amount, so it reaches the platform rather than the club.
+//
+// Capped per plan, which matters: without a cap an 8-instalment plan at a
+// flat $4 would take $32 on $600 of dues — over 5%, which is the sort of
+// number that makes a board tell its members to pay by cheque instead.
+
+/** Fee per instalment, before the per-plan cap. */
+export const PLAN_FEE_CENTS = 400;
+/** Most any single plan can be charged, however many instalments it has. */
+export const PLAN_FEE_MAX_CENTS = 1600;
+
+/**
+ * Per-instalment fee for a plan of `n` instalments, spread as evenly as
+ * cents allow with any remainder on the first payment.
+ *
+ * Returns one entry per instalment, so callers store it per row rather than
+ * recomputing — a plan's fee must not change if the constants later do.
+ */
+export function planFeeSchedule(n: number): number[] {
+  const count = Math.max(0, Math.trunc(n));
+  if (count <= 1) return count === 1 ? [0] : [];   // paying once is not a plan
+  const total = Math.min(count * PLAN_FEE_CENTS, PLAN_FEE_MAX_CENTS);
+  const base = Math.floor(total / count);
+  const out = new Array(count).fill(base);
+  out[0] += total - base * count;                  // remainder on payment 1
+  return out;
+}
+
+/** What the whole plan costs the member in fees. For disclosure. */
+export function planFeeTotal(n: number): number {
+  return planFeeSchedule(n).reduce((a, b) => a + b, 0);
+}
