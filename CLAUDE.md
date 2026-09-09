@@ -58,7 +58,9 @@ Not Supabase Auth — custom JWTs. `_shared/auth.ts` is the single source of tru
 
 ### Plan model
 
-Capacity-gated, **not** feature-gated: every tier gets every feature; only household headcount differs (`_shared/plan_caps.ts` — free 20, starter 75, pro 200, enterprise ∞). SMS caps are separate (`_shared/sms_cap.ts`).
+Capacity-gated, **not** feature-gated: every tier gets every feature; only household headcount differs (`_shared/plan_caps.ts` — starter 75, pro 200, enterprise ∞). SMS caps are separate (`_shared/sms_cap.ts`).
+
+The Free Forever tier was retired 2026-09; `plan='free'` survives only as a legacy value on tenants created before then, and maps to the Starter cap rather than locking a club out mid-season. New clubs get a **free first season** instead — uncapped, then they pick a plan. Prices live in three places that must move together: `pricing.html`, `home.html`, and the `TIERS` array in `club/admin/billing.html`. They disagreed until 2026-09-09, when billing.html was still showing Pro at $799 against $1,400 on the public site.
 
 ### Scheduled work
 

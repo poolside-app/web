@@ -25,6 +25,15 @@ export const FEE_BPS = {
   /** Donations take nothing. Skimming a donation to a club looks bad and
    *  earns little. */
   donations: 0,
+  /** Late fees and payment-plan reactivation. The highest rate we charge,
+   *  and still a small line in absolute terms — a club collecting $750 of
+   *  late fees across a season sends us under $40. That is the right size:
+   *  the return on late fees is the dues arriving at all, which is where the
+   *  1% lives. Taking a meaningful share of a penalty charged to a family
+   *  that is already behind is not a business worth being in, and a board
+   *  that noticed would switch the feature off. Published on /pricing.html
+   *  as 5% — change both together. */
+  late: 500,
   /** Safety net for a kind we do not recognise — err on the known-good
    *  higher rate rather than silently taking nothing. */
   default: 150,

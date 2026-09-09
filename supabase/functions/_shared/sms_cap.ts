@@ -40,9 +40,9 @@ export type SmsCategory = 'auth' | 'transactional' | 'campaign' | 'reminder';
 /** Segments per CALENDAR YEAR, by plan. */
 export const PLAN_CAPS: Record<string, number> = {
   free:        3000,   // free first season + legacy 'free' tenants
-  starter:     6000,   // $600 plan  -> ~$50 of Twilio at full spend
-  pro:        15000,   // $1,400     -> ~$125
-  enterprise: 25000,   // $2,500     -> ~$208. Was identical to Pro, which
+  starter:     6000,   // $900 plan  -> ~$50 of Twilio at full spend
+  pro:        15000,   // $2,400     -> ~$125
+  enterprise: 25000,   // $4,200     -> ~$208. Was identical to Pro, which
                        // made no sense for a plan with unlimited households.
 };
 

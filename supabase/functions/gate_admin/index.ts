@@ -28,6 +28,21 @@
 //   { action: 'super_mark_invoice_paid', tenant_id }
 //     → record that the invoice cleared (Venmo/check/wire — Poolside
 //       doesn't auto-collect for the gate add-on yet).
+//
+// Gate integration enquiries (added 2026-09-09). The intake that replaced
+// the verified-template catalogue — see the migration header for why:
+//   { action: 'submit_integration_request', contact_name, contact_phone, ... }
+//     → owner-only. Every hardware field is optional; photos come in as
+//       base64 and land in club-assets. One open request per club.
+//   { action: 'my_integration_request' }
+//     → the club's own latest request, whatever its status
+//   { action: 'withdraw_integration_request' }
+//     → owner-only; closes whatever is open
+//   { action: 'super_list_integration_requests', status? }
+//     → the review queue, with club names resolved
+//   { action: 'super_review_integration_request', request_id, status?,
+//              admin_notes?, quoted_setup_cents?, quoted_monthly_cents? }
+//     → triage one request. Nothing is quoted before a human has looked.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -1214,6 +1229,252 @@ Deno.serve(async (req) => {
       ok: true,
       unlocks: (data ?? []).map(u => ({ ...u, member_name: nameById.get(u.member_id) ?? null })),
     });
+  }
+
+  // ── Gate integration requests ────────────────────────────────────────
+  // The "tell us what you have and we'll call you" intake. Deliberately
+  // separate from request_addon: that one assumes the club already knows
+  // its panel matches something we support, which is the assumption this
+  // whole flow exists to stop making.
+
+  if (action === 'submit_integration_request') {
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can request a gate integration' }, 403);
+    }
+
+    const contactName  = String(body.contact_name  ?? '').trim();
+    const contactPhone = String(body.contact_phone ?? '').trim();
+    const contactEmail = String(body.contact_email ?? '').trim().toLowerCase();
+    if (!contactName || !contactPhone) {
+      return jsonResponse({ ok: false, error: 'We need a name and a phone number so we can call you back.' }, 400);
+    }
+
+    // Everything below is optional. A treasurer who knows nothing about the
+    // panel but can photograph it is exactly who this form is for.
+    const str = (v: unknown, max = 2000) => {
+      const t = String(v ?? '').trim();
+      return t ? t.slice(0, max) : null;
+    };
+    const doorCountRaw = Number(body.door_count);
+    const doorCount = Number.isFinite(doorCountRaw) && doorCountRaw >= 1 && doorCountRaw <= 50
+      ? Math.trunc(doorCountRaw) : null;
+    const linkTypeRaw = String(body.link_type ?? '').trim();
+    const linkType = ['wired', 'wifi', 'cellular', 'unknown'].includes(linkTypeRaw) ? linkTypeRaw : null;
+
+    // Refuse early if one is already in flight, so the club gets a sentence
+    // rather than a unique-violation from the index.
+    const { data: existingOpen } = await sb.from('gate_integration_requests')
+      .select('id, status, created_at')
+      .eq('tenant_id', payload.tid)
+      .in('status', ['submitted', 'reviewing', 'call_scheduled', 'quoted'])
+      .maybeSingle();
+    if (existingOpen) {
+      return jsonResponse({
+        ok: false,
+        error: "You already have a gate request open — we're on it. Give us a nudge if you haven't heard back.",
+        request_id: existingOpen.id,
+      }, 409);
+    }
+
+    // ── photos ──
+    // Same base64 path feedback uses. Capped at 8; anything larger than 8 MB
+    // is almost certainly an unresized burst from a phone camera.
+    const ALLOWED: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic',
+    };
+    const photos = Array.isArray(body.photos) ? body.photos.slice(0, 8) : [];
+    const photoUrls: string[] = [];
+    for (const raw of photos) {
+      const ph = raw as { content_type?: string; data_b64?: string };
+      const ct = String(ph.content_type ?? '');
+      const b64 = String(ph.data_b64 ?? '');
+      if (!ct || !b64) continue;
+      if (!ALLOWED[ct]) {
+        return jsonResponse({ ok: false, error: 'Photos must be JPG, PNG, WebP or HEIC.' }, 400);
+      }
+      let bytes: Uint8Array;
+      try {
+        const bin = atob(b64);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } catch {
+        return jsonResponse({ ok: false, error: 'One of those photos did not upload cleanly. Try again?' }, 400);
+      }
+      if (bytes.byteLength > 8 * 1024 * 1024) {
+        return jsonResponse({ ok: false, error: 'Each photo needs to be under 8 MB.' }, 400);
+      }
+      const path = `${payload.tid}/gate-requests/${crypto.randomUUID()}.${ALLOWED[ct]}`;
+      const { error: upErr } = await sb.storage.from('club-assets')
+        .upload(path, bytes, { contentType: ct, upsert: false });
+      if (upErr) return jsonResponse({ ok: false, error: upErr.message }, 500);
+      const { data: pub } = sb.storage.from('club-assets').getPublicUrl(path);
+      photoUrls.push(pub.publicUrl);
+    }
+
+    const { data: row, error } = await sb.from('gate_integration_requests').insert({
+      tenant_id:       payload.tid,
+      contact_name:    contactName,
+      contact_phone:   contactPhone,
+      contact_email:   contactEmail || null,
+      best_time_to_call: str(body.best_time_to_call, 200),
+      manufacturer:    str(body.manufacturer, 200),
+      model:           str(body.model, 200),
+      door_count:      doorCount,
+      link_type:       linkType,
+      existing_system: str(body.existing_system),
+      what_they_want:  str(body.what_they_want),
+      photo_urls:      photoUrls,
+      status:          'submitted',
+    }).select('id').single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    const { data: tenant } = await sb.from('tenants')
+      .select('slug, display_name').eq('id', payload.tid).maybeSingle();
+    const clubName = tenant?.display_name || String(payload.tid);
+    const clubSlug = tenant?.slug || '';
+
+    await sb.from('admin_tasks').insert({
+      tenant_id: payload.tid,
+      target_scopes: [],
+      kind: 'gate.integration_requested',
+      summary: `Gate integration enquiry sent — Doug will look at the photos and call`,
+      link_url: '/club/admin/settings.html#gate',
+      source_kind: 'gate_integration_request', source_id: row.id,
+    });
+    await sb.from('audit_log').insert({
+      tenant_id: payload.tid, kind: 'gate.integration_requested',
+      entity_type: 'gate_integration_request', entity_id: row.id,
+      summary: `Gate integration enquiry submitted (${photoUrls.length} photo${photoUrls.length === 1 ? '' : 's'})`,
+      actor_id: payload.sub, actor_kind: 'tenant_admin',
+      metadata: { manufacturer: str(body.manufacturer, 200), model: str(body.model, 200), door_count: doorCount },
+    });
+
+    // Best-effort. The row and the admin_task are already written, so a
+    // Resend outage delays the lead rather than losing it.
+    try {
+      const { sendEmail, escHtml: esc } = await import('../_shared/send_email.ts');
+      const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
+      const line = (k: string, v: string | null) => v
+        ? `<tr><td style="padding:6px 14px 6px 0;color:#64748b;vertical-align:top">${esc(k)}</td><td style="padding:6px 0">${esc(v)}</td></tr>`
+        : '';
+      const photoHtml = photoUrls.length
+        ? `<p style="margin:16px 0 6px;font-size:13px;color:#64748b">${photoUrls.length} photo${photoUrls.length === 1 ? '' : 's'}:</p>` +
+          photoUrls.map(u => `<a href="${esc(u)}" style="display:inline-block;margin:0 6px 6px 0"><img src="${esc(u)}" alt="" style="width:120px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0"></a>`).join('')
+        : '<p style="margin:16px 0 0;font-size:13px;color:#94a3b8">No photos attached — worth asking for some on the call.</p>';
+      await sendEmail({
+        to: PROVIDER_EMAIL,
+        subject: `🚪 Gate enquiry: ${clubName}`,
+        replyTo: contactEmail || undefined,
+        html: `
+        <div style="font-family:Inter,Arial,sans-serif;max-width:600px;padding:24px;color:#0f172a">
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 14px">🚪 Gate integration enquiry</h2>
+          <p style="margin:0 0 16px;color:#475569;line-height:1.55"><b>${esc(clubName)}</b> wants to talk about gate access. Nothing has been quoted and nothing has been promised — look at the photos, then call.</p>
+          <table style="border-collapse:collapse;font-size:14px;margin:0 0 8px">
+            ${line('Club', `${clubName} (${clubSlug}.poolsideapp.com)`)}
+            ${line('Contact', contactName)}
+            <tr><td style="padding:6px 14px 6px 0;color:#64748b">Phone</td><td style="padding:6px 0"><a href="tel:${esc(contactPhone)}">${esc(contactPhone)}</a></td></tr>
+            ${line('Best time', str(body.best_time_to_call, 200))}
+            ${line('Manufacturer', str(body.manufacturer, 200))}
+            ${line('Model', str(body.model, 200))}
+            ${line('Doors', doorCount ? String(doorCount) : null)}
+            ${line('Connection', linkType)}
+            ${line('What they have', str(body.existing_system))}
+            ${line('What they want', str(body.what_they_want))}
+          </table>
+          ${photoHtml}
+          <p style="margin:20px 0 8px"><a href="https://poolsideapp.com/admin/gate-integrations.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Open the review queue →</a></p>
+        </div>`,
+      });
+    } catch (e) {
+      console.error('gate.submit_integration_request: provider email failed (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({
+      ok: true,
+      request_id: row.id,
+      message: "Thanks — that's enough to go on. Doug will look at what you've sent and call you within a couple of business days. Nothing is quoted and nothing is owed until after that conversation.",
+    });
+  }
+
+  if (action === 'my_integration_request') {
+    const { data } = await sb.from('gate_integration_requests')
+      .select('id, status, manufacturer, model, door_count, link_type, photo_urls, quoted_setup_cents, quoted_monthly_cents, created_at, reviewed_at, decided_at')
+      .eq('tenant_id', payload.tid)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return jsonResponse({ ok: true, request: data ?? null });
+  }
+
+  if (action === 'withdraw_integration_request') {
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can withdraw a gate request' }, 403);
+    }
+    const { error } = await sb.from('gate_integration_requests')
+      .update({ status: 'withdrawn', decided_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('tenant_id', payload.tid)
+      .in('status', ['submitted', 'reviewing', 'call_scheduled', 'quoted']);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true });
+  }
+
+  if (action === 'super_list_integration_requests') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider only' }, 403);
+    }
+    const wanted = String(body.status ?? '').trim();
+    let q = sb.from('gate_integration_requests').select('*').order('created_at', { ascending: false }).limit(200);
+    if (wanted && wanted !== 'all') q = q.eq('status', wanted);
+    const { data, error } = await q;
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    type ClubRef = { id: string; slug: string; display_name: string };
+    const ids = [...new Set((data ?? []).map(r => r.tenant_id))];
+    const { data: tenants } = ids.length
+      ? await sb.from('tenants').select('id, slug, display_name').in('id', ids)
+      : { data: [] as ClubRef[] };
+    const byId = new Map<string, ClubRef>(
+      ((tenants ?? []) as ClubRef[]).map(t => [t.id, t]),
+    );
+    return jsonResponse({
+      ok: true,
+      requests: (data ?? []).map(r => ({
+        ...r,
+        club_name: byId.get(r.tenant_id)?.display_name ?? null,
+        club_slug: byId.get(r.tenant_id)?.slug ?? null,
+      })),
+    });
+  }
+
+  if (action === 'super_review_integration_request') {
+    if (!(await requireSuper(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Provider only' }, 403);
+    }
+    const id = String(body.request_id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'request_id required' }, 400);
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.status !== undefined) {
+      const st = String(body.status);
+      if (!['submitted', 'reviewing', 'call_scheduled', 'quoted', 'accepted', 'declined', 'withdrawn'].includes(st)) {
+        return jsonResponse({ ok: false, error: 'Unknown status' }, 400);
+      }
+      patch.status = st;
+      if (st === 'reviewing' || st === 'call_scheduled') patch.reviewed_at = new Date().toISOString();
+      if (['accepted', 'declined', 'withdrawn'].includes(st)) patch.decided_at = new Date().toISOString();
+    }
+    if (body.admin_notes !== undefined) patch.admin_notes = String(body.admin_notes ?? '').slice(0, 4000) || null;
+    for (const k of ['quoted_setup_cents', 'quoted_monthly_cents']) {
+      if (body[k] !== undefined) {
+        const n = Number(body[k]);
+        patch[k] = Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+      }
+    }
+
+    const { data, error } = await sb.from('gate_integration_requests')
+      .update(patch).eq('id', id).select('*').maybeSingle();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, request: data });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

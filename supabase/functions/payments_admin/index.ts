@@ -308,5 +308,126 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, verified: ok.length, failed: failed.length, failures: failed });
   }
 
+  // ── Late fees ────────────────────────────────────────────────────────
+  // Off for every club until a board explicitly turns it on. See the
+  // migration header: the guarantees that make this defensible are that it
+  // is opt-in, once per household per season, and waivable in one click by
+  // anyone with the payments scope, with no approval step.
+
+  if (action === 'late_fee_config') {
+    const { data: t } = await sb.from('tenants')
+      .select('late_fee_enabled, late_fee_cents, late_fee_grace_days, dues_due_date')
+      .eq('id', TID).maybeSingle();
+    return jsonResponse({ ok: true, config: t ?? null });
+  }
+
+  if (action === 'set_late_fee_config') {
+    const patch: Record<string, unknown> = {};
+
+    if (body.late_fee_enabled !== undefined) {
+      patch.late_fee_enabled = !!body.late_fee_enabled;
+    }
+    if (body.late_fee_cents !== undefined) {
+      const n = Number(body.late_fee_cents);
+      if (!Number.isFinite(n) || n < 0 || n > 20000) {
+        return jsonResponse({ ok: false, error: 'A late fee has to be between $0 and $200.' }, 400);
+      }
+      patch.late_fee_cents = Math.trunc(n);
+    }
+    if (body.late_fee_grace_days !== undefined) {
+      const n = Number(body.late_fee_grace_days);
+      if (!Number.isFinite(n) || n < 0 || n > 180) {
+        return jsonResponse({ ok: false, error: 'Grace period has to be between 0 and 180 days.' }, 400);
+      }
+      patch.late_fee_grace_days = Math.trunc(n);
+    }
+    if (body.dues_due_date !== undefined) {
+      const raw = String(body.dues_due_date ?? '').trim();
+      if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return jsonResponse({ ok: false, error: 'Due date must look like 2027-05-01.' }, 400);
+      }
+      patch.dues_due_date = raw || null;
+    }
+    if (!Object.keys(patch).length) return jsonResponse({ ok: false, error: 'Nothing to change' }, 400);
+
+    // Turning it ON without a due date would arm a job that can never fire,
+    // and the club would believe late fees were running. Refuse instead.
+    if (patch.late_fee_enabled === true) {
+      const { data: cur } = await sb.from('tenants').select('dues_due_date').eq('id', TID).maybeSingle();
+      const willHave = patch.dues_due_date !== undefined ? patch.dues_due_date : cur?.dues_due_date;
+      if (!willHave) {
+        return jsonResponse({ ok: false, error: 'Set the date dues are due before switching late fees on — otherwise there is nothing to be late against.' }, 400);
+      }
+    }
+
+    const { error } = await sb.from('tenants').update(patch).eq('id', TID);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'payments.late_fee_config',
+        entity_type: 'tenant', entity_id: TID,
+        summary: patch.late_fee_enabled === true ? 'Late fees switched on'
+               : patch.late_fee_enabled === false ? 'Late fees switched off'
+               : 'Late fee settings changed',
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+        metadata: patch,
+      });
+    } catch { /* audit failure non-fatal */ }
+
+    return jsonResponse({ ok: true, config: patch });
+  }
+
+  if (action === 'list_late_fees') {
+    const { data, error } = await sb.from('late_fees')
+      .select('*').eq('tenant_id', TID)
+      .order('assessed_at', { ascending: false }).limit(500);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    const ids = [...new Set((data ?? []).map(r => r.household_id))];
+    type HouseRef = { id: string; family_name: string };
+    const { data: houses } = ids.length
+      ? await sb.from('households').select('id, family_name').in('id', ids)
+      : { data: [] as HouseRef[] };
+    const nameById = new Map<string, string>(
+      ((houses ?? []) as HouseRef[]).map(h => [h.id, h.family_name]),
+    );
+    return jsonResponse({
+      ok: true,
+      late_fees: (data ?? []).map(r => ({ ...r, family_name: nameById.get(r.household_id) ?? null })),
+    });
+  }
+
+  if (action === 'waive_late_fee') {
+    const id = String(body.late_fee_id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'late_fee_id required' }, 400);
+
+    // Only an outstanding fee can be waived. Waiving one already paid would
+    // need a refund, which is a different conversation and a different button.
+    const { data: row, error } = await sb.from('late_fees')
+      .update({
+        status: 'waived',
+        waived_at: new Date().toISOString(),
+        waived_by: payload.sub,
+        waive_reason: String(body.reason ?? '').slice(0, 500) || null,
+      })
+      .eq('id', id).eq('tenant_id', TID).eq('status', 'assessed')
+      .select('id, household_id, amount_cents').maybeSingle();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!row) return jsonResponse({ ok: false, error: 'That fee is not outstanding — it may already be paid or waived.' }, 409);
+
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'payments.late_fee_waived',
+        entity_type: 'late_fee', entity_id: row.id,
+        summary: `Late fee waived ($${(Number(row.amount_cents) / 100).toFixed(2)})`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+        metadata: { household_id: row.household_id, reason: String(body.reason ?? '') || null },
+      });
+    } catch { /* audit failure non-fatal */ }
+
+    return jsonResponse({ ok: true });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

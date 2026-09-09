@@ -16,9 +16,9 @@
 // Admin actions (tenant_admin JWT):
 //   { action: 'admin_application', application_id }   — admin-initiated link
 //
-// All sessions specify an `application_fee_amount` per Poolside's tier
-// (memory: 0.5% dues, 1.5% programs/snack, 2% tickets, 0% donations,
-// 5% late fees). For now we use a flat 1.5% fee — refine later.
+// All sessions specify an `application_fee_amount` per Poolside's tier:
+// 1% dues, 1.5% programs/snack, 2% tickets, 0% donations, 5% late fees.
+// Rates live in _shared/fees.ts — never inline them here.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -31,10 +31,10 @@ const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 
 // Per-kind platform fee (basis points). Source of truth for "what does
 // Poolside charge?" — referenced by both stripe_checkout and payment_plans.
-// Pricing memory: 0.5% dues, 1.5% programs/snack, 2% tickets, 0% donations,
-// 5% late fees. Dues fee MUST match payment_plans/index.ts (which uses 0.5%
-// for installments + reactivation) so a family pays the same fee regardless
-// of full-pay vs installment path.
+// Pricing: 1% dues (raised from 0.5% on 2026-09-08), 1.5% programs/snack,
+// 2% tickets, 0% donations, 5% late fees. The dues rate MUST match the one
+// payment_plans uses for installments + reactivation, so a family pays the
+// same fee whether it pays in full or over the season.
 // Rates live in _shared/fees.ts — they were duplicated across this file and
 // three literals in payment_plans, so a change here alone silently missed
 // every installment payment.

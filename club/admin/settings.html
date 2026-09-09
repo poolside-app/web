@@ -1246,45 +1246,30 @@ async function loadGate() {
 
 function renderGatePitch() {
   document.getElementById('gate-body').innerHTML = `
-    <p style="margin:0 0 10px">Let members open the front gate from their phone after they've paid their dues. Each member's button enables automatically the moment their dues clear; auto-shuts-off when they lapse.</p>
+    <p style="margin:0 0 10px">Let members open the gate from their phone once they've paid. Each member's button switches on the moment their dues clear and switches off when they lapse — nobody has to collect a fob or deactivate a card.</p>
+
     <div style="margin:14px 0;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.6">
-      <b style="color:var(--blue)">How it works:</b>
+      <b style="color:var(--blue)">How this goes:</b>
       <ol style="margin:6px 0 0;padding-left:20px">
-        <li>You send the request below — just a name + phone number, no payment.</li>
-        <li>Doug calls you within 1 business day to walk through your gate panel, talk through wiring, and confirm we can actually integrate.</li>
-        <li>If everything checks out, we ship a small Pi bridge that sits on your club's network and run the on-site test together.</li>
-        <li>Only after the integration is in place — and you've said yes — do we send the invoice. On a panel we've already certified that's <b>$1,500 setup + $75/mo</b>; on a panel we haven't, we start with a <b>$500 compatibility check</b> (credited toward the install, typically $2,500 all in) so nobody commits before we know it works. Pay it, members start seeing the unlock button.</li>
+        <li>Tell us what you've got below. Photos are the most useful thing you can send — you do <b>not</b> need to know the brand.</li>
+        <li>Doug looks at them and calls you. If it can't be done, he'll say so on that call.</li>
+        <li>If it can, you get a written quote. Setup starts at <b>$1,200</b> and depends entirely on what's already on your gate; monitoring is <b>$75/mo</b>.</li>
+        <li>Nothing is invoiced until the integration is in and you've confirmed it works.</li>
       </ol>
     </div>
+
     <div style="margin:14px 0;padding:14px 16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;font-size:13px;line-height:1.6">
       <b style="color:#92400e">What you'll need on site</b>
       <ul style="margin:6px 0 0;padding-left:20px">
-        <li><b>A wired network connection</b> for the bridge — plugged into your router with an ethernet cable. Wi-Fi is not supported.</li>
+        <li><b>A wired network connection</b> — the bridge plugs into your router with an ethernet cable. Wi-Fi is not supported.</li>
         <li><b>A power outlet that stays on</b> year-round, including the off-season.</li>
       </ul>
-      <div style="margin-top:8px;color:var(--muted)">The bridge can sit right next to your router — it does <b>not</b> need to be anywhere near the gate. Wi-Fi is excluded on purpose: a changed password or a moved access point looks exactly like a dead bridge from our side, so we'd be sending you alarms about a gate that is actually fine.</div>
+      <div style="margin-top:8px;color:var(--muted)">The bridge sits next to your router and does <b>not</b> need to be near the gate. Wi-Fi is excluded on purpose: a changed password looks exactly like a dead bridge from our side, so we'd be sending you alarms about a gate that's actually fine.</div>
     </div>
-    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600">What gate panel does your club use?</label>
-    <div style="display:flex;flex-direction:column;gap:8px;max-width:420px">
-      <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;font-weight:500">
-        <input type="radio" name="gate-panel-mode" value="unknown" checked onchange="syncGatePanelMode()" style="width:auto;margin-top:3px">
-        <div>
-          <div style="font-weight:600;font-size:13.5px">I don't know — help me figure it out</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">We'll ask for a photo of the existing panel and walk through it together.</div>
-        </div>
-      </label>
-      <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;font-weight:500">
-        <input type="radio" name="gate-panel-mode" value="known" onchange="syncGatePanelMode()" style="width:auto;margin-top:3px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:13.5px">I know what we have →</div>
-          <input id="gate-panel-describe" type="text" placeholder="Brand + model, e.g. MENGQI HXC-7000, ButterflyMX, DoorKing 1812…" disabled style="margin-top:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font:13.5px 'Inter';width:100%;background:#f8fafc">
-        </div>
-      </label>
-    </div>
-    <!-- Hidden field that requestGateAddon() reads. Synced by syncGatePanelMode. -->
-    <input type="hidden" id="gate-panel-type" value="unknown">
-    <input type="hidden" id="gate-panel-notes" value="">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;max-width:420px">
+
+    <h4 style="margin:20px 0 10px;font:600 14px 'Inter';color:var(--blue)">Tell us what you have</h4>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:460px">
       <div>
         <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Your name</label>
         <input id="gate-contact-name" placeholder="Margaret Kowalski" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
@@ -1293,13 +1278,86 @@ function renderGatePitch() {
         <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Phone number</label>
         <input id="gate-contact-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555)-123-4567" oninput="formatPhoneInput(this)" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
       </div>
+      <div>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Best time to call</label>
+        <input id="gate-best-time" placeholder="Weekday evenings" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">How many doors or gates?</label>
+        <input id="gate-door-count" type="number" min="1" max="50" placeholder="1" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+      </div>
     </div>
-    <div style="margin-top:14px">
-      <button class="btn btn-primary" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:12px 22px;font-size:14px">🚪 Send request — we'll call to discuss →</button>
-      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none">✓ Request received — Doug will call you within 1 business day.</span>
+
+    <div style="margin-top:14px;max-width:460px">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">Brand and model, if you happen to know it</label>
+      <input id="gate-model" placeholder="MENGQI HXC-7000 · DoorKing 1812 · no idea" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%">
+      <div style="font-size:11.5px;color:var(--muted);margin-top:4px">Genuinely fine to leave blank. Photos tell us more than a model number does.</div>
     </div>
-    <p style="margin:14px 0 0;font-size:12px;color:var(--muted)">No payment is collected here, and we don't send an invoice until we've talked, integrated, and you've confirmed it works.</p>
+
+    <div style="margin-top:14px;max-width:560px">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">What's on the gate today?</label>
+      <textarea id="gate-existing" rows="3" placeholder="Keypad with one code everyone knows. There's a grey box on the fence with a keyhole. The pool company installed it years ago." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;resize:vertical"></textarea>
+    </div>
+
+    <div style="margin-top:14px;max-width:560px">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600">What would you like it to do?</label>
+      <textarea id="gate-want" rows="3" placeholder="Members open it from the app. Stop reissuing fobs every spring. Keep the bathhouse locked to everyone but the board." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';width:100%;resize:vertical"></textarea>
+    </div>
+
+    <div style="margin-top:16px;max-width:560px">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">Photos — up to 8</label>
+      <div style="padding:14px;border:1.5px dashed var(--border);border-radius:10px;background:#fff">
+        <input id="gate-photos" type="file" accept="image/*" multiple onchange="previewGatePhotos()" style="font:13px 'Inter';width:100%">
+        <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.55">
+          Most useful: <b>the panel or control box</b> (open the cover if you can), <b>the reader on the wall</b>, <b>the gate itself</b>, and <b>any wiring</b> you can see. Blurry is better than nothing.
+        </div>
+        <div id="gate-photo-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <button class="btn btn-primary" id="gate-submit-btn" onclick="requestGateAddon()" style="background:var(--blue);color:#fff;padding:12px 22px;font-size:14px">🚪 Send this to Doug →</button>
+      <span id="gate-saved" style="color:var(--green);font-size:13px;font-weight:600;margin-left:10px;display:none"></span>
+    </div>
+    <p style="margin:14px 0 0;font-size:12px;color:var(--muted)">No payment is collected here and no quote is generated automatically. A person looks at what you send.</p>
   `;
+}
+
+// Reads the chosen files once, into base64, and holds them for submit. Doing
+// it on change rather than on submit means an unreadable file surfaces while
+// the board member is still looking at the picker.
+let GATE_PHOTOS = [];
+function previewGatePhotos() {
+  const input = document.getElementById('gate-photos');
+  const wrap  = document.getElementById('gate-photo-preview');
+  const errEl = document.getElementById('gate-err');
+  GATE_PHOTOS = [];
+  wrap.innerHTML = '';
+  const files = Array.from(input.files || []).slice(0, 8);
+  if (input.files && input.files.length > 8) {
+    errEl.textContent = 'Only the first 8 photos will be sent.';
+    errEl.classList.add('show');
+  }
+  files.forEach(f => {
+    if (f.size > 8 * 1024 * 1024) {
+      errEl.textContent = `"${f.name}" is over 8 MB — please pick a smaller one.`;
+      errEl.classList.add('show');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const comma = dataUrl.indexOf(',');
+      if (comma < 0) return;
+      GATE_PHOTOS.push({ content_type: f.type || 'image/jpeg', data_b64: dataUrl.slice(comma + 1) });
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = '';
+      img.style.cssText = 'width:76px;height:58px;object-fit:cover;border-radius:6px;border:1px solid var(--border)';
+      wrap.appendChild(img);
+    };
+    reader.readAsDataURL(f);
+  });
 }
 
 function renderGatePending(panel) {
@@ -1511,43 +1569,44 @@ function typedConfirm({ title, bodyHtml, keyword, confirmLabel, cancelLabel, con
 // Sync the radio-driven panel-type UI into the hidden fields that
 // requestGateAddon() reads. Mode 'unknown' = "help me figure it out";
 // mode 'known' = panel_type='custom' + free-text describe → notes.
-function syncGatePanelMode() {
-  const mode = document.querySelector('input[name="gate-panel-mode"]:checked')?.value || 'unknown';
-  const describeInput = document.getElementById('gate-panel-describe');
-  if (mode === 'known') {
-    describeInput.disabled = false;
-    describeInput.style.background = '#fff';
-    document.getElementById('gate-panel-type').value = 'custom';
-  } else {
-    describeInput.disabled = true;
-    describeInput.style.background = '#f8fafc';
-    document.getElementById('gate-panel-type').value = 'unknown';
-  }
-}
-
 async function requestGateAddon() {
   const errEl = document.getElementById('gate-err');
   errEl.classList.remove('show');
-  const panelType     = document.getElementById('gate-panel-type').value;
-  const panelDescribe = document.getElementById('gate-panel-describe')?.value.trim() || '';
-  const contactName   = document.getElementById('gate-contact-name').value.trim();
-  const contactPhone  = document.getElementById('gate-contact-phone').value.trim();
-  if (!contactName)  { errEl.textContent = 'Please add your name so we know who to ask for.';   errEl.classList.add('show'); return; }
-  if (!contactPhone) { errEl.textContent = 'Please add a phone number so we can call you.';     errEl.classList.add('show'); return; }
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const contactName  = val('gate-contact-name');
+  const contactPhone = val('gate-contact-phone');
+  if (!contactName)  { errEl.textContent = 'Please add your name so we know who to ask for.'; errEl.classList.add('show'); return; }
+  if (!contactPhone) { errEl.textContent = 'Please add a phone number so we can call you.';   errEl.classList.add('show'); return; }
+
+  const btn = document.getElementById('gate-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = GATE_PHOTOS.length ? 'Uploading photos…' : 'Sending…'; }
+
+  const doors = parseInt(val('gate-door-count'), 10);
   try {
-    const r = await gateApi('request_addon', {
-      panel_type: panelType,
-      contact_name:  contactName,
-      contact_phone: contactPhone,
-      // When user says "I know what we have", their description goes in
-      // notes so Doug can read it on the provider side without parsing.
-      notes: panelDescribe ? `Self-describe panel: ${panelDescribe}` : null,
+    const r = await gateApi('submit_integration_request', {
+      contact_name:      contactName,
+      contact_phone:     contactPhone,
+      best_time_to_call: val('gate-best-time') || null,
+      model:             val('gate-model') || null,
+      door_count:        Number.isFinite(doors) ? doors : null,
+      existing_system:   val('gate-existing') || null,
+      what_they_want:    val('gate-want') || null,
+      photos:            GATE_PHOTOS,
     });
     if (!r.ok) throw new Error(r.error || 'Request failed');
-    document.getElementById('gate-saved').textContent = '✓ ' + (r.message || 'Request received');
-    document.getElementById('gate-saved').style.display = '';
-    setTimeout(() => loadGate(), 1200);
-  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
+    const saved = document.getElementById('gate-saved');
+    saved.textContent = '✓ Sent';
+    saved.style.display = '';
+    document.getElementById('gate-body').innerHTML = `
+      <div style="padding:18px 20px;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:10px">
+        <div style="font-weight:700;color:#065f46;font-size:14px">🚪 Sent — thanks</div>
+        <div style="font-size:13px;color:#065f46;margin-top:8px;line-height:1.6">${escapeHtml(r.message || '')}</div>
+      </div>`;
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+    if (btn) { btn.disabled = false; btn.textContent = '🚪 Send this to Doug →'; }
+  }
 }
 
 async function saveGateConfig() {
@@ -1684,7 +1743,7 @@ const ACCESS_METHODS = [
   { key: 'paper_roster',     label: 'Paper roster',                desc: 'A lifeguard or gate attendant checks a printed list. We can generate a fresh PDF every morning.' },
   { key: 'member_pass',      label: 'Member shows phone pass',     desc: 'Members open the app at the gate and show a screen with their photo, family name, paid status, and a live ticking clock. No hardware.' },
   { key: 'lifeguard_tablet', label: 'Lifeguard tablet check-in',   desc: 'A shared iPad at the gate. Lifeguard searches by name, sees the family + paid status, taps "Check in". Invite the lifeguard as a scoped admin from Co-admins.' },
-  { key: 'keyfob',           label: 'Keyfob / RFID gate',          desc: 'Hardware integration with a panel like MENGQI. $1,500 setup + $75/mo as an add-on, monitoring included. Best for 24/7 unattended access.' },
+  { key: 'keyfob',           label: 'Keyfob / RFID gate',          desc: 'Hardware integration with your existing gate. From $1,200 setup + $75/mo, quoted after we look at photos. Monitoring included. Best for 24/7 unattended access.' },
   { key: 'pin_codes',        label: 'PIN codes at a keypad',       desc: 'A 4-digit code per household. Cheaper than keyfobs but code-sharing is a real risk. Coming soon.', disabled: true },
   { key: 'printable_cards',  label: 'Printable membership cards',  desc: 'Generate PDF cards (photo + QR) for members without smartphones. Coming soon.', disabled: true },
   { key: 'self_kiosk',       label: 'Self check-in kiosk',         desc: 'Shared iPad at the gate — members tap their own name. No lifeguard needed. Coming soon.', disabled: true },

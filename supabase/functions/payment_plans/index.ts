@@ -750,7 +750,66 @@ Deno.serve(async (req) => {
       console.error('trial notices (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices });
+    // ── Late fees ────────────────────────────────────────────────────
+    // Assess, once, for households still unpaid past the club's own due date
+    // plus its own grace period. Both numbers come from the club; Poolside
+    // picks neither.
+    //
+    // The safety here is the unique index on (tenant, household, season), not
+    // this loop: this job runs every morning, and without that index a family
+    // that stayed unpaid through June would be charged thirty times. The
+    // insert is expected to collide on most days and that collision IS the
+    // idempotency. Do not "fix" it by pre-checking and inserting — two runs
+    // overlapping would still double-charge.
+    let late_fees_assessed = 0;
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: clubs } = await sb.from('tenants')
+        .select('id, late_fee_cents, late_fee_grace_days, dues_due_date')
+        .eq('late_fee_enabled', true)
+        .not('dues_due_date', 'is', null);
+
+      for (const c of (clubs ?? [])) {
+        const due = String(c.dues_due_date);
+        const grace = Number(c.late_fee_grace_days ?? 0);
+        const amount = Number(c.late_fee_cents ?? 0);
+        if (amount <= 0) continue;
+
+        const cutoff = new Date(`${due}T00:00:00Z`);
+        cutoff.setUTCDate(cutoff.getUTCDate() + grace);
+        if (today < cutoff.toISOString().slice(0, 10)) continue;   // still in grace
+
+        const seasonYear = Number(due.slice(0, 4));
+
+        const { data: unpaid } = await sb.from('households')
+          .select('id')
+          .eq('tenant_id', c.id as string)
+          .eq('active', true)
+          .eq('dues_paid_for_year', false);
+        if (!unpaid || !unpaid.length) continue;
+
+        for (const h of unpaid) {
+          const { error } = await sb.from('late_fees').insert({
+            tenant_id:    c.id,
+            household_id: h.id,
+            season_year:  seasonYear,
+            amount_cents: amount,
+            due_date:     due,
+            grace_days:   grace,
+            status:       'assessed',
+          });
+          // 23505 = already assessed this season. The expected case.
+          if (!error) late_fees_assessed++;
+          else if ((error as { code?: string }).code !== '23505') {
+            console.error('late fee insert failed:', error.message);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('late fees (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices, late_fees_assessed });
   }
 
   // ── Admin actions below — verify tenant admin ────────────────────────────

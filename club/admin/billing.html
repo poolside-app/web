@@ -272,11 +272,15 @@ async function logout() {
 }
 document.getElementById('signout').addEventListener('click', logout);
 
+// Prices MUST match pricing.html and home.html. They did not until
+// 2026-09-09: this table still carried a Free Forever tier that had been
+// retired, and Pro at $799 against $1,400 on the public site — a club
+// reading its own billing page saw a different number from the one it
+// signed up on. Change all three together or not at all.
 const TIERS = [
-  { key: 'free',       name: 'Free Forever', price: 0,    cap: 20,         caption: 'For tiny HOA pools' },
-  { key: 'starter',    name: 'Starter',      price: 299,  cap: 75,         caption: 'Small neighborhood clubs' },
-  { key: 'pro',        name: 'Pro',          price: 799,  cap: 200,        caption: 'Most popular', featured: true },
-  { key: 'enterprise', name: 'Enterprise',   price: 1999, cap: Infinity,   caption: 'Multi-pool / large clubs' },
+  { key: 'starter',    name: 'Starter',      price: 900,  cap: 75,         caption: 'Small neighborhood clubs' },
+  { key: 'pro',        name: 'Pro',          price: 2400, cap: 200,        caption: 'Most popular', featured: true },
+  { key: 'enterprise', name: 'Enterprise',   price: 4200, cap: Infinity,   caption: 'Multi-pool / large clubs' },
 ];
 
 (async () => {
@@ -293,7 +297,7 @@ const TIERS = [
 
   const u = me.usage || {};
   const planKey = (u.plan || 'free').toLowerCase();
-  document.getElementById('cur-plan').textContent  = u.plan_label || 'Free Forever';
+  document.getElementById('cur-plan').textContent  = u.plan_label || 'First season free';
   document.getElementById('cur-usage').textContent = u.unlimited ? `${u.count} of ∞` : `${u.count} of ${u.cap}`;
   document.getElementById('cur-status').textContent = me.tenant.status || '—';
   if (u.at_cap) {

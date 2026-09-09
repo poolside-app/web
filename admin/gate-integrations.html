@@ -200,143 +200,74 @@
          Estates' request and the landing tab had no action button. -->
     <div class="tabs">
       <button class="tab active" data-tab="deployments" onclick="showTab('deployments')">🏊 Tenant deployments</button>
-      <button class="tab" data-tab="templates" onclick="showTab('templates')">📋 Verified templates</button>
-      <button class="tab" data-tab="requests" onclick="showTab('requests')">🔍 Compatibility requests</button>
+      <button class="tab" data-tab="templates" onclick="showTab('templates')">📋 Templates (retired)</button>
+      <button class="tab" data-tab="requests" onclick="showTab('requests')">🔍 Gate enquiries</button>
       <button class="tab" data-tab="hardware" onclick="showTab('hardware')">📦 Hardware inventory</button>
     </div>
 
     <!-- TAB: Verified templates -->
     <div class="pane" id="pane-templates">
-      <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#713f12">
-        ⚠️ <b>Templates are publish-after-testing only.</b> Each row here represents a panel we've actually integrated end-to-end on real hardware. Before publishing a new template: full bench test, signed-off install at a pilot tenant, replication recipe documented.
-      </div>
-      <div class="tpl-grid">
-        <div class="tpl">
-          <div class="tpl-header">
-            <div class="tpl-icon">🪪</div>
-            <div style="flex:1">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-                <h3>MENGQI-CONTROL HXC-7000 Keyfob System</h3>
-                <span class="tpl-status production">VERIFIED</span>
-              </div>
-              <div class="tpl-meta-label" style="font-size:12px">Slug: <code>mengqi-hxc-7000</code> · First verified: Bishop Estates · 2026-04-25</div>
-            </div>
+      <div class="card">
+        <div class="card-head"><h2>📋 Verified templates — retired</h2></div>
+        <p class="lede" style="margin-top:0">
+          This tab used to hold a catalogue of panels certified end-to-end, each with a fixed setup fee, so a club
+          could pick its model off a published list and get a one-click install. It was retired on 9 September 2026
+          and replaced by the enquiry queue in the next tab.
+        </p>
+        <div style="background:var(--bg-2);border-radius:10px;padding:16px 18px;font-size:13.5px;line-height:1.65">
+          <b style="color:var(--blue)">Why it went:</b>
+          <ul style="margin:8px 0 0;padding-left:20px">
+            <li>A published compatibility list is a <b>promise</b> — every entry has to keep working across firmware
+              revisions, and every club whose panel is missing from it reads the list as "you don't support me".</li>
+            <li>Quoting required certifying the panel first, so each new club became a research project before any
+              money could change hands. That does not scale past what one person can personally test.</li>
+            <li>It pointed the business at <b>integration</b>, when the durable version is <b>replacement</b>:
+              our reader, our controller, our relay. Wiegand and a dry contact are open and unchanging, so a
+              replacement works on any brand on day one with no partner agreement and no firmware risk.</li>
+          </ul>
+          <div style="margin-top:12px">
+            The one template that existed (MENGQI-CONTROL HXC-7000, first verified at Bishop Estates, April 2026)
+            still runs — it is a live deployment on the first tab, not a catalogue entry. Its old advertised price
+            of $250 setup + $25/mo has been superseded by <b>from $1,200 setup + $75/mo</b>, quoted per site.
           </div>
-          <p class="tpl-desc">
-            ESP32 Wiegand sniffer + Raspberry Pi bridge that talks HTTP to MENGQI-CONTROL HXC-7000 TCP/IP keyfob panels (firmware ≥ 2.4). Pre-configured hardware ships from us; tenant plugs it in and the bridge phones home.
-            <br><br>
-            <b>Tested with:</b> Bishop Estates Cabana Club (panel firmware 2.4.7, 84 fobs in rotation).
-          </p>
-
-          <div class="tpl-meta">
-            <div class="tpl-meta-item">
-              <div class="tpl-meta-label">Setup fee</div>
-              <div class="tpl-meta-val price">$250</div>
-              <div class="tpl-meta-label" style="font-size:11px">one-time, hardware + provisioning</div>
-            </div>
-            <div class="tpl-meta-item">
-              <div class="tpl-meta-label">Monthly</div>
-              <div class="tpl-meta-val price">$25</div>
-              <div class="tpl-meta-label" style="font-size:11px">support + updates + warranty</div>
-            </div>
-          </div>
-
-          <div class="pricing-box">
-            <div class="tpl-meta-label" style="margin-bottom:6px"><b>What's in the box</b></div>
-            <div class="pricing-row"><span>Raspberry Pi 4 (2GB) + microSD + power</span><span>~$60</span></div>
-            <div class="pricing-row"><span>ESP32 Wiegand sniffer module</span><span>~$15</span></div>
-            <div class="pricing-row"><span>Cables + waterproof enclosure</span><span>~$10</span></div>
-            <div class="pricing-row"><span>Provisioning labor (~30 min × $50/hr)</span><span>~$25</span></div>
-            <div class="pricing-row"><span>Shipping</span><span>~$15</span></div>
-            <div class="pricing-row total"><span>Hardware margin</span><span>~$125</span></div>
-          </div>
-
-          <div class="tpl-actions">
-            <button class="btn-sm">View setup guide</button>
-            <button class="btn-sm">Edit pricing</button>
-            <button class="btn-sm">Edit template</button>
-            <button class="btn-sm" style="color:var(--red)">Deprecate</button>
-          </div>
-        </div>
-
-        <!-- Placeholder for future templates -->
-        <div class="tpl" style="border-style: dashed; opacity: .65; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; text-align: center;">
-          <div style="font-size: 36px; margin-bottom: 10px">➕</div>
-          <h3 style="color: var(--muted)">Promote a request to a template</h3>
-          <p class="tpl-desc" style="margin: 6px 0 14px">
-            Templates start as Compatibility requests. Once you've integrated a new panel kind on real hardware and it works at a pilot tenant, promote it here so future clubs with the same panel get the one-click experience.
-          </p>
-          <button class="btn-sm">View requests →</button>
         </div>
       </div>
     </div>
 
-    <!-- TAB: Compatibility requests -->
     <div class="pane" id="pane-requests">
       <div class="card">
         <div class="card-head">
-          <h2>🔍 Compatibility requests</h2>
+          <h2>🔍 Gate enquiries</h2>
           <div style="display:flex;gap:8px">
-            <select style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
-              <option>All statuses</option>
-              <option>Submitted</option>
-              <option>Reviewing</option>
-              <option>Quoted</option>
-              <option>Accepted</option>
-              <option>Declined</option>
+            <select id="req-filter" onchange="loadIntegrationRequests()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+              <option value="open">Open</option>
+              <option value="all">All statuses</option>
+              <option value="submitted">Submitted</option>
+              <option value="reviewing">Reviewing</option>
+              <option value="call_scheduled">Call scheduled</option>
+              <option value="quoted">Quoted</option>
+              <option value="accepted">Accepted</option>
+              <option value="declined">Declined</option>
+              <option value="withdrawn">Withdrawn</option>
             </select>
           </div>
         </div>
-        <p class="lede" style="margin-top:0;margin-bottom:14px">Tenants whose panels aren't on the verified list yet. Each row is a panel-information submission. Review, evaluate, quote — or decline.</p>
-        <div class="table-scroll"><table class="table">
-          <thead>
-            <tr><th>Tenant</th><th>Panel</th><th>Protocol</th><th>Submitted</th><th>Status</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><b>Hidden Lakes Aquatic Center</b></td>
-              <td>ZKTeco F18<br><span style="font-size:11px;color:var(--muted)">FW 6.60</span></td>
-              <td>TCP/IP + RS-485</td>
-              <td>2026-06-12 (3d)</td>
-              <td><span class="pill pill-requested">SUBMITTED</span></td>
-              <td><button class="btn-sm">Review</button></td>
-            </tr>
-            <tr>
-              <td><b>Whisper Creek Pool</b></td>
-              <td>Paxton Net2<br><span style="font-size:11px;color:var(--muted)">control unit</span></td>
-              <td>RS-485 (proprietary)</td>
-              <td>2026-06-11 (4d)</td>
-              <td><span class="pill" style="background:#fef9c3;color:#713f12">REVIEWING</span></td>
-              <td><button class="btn-sm">Continue review</button></td>
-            </tr>
-            <tr>
-              <td><b>Riverside Yacht Club</b></td>
-              <td>HID iCLASS SE<br><span style="font-size:11px;color:var(--muted)">+ HID Edge EVO controller</span></td>
-              <td>OSDP</td>
-              <td>2026-06-08 (7d)</td>
-              <td><span class="pill" style="background:#fde68a;color:#7c2d12">QUOTED</span></td>
-              <td><button class="btn-sm">View quote</button></td>
-            </tr>
-            <tr>
-              <td><b>Cedar Grove Aquatics</b></td>
-              <td>Suprema BioStar 2<br><span style="font-size:11px;color:var(--muted)">unknown FW</span></td>
-              <td>Wiegand + ethernet</td>
-              <td>2026-05-30 (16d)</td>
-              <td><span class="pill" style="background:#fee2e2;color:#7f1d1d">DECLINED</span></td>
-              <td><button class="btn-sm">View notes</button></td>
-            </tr>
-          </tbody>
-        </table></div>
+        <p class="lede" style="margin-top:0;margin-bottom:14px">
+          Clubs asking about gate access. There is no compatibility list any more and nothing here has been promised —
+          each row is somebody describing what they have, usually with photos. Look, then call.
+          <b>Nothing gets quoted before a human has looked at it.</b>
+        </p>
+        <div id="requests-host" style="font-size:13px;color:var(--muted)">Loading…</div>
       </div>
 
-      <div class="card" style="background:linear-gradient(120deg,var(--blue-l),#fff);border-color:#cae0ef">
-        <div class="card-head"><h2 style="font-size:16px">📋 Review checklist when a request lands</h2></div>
-        <ol style="margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.8;">
-          <li><b>Triage</b> — is this protocol something we can speak? (TCP/IP HTTP yes, OSDP feasible, Bluetooth-only RFID probably no.)</li>
-          <li><b>Risk assessment</b> — vendor's documentation? closed-source binary? prior art on GitHub? Estimated dev time.</li>
-          <li><b>Quote</b> — pick: (a) Decline · (b) Accept at standard $250+$25 if you're confident · (c) Custom quote $500–$2,000+ for new development</li>
-          <li><b>Pilot</b> — when accepted, schedule on-site visit. Test on tenant's actual panel. Get sign-off.</li>
-          <li><b>Promote</b> — once working, promote the request to a Verified Template so future clubs with the same panel are one-click.</li>
+      <div class="card" style="margin-top:16px">
+        <div class="card-head"><h2>How to triage one</h2></div>
+        <ol style="font-size:13.5px;line-height:1.7;color:var(--text);padding-left:20px;margin:0">
+          <li><b>Open the photos first.</b> They tell you more than any field on the form. What you are looking for: is there a reader on the wall, is there a control box you can reach, and is there anything that already opens the gate electrically.</li>
+          <li><b>Wiegand or nothing.</b> If there is a reader with wires running to a panel, it is almost certainly Wiegand and you can work with it regardless of brand. If the gate is a padlock, this is a full install and a different price.</li>
+          <li><b>Call them.</b> Confirm the wired network drop and the year-round outlet. Ask what they expect — "members open it from their phone" and "stop reissuing fobs" are cheap; "the chemical room must only open for the board" means per-door access levels.</li>
+          <li><b>Quote or decline, in writing.</b> Setup starts at $1,200 and rises with what is actually there; monitoring is $75/mo. Declining is a fine outcome and much better than a job you cannot finish.</li>
+          <li><b>Do not touch the lock.</b> Pool gates are life-safety code. Sell the reader, controller and relay; a licensed contractor does the strike and the egress hardware.</li>
         </ol>
       </div>
     </div>
@@ -425,14 +356,14 @@
     <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Amount</label>
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px">
       <span style="font-size:18px;color:var(--muted);font-weight:600">$</span>
-      <input id="invoice-amount" type="number" min="0" step="0.01" placeholder="250.00" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:16px 'Inter';width:100%">
+      <input id="invoice-amount" type="number" min="0" step="0.01" placeholder="1200.00" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:16px 'Inter';width:100%">
     </div>
 
     <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Send to <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">(blank = email from request form / owner email)</span></label>
     <input id="invoice-email" type="email" placeholder="(use default)" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%;margin-bottom:14px">
 
     <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px">Note <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">(optional — shown in the email)</span></label>
-    <textarea id="invoice-note" rows="3" placeholder="$1,500 setup fee + first month ($75). Net 14 days." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:13.5px 'Inter';width:100%;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
+    <textarea id="invoice-note" rows="3" placeholder="$1,200 setup + first month ($75). Net 14 days." style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:13.5px 'Inter';width:100%;font-family:inherit;resize:vertical;margin-bottom:16px"></textarea>
 
     <div style="padding:10px 14px;background:var(--bg-2);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:18px">
       The tenant gets an email with the amount + note, plus an in-app banner ("Invoice received"). Status is <b>not</b> changed — you can still flip status separately if you want.
@@ -459,6 +390,7 @@ function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
   if (name === 'deployments') loadDeployments();
+  if (name === 'requests')    loadIntegrationRequests();
 }
 
 // Auth gate — same pattern as admin/index.html.
@@ -482,6 +414,119 @@ async function gateApi(action, extra = {}) {
 
 const STATUSES = ['requested', 'invoiced', 'shipping', 'active', 'suspended', 'cancelled'];
 const STATUS_PILL_CLASS = { requested: 'pill-requested', invoiced: 'pill-paid', shipping: 'pill-shipped', active: 'pill-active', suspended: 'pill-requested', cancelled: 'pill-requested' };
+
+const REQ_STATUSES = ['submitted', 'reviewing', 'call_scheduled', 'quoted', 'accepted', 'declined', 'withdrawn'];
+const REQ_OPEN = ['submitted', 'reviewing', 'call_scheduled', 'quoted'];
+const REQ_PILL = {
+  submitted: 'pill-requested', reviewing: 'pill-requested', call_scheduled: 'pill-shipped',
+  quoted: 'pill-paid', accepted: 'pill-active', declined: 'pill-requested', withdrawn: 'pill-requested',
+};
+
+function daysAgo(iso) {
+  if (!iso) return '—';
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d}d ago`;
+}
+function money(cents) {
+  return (Number(cents || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
+async function loadIntegrationRequests() {
+  const host = document.getElementById('requests-host');
+  if (!host) return;
+  const filter = document.getElementById('req-filter')?.value || 'open';
+  host.innerHTML = 'Loading…';
+
+  const r = await gateApi('super_list_integration_requests', filter === 'open' || filter === 'all' ? {} : { status: filter });
+  if (!r.ok) { host.innerHTML = `<div style="color:var(--red);padding:20px 0">${escapeHtml(r.error || "Couldn't load")}</div>`; return; }
+
+  let rows = r.requests || [];
+  if (filter === 'open') rows = rows.filter(x => REQ_OPEN.includes(x.status));
+
+  if (!rows.length) {
+    host.innerHTML = `<div style="padding:28px 0;text-align:center;color:var(--muted)">
+      ${filter === 'open' ? 'Nothing waiting on you.' : 'No enquiries match that filter.'}
+    </div>`;
+    return;
+  }
+
+  host.innerHTML = rows.map(q => {
+    const photos = Array.isArray(q.photo_urls) ? q.photo_urls : [];
+    const facts = [
+      ['Contact',   `${q.contact_name || '—'} · <a href="tel:${escapeHtml(q.contact_phone || '')}">${escapeHtml(q.contact_phone || '—')}</a>`],
+      ['Best time', q.best_time_to_call],
+      ['Model',     [q.manufacturer, q.model].filter(Boolean).join(' ')],
+      ['Doors',     q.door_count],
+      ['Link',      q.link_type],
+    ].filter(([, v]) => v !== null && v !== undefined && v !== '' )
+     .map(([k, v]) => `<div style="display:flex;gap:8px;font-size:12.5px"><span style="color:var(--muted);min-width:74px">${k}</span><span>${k === 'Contact' ? v : escapeHtml(String(v))}</span></div>`)
+     .join('');
+
+    const prose = [
+      ['What they have', q.existing_system],
+      ['What they want', q.what_they_want],
+    ].filter(([, v]) => v).map(([k, v]) => `
+      <div style="margin-top:8px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600">${k}</div>
+        <div style="font-size:13px;line-height:1.55;white-space:pre-wrap">${escapeHtml(v)}</div>
+      </div>`).join('');
+
+    const photoHtml = photos.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">` +
+        photos.map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img src="${escapeHtml(u)}" alt="" loading="lazy" style="width:104px;height:78px;object-fit:cover;border-radius:6px;border:1px solid var(--border)"></a>`).join('') +
+        `</div>`
+      : `<div style="margin-top:10px;font-size:12.5px;color:var(--amber, #b45309)">No photos — ask for some on the call.</div>`;
+
+    const opts = REQ_STATUSES.map(x => `<option value="${x}" ${x === q.status ? 'selected' : ''}>${x.replace('_', ' ')}</option>`).join('');
+    const quoted = (q.quoted_setup_cents || q.quoted_monthly_cents)
+      ? `<div style="font-size:12.5px;color:var(--muted);margin-top:6px">Quoted ${money(q.quoted_setup_cents)} setup · ${money(q.quoted_monthly_cents)}/mo</div>` : '';
+
+    return `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font:600 15px 'Inter'">${escapeHtml(q.club_name || 'Unknown club')}</div>
+          <div style="font-size:12px;color:var(--muted)">${escapeHtml(q.club_slug || '')}.poolsideapp.com · ${daysAgo(q.created_at)}</div>
+        </div>
+        <span class="pill ${REQ_PILL[q.status] || 'pill-requested'}">${escapeHtml(String(q.status).replace('_', ' ').toUpperCase())}</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-top:12px">
+        <div style="display:flex;flex-direction:column;gap:4px">${facts}${prose}</div>
+        <div>${photoHtml}</div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <select id="rq-status-${q.id}" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">${opts}</select>
+        <input id="rq-setup-${q.id}" type="number" min="0" step="1" placeholder="setup $" value="${q.quoted_setup_cents ? q.quoted_setup_cents / 100 : ''}" style="width:110px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <input id="rq-monthly-${q.id}" type="number" min="0" step="1" placeholder="monthly $" value="${q.quoted_monthly_cents ? q.quoted_monthly_cents / 100 : ''}" style="width:120px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <input id="rq-notes-${q.id}" placeholder="Notes to self" value="${escapeHtml(q.admin_notes || '')}" style="flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <button class="btn-sm" onclick="saveIntegrationReview('${q.id}')">Save</button>
+        <span id="rq-msg-${q.id}" style="font-size:12px;color:var(--green)"></span>
+      </div>
+      ${quoted}
+    </div>`;
+  }).join('');
+}
+
+async function saveIntegrationReview(id) {
+  const msg = document.getElementById('rq-msg-' + id);
+  const num = el => {
+    const v = document.getElementById(el)?.value;
+    return v === '' || v === undefined || v === null ? null : Math.round(Number(v) * 100);
+  };
+  if (msg) msg.textContent = 'Saving…';
+  const r = await gateApi('super_review_integration_request', {
+    request_id:           id,
+    status:               document.getElementById('rq-status-' + id)?.value,
+    admin_notes:          document.getElementById('rq-notes-' + id)?.value ?? '',
+    quoted_setup_cents:   num('rq-setup-' + id),
+    quoted_monthly_cents: num('rq-monthly-' + id),
+  });
+  if (!r.ok) { if (msg) { msg.style.color = 'var(--red)'; msg.textContent = r.error || 'Failed'; } return; }
+  if (msg) { msg.style.color = 'var(--green)'; msg.textContent = '✓'; }
+  setTimeout(loadIntegrationRequests, 700);
+}
 
 async function loadDeployments() {
   const tbody = document.getElementById('deployments-tbody');
@@ -1043,7 +1088,7 @@ async function openInvoiceModal(tenantId) {
   document.getElementById('invoice-email').placeholder = panel?.contact_email
     ? `default: ${panel.contact_email}`
     : '(use owner email)';
-  document.getElementById('invoice-note').value = panel?.invoice_note || '$1,500 setup fee + first month ($75). Reply to confirm payment method.';
+  document.getElementById('invoice-note').value = panel?.invoice_note || '$1,200 setup fee + first month ($75). Reply to confirm payment method.';
   document.getElementById('invoice-status').textContent = '';
   document.getElementById('invoice-scrim').classList.add('open');
   document.body.style.overflow = 'hidden';

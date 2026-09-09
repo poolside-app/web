@@ -272,6 +272,46 @@
 
   <!-- Pending referral refunds — populated by loadRefundQueue() on page load.
        Hidden when there's nothing to do. -->
+  <div id="late-fee-card" class="card" data-owner-only style="margin-top:24px">
+    <h2>⏰ Late fees</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6">
+      Charge households that still haven't paid after your own deadline. Off unless you switch it on,
+      assessed <b>once per household per season</b>, and you can waive any of them in one click with no
+      questions asked. Poolside takes 5% of a late fee that actually gets collected.
+    </p>
+
+    <label class="checkbox-row" style="margin:0 0 12px"><input type="checkbox" id="lf-enabled"><span>Charge late fees</span></label>
+
+    <div class="row3" style="gap:10px">
+      <div>
+        <label>Dues are due by</label>
+        <input type="date" id="lf-due-date">
+        <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">The date for this season. Nothing can be late without it.</p>
+      </div>
+      <div>
+        <label>Grace period (days)</label>
+        <input type="number" id="lf-grace" min="0" max="180" step="1" placeholder="14">
+        <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Nothing is charged until this many days after the date.</p>
+      </div>
+      <div>
+        <label>Late fee amount</label>
+        <input type="number" id="lf-amount" min="0" max="200" step="1" placeholder="25">
+        <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Dollars. Most clubs land between $15 and $35.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+      <button class="btn btn-primary" type="button" onclick="saveLateFeeConfig()">Save late fee settings</button>
+      <span id="lf-saved" style="color:var(--green);font-size:13px;font-weight:600;display:none">✓ Saved</span>
+    </div>
+    <div class="err" id="lf-err" style="margin-top:8px"></div>
+
+    <div id="lf-list-wrap" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+      <h3 style="font:600 14px 'Inter';margin:0 0 10px">Fees charged this season</h3>
+      <div id="lf-list" style="font-size:13px;color:var(--muted)">Loading…</div>
+    </div>
+  </div>
+
   <div id="refunds-card" class="card" style="display:none;margin-top:24px">
     <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
       💌 Pending referral refunds
@@ -912,9 +952,105 @@ async function declineRefund(referralId) {
   loadStripeStatus();
   loadPaymentMethods();
   // Drive status load moved to /club/admin/settings.html
+
+// ── Late fees ──────────────────────────────────────────────────────────
+// The config and the list load together: a board looking at this card wants
+// to know both what the rule is and who it has actually caught.
+async function loadLateFees() {
+  const listEl = document.getElementById('lf-list');
+  if (!listEl) return;
+  try {
+    const [cfgRes, listRes] = await Promise.all([
+      call('late_fee_config'),
+      call('list_late_fees'),
+    ]);
+
+    if (cfgRes?.ok && cfgRes.config) {
+      const c = cfgRes.config;
+      document.getElementById('lf-enabled').checked = !!c.late_fee_enabled;
+      document.getElementById('lf-due-date').value  = c.dues_due_date || '';
+      document.getElementById('lf-grace').value     = c.late_fee_grace_days ?? 14;
+      document.getElementById('lf-amount').value    = c.late_fee_cents != null ? (c.late_fee_cents / 100) : 25;
+    }
+
+    const fees = (listRes?.ok && listRes.late_fees) || [];
+    if (!fees.length) {
+      listEl.innerHTML = 'Nothing charged yet.';
+      return;
+    }
+    const money = c => (Number(c || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const outstanding = fees.filter(f => f.status === 'assessed');
+    const total = outstanding.reduce((n, f) => n + Number(f.amount_cents || 0), 0);
+
+    listEl.innerHTML = `
+      <div style="margin-bottom:10px;color:var(--text)">
+        <b>${outstanding.length}</b> outstanding · ${money(total)}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${fees.map(f => {
+          const badge = {
+            assessed: '<span style="color:#b45309">outstanding</span>',
+            paid:     '<span style="color:var(--green)">paid</span>',
+            waived:   '<span style="color:var(--muted)">waived</span>',
+            voided:   '<span style="color:var(--muted)">voided</span>',
+          }[f.status] || escapeHtml(f.status);
+          return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff">
+            <span style="flex:1;min-width:140px;color:var(--text)"><b>${escapeHtml(f.family_name || 'Household')}</b></span>
+            <span>${money(f.amount_cents)}</span>
+            <span>${badge}</span>
+            ${f.status === 'assessed'
+              ? `<button class="btn" type="button" style="font-size:12px;padding:5px 10px" onclick="waiveLateFee('${f.id}')">Waive</button>`
+              : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    listEl.textContent = "Couldn't load late fees.";
+  }
+}
+
+async function saveLateFeeConfig() {
+  const errEl = document.getElementById('lf-err');
+  errEl.classList.remove('show');
+  const dollars = Number(document.getElementById('lf-amount').value);
+  const grace   = Number(document.getElementById('lf-grace').value);
+  const body = {
+    late_fee_enabled:    document.getElementById('lf-enabled').checked,
+    dues_due_date:       document.getElementById('lf-due-date').value || '',
+    late_fee_grace_days: Number.isFinite(grace) ? grace : 14,
+    late_fee_cents:      Number.isFinite(dollars) ? Math.round(dollars * 100) : 2500,
+  };
+  try {
+    const r = await call('set_late_fee_config', body);
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    const ok = document.getElementById('lf-saved');
+    ok.style.display = '';
+    setTimeout(() => { ok.style.display = 'none'; }, 2000);
+    loadLateFees();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  }
+}
+
+async function waiveLateFee(id) {
+  const reason = prompt('Waive this late fee? Add a note if you want one (optional).');
+  if (reason === null) return;   // cancelled
+  try {
+    const r = await call('waive_late_fee', { late_fee_id: id, reason });
+    if (!r.ok) throw new Error(r.error || 'Waive failed');
+    loadLateFees();
+  } catch (e) {
+    const errEl = document.getElementById('lf-err');
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  }
+}
+
   loadPlanConfig();
   loadPlansList();
   loadRefundQueue();
+  loadLateFees();
 })();
 </script>
 </body>
