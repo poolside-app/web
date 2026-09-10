@@ -824,7 +824,19 @@ Deno.serve(async (req) => {
       console.error('late fees (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices, late_fees_assessed });
+    // ── Drain the email queue ────────────────────────────────────────
+    // Bulk mail that did not fit in yesterday's Resend allowance. Runs last
+    // so the transactional mail above has first claim on today's budget.
+    let emails_sent = 0, emails_queued = 0;
+    try {
+      const { drainEmailQueue } = await import('../_shared/email_budget.ts');
+      const r = await drainEmailQueue(sb);
+      emails_sent = r.sent; emails_queued = r.still_queued;
+    } catch (e) {
+      console.error('email queue drain (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices, late_fees_assessed, emails_sent, emails_queued });
   }
 
   // ── Admin actions below — verify tenant admin ────────────────────────────

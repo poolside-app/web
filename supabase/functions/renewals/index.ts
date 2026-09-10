@@ -98,12 +98,23 @@ function escHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => map[c] || c);
 }
 
-async function sendRenewalEmail(args: {
+type RenewalEmailArgs = {
   to: string; tenantName: string; clubUrl: string; verifyLink: string; memberName: string;
   intro: string; earlyBirdLine: string;
-}): Promise<{ sent: boolean; error?: string }> {
-  if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
-  const html = `
+};
+
+/** Subject line, in one place — the queue needs it without sending. */
+function renewalEmailSubject(tenantName: string): string {
+  return `Renew your ${tenantName} membership`;
+}
+
+/**
+ * The body, separated from the sending so a blast can put it in the queue
+ * instead. Resend's free tier allows 100 emails a day and a 150-household
+ * club needs two of them.
+ */
+function renewalEmailHtml(args: RenewalEmailArgs): string {
+  return `
     <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Time to renew your ${escHtml(args.tenantName)} membership</h2>
       <p style="margin:0 0 16px;color:#475569;line-height:1.55">Hi ${escHtml(args.memberName || 'there')}, ${escHtml(args.intro)}</p>
@@ -117,6 +128,11 @@ async function sendRenewalEmail(args: {
       <p style="margin:0;color:#94a3b8;font-size:12px">From <a href="${args.clubUrl}" style="color:#0a3b5c">${escHtml(args.clubUrl.replace(/^https?:\/\//, ''))}</a>. You're receiving this because your household is on the membership list.</p>
     </div>
   `;
+}
+
+async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean; error?: string }> {
+  if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
+  const html = renewalEmailHtml(args);
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -124,7 +140,7 @@ async function sendRenewalEmail(args: {
       body: JSON.stringify({
         from: RESEND_FROM,
         to: [args.to],
-        subject: `Renew your ${args.tenantName} membership`,
+        subject: renewalEmailSubject(args.tenantName),
         html,
       }),
     });
@@ -412,6 +428,14 @@ Deno.serve(async (req) => {
     const intro = adminMessage
       || `memberships are open for the ${currentYear} season. Sign in to your member home to see your tier and pay your dues.`;
 
+    // Resend's free tier stops at 100 emails a day, and a 150-household club
+    // needs more than that. Send while there is headroom, queue the rest —
+    // the daily cron drains it tomorrow morning. The alternative, which is
+    // what happened before, is that the last 50 families silently get nothing.
+    const { remainingToday, enqueueEmails, recordEmail } = await import('../_shared/email_budget.ts');
+    let emailBudget = await remainingToday(sb);
+    const deferred: Array<{ to: string; subject: string; html: string }> = [];
+
     let emailSent = 0, smsSent = 0, noContact = 0, sendFail = 0;
     const devLinks: Array<{ household: string; link: string; reason: string }> = [];
     // Pre-fetched cap so we can stop SMS mid-loop if we'd exceed it. Email
@@ -443,16 +467,35 @@ Deno.serve(async (req) => {
 
       let emailDone = false, smsDone = false;
       if (wantEmail && recipient.email) {
-        const r = await sendRenewalEmail({
+        const emailArgs = {
           to: recipient.email, tenantName: tenant.display_name,
           clubUrl, verifyLink, memberName: recipient.name, intro, earlyBirdLine,
-        });
-        if (r.sent) { emailSent++; emailDone = true; }
+        };
+        if (RESEND_API_KEY && emailBudget <= 0) {
+          // Out of headroom for today — queue rather than drop. Deliberately
+          // not `continue`: this household should still get its text now, and
+          // skipping to the next one would silently drop that too.
+          deferred.push({
+            to: recipient.email,
+            subject: renewalEmailSubject(tenant.display_name),
+            html: renewalEmailHtml(emailArgs),
+          });
+          emailDone = true;
+        } else {
+        const r = await sendRenewalEmail(emailArgs);
+        if (r.sent) {
+          emailSent++; emailDone = true; emailBudget--;
+          await recordEmail(sb, {
+            tenantId: tenant.id, to: recipient.email,
+            category: 'bulk', success: true, source: 'renewals.blast',
+          });
+        }
         else if (!RESEND_API_KEY) {
           devLinks.push({ household: hh.family_name, link: verifyLink, reason: 'RESEND_API_KEY not set' });
           emailDone = true; // counted as 'no provider' rather than send_fail
         } else {
           sendFail++;
+        }
         }
       }
       if (wantSms && recipient.phone_e164) {
@@ -496,11 +539,16 @@ Deno.serve(async (req) => {
       metadata: { audience, channels, total: hhList.length, email_sent: emailSent, sms_sent: smsSent, send_fail: sendFail, sms_cap_hit: smsCappedHit },
     });
 
+    // Write the overflow to the queue, then say so honestly. Reporting these
+    // as "sent" is exactly the failure this whole thing exists to prevent.
+    const queued = deferred.length ? await enqueueEmails(sb, tenant.id, deferred) : 0;
+
     return jsonResponse({
       ok: true,
       sms_cap_hit: smsCappedHit,
       total: hhList.length,
       sent: { email: emailSent, sms: smsSent },
+      email_queued: queued,
       skipped: { no_contact: noContact, send_fail: sendFail },
       dev_links: devLinks.length ? devLinks : undefined,
     });
