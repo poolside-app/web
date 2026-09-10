@@ -284,21 +284,23 @@
     // been failed by the product; the number has to be boring and constant
     // long before it is urgent.
     //
-    // Counted in club-wide messages as well as raw texts, because "1,850
-    // texts" means nothing to a volunteer and "about 12 messages to everyone"
-    // means something immediately.
+    // The raw number, deliberately. Translating it into "about N messages to
+    // your whole club" reads better but is only true for a club the size of
+    // the one it was written against, and it is the friendlier number people
+    // would repeat.
     let smsHtml = '';
     const sms = usage.sms;
     if (sms && Number.isFinite(Number(sms.total_left))) {
       const left = Math.max(0, Number(sms.total_left));
-      const blasts = Math.max(0, Number(sms.blasts_left) || 0);
       const smsPct = sms.cap > 0 ? Math.min(100, Math.round((sms.used / sms.cap) * 100)) : 0;
       const smsOut  = left <= 0;
-      const smsLow  = !smsOut && (blasts <= 3 || smsPct >= 80);
+      // Percentage of the allowance, not a guess at how many club-wide sends
+      // are left — that depends on how many people the club has, and quoting
+      // it turns one true number into a wrong one for every club but the size
+      // it was written for.
+      const smsLow  = !smsOut && smsPct >= 80;
       const smsColor = smsOut ? '#dc2626' : (smsLow ? '#92400e' : color);
-      const label = smsOut
-        ? 'no texts left'
-        : `${left.toLocaleString()} texts left${blasts > 0 ? ` · about ${blasts} to everyone` : ''}`;
+      const label = smsOut ? 'no texts left' : `${left.toLocaleString()} texts left`;
       // Only offer a top-up once it is actually relevant — an always-present
       // buy button on a club with 2,900 texts left is just noise.
       const topUp = (smsOut || smsLow)
@@ -340,7 +342,12 @@
   //
   // Green throughout rather than red-to-green by progress: this is money in,
   // and a board looking at 20% in March is not failing, it is in March. The
-  // bar carries the progress; the colour carries the meaning.
+  // bar carries the progress; the color carries the meaning.
+  //
+  // "Paid" means confirmed by either route — a Stripe charge that cleared, or
+  // a Venmo/check/cash payment the treasurer has ticked off. Both set the same
+  // flag on the household, so neither is favoured and the total is the whole
+  // membership, not just the card payers.
   function paintDuesTicker(dues, header, after) {
     if (!dues || !Number.isFinite(Number(dues.total)) || Number(dues.total) <= 0) return;
     if (document.getElementById('dues-ticker')) return;
@@ -361,14 +368,14 @@
     `;
     el.innerHTML = `
       <span style="font-size:22px; font-weight:800; line-height:1; white-space:nowrap">
-        ${paid} <span style="font-weight:600; font-size:15px; opacity:.75">of ${total} paid</span>
+        ${paid} <span style="font-weight:600; font-size:15px; opacity:.75">of ${total} members paid</span>
       </span>
       <span style="flex:1; min-width:120px; max-width:320px; height:9px; background:#d1fae5; border-radius:999px; overflow:hidden">
         <span style="display:block; width:${pct}%; height:100%; background:#059669"></span>
       </span>
       <span style="font-size:15px; font-weight:700; white-space:nowrap">${money(dues.collected_cents)} in</span>
       ${done
-        ? '<span style="font-size:13px; font-weight:600">every household paid</span>'
+        ? '<span style="font-size:13px; font-weight:600">everyone has paid</span>'
         : `<span style="font-size:13px; opacity:.85; white-space:nowrap">${dues.outstanding} still owing${
             Number(dues.outstanding_cents) > 0 ? ` · ${money(dues.outstanding_cents)}` : ''}</span>`}
     `;

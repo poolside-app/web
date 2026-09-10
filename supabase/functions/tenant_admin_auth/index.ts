@@ -607,7 +607,7 @@ Deno.serve(async (req) => {
     //
     // Money is derived from each paid household's tier price rather than from
     // a payments table, because there isn't one — dues arrive by card, Venmo,
-    // cheque and cash, and the only thing all four update is the flag on the
+    // check and cash, and the only thing all four update is the flag on the
     // household. So it is what the club has BOOKED, not what has cleared a
     // bank, and the wording says so.
     try {
@@ -644,10 +644,11 @@ Deno.serve(async (req) => {
     try {
       const { checkSmsCap } = await import('../_shared/sms_cap.ts');
       const sms = await checkSmsCap(sb, payload.tid, 'campaign', tenant.plan as string, 0);
-      // Recipients are members with a mobile number, which is close enough to
-      // the household count to be worth showing but not to be quoted exactly —
-      // hence "about N messages" wherever this is rendered.
-      const perBlast = Math.max(1, Number(usage.count) || 1);
+      // Just the number. An earlier version also derived "about N messages to
+      // your whole club", which is only meaningful if every club is the size
+      // of the one it was written against — a 40-household club and a 400-
+      // household one get very different answers from the same figure, and
+      // the derived number is the one people would have quoted.
       (usage as Record<string, unknown>).sms = {
         used: sms.used,
         cap: sms.cap,
@@ -655,8 +656,6 @@ Deno.serve(async (req) => {
         credits: sms.credits,
         // Allowance plus anything they have topped up with.
         total_left: Math.max(0, Number(sms.remaining) + Number(sms.credits || 0)),
-        blasts_left: Math.floor((Number(sms.remaining) + Number(sms.credits || 0)) / perBlast),
-        per_blast: perBlast,
         days_until_reset: sms.days_until_reset,
       };
     } catch (e) {
