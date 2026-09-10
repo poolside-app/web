@@ -387,6 +387,7 @@
         <button class="btn" onclick="copyReferLink()" id="refer-copy" style="background:var(--blue);color:#fff;white-space:nowrap">Copy</button>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <button id="refer-share" class="btn" onclick="nativeShareRefer()" style="display:none;background:var(--blue);color:#fff;font-size:13px">Share…</button>
         <a id="refer-sms" class="btn btn-ghost" style="font-size:13px;text-decoration:none">📱 Text it</a>
         <a id="refer-email" class="btn btn-ghost" style="font-size:13px;text-decoration:none">✉️ Email it</a>
       </div>
@@ -1179,6 +1180,30 @@ function closeReferModal() {
   document.getElementById('refer-scrim').classList.remove('open');
 }
 
+// The phone's own share sheet. This is the only way to reach Nextdoor and
+// Facebook: neither has a public posting API, and the group-posting ones were
+// shut down years ago. The share sheet sidesteps that entirely — the member
+// picks whichever app they use, and we integrate with none of them.
+//
+// Hidden where navigator.share does not exist (most desktop browsers), which
+// is why the copy/SMS/email buttons stay.
+async function nativeShareRefer() {
+  const r = REFER_DATA;
+  if (!r || !r.share_url) return;
+  const club = r.tenant_display_name || 'our pool club';
+  try {
+    await navigator.share({
+      title: `Join ${club}`,
+      // No URL in the text as well as the url field — some apps then paste it
+      // twice, and a doubled link looks like spam in a neighborhood group.
+      text: `We're members at ${club} and it's been great. Here's how to join:`,
+      url: r.share_url,
+    });
+  } catch (_) {
+    // AbortError just means they backed out of the sheet. Nothing to say.
+  }
+}
+
 function renderReferModal() {
   const r = REFER_DATA;
   if (!r) return;
@@ -1190,6 +1215,10 @@ function renderReferModal() {
   document.getElementById('rs-earned').textContent = '$' + Math.round((r.stats.total_earned_cents || 0) / 100);
 
   document.getElementById('refer-url').value = r.share_url || '';
+
+  // Only offer it where the browser actually has a share sheet.
+  const shareBtn = document.getElementById('refer-share');
+  if (shareBtn) shareBtn.style.display = (navigator.share && r.share_url) ? '' : 'none';
 
   // SMS / email links pre-fill native share apps. SMS uses 'sms:' which most
   // mobile browsers handle. Email uses mailto with subject + body.

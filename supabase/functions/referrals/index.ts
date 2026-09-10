@@ -275,7 +275,12 @@ Deno.serve(async (req) => {
     return jsonResponse({
       ok: true,
       code: rc.code,
-      share_url: tenant ? `https://${tenant.slug}.poolsideapp.com/apply.html?ref=${rc.code}` : null,
+      // /join, not /apply.html. apply.html is rendered in the browser and its
+      // static HTML says "Loading…" with no Open Graph tags, so a link pasted
+      // into Nextdoor or a group chat unfurled as a card reading "Loading…".
+      // /join is server-rendered by tenant_share with the club's name, photo
+      // and price in the meta tags, and forwards the ref code to the form.
+      share_url: tenant ? `https://${tenant.slug}.poolsideapp.com/join?ref=${rc.code}` : null,
       tenant_display_name: tenant?.display_name || null,
       stats,
       referrals: list.map(r => ({
