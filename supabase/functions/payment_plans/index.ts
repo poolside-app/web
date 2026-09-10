@@ -14,7 +14,7 @@
 //   { action: 'auto_renew_run' }              → { ok, noticed, charged, failed, skipped }
 // =============================================================================
 
-import { platformFeeCents } from '../_shared/fees.ts';
+import { platformFeeCents, feePolicyFromTenant, feePolicyFor, type FeePolicy } from '../_shared/fees.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
@@ -214,14 +214,19 @@ async function chargeInstallment(
   plan: Record<string, unknown>,
   stripeAccount: string,
   config: PlanConfig,
+  policy: FeePolicy,
 ): Promise<{ paid: boolean; lapsed: boolean; error?: string }> {
   const installmentId = installment.id as string;
+  // plan_fee_cents is stored on the row when the plan is created, so a plan
+  // that predates a waiver still carries a fee. Zero it at charge time, or
+  // the club's members keep paying a fee we have promised not to take.
+  const planFee = policy.waived ? 0 : Number(installment.plan_fee_cents ?? 0);
   const idempotencyKey = `installment_${installmentId}_attempt_${(installment.attempt_count as number ?? 0) + 1}`;
   const params: Record<string, string | number> = {
     // Dues plus this installment's share of the plan fee. The club nets the
     // dues either way — the fee is added to application_fee_amount below,
     // so it comes to the platform rather than out of the club's money.
-    amount: (installment.amount_cents as number) + Number(installment.plan_fee_cents ?? 0),
+    amount: (installment.amount_cents as number) + planFee,
     currency: 'usd',
     customer: plan.stripe_customer_id as string,
     payment_method: plan.stripe_payment_method_id as string,
@@ -231,8 +236,9 @@ async function chargeInstallment(
     'metadata[installment_id]': installmentId,
     'metadata[tenant_id]': plan.tenant_id as string,
     'metadata[kind]': 'payment_plan_installment',
-    application_fee_amount: platformFeeCents(installment.amount_cents as number, 'dues')
-      + Number(installment.plan_fee_cents ?? 0),
+    application_fee_amount: policy.waived
+      ? 0
+      : platformFeeCents(installment.amount_cents as number, 'dues', policy) + planFee,
   };
   // Idempotency-Key prevents double-charge if cron retries within Stripe's 24h dedup window
   if (!STRIPE_KEY) return { paid: false, lapsed: false, error: 'STRIPE_SECRET_KEY not set' };
@@ -399,7 +405,7 @@ Deno.serve(async (req) => {
     // Trial clubs are running real seasons with real members — only suspended
     // and churned clubs should be skipped.
     const { data: tenants } = await sb.from('tenants')
-      .select('id, slug, display_name, status, stripe_account_id, stripe_charges_enabled')
+      .select('id, slug, display_name, status, stripe_account_id, stripe_charges_enabled, platform_fees_waived')
       .not('status', 'in', '("suspended","churned")');
 
     for (const tenant of (tenants ?? [])) {
@@ -514,7 +520,7 @@ Deno.serve(async (req) => {
           'metadata[kind]': 'application',
           'metadata[application_id]': appId,
           'metadata[tenant_id]': String(tenant.id),
-          application_fee_amount: platformFeeCents(amountCents, 'dues'),
+          application_fee_amount: platformFeeCents(amountCents, 'dues', feePolicyFromTenant(tenant)),
         }, tenant.stripe_account_id as string);
 
         if (charge.ok && charge.data?.status === 'succeeded') {
@@ -608,11 +614,14 @@ Deno.serve(async (req) => {
       const { data: plan } = await sb.from('payment_plans').select('*').eq('id', inst.plan_id).maybeSingle();
       if (!plan || plan.status !== 'active') continue;
       if (!plan.stripe_customer_id || !plan.stripe_payment_method_id) continue;
-      const { data: tenant } = await sb.from('tenants').select('stripe_account_id, stripe_charges_enabled')
+      const { data: tenant } = await sb.from('tenants').select('stripe_account_id, stripe_charges_enabled, platform_fees_waived')
         .eq('id', plan.tenant_id).maybeSingle();
       if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) continue;
       const config = await getPlanConfig(sb, plan.tenant_id);
-      const result = await chargeInstallment(sb, inst, plan, tenant.stripe_account_id, config);
+      // One lookup per plan rather than per installment; the cron already
+      // has the tenant row for Stripe, so this only adds a column.
+      const policy = feePolicyFromTenant(tenant);
+      const result = await chargeInstallment(sb, inst, plan, tenant.stripe_account_id, config, policy);
       if (result.paid) {
         charged++;
         // If all installments paid, complete the plan.
@@ -891,7 +900,7 @@ Deno.serve(async (req) => {
     if (!plan) return jsonResponse({ ok: false, error: 'Plan not found' }, 404);
     if (plan.status !== 'lapsed') return jsonResponse({ ok: false, error: 'Plan is not lapsed' }, 409);
 
-    const { data: tenant } = await sb.from('tenants').select('slug, stripe_account_id, stripe_charges_enabled, display_name')
+    const { data: tenant } = await sb.from('tenants').select('slug, stripe_account_id, stripe_charges_enabled, display_name, platform_fees_waived')
       .eq('id', payload.tid).maybeSingle();
     if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
       return jsonResponse({ ok: false, error: 'Stripe not ready for this tenant' }, 503);
@@ -905,7 +914,12 @@ Deno.serve(async (req) => {
     // Plan fees for the installments being caught up. Skipping them would
     // hand a lapsed member the plan for free — precisely the family whose
     // payments already needed chasing.
-    const planFees = (outstanding ?? []).reduce((s, i) => s + Number(i.plan_fee_cents ?? 0), 0);
+    const reactivationPolicy = feePolicyFromTenant(tenant);
+    // Stored plan fees are dropped entirely under a waiver, so they come out
+    // of the member's total as well as out of our cut.
+    const planFees = reactivationPolicy.waived
+      ? 0
+      : (outstanding ?? []).reduce((s, i) => s + Number(i.plan_fee_cents ?? 0), 0);
     const total = balance + planFees + config.reactivation_fee_cents;
     if (total <= 0) return jsonResponse({ ok: false, error: 'Nothing owed' }, 400);
 
@@ -922,7 +936,9 @@ Deno.serve(async (req) => {
       'metadata[plan_id]': planId,
       'metadata[tenant_id]': payload.tid,
       // Our cut on the dues portion only, plus the plan fees in full.
-      application_fee_amount: String(platformFeeCents(balance, 'dues') + planFees),
+      application_fee_amount: String(reactivationPolicy.waived
+        ? 0
+        : platformFeeCents(balance, 'dues', reactivationPolicy) + planFees),
     };
     if (plan.primary_email) params.customer_email = plan.primary_email as string;
     const r = await stripe<{ url: string }>('/checkout/sessions', params, tenant.stripe_account_id);

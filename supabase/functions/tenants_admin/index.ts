@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
   // ── list ───────────────────────────────────────────────────────────────
   if (action === 'list') {
     const { data, error } = await sb.from('tenants')
-      .select('id, slug, display_name, custom_domain, status, plan, plan_label_override, household_cap_override, trial_ends_at, stripe_customer_id, notes, created_at, updated_at')
+      .select('id, slug, display_name, custom_domain, status, plan, plan_label_override, household_cap_override, trial_ends_at, stripe_customer_id, notes, created_at, updated_at, platform_fees_waived, platform_fees_waived_reason')
       .order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
@@ -256,12 +256,64 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── platform fee waiver ──
+    // Take nothing from this club: dues, programs, parties, guest passes, and
+    // the plan fee its MEMBERS would otherwise pay. Deliberately separate from
+    // the subscription, which `plan` / `status` / plan_label_override handle.
+    //
+    // A reason is mandatory. The failure this guards against is not a stray
+    // click — it is a waiver granted for a pilot and then forgotten, silently,
+    // because no error is ever raised when money simply stops arriving.
+    let waiverChange: 'granted' | 'revoked' | null = null;
+    if (body.platform_fees_waived !== undefined) {
+      const want = !!body.platform_fees_waived;
+      const { data: before } = await sb.from('tenants')
+        .select('platform_fees_waived').eq('id', id).maybeSingle();
+      const had = !!before?.platform_fees_waived;
+
+      if (want) {
+        const reason = String(body.platform_fees_waived_reason ?? '').trim();
+        if (!reason) {
+          return jsonResponse({ ok: false, error: 'A reason is required to waive platform fees.' }, 400);
+        }
+        patch.platform_fees_waived        = true;
+        patch.platform_fees_waived_reason = reason.slice(0, 500);
+        patch.platform_fees_waived_at     = new Date().toISOString();
+        patch.platform_fees_waived_by     = payload.sub ?? null;
+      } else {
+        // Keep the reason and timestamp on revoke — the history of who was
+        // comped and why is worth more than a clean row.
+        patch.platform_fees_waived = false;
+      }
+      if (want !== had) waiverChange = want ? 'granted' : 'revoked';
+    }
+
     if (Object.keys(patch).length === 0) {
       return jsonResponse({ ok: true, noop: true });
     }
 
     const { data, error } = await sb.from('tenants').update(patch).eq('id', id).select().single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    if (waiverChange) {
+      try {
+        await sb.from('audit_log').insert({
+          tenant_id: id,
+          kind: waiverChange === 'granted' ? 'platform.fees_waived' : 'platform.fees_reinstated',
+          entity_type: 'tenant', entity_id: id,
+          summary: waiverChange === 'granted'
+            ? `Platform transaction fees waived — ${patch.platform_fees_waived_reason}`
+            : 'Platform transaction fees reinstated',
+          actor_id: payload.sub ?? null, actor_kind: 'provider',
+          metadata: { reason: patch.platform_fees_waived_reason ?? null },
+        });
+      } catch (e) {
+        // The waiver itself is committed; losing its audit row must not fail
+        // the request, but it should be visible in the logs.
+        console.error('fee waiver audit write failed:', (e as Error).message);
+      }
+    }
+
     return jsonResponse({ ok: true, tenant: data });
   }
 

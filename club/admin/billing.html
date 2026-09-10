@@ -82,6 +82,15 @@
       <div class="stat"><div class="lbl">Households</div><div class="val" id="cur-usage">…</div></div>
       <div class="stat"><div class="lbl">Status</div><div class="val" id="cur-status">…</div></div>
     </div>
+
+    <div id="fees-waived-note" style="display:none;margin-top:14px;padding:14px 16px;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:10px">
+      <div style="font-weight:700;color:#065f46;font-size:13.5px">Poolside takes no transaction fees from your club</div>
+      <div style="font-size:12.5px;color:#065f46;line-height:1.6;margin-top:6px">
+        No percentage on dues, programs, parties or guest passes — and your members are not
+        charged the payment-plan fee when they spread their dues across the season.
+        Card processing still costs Stripe's usual 2.9% + 30¢, which goes to Stripe, not to us.
+      </div>
+    </div>
     <div id="cur-banner" style="display:none;margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
   </div>
 
@@ -300,6 +309,9 @@ const TIERS = [
   document.getElementById('cur-plan').textContent  = u.plan_label || 'First season free';
   document.getElementById('cur-usage').textContent = u.unlimited ? `${u.count} of ∞` : `${u.count} of ${u.cap}`;
   document.getElementById('cur-status').textContent = me.tenant.status || '—';
+  if (me.tenant.platform_fees_waived) {
+    document.getElementById('fees-waived-note').style.display = 'block';
+  }
   if (u.at_cap) {
     const b = document.getElementById('cur-banner');
     b.style.display = 'block';

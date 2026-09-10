@@ -38,7 +38,7 @@ const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 // Rates live in _shared/fees.ts — they were duplicated across this file and
 // three literals in payment_plans, so a change here alone silently missed
 // every installment payment.
-import { FEE_BPS, planFeeSchedule } from '../_shared/fees.ts';
+import { FEE_BPS, planFeeSchedule, feePolicyFromTenant, type FeePolicy } from '../_shared/fees.ts';
 const FEE_BPS_DUES     = FEE_BPS.dues;
 const FEE_BPS_PROGRAMS = FEE_BPS.programs;
 const FEE_BPS_DEFAULT  = FEE_BPS.default;
@@ -73,13 +73,20 @@ async function stripeCheckout(params: {
   metadata: Record<string, string>;
   customerEmail?: string;
   feeBps: number;       // explicit so the caller picks the right rate per kind
+  // Required, not optional. A club with a fee waiver must never be charged
+  // because a new call site forgot to opt in — see _shared/fees.ts.
+  policy: FeePolicy;
   // Keep the card usable later. Needed for auto-renew: without it Stripe takes
   // the payment and forgets the card, and next season's charge has nothing to
   // charge against.
   saveCard?: boolean;
 }): Promise<{ ok: boolean; url?: string; session_id?: string; error?: string }> {
   if (!STRIPE_KEY) return { ok: false, error: 'STRIPE_SECRET_KEY not set' };
-  const platformFee = Math.max(0, Math.floor(params.amountCents * params.feeBps / 10000));
+  // Applied here rather than at each caller, so one check covers every kind
+  // routed through this helper — and again below, where it reaches Stripe.
+  const platformFee = params.policy.waived
+    ? 0
+    : Math.max(0, Math.floor(params.amountCents * params.feeBps / 10000));
   const body = new URLSearchParams();
   body.append('mode', 'payment');
   body.append('success_url', params.successUrl);
@@ -89,7 +96,8 @@ async function stripeCheckout(params: {
   if (params.description) body.append('line_items[0][price_data][product_data][description]', params.description);
   body.append('line_items[0][price_data][unit_amount]', String(params.amountCents));
   body.append('line_items[0][quantity]', '1');
-  body.append('payment_intent_data[application_fee_amount]', String(platformFee));
+  body.append('payment_intent_data[application_fee_amount]',
+    String(params.policy.waived ? 0 : platformFee));   // clamped at the boundary
   if (params.customerEmail) body.append('customer_email', params.customerEmail);
   for (const [k, v] of Object.entries(params.metadata)) body.append(`metadata[${k}]`, v);
   if (params.saveCard) body.append('payment_intent_data[setup_future_usage]', 'off_session');
@@ -131,7 +139,7 @@ Deno.serve(async (req) => {
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
 
     const { data: tenant } = await sb.from('tenants')
-      .select('slug, display_name, stripe_account_id, stripe_charges_enabled').eq('id', app.tenant_id).maybeSingle();
+      .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle();
     if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
     }
@@ -194,6 +202,7 @@ Deno.serve(async (req) => {
       },
       customerEmail: app.primary_email || undefined,
       feeBps: FEE_BPS_DUES,
+      policy: feePolicyFromTenant(tenant),
       saveCard,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
@@ -216,10 +225,13 @@ Deno.serve(async (req) => {
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
 
     const { data: tenant } = await sb.from('tenants')
-      .select('slug, display_name, stripe_account_id, stripe_charges_enabled').eq('id', app.tenant_id).maybeSingle();
+      .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle();
     if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
     }
+    // This action builds its Stripe params inline rather than through
+    // createCheckoutSession, so the waiver has to be applied by hand below.
+    const feePolicy = feePolicyFromTenant(tenant);
 
     const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
     const sv = settings?.value as Record<string, unknown> | undefined;
@@ -295,7 +307,7 @@ Deno.serve(async (req) => {
       planId = newPlan.id as string;
       // Convenience fee for spreading the payment, fixed now so it cannot
       // move under a family part-way through a season.
-      const planFees = planFeeSchedule(schedule.length);
+      const planFees = planFeeSchedule(schedule.length, feePolicy);
       await sb.from('payment_plan_installments').insert(
         schedule.map((inst, i) => ({
           plan_id: planId, tenant_id: app.tenant_id,
@@ -315,9 +327,14 @@ Deno.serve(async (req) => {
     // The member is charged the dues installment plus its share of the plan
     // fee; application_fee_amount carries our dues cut PLUS the whole plan
     // fee, so the club nets exactly the dues either way.
-    const firstPlanFee = planFeeSchedule(schedule.length)[0] ?? 0;
+    const firstPlanFee = planFeeSchedule(schedule.length, feePolicy)[0] ?? 0;
     const firstChargeCents = firstCents + firstPlanFee;
-    const platformFee = Math.max(0, Math.floor(firstCents * FEE_BPS_DUES / 10000)) + firstPlanFee;
+    // firstPlanFee is already 0 under a waiver, but be explicit: a reader
+    // should not have to trace planFeeSchedule to see that a waived club
+    // is charged nothing at all.
+    const platformFee = feePolicy.waived
+      ? 0
+      : Math.max(0, Math.floor(firstCents * FEE_BPS_DUES / 10000)) + firstPlanFee;
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
@@ -339,7 +356,8 @@ Deno.serve(async (req) => {
         : ''));
     params.append('line_items[0][price_data][unit_amount]', String(firstChargeCents));
     params.append('line_items[0][quantity]', '1');
-    params.append('payment_intent_data[application_fee_amount]', String(platformFee));
+    params.append('payment_intent_data[application_fee_amount]',
+      String(feePolicy.waived ? 0 : platformFee));   // clamped at the boundary
     params.append('payment_intent_data[setup_future_usage]', 'off_session');
     params.append('customer_creation', 'always');
     if (app.primary_email) params.append('customer_email', app.primary_email as string);
@@ -378,7 +396,7 @@ Deno.serve(async (req) => {
   const TID = String(payload.tid);
 
   const { data: tenant } = await sb.from('tenants')
-    .select('slug, display_name, stripe_account_id, stripe_charges_enabled').eq('id', TID).maybeSingle();
+    .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', TID).maybeSingle();
   if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
     return jsonResponse({ ok: false, error: 'Stripe isn\'t connected for this club yet' }, 400);
   }
@@ -401,6 +419,7 @@ Deno.serve(async (req) => {
       cancelUrl: `${clubUrl}/m/?paid=0`,
       metadata: { kind: 'program_booking', booking_id: bk.id, tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,
+      policy: feePolicyFromTenant(tenant),
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('program_bookings').update({ stripe_session_id: session.session_id }).eq('id', bk.id);
@@ -431,6 +450,7 @@ Deno.serve(async (req) => {
       cancelUrl: `${clubUrl}/m/index.html?paid=0#parties`,
       metadata: { kind: 'party_booking', party_id: party.id, tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,    // 1.5% — parties bucket
+      policy: feePolicyFromTenant(tenant),
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('party_bookings').update({ stripe_session_id: session.session_id }).eq('id', party.id);
@@ -452,6 +472,7 @@ Deno.serve(async (req) => {
       cancelUrl: `${clubUrl}/m/?paid=0`,
       metadata: { kind: 'guest_pass_pack', pack_id: pack.id, tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,
+      policy: feePolicyFromTenant(tenant),
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('guest_pass_packs').update({ stripe_session_id: session.session_id }).eq('id', pack.id);

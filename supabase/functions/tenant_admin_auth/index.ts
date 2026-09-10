@@ -583,7 +583,11 @@ Deno.serve(async (req) => {
         .select('id, email, display_name, is_super, is_default_pw, active, scopes, role_template, roles, linked_member_id, member_apply_dismissed, phone_e164, board_title')
         .eq('id', payload.sub).maybeSingle(),
       sb.from('tenants')
-        .select('slug, display_name, status, plan')
+        // platform_fees_waived rides along so a club can see on its own
+        // billing page that we take nothing — worth more in writing than as
+        // the founder's word at a board meeting. The `me` payload spreads
+        // ...tenant, so selecting it here is all that is needed.
+        .select('slug, display_name, status, plan, platform_fees_waived')
         .eq('id', payload.tid).maybeSingle(),
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
     ]);

@@ -12,7 +12,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sellingYear, renewalOpen, isPaidThrough } from './membership_year.ts';
 import { resolveRules, generateSchedule, suggestedCounts } from './payment_schedule.ts';
 
-import { planFeeTotal, planFeeSchedule } from './fees.ts';
+import { planFeeTotal, planFeeSchedule, feePolicyFor } from './fees.ts';
 
 export type RenewalQuote = {
   year: number;
@@ -34,6 +34,12 @@ export async function quoteRenewal(
   const { data: settings } = await sb.from('settings')
     .select('value').eq('tenant_id', tenantId).maybeSingle();
   const sv = (settings?.value ?? {}) as Record<string, unknown>;
+
+  // This module exists because the signed-in renewal page and the no-login
+  // link once quoted different prices. A fee waiver is the same class of
+  // problem in reverse: quoting a plan fee a waived club's members will never
+  // be charged would be a promise broken in the other direction.
+  const feePolicy = await feePolicyFor(sb, tenantId);
 
   const year = sellingYear(sv);
 
@@ -75,8 +81,8 @@ export async function quoteRenewal(
       return {
         count,
         installments: gen.installments,
-        plan_fee_cents: planFeeTotal(count),
-        plan_fee_per_payment_cents: planFeeSchedule(count)[1] ?? 0,
+        plan_fee_cents: planFeeTotal(count, feePolicy),
+        plan_fee_per_payment_cents: planFeeSchedule(count, feePolicy)[1] ?? 0,
       };
     }).filter(Boolean) as Array<{ count: number; installments: unknown[] }>;
   }

@@ -307,6 +307,30 @@
           <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Use 999999 for "unlimited". Blank = honor the plan tier's default.</p>
         </div>
       </div>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
+        <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer">
+          <input type="checkbox" id="edit-fees-waived" onchange="syncFeeWaiver()" style="width:auto;margin-top:3px">
+          <span>
+            <span style="font-weight:600;font-size:13px">Waive all platform transaction fees</span>
+            <span style="display:block;font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px">
+              Takes nothing on dues, programs, parties or guest passes — and stops charging
+              <b>members</b> the $4-per-payment plan fee. Does not change their subscription;
+              use the plan and status fields above for that.
+            </span>
+          </span>
+        </label>
+        <div id="edit-fees-waived-reason-wrap" style="display:none;margin-top:10px">
+          <label style="font-weight:600;font-size:12px;display:block;margin:0 0 5px">Reason <span style="color:var(--red,#b91c1c)">*</span></label>
+          <input id="edit-fees-waived-reason" type="text" maxlength="200"
+                 placeholder="e.g. Founder's own club — board conflict of interest"
+                 style="width:100%;padding:10px 13px;font:13px/1.4 'Inter',sans-serif;border:1.5px solid var(--border);border-radius:10px">
+          <p style="font-size:11px;color:var(--muted);margin:5px 0 0">
+            Required. A waiver with no reason is how a pilot comp quietly becomes permanent —
+            nothing errors when money simply stops arriving.
+          </p>
+        </div>
+      </div>
     </div>
 
     <label style="font-weight:600;font-size:13px;display:block;margin:14px 0 6px">Custom domain <span style="font-weight:500;color:var(--muted);text-transform:none;font-size:11px">(Enterprise tier; e.g. <code>yourclub.com</code>)</span></label>
@@ -485,7 +509,7 @@
       }[t.status] || 'pill-active';
       const created = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
       return `<tr style="cursor:pointer" onclick="openEditTenant('${escapeHtml(t.id)}')">
-        <td><b>${escapeHtml(t.display_name)}</b><br><span style="font-size:12px;color:var(--muted)">since ${escapeHtml(created)}</span></td>
+        <td><b>${escapeHtml(t.display_name)}</b>${t.platform_fees_waived ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:10px" title="' + escapeHtml(t.platform_fees_waived_reason || 'No reason recorded') + '">FEES WAIVED</span>' : ''}<br><span style="font-size:12px;color:var(--muted)">since ${escapeHtml(created)}</span></td>
         <td onclick="event.stopPropagation()"><a href="https://${escapeHtml(t.slug)}.poolsideapp.com" target="_blank">${escapeHtml(t.slug)}.poolsideapp.com</a></td>
         <td>${escapeHtml(planLabel)}</td>
         <td><span class="pill ${statusClass}">${escapeHtml((t.status || '').toUpperCase())}</span></td>
@@ -553,6 +577,10 @@
   };
 
   // ── Edit Tenant modal ───────────────────────────────────────────────
+  // The row as it was when the modal opened, so save can tell a genuine
+  // fee-waiver transition from a no-op and only confirm on the former.
+  let EDIT_TENANT_BEFORE = null;
+
   window.openEditTenant = function(id) {
     const t = tenantsCache.find(x => x.id === id);
     if (!t) return;
@@ -563,6 +591,10 @@
     document.getElementById('edit-status').value = t.status || 'trial';
     document.getElementById('edit-custom-domain').value = t.custom_domain || '';
     document.getElementById('edit-notes').value = t.notes || '';
+    EDIT_TENANT_BEFORE = t;
+    document.getElementById('edit-fees-waived').checked = !!t.platform_fees_waived;
+    document.getElementById('edit-fees-waived-reason').value = t.platform_fees_waived_reason || '';
+    syncFeeWaiver();
     document.getElementById('edit-plan-label-override').value = t.plan_label_override || '';
     document.getElementById('edit-cap-override').value = (t.household_cap_override ?? '') === null ? '' : (t.household_cap_override ?? '');
     document.getElementById('edit-err').style.display = 'none';
@@ -673,9 +705,27 @@
     const plan_label_override = document.getElementById('edit-plan-label-override').value.trim() || null;
     const capRaw = document.getElementById('edit-cap-override').value.trim();
     const household_cap_override = capRaw === '' ? null : Number(capRaw);
+
+    const platform_fees_waived = document.getElementById('edit-fees-waived').checked;
+    const platform_fees_waived_reason = document.getElementById('edit-fees-waived-reason').value.trim();
+    if (platform_fees_waived && !platform_fees_waived_reason) {
+      errEl.textContent = 'Give a reason for waiving platform fees.';
+      errEl.style.display = 'block';
+      document.getElementById('edit-fees-waived-reason').focus();
+      return;
+    }
+    // Confirm on the transition only, and name the club — "Bishop Estates" and
+    // "Brookfield" sit next to each other in an alphabetical list.
+    const wasWaived = !!(EDIT_TENANT_BEFORE && EDIT_TENANT_BEFORE.platform_fees_waived);
+    if (platform_fees_waived !== wasWaived) {
+      const msg = platform_fees_waived
+        ? `Take NO platform fees from ${display_name}?\n\nNo cut of dues, programs, parties or guest passes, and its members stop paying the payment-plan fee.`
+        : `Start charging ${display_name} platform fees again?\n\nDues 1%, programs and parties 1.5%, and members will be charged the payment-plan fee.`;
+      if (!confirm(msg)) return;
+    }
     btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
     try {
-      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes, plan_label_override, household_cap_override });
+      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes, plan_label_override, household_cap_override, platform_fees_waived, platform_fees_waived_reason });
       closeEditModal();
       await loadTenants();
     } catch (e) {
@@ -684,6 +734,13 @@
     } finally {
       btn.disabled = false; btn.textContent = orig;
     }
+  };
+
+  // Reason field only matters while the box is ticked, but keep whatever was
+  // typed if it is unticked and re-ticked in the same sitting.
+  window.syncFeeWaiver = function () {
+    const on = document.getElementById('edit-fees-waived').checked;
+    document.getElementById('edit-fees-waived-reason-wrap').style.display = on ? 'block' : 'none';
   };
 
   window.confirmDeleteTenant = async function() {
