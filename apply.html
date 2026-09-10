@@ -273,7 +273,20 @@
       <label class="pay-opt" id="auto-renew-opt" style="display:none;margin-top:10px;background:#f0fdf4;border-color:#86efac">
         <input type="checkbox" id="wants_auto_renew">
         🔁 <b>Renew me automatically each season</b>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">We'll charge this card when next season's dues open, and email you a receipt beforehand. Cancel any time from your member home.</div>
+        <!-- The four things a card network expects a member to have been told
+             before a card is stored: that we will initiate the charge, when
+             and how often, how the amount is decided, and how to stop it.
+             Written as plain answers, because those are the same four things
+             a family actually wants to know. -->
+        <div style="font-size:11.5px;color:var(--muted);margin-top:4px;font-weight:400;line-height:1.6">
+          Once a year, when next season's dues open, we'll charge this card for whatever
+          your membership costs that season — your board sets it and it can change.
+          We'll email you 14 days before, with the amount. It continues until you turn it
+          off, which you can do any time under <b>My family</b>.
+          <span id="auto-renew-authz" style="display:block;margin-top:4px;color:var(--text)">
+            Ticking this authorizes those charges.
+          </span>
+        </div>
       </label>
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">

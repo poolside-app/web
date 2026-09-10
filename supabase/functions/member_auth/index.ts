@@ -608,12 +608,85 @@ Deno.serve(async (req) => {
   // do anything; the card itself is captured by checkout, not here.
   if (action === 'set_auto_renew') {
     const on = body.auto_renew === true;
+
     const { error } = await sb.from('households').update({
       auto_renew: on,
       auto_renew_set_at: on ? new Date().toISOString() : null,
     }).eq('id', payload.hid as string).eq('tenant_id', payload.tid as string);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    // Turning it ON is agreeing to be charged off-session next season, so the
+    // agreement is recorded with the wording that was on screen. Stripe writes
+    // mandate text for ACH and SEPA but not for a card saved this way — that
+    // disclosure is ours, and so is proving it happened. Best-effort: losing
+    // the record must not stop a member turning it on, but it is logged.
+    try {
+      const { autoRenewTerms, termsRecord, TERMS_VERSION } = await import('../_shared/payment_terms.ts');
+      if (on) {
+        const [{ data: tenant }, { data: hh }, { data: settingsRow }] = await Promise.all([
+          sb.from('tenants').select('display_name').eq('id', payload.tid as string).maybeSingle(),
+          sb.from('households').select('tier, paid_until_year').eq('id', payload.hid as string).maybeSingle(),
+          sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle(),
+        ]);
+        const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
+        const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+        const dues = Number((tiers.find(t => t.slug === hh?.tier) ?? tiers[0])?.price_cents ?? 0);
+        const club = String(tenant?.display_name ?? 'Your club');
+        const lines = autoRenewTerms({
+          clubName: club,
+          currentDuesCents: dues,
+          year: Number(hh?.paid_until_year ?? 0) ? Number(hh?.paid_until_year) + 1 : null,
+        });
+        await sb.from('payment_authorizations').insert({
+          tenant_id: payload.tid, household_id: payload.hid, member_id: payload.sub,
+          kind: 'auto_renew', terms_version: TERMS_VERSION,
+          terms_text: termsRecord(lines, club),
+          ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+          user_agent: (req.headers.get('user-agent') ?? '').slice(0, 400) || null,
+          source: String(body.source ?? 'member_portal'),
+        });
+      } else {
+        // Kept, not deleted: a dispute asks what was true on the day of the
+        // charge, not what is true now.
+        await sb.from('payment_authorizations')
+          .update({ revoked_at: new Date().toISOString(), revoked_by: payload.sub })
+          .eq('household_id', payload.hid as string).eq('kind', 'auto_renew').is('revoked_at', null);
+      }
+    } catch (e) {
+      console.error('payment authorization record (non-fatal):', (e as Error).message);
+    }
+
     return jsonResponse({ ok: true, auto_renew: on });
+  }
+
+  // ── auto_renew_status ────────────────────────────
+  // What a member needs to answer "am I about to be charged, and how do I
+  // stop it". The cancellation route has to be findable, or the terms are
+  // making a promise the app does not keep.
+  if (action === 'auto_renew_status') {
+    const [{ data: hh }, { data: tenant }, { data: settingsRow }] = await Promise.all([
+      sb.from('households').select('tier, auto_renew, auto_renew_set_at, paid_until_year')
+        .eq('id', payload.hid as string).eq('tenant_id', payload.tid as string).maybeSingle(),
+      sb.from('tenants').select('display_name').eq('id', payload.tid as string).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle(),
+    ]);
+    if (!hh) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
+    const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
+    const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+    const dues = Number((tiers.find(t => t.slug === hh.tier) ?? tiers[0])?.price_cents ?? 0);
+    const club = String(tenant?.display_name ?? 'Your club');
+    const { autoRenewTerms } = await import('../_shared/payment_terms.ts');
+    return jsonResponse({
+      ok: true,
+      auto_renew: !!hh.auto_renew,
+      set_at: hh.auto_renew_set_at ?? null,
+      dues_cents: dues,
+      club_name: club,
+      terms: autoRenewTerms({
+        clubName: club, currentDuesCents: dues,
+        year: Number(hh.paid_until_year ?? 0) ? Number(hh.paid_until_year) + 1 : null,
+      }),
+    });
   }
 
   // ── renew_start ────────────────────────────────────────────────────────

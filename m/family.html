@@ -349,6 +349,7 @@ function render() {
 
   const root = document.getElementById('root');
   root.innerHTML = `
+    <div id="auto-renew-card"></div>
     <div class="card">
       <div class="card-eyebrow">Household</div>
       <h2 id="h-family-name-display" style="font-size:22px;font-family:'Fraunces',Georgia,serif;color:var(--blue);margin:0 0 4px">${escapeHtml(h.family_name || 'Your household')}</h2>
@@ -681,6 +682,68 @@ async function confirmTransfer() {
   }
 }
 
+// ── Automatic renewal ──────────────────────────────────────────────────
+// The renewal page tells members they can "cancel any time from My family".
+// Until now there was nothing here to cancel from, which made that a promise
+// the app did not keep — and a cancellation route you cannot find is not a
+// cancellation policy, which is one of the four things a card network expects
+// you to have told someone before storing their card.
+//
+// Only the primary member sees it: it is the household's card and the
+// household's money, and an adult child toggling it off in June would be
+// discovered in March.
+async function loadAutoRenew() {
+  const host = document.getElementById('auto-renew-card');
+  if (!host || !IS_PRIMARY) return;
+  let d;
+  try {
+    d = await callMember('auto_renew_status');
+    if (!d.ok) return;                     // silently skip; never break the page
+  } catch (_) { return; }
+
+  const money = c => '$' + Math.round(Number(c || 0) / 100).toLocaleString();
+  const on = !!d.auto_renew;
+
+  host.innerHTML = `
+    <div class="card" style="${on ? 'background:#ecfdf5;border-color:#a7f3d0' : ''}">
+      <div class="card-eyebrow">Automatic renewal</div>
+      <p style="font-size:15px;margin:0 0 10px;color:${on ? '#065f46' : 'var(--text)'}">
+        ${on
+          ? `<b>On.</b> Your card will be charged when next season's dues open.`
+          : `<b>Off.</b> You'll renew by hand each season.`}
+      </p>
+      ${on ? `<ul style="margin:0 0 14px;padding-left:20px;font-size:13px;color:#065f46;line-height:1.7">
+        ${(d.terms || []).map(line => `<li>${escapeHtml(line)}</li>`).join('')}
+      </ul>` : ''}
+      <button class="btn ${on ? 'btn-ghost' : ''}" id="ar-toggle" onclick="toggleAutoRenew(${on ? 'false' : 'true'})">
+        ${on ? 'Turn off automatic renewal' : 'Turn on automatic renewal'}
+      </button>
+      <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+        ${on
+          ? `Turning it off stops the charge. It does not cancel your current membership.`
+          : `You can turn this on when you next renew, or here. ${d.dues_cents ? `Dues are ${money(d.dues_cents)} this season.` : ''}`}
+      </p>
+      <div id="ar-msg" style="font-size:13px;margin-top:8px"></div>
+    </div>`;
+}
+
+async function toggleAutoRenew(turnOn) {
+  // Confirm only when switching ON: that is the direction that authorizes a
+  // future charge. Turning it off should never be made to feel risky.
+  if (turnOn && !confirm('Charge this card automatically when next season\'s dues open?\n\nYou can turn it off any time from this page.')) return;
+  const btn = document.getElementById('ar-toggle');
+  const msg = document.getElementById('ar-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await callMember('set_auto_renew', { auto_renew: !!turnOn, source: 'member_portal' });
+    if (!r.ok) throw new Error(r.error || 'Could not save that');
+    await loadAutoRenew();
+  } catch (e) {
+    if (msg) { msg.style.color = 'var(--red,#b91c1c)'; msg.textContent = e.message; }
+    if (btn) { btn.disabled = false; btn.textContent = turnOn ? 'Turn on automatic renewal' : 'Turn off automatic renewal'; }
+  }
+}
+
 (async () => {
   if (!token()) { logout(); return; }
   let publicData = {};
@@ -694,6 +757,7 @@ async function confirmTransfer() {
     publicData = pub.ok ? pub : {};
     syncBranding(me, publicData);
     render();
+    loadAutoRenew();   // independent — must never block the household list
   } catch (e) {
     document.getElementById('root').innerHTML = `<div class="card"><h2>Error</h2><p>${escapeHtml(e.message)}</p></div>`;
   }
