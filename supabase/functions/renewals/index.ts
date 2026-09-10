@@ -130,7 +130,7 @@ function renewalEmailHtml(args: RenewalEmailArgs): string {
   `;
 }
 
-async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean; error?: string }> {
+async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean; error?: string; quotaUsed?: number | null; dailyQuotaExceeded?: boolean }> {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   const html = renewalEmailHtml(args);
   try {
@@ -144,11 +144,21 @@ async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean
         html,
       }),
     });
+    // Same header the shared sender reads — this path predates it and still
+    // talks to Resend directly, so it has to look for itself.
+    const quotaRaw = res.headers.get('x-resend-daily-quota');
+    const quotaUsed = quotaRaw !== null && quotaRaw !== '' && Number.isFinite(Number(quotaRaw))
+      ? Number(quotaRaw) : null;
     if (!res.ok) {
       const txt = await res.text();
-      return { sent: false, error: `Resend ${res.status}: ${txt.slice(0, 200)}` };
+      return {
+        sent: false,
+        error: `Resend ${res.status}: ${txt.slice(0, 200)}`,
+        quotaUsed,
+        dailyQuotaExceeded: res.status === 429 && /daily_quota_exceeded/i.test(txt),
+      };
     }
-    return { sent: true };
+    return { sent: true, quotaUsed };
   } catch (e) {
     return { sent: false, error: String(e) };
   }
@@ -488,6 +498,23 @@ Deno.serve(async (req) => {
           await recordEmail(sb, {
             tenantId: tenant.id, to: recipient.email,
             category: 'bulk', success: true, source: 'renewals.blast',
+            quotaUsed: r.quotaUsed ?? null,
+          });
+        }
+        else if (r.dailyQuotaExceeded) {
+          // Resend says the day is spent — queue this one and everything after
+          // it rather than grinding through 429s.
+          emailBudget = 0;
+          deferred.push({
+            to: recipient.email,
+            subject: renewalEmailSubject(tenant.display_name),
+            html: renewalEmailHtml(emailArgs),
+          });
+          emailDone = true;
+          await recordEmail(sb, {
+            tenantId: tenant.id, to: recipient.email,
+            category: 'bulk', success: false, error: r.error ?? 'daily_quota_exceeded',
+            source: 'renewals.blast', quotaUsed: r.quotaUsed ?? null,
           });
         }
         else if (!RESEND_API_KEY) {

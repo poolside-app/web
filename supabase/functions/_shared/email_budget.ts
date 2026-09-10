@@ -13,18 +13,29 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 /**
- * Sends allowed per UTC day.
+ * Resend's free-plan daily allowance. Paid plans have no daily quota at all,
+ * only a monthly one, so raise this (or set it very high) after upgrading.
+ */
+export function providerDailyLimit(): number {
+  const raw = Number(Deno.env.get('RESEND_DAILY_LIMIT') ?? '');
+  return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 100;
+}
+
+/**
+ * Fallback cap, used only when Resend has not told us anything today.
  *
- * Deliberately 80 rather than Resend's 100. Transactional mail — sign-in
- * links, receipts, approvals — sends immediately and is only logged where a
- * caller passes a client, so the count is a floor rather than an exact figure.
- * The 20-email gap is the margin for what we did not see. Raise it via
- * EMAIL_DAILY_CAP once the account is on a paid plan.
+ * Deliberately below the real limit: without their number we are counting our
+ * own sends, and three separate code paths send email here, so the count is a
+ * floor rather than an exact figure. The gap is the margin for what we did
+ * not see.
  */
 export function dailyCap(): number {
   const raw = Number(Deno.env.get('EMAIL_DAILY_CAP') ?? '');
   return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 80;
 }
+
+/** Leave a few in hand for sign-in codes even when Resend's number is exact. */
+const RESERVE_FOR_TRANSACTIONAL = 5;
 
 /** Emails logged so far today, UTC — the same boundary Resend resets on. */
 export async function sentToday(sb: SupabaseClient): Promise<number> {
@@ -44,14 +55,51 @@ export async function sentToday(sb: SupabaseClient): Promise<number> {
   return count ?? 0;
 }
 
+/**
+ * The most recent x-resend-daily-quota reading from today, or null.
+ *
+ * Resend puts this on every response for free-plan accounts. It is the only
+ * authoritative number available — our own log misses any sender that does
+ * not log — so it wins whenever it exists.
+ */
+export async function providerQuotaUsedToday(sb: SupabaseClient): Promise<number | null> {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await sb.from('email_log')
+    .select('provider_quota_used')
+    .gte('sent_at', start.toISOString())
+    .not('provider_quota_used', 'is', null)
+    .order('sent_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const n = Number(data.provider_quota_used);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * How many more we can send today.
+ *
+ * Prefers Resend's own count and falls back to ours. The difference matters:
+ * their number is what actually gets us a 429, ours is a floor.
+ */
 export async function remainingToday(sb: SupabaseClient): Promise<number> {
+  const providerUsed = await providerQuotaUsedToday(sb);
+  if (providerUsed !== null) {
+    return Math.max(0, providerDailyLimit() - providerUsed - RESERVE_FOR_TRANSACTIONAL);
+  }
   return Math.max(0, dailyCap() - await sentToday(sb));
 }
 
 /** Record a send. Best-effort: a failed log must never fail the email. */
 export async function recordEmail(
   sb: SupabaseClient,
-  args: { tenantId?: string | null; to: string; category?: string; success: boolean; error?: string | null; source?: string },
+  args: {
+    tenantId?: string | null; to: string; category?: string;
+    success: boolean; error?: string | null; source?: string;
+    /** x-resend-daily-quota from the send that produced this row. */
+    quotaUsed?: number | null;
+  },
 ): Promise<void> {
   try {
     await sb.from('email_log').insert({
@@ -61,6 +109,7 @@ export async function recordEmail(
       success:   args.success,
       error:     args.error ?? null,
       source:    args.source ?? null,
+      provider_quota_used: args.quotaUsed ?? null,
     });
   } catch (e) {
     console.error('email log write failed:', (e as Error).message);
@@ -141,6 +190,22 @@ export async function drainEmailQueue(
         html: row.html as string,
         replyTo: (row.reply_to as string) || undefined,
       });
+
+      // Resend said the day is spent. Stop immediately and leave the row
+      // queued without burning an attempt — the quota resetting at midnight
+      // UTC is not this address's fault, and counting it against the row's
+      // four tries would retire perfectly good emails after four busy days.
+      if (res.dailyQuotaExceeded) {
+        await recordEmail(sb, {
+          tenantId: row.tenant_id as string,
+          to: row.to_email as string,
+          category: (row.category as string) || 'bulk',
+          success: false, error: res.error ?? 'daily_quota_exceeded',
+          source: 'email_queue.drain', quotaUsed: res.quotaUsed ?? null,
+        });
+        break;
+      }
+
       const attempts = Number(row.attempts ?? 0) + 1;
       if (res.sent) {
         sent++;
@@ -164,6 +229,7 @@ export async function drainEmailQueue(
         success: res.sent,
         error: res.error ?? null,
         source: 'email_queue.drain',
+        quotaUsed: res.quotaUsed ?? null,
       });
     }
   }

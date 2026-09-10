@@ -9,7 +9,15 @@
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsideapp.com>';
 
-export type SendResult = { sent: boolean; error?: string; id?: string };
+export type SendResult = {
+  sent: boolean;
+  error?: string;
+  id?: string;
+  /** x-resend-daily-quota — emails used today, per Resend. Free plans only. */
+  quotaUsed?: number | null;
+  /** True when Resend refused because the day's quota is gone. */
+  dailyQuotaExceeded?: boolean;
+};
 
 // File attachment as accepted by Resend. content is base64-encoded bytes.
 export type EmailAttachment = {
@@ -60,12 +68,25 @@ export async function sendEmail(args: {
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    // Resend reports the day's consumption on every response for free-plan
+    // accounts. Their number beats ours: we only see the sends that go through
+    // a logging path, and there are three senders in this codebase.
+    const quotaRaw = res.headers.get('x-resend-daily-quota');
+    const quotaUsed = quotaRaw !== null && quotaRaw !== '' && Number.isFinite(Number(quotaRaw))
+      ? Number(quotaRaw)
+      : null;
+
     if (!res.ok) {
       const txt = await res.text();
-      return { sent: false, error: `Resend ${res.status}: ${txt.slice(0, 200)}` };
+      return {
+        sent: false,
+        error: `Resend ${res.status}: ${txt.slice(0, 200)}`,
+        quotaUsed,
+        dailyQuotaExceeded: res.status === 429 && /daily_quota_exceeded/i.test(txt),
+      };
     }
     const data = await res.json();
-    return { sent: true, id: data?.id };
+    return { sent: true, id: data?.id, quotaUsed };
   } catch (e) {
     return { sent: false, error: String(e) };
   }
