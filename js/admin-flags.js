@@ -274,6 +274,38 @@
       ? 'unlimited'
       : (usage.remaining === 0 ? 'at cap' : `${usage.remaining} left`);
     const showUpgrade = !usage.unlimited && (pct >= 50 || at);
+    // ── Texts left ──
+    // Shown next to the household count so a board sees it every time they
+    // open any admin page, not only when composing. A club that finds out its
+    // allowance is gone on the morning it needs to announce a closure has
+    // been failed by the product; the number has to be boring and constant
+    // long before it is urgent.
+    //
+    // Counted in club-wide messages as well as raw texts, because "1,850
+    // texts" means nothing to a volunteer and "about 12 messages to everyone"
+    // means something immediately.
+    let smsHtml = '';
+    const sms = usage.sms;
+    if (sms && Number.isFinite(Number(sms.total_left))) {
+      const left = Math.max(0, Number(sms.total_left));
+      const blasts = Math.max(0, Number(sms.blasts_left) || 0);
+      const smsPct = sms.cap > 0 ? Math.min(100, Math.round((sms.used / sms.cap) * 100)) : 0;
+      const smsOut  = left <= 0;
+      const smsLow  = !smsOut && (blasts <= 3 || smsPct >= 80);
+      const smsColor = smsOut ? '#dc2626' : (smsLow ? '#92400e' : color);
+      const label = smsOut
+        ? 'no texts left'
+        : `${left.toLocaleString()} texts left${blasts > 0 ? ` · about ${blasts} to everyone` : ''}`;
+      // Only offer a top-up once it is actually relevant — an always-present
+      // buy button on a club with 2,900 texts left is just noise.
+      const topUp = (smsOut || smsLow)
+        ? ` <a href="/club/admin/billing.html#texts" style="color:${smsColor};text-decoration:underline">top up</a>`
+        : '';
+      smsHtml = `<span style="color:${smsColor};font-weight:${smsOut || smsLow ? 700 : 500}">
+        <span aria-hidden="true">·</span> ${label}${topUp}
+      </span>`;
+    }
+
     const ticker = document.createElement('div');
     ticker.id = 'usage-ticker';
     ticker.style.cssText = `
@@ -288,6 +320,7 @@
           <span style="display:block; width:${pct}%; height:100%; background:${fill}"></span>
         </span>`}
       <span style="font-weight:500">${remCopy}</span>
+      ${smsHtml}
       ${showUpgrade ? `<a href="/club/admin/billing.html" style="margin-left:auto; padding:3px 12px; border-radius:6px; background:${fill}; color:#fff; text-decoration:none; font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase">${at ? 'Upgrade now' : 'Upgrade'}</a>` : ''}
     `;
     // Insert AFTER the header so it appears as a strip below it

@@ -601,6 +601,33 @@ Deno.serve(async (req) => {
     const cap = await getHouseholdCapStatus(sb, payload.tid, tenant.plan);
     const usage = capStatusToJson(cap);
 
+    // Texts left, on every admin page. A club that discovers its allowance is
+    // gone on the morning it needs to announce a closure has been failed by
+    // the product — the number has to be visible before it matters, not at
+    // the moment it runs out. Best-effort: a hiccup here must not stop a
+    // board member signing in.
+    try {
+      const { checkSmsCap } = await import('../_shared/sms_cap.ts');
+      const sms = await checkSmsCap(sb, payload.tid, 'campaign', tenant.plan as string, 0);
+      // Recipients are members with a mobile number, which is close enough to
+      // the household count to be worth showing but not to be quoted exactly —
+      // hence "about N messages" wherever this is rendered.
+      const perBlast = Math.max(1, Number(usage.count) || 1);
+      (usage as Record<string, unknown>).sms = {
+        used: sms.used,
+        cap: sms.cap,
+        remaining: sms.remaining,
+        credits: sms.credits,
+        // Allowance plus anything they have topped up with.
+        total_left: Math.max(0, Number(sms.remaining) + Number(sms.credits || 0)),
+        blasts_left: Math.floor((Number(sms.remaining) + Number(sms.credits || 0)) / perBlast),
+        per_blast: perBlast,
+        days_until_reset: sms.days_until_reset,
+      };
+    } catch (e) {
+      console.error('sms usage for ticker (non-fatal):', (e as Error).message);
+    }
+
     // Synthetic impersonation tokens have no real admin_users row — fall
     // back to a synthetic user identity sourced from the JWT itself.
     if ((!user || !user.active) && payload.synthetic) {
