@@ -292,13 +292,17 @@
     const sms = usage.sms;
     if (sms && Number.isFinite(Number(sms.total_left))) {
       const left = Math.max(0, Number(sms.total_left));
-      const smsPct = sms.cap > 0 ? Math.min(100, Math.round((sms.used / sms.cap) * 100)) : 0;
-      const smsOut  = left <= 0;
-      // Percentage of the allowance, not a guess at how many club-wide sends
-      // are left — that depends on how many people the club has, and quoting
-      // it turns one true number into a wrong one for every club but the size
-      // it was written for.
-      const smsLow  = !smsOut && smsPct >= 80;
+      const smsOut = left <= 0;
+      // Judged on what is LEFT, not on how much of the allowance has been
+      // spent. Spend-based was wrong the moment a club topped up: it had
+      // used 100% of its yearly allowance, so the strip stayed amber and
+      // went on nagging them to top up again while sitting on 3,000
+      // freshly-bought texts.
+      //
+      // A fraction of the cap rather than a fixed number, so it scales with
+      // whatever plan the club is on instead of being tuned to one of them.
+      const smsFloor = Math.max(50, Math.round((Number(sms.cap) || 0) * 0.15));
+      const smsLow  = !smsOut && left < smsFloor;
       const smsColor = smsOut ? '#dc2626' : (smsLow ? '#92400e' : color);
       const label = smsOut ? 'no texts left' : `${left.toLocaleString()} texts left`;
       // Only offer a top-up once it is actually relevant — an always-present
