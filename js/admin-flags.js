@@ -273,9 +273,6 @@
     const bg    = at ? '#fee2e2' : (near ? '#fef3c7' : '#e6eef5');
     const fill  = at ? '#dc2626' : (near ? '#f59e0b' : '#0a3b5c');
     const capCopy = usage.unlimited ? '∞' : usage.cap;
-    const remCopy = usage.unlimited
-      ? 'unlimited'
-      : (usage.remaining === 0 ? 'at cap' : `${usage.remaining} left`);
     const showUpgrade = !usage.unlimited && (pct >= 50 || at);
     // ── Texts left ──
     // Shown next to the household count so a board sees it every time they
@@ -328,7 +325,6 @@
         <span style="flex:1; max-width:240px; height:6px; background:#e5e7eb; border-radius:999px; overflow:hidden">
           <span style="display:block; width:${pct}%; height:100%; background:${fill}"></span>
         </span>`}
-      <span style="font-weight:500">${remCopy}</span>
       ${smsHtml}
       ${showUpgrade ? `<a href="/club/admin/billing.html" style="margin-left:auto; padding:3px 12px; border-radius:6px; background:${fill}; color:#fff; text-decoration:none; font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase">${at ? 'Upgrade now' : 'Upgrade'}</a>` : ''}
     `;
