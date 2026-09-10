@@ -833,14 +833,25 @@ async function loadRefundQueue() {
   try {
     const r = await api(REFERRALS_URL, 'list');
     if (!r.ok) return;
-    const pending = (r.referrals || []).filter(x => x.is_pending_refund);
+    // Two queues, both needing a person. `awaiting_board` is a member asking
+    // for a reward and nothing having happened yet — that now includes credits
+    // against next season, which used to apply themselves silently.
+    // `is_pending_refund` is one already approved, where a treasurer still has
+    // to record the money actually going out.
+    const awaiting = (r.referrals || []).filter(x => x.awaiting_board);
+    const pending  = (r.referrals || []).filter(x => x.is_pending_refund);
     const card = document.getElementById('refunds-card');
     const list = document.getElementById('refunds-list');
     const count = document.getElementById('refunds-count');
-    if (!pending.length) { card.style.display = 'none'; return; }
+    if (!awaiting.length && !pending.length) { card.style.display = 'none'; return; }
     card.style.display = 'block';
-    count.textContent = `${pending.length} pending`;
-    list.innerHTML = pending.map(ref => renderRefundRow(ref)).join('');
+    const total = awaiting.length + pending.length;
+    count.textContent = `${total} pending`;
+    list.innerHTML =
+      (awaiting.length ? `<div style="font:600 13px 'Inter';color:#7c2d12;margin:0 0 8px">Waiting for board approval</div>`
+        + awaiting.map(ref => renderApprovalRow(ref)).join('') : '')
+      + (pending.length ? `<div style="font:600 13px 'Inter';color:#7c2d12;margin:${awaiting.length ? '16px' : '0'} 0 8px">Approved — money still to send</div>`
+        + pending.map(ref => renderRefundRow(ref)).join('') : '');
   } catch { /* ignore */ }
 }
 
@@ -852,6 +863,56 @@ function refundFact(label, ok, detail) {
     <b>${escapeHtml(label)}</b>
     ${detail ? `<span style="color:var(--muted)"> — ${escapeHtml(detail)}</span>` : ''}
   </div>`;
+}
+
+// A member has asked for a reward and nothing has happened yet. Nothing will
+// until somebody here decides — that is the whole point of this row.
+function renderApprovalRow(ref) {
+  const money = c => '$' + Math.round(Number(c || 0) / 100);
+  const isRefund = ref.reward_type === 'current_year_refund';
+  // The list nests these — referrer.name / referee.family — same as
+  // renderRefundRow reads them below.
+  const who = escapeHtml((ref.referrer && ref.referrer.name) || 'A member');
+  const brought = escapeHtml((ref.referee && (ref.referee.family || ref.referee.name)) || 'a new household');
+  return `
+    <div style="border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:13px 15px;margin-bottom:8px">
+      <div style="font-size:14px;color:#78350f;line-height:1.6">
+        <b>${who}</b> brought in <b>${brought}</b> and is asking for
+        <b>${money(ref.reward_amount_cents)}</b> —
+        ${isRefund ? 'refunded to them this season' : 'credited against next season'}.
+      </div>
+      <div style="font-size:12px;color:#92400e;margin-top:4px">
+        ${isRefund
+          ? 'Approving does not send money. You record that separately once it is actually sent.'
+          : 'Approving reduces what this household owes next season by this amount.'}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-primary" onclick="approveReward('${escapeHtml(ref.id)}')">Approve</button>
+        <button class="btn btn-danger" onclick="declineReward('${escapeHtml(ref.id)}')" style="margin-left:auto">Decline</button>
+      </div>
+    </div>`;
+}
+
+async function approveReward(referralId) {
+  if (!confirm('Approve this referral reward?')) return;
+  try {
+    const r = await api(REFERRALS_URL, 'approve_reward', { referral_id: referralId });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+  } catch (e) { alert(e.message); }
+  loadRefundQueue();
+}
+
+async function declineReward(referralId) {
+  // Required, not optional: "declined" with no explanation is the version of
+  // this that ends in an argument at a board meeting.
+  const reason = prompt('Why are you declining it? The member will be told.');
+  if (reason === null) return;
+  if (!reason.trim()) { alert('A reason is required.'); return; }
+  try {
+    const r = await api(REFERRALS_URL, 'decline_reward', { referral_id: referralId, reason });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+  } catch (e) { alert(e.message); }
+  loadRefundQueue();
 }
 
 function renderRefundRow(ref) {

@@ -16,9 +16,19 @@
 //      eligibility check fires (verify_referral action). If applicant's
 //      email/phone wasn't a current OR prior member: status='verified'
 //      and the referrer is notified. Else: status='rejected'.
-//   6. Referrer opens the modal again → sees their reward is ready →
-//      picks 'next_year_discount' (credits households.referral_credits_cents)
-//      or 'current_year_refund' (creates an admin task for the treasurer).
+//   6. Referrer opens the modal again → sees their reward is ready → picks
+//      'next_year_discount' or 'current_year_refund'. This RECORDS A REQUEST
+//      and applies nothing: status becomes 'claimed' and a task goes to the
+//      board.
+//   7. A board member with the payments scope approves or declines it
+//      ('approve_reward' / 'decline_reward'). Approval is the first moment
+//      anything happens — a next-season credit is written to the household
+//      then, and a refund merely becomes issuable, with a treasurer still
+//      having to record the money going out through 'issue_refund'.
+//
+//      No money and no credit ever moves without a named person deciding.
+//      The cap is re-checked at approval rather than trusted from claim time,
+//      because weeks can pass waiting on a board meeting.
 //
 // Actions:
 //   { action: 'get_my_code' }                     → member JWT
@@ -28,6 +38,8 @@
 //        called by stripe_webhook + applications.verify_payment + .approve
 //   { action: 'list' }                            → admin JWT (membership scope)
 //   { action: 'mark_rejected', referral_id, reason }  → admin JWT
+//   { action: 'approve_reward', referral_id }          → admin JWT + payments
+//   { action: 'decline_reward', referral_id, reason }  → admin JWT + payments
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -402,33 +414,29 @@ Deno.serve(async (req) => {
       }, 409);
     }
 
-    // Apply the reward immediately based on type chosen.
-    if (rewardType === 'next_year_discount') {
-      // Add to household credit accumulator. Done — admin sees this when
-      // they roll over for next season.
-      const { data: hh } = await sb.from('households')
-        .select('referral_credits_cents').eq('id', rc.household_id).maybeSingle();
-      const newCredits = (hh?.referral_credits_cents ?? 0) + amount;
-      await sb.from('households')
-        .update({ referral_credits_cents: newCredits })
-        .eq('id', rc.household_id);
-    } else {
-      // 'current_year_refund' — admin task for the treasurer to issue.
-      // We don't auto-refund Stripe charges from member action; admin reviews.
+    // NOTHING is applied here. A claim is a request; a board member decides.
+    //
+    // This used to write the credit straight onto the household the moment a
+    // member picked "discount next season" — no approval, no record of anyone
+    // agreeing to it. That is not money leaving a bank account, but it is a
+    // standing reduction in what the club collects next year, decided
+    // entirely by the person receiving it. Both reward types now wait.
+    {
       const { data: member } = await sb.from('household_members')
         .select('name').eq('id', sub).maybeSingle();
       await sb.from('admin_tasks').insert({
         tenant_id: tid,
         target_scopes: ['payments'],
-        kind: 'referral.refund_request',
-        summary: `${member?.name || 'A member'} earned $${(amount / 100).toFixed(0)} referral credit — wants refund this year (referee: ${ref.applied_by_family || ref.applied_by_email})`,
+        kind: 'referral.reward_request',
+        summary: `${member?.name || 'A member'} is asking for a $${(amount / 100).toFixed(0)} referral reward (${
+          rewardType === 'current_year_refund' ? 'refund this season' : 'credit next season'}) — needs board approval`,
         link_url: '/club/admin/payments.html',
         source_kind: 'referral', source_id: ref.id,
       });
     }
 
     await sb.from('referrals').update({
-      status: 'rewarded',
+      status: 'claimed',            // waiting on a board member
       reward_type: rewardType,
       // The GRANTED amount, not the offered one. A partial award — the last
       // referral before the cap, worth $50 of a $100 reward — has to be
@@ -560,6 +568,10 @@ Deno.serve(async (req) => {
         // What admin can do
         refund_channel_hint: refundChannelHint,   // 'stripe' | 'manual' | 'unknown'
         is_pending_refund: r.reward_type === 'current_year_refund' && r.status === 'rewarded' && !r.refund_at,
+        // Waiting on a board member. Both reward types: a credit against next
+        // season costs the club exactly as much as a refund, it just arrives
+        // as revenue that never turns up.
+        awaiting_board: r.status === 'claimed',
       };
     });
 
@@ -722,6 +734,118 @@ Deno.serve(async (req) => {
       actor_id: sub, actor_kind: 'tenant_admin',
       metadata: { reason },
     });
+
+    return jsonResponse({ ok: true });
+  }
+
+  // ── approve_reward / decline_reward ────────────────────────────────────
+  // The board decides. Nothing is credited or refunded before this runs, and
+  // both reward types come through here — a credit against next season is
+  // just as much the club's money as a refund is, it simply arrives as
+  // revenue that never shows up.
+
+  if (action === 'approve_reward') {
+    if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
+    const { requireScope } = await import('../_shared/auth.ts');
+    if (!(await requireScope(sb, payload as never, 'payments'))) {
+      return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
+    }
+    const referralId = String(body.referral_id ?? '');
+    if (!referralId) return jsonResponse({ ok: false, error: 'referral_id required' }, 400);
+
+    const { data: ref } = await sb.from('referrals')
+      .select('id, status, reward_type, reward_amount_cents, referral_code_id, applied_by_family')
+      .eq('id', referralId).eq('tenant_id', tid).maybeSingle();
+    if (!ref) return jsonResponse({ ok: false, error: 'Referral not found' }, 404);
+    if (ref.status !== 'claimed') {
+      return jsonResponse({ ok: false, error: `Nothing to approve — status is ${ref.status}` }, 409);
+    }
+
+    const { data: rc } = await sb.from('referral_codes')
+      .select('member_id, household_id').eq('id', ref.referral_code_id).maybeSingle();
+    if (!rc) return jsonResponse({ ok: false, error: 'Referral code missing' }, 500);
+
+    // Re-check the cap here rather than trusting the figure worked out when
+    // the member claimed. Weeks can pass waiting on a board meeting, and
+    // other referrals may have been approved in between.
+    const cap = await referralCap(sb, tid, rc.household_id as string | null);
+    const amount = grantableReward(cap, Number(ref.reward_amount_cents || 10000));
+    if (!cap.uncapped && amount <= 0) {
+      return jsonResponse({
+        ok: false, capped: true, cap,
+        error: 'This household has already earned the full price of its membership.',
+      }, 409);
+    }
+
+    const now = new Date().toISOString();
+
+    // A credit against next season is applied now. A refund is not: approving
+    // it only makes it issuable, and a treasurer still has to record the money
+    // actually going out through issue_refund.
+    if (ref.reward_type === 'next_year_discount') {
+      const { data: hh } = await sb.from('households')
+        .select('referral_credits_cents').eq('id', rc.household_id as string).maybeSingle();
+      await sb.from('households')
+        .update({ referral_credits_cents: Number(hh?.referral_credits_cents ?? 0) + amount })
+        .eq('id', rc.household_id as string);
+    }
+
+    await sb.from('referrals').update({
+      status: 'rewarded',
+      reward_amount_cents: amount,     // what was actually approved
+      approved_by: payload.sub, approved_at: now, updated_at: now,
+    }).eq('id', referralId);
+
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: tid, kind: 'referral.reward_approved',
+        entity_type: 'referral', entity_id: referralId,
+        summary: `Approved a $${(amount / 100).toFixed(0)} referral reward (${ref.reward_type})`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+        metadata: { reward_type: ref.reward_type, amount_cents: amount, referred: ref.applied_by_family },
+      });
+    } catch { /* audit failure must not undo an approval */ }
+
+    return jsonResponse({
+      ok: true, amount_cents: amount, cap,
+      needs_refund_issue: ref.reward_type === 'current_year_refund',
+    });
+  }
+
+  if (action === 'decline_reward') {
+    if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
+    const { requireScope } = await import('../_shared/auth.ts');
+    if (!(await requireScope(sb, payload as never, 'payments'))) {
+      return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
+    }
+    const referralId = String(body.referral_id ?? '');
+    const reason = String(body.reason ?? '').trim();
+    if (!referralId) return jsonResponse({ ok: false, error: 'referral_id required' }, 400);
+    // A reason is required. "Declined" with no explanation is the version of
+    // this that ends in an argument at a board meeting.
+    if (!reason) return jsonResponse({ ok: false, error: 'Give a reason — the member will be told.' }, 400);
+
+    const now = new Date().toISOString();
+    const { data: updated, error } = await sb.from('referrals')
+      .update({
+        status: 'declined',
+        declined_by: payload.sub, declined_at: now,
+        decline_reason: reason.slice(0, 500), updated_at: now,
+      })
+      .eq('id', referralId).eq('tenant_id', tid).eq('status', 'claimed')
+      .select('id').maybeSingle();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!updated) return jsonResponse({ ok: false, error: 'Nothing to decline — it may already have been decided.' }, 409);
+
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: tid, kind: 'referral.reward_declined',
+        entity_type: 'referral', entity_id: referralId,
+        summary: `Declined a referral reward — ${reason.slice(0, 120)}`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+        metadata: { reason },
+      });
+    } catch { /* audit failure must not undo a decision */ }
 
     return jsonResponse({ ok: true });
   }

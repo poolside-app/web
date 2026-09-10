@@ -385,9 +385,9 @@
       <!-- Reward-ready prompt -->
       <div id="refer-claim-row" style="display:none;padding:14px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #fcd34d;border-radius:12px;margin-bottom:14px">
         <div style="font-weight:700;color:#7c2d12;margin-bottom:6px">🎉 You earned a $100 reward!</div>
-        <div style="font-size:13px;color:#78350f;margin-bottom:10px" id="refer-claim-detail">Pick how to use it:</div>
+        <div style="font-size:13px;color:#78350f;margin-bottom:10px" id="refer-claim-detail">Pick how you'd like it — the board approves it before it's applied:</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn" onclick="claimReward('next_year_discount')" style="background:#0a3b5c;color:#fff;font-size:13px">Apply to next year's dues</button>
+          <button class="btn" onclick="claimReward('next_year_discount')" style="background:#0a3b5c;color:#fff;font-size:13px">Ask for next year's dues</button>
           <button class="btn btn-ghost" onclick="claimReward('current_year_refund')" style="font-size:13px">Refund me $100 now</button>
         </div>
       </div>
@@ -1317,13 +1317,18 @@ async function claimReward(rewardType) {
   const referralId = claimRow.dataset.referralId;
   if (!referralId) return;
   const niceLabel = rewardType === 'next_year_discount' ? 'credit toward next year' : 'a $100 refund';
-  if (!confirm(`Claim your reward as ${niceLabel}?\n\nThis can't be changed once submitted.`)) return;
+  if (!confirm(`Ask for your reward as ${niceLabel}?\n\nYou can't change which one once it's sent to the board.`)) return;
   try {
     const r = await callMember('claim_reward', { referral_id: referralId, reward_type: rewardType }, '/functions/v1/referrals');
-    if (!r.ok) throw new Error(r.error || 'Claim failed');
+    // A capped claim comes back 409 with an explanation worth reading, so show
+    // the server's message rather than a generic failure.
+    if (!r.ok) throw new Error(r.error || 'Something went wrong');
+    // Deliberately not "Done!" — nothing has happened yet, and telling a member
+    // their reward is applied when a board member has not looked at it is how
+    // they find out from an unchanged invoice next spring.
     alert(rewardType === 'next_year_discount'
-      ? '🎉 Done! $100 will be applied to your dues next season.'
-      : '🎉 Done! The treasurer will issue your $100 refund — they\'ll be in touch within a few days.');
+      ? 'Sent to your board. Once they approve it, it comes off next season\'s dues.'
+      : 'Sent to your board. Once they approve it, the treasurer will be in touch about the refund.');
     openReferModal();   // reload to show updated stats
   } catch (e) {
     alert(e.message);
