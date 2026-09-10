@@ -262,7 +262,10 @@
     if (!usage) return;
     const header = document.querySelector('header');
     if (!header) return;
-    if (header.querySelector('#usage-ticker')) return;  // already painted
+    // getElementById, not header.querySelector: the strip is inserted as a
+    // SIBLING after <header>, never inside it, so the old check searched a
+    // subtree it could never be in and the guard never fired.
+    if (document.getElementById('usage-ticker')) return;  // already painted
     const pct = Math.max(0, Math.min(100, Number(usage.percent) || 0));
     const at = !!usage.at_cap;
     const near = pct >= 80 && !at;
@@ -325,6 +328,53 @@
     `;
     // Insert AFTER the header so it appears as a strip below it
     header.parentNode.insertBefore(ticker, header.nextSibling);
+
+    paintDuesTicker(usage.dues, header, ticker);
+  }
+
+  // ── Dues progress — the board's number ──────────────────────────────
+  // Sits above the usage strip and is deliberately the loudest thing on the
+  // page. A pool club's season is "have people paid yet"; everything else an
+  // admin page does is administration around that one question, and a
+  // treasurer should not have to open a report to answer it.
+  //
+  // Green throughout rather than red-to-green by progress: this is money in,
+  // and a board looking at 20% in March is not failing, it is in March. The
+  // bar carries the progress; the colour carries the meaning.
+  function paintDuesTicker(dues, header, after) {
+    if (!dues || !Number.isFinite(Number(dues.total)) || Number(dues.total) <= 0) return;
+    if (document.getElementById('dues-ticker')) return;
+
+    const paid = Number(dues.paid) || 0;
+    const total = Number(dues.total) || 0;
+    const pct = Math.max(0, Math.min(100, Number(dues.percent) || 0));
+    const money = c => '$' + Math.round(Number(c || 0) / 100).toLocaleString();
+    const done = paid >= total;
+
+    const el = document.createElement('a');
+    el.id = 'dues-ticker';
+    el.href = '/club/admin/payments.html';
+    el.style.cssText = `
+      display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+      padding:12px 16px; background:#ecfdf5; border-bottom:1px solid #a7f3d0;
+      color:#065f46; text-decoration:none;
+    `;
+    el.innerHTML = `
+      <span style="font-size:22px; font-weight:800; line-height:1; white-space:nowrap">
+        ${paid} <span style="font-weight:600; font-size:15px; opacity:.75">of ${total} paid</span>
+      </span>
+      <span style="flex:1; min-width:120px; max-width:320px; height:9px; background:#d1fae5; border-radius:999px; overflow:hidden">
+        <span style="display:block; width:${pct}%; height:100%; background:#059669"></span>
+      </span>
+      <span style="font-size:15px; font-weight:700; white-space:nowrap">${money(dues.collected_cents)} in</span>
+      ${done
+        ? '<span style="font-size:13px; font-weight:600">every household paid</span>'
+        : `<span style="font-size:13px; opacity:.85; white-space:nowrap">${dues.outstanding} still owing${
+            Number(dues.outstanding_cents) > 0 ? ` · ${money(dues.outstanding_cents)}` : ''}</span>`}
+    `;
+    (after && after.parentNode)
+      ? after.parentNode.insertBefore(el, after)
+      : header.parentNode.insertBefore(el, header.nextSibling);
   }
 
   // ── Setup-status banner — persistent "Club setup is X% complete" strip

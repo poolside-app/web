@@ -601,6 +601,41 @@ Deno.serve(async (req) => {
     const cap = await getHouseholdCapStatus(sb, payload.tid, tenant.plan);
     const usage = capStatusToJson(cap);
 
+    // ── Dues progress ────────────────────────────────────────────────
+    // The number a board actually opens its meeting with. Everything else on
+    // an admin page is administration; this is the season.
+    //
+    // Money is derived from each paid household's tier price rather than from
+    // a payments table, because there isn't one — dues arrive by card, Venmo,
+    // cheque and cash, and the only thing all four update is the flag on the
+    // household. So it is what the club has BOOKED, not what has cleared a
+    // bank, and the wording says so.
+    try {
+      const { data: hh } = await sb.from('households')
+        .select('tier, dues_paid_for_year')
+        .eq('tenant_id', payload.tid).eq('active', true);
+      const tiers = (settingsValue.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+      const priceOf = (slug: string | null | undefined) => {
+        const t = tiers.find(x => x.slug === slug) ?? tiers[0];
+        return Number(t?.price_cents ?? 0) || 0;
+      };
+      const rows = hh ?? [];
+      const paid = rows.filter(r => r.dues_paid_for_year);
+      const collected = paid.reduce((n, r) => n + priceOf(r.tier as string), 0);
+      const outstanding = rows.filter(r => !r.dues_paid_for_year)
+        .reduce((n, r) => n + priceOf(r.tier as string), 0);
+      (usage as Record<string, unknown>).dues = {
+        paid: paid.length,
+        total: rows.length,
+        outstanding: rows.length - paid.length,
+        collected_cents: collected,
+        outstanding_cents: outstanding,
+        percent: rows.length ? Math.round((paid.length / rows.length) * 100) : 0,
+      };
+    } catch (e) {
+      console.error('dues progress for ticker (non-fatal):', (e as Error).message);
+    }
+
     // Texts left, on every admin page. A club that discovers its allowance is
     // gone on the morning it needs to announce a closure has been failed by
     // the product — the number has to be visible before it matters, not at
@@ -1293,11 +1328,15 @@ Deno.serve(async (req) => {
     if (payload.role_template !== 'owner' && !payload.is_super) {
       return jsonResponse({ ok: false, error: 'Only the club owner can buy texts' }, 403);
     }
+    // One pack, deliberately. It is priced to recover the 3,000 texts the free
+    // season already gave away as well as the 3,000 being bought — 6,000
+    // segments cost about $50 of Twilio, so $100 covers both plus Stripe and
+    // leaves roughly $47. A menu of sizes would make that look like the worst
+    // value on the page rather than simply the price of more texts.
     const PACKS: Record<string, { credits: number; cents: number; label: string }> = {
-      small:  { credits: 500,  cents: 1500, label: '500 texts' },
-      large:  { credits: 1500, cents: 3500, label: '1,500 texts' },
+      standard: { credits: 3000, cents: 10000, label: '3,000 texts' },
     };
-    const pack = PACKS[String(body.pack ?? 'small')];
+    const pack = PACKS[String(body.pack ?? 'standard')];
     if (!pack) return jsonResponse({ ok: false, error: 'Unknown pack' }, 400);
 
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');

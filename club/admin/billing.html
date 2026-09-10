@@ -109,6 +109,7 @@
   </div>
 
   <div class="card">
+    <a id="texts"></a>
     <h2>Text credits</h2>
     <p style="font-size:13px;color:var(--muted);margin:0 0 4px">
       Your plan includes a yearly allowance of texts for club-wide messages.
@@ -121,9 +122,9 @@
       allowance is gone, and they don't expire. Prepaid, so there's never a
       surprise bill. A text is 160 characters; longer messages and emoji use more than one.
     </p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" onclick="buyTexts('small')">500 texts — $15</button>
-      <button class="btn btn-ghost" onclick="buyTexts('large')">1,500 texts — $35</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary" onclick="buyTexts('standard')">Buy 3,000 texts — $100</button>
+      <span style="font-size:12.5px;color:var(--muted)">about 20 more messages to your whole club</span>
     </div>
     <div class="err" id="sms-err" style="margin-top:10px"></div>
 
