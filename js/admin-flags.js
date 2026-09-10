@@ -334,50 +334,44 @@
     paintDuesTicker(usage.dues, header, ticker);
   }
 
-  // ── Dues progress — the board's number ──────────────────────────────
-  // Sits above the usage strip and is deliberately the loudest thing on the
-  // page. A pool club's season is "have people paid yet"; everything else an
-  // admin page does is administration around that one question, and a
-  // treasurer should not have to open a report to answer it.
+  // ── Dues collected — the board's number ─────────────────────────────
+  // Two figures, nothing else: how many have paid, and how much is in. Sits
+  // above the usage strip and is deliberately the loudest thing on the page,
+  // because a pool club's season is whether people have paid and everything
+  // else an admin page does is administration around that question.
   //
-  // Green throughout rather than red-to-green by progress: this is money in,
-  // and a board looking at 20% in March is not failing, it is in March. The
-  // bar carries the progress; the color carries the meaning.
+  // No "X of Y" and no progress bar. A denominator invites an argument about
+  // what it counts — active households, ones mid-application, the family that
+  // moved away in March — and drags the headline into that argument with it.
+  // How many have paid is not arguable.
   //
-  // "Paid" means confirmed by either route — a Stripe charge that cleared, or
-  // a Venmo/check/cash payment the treasurer has ticked off. Both set the same
-  // flag on the household, so neither is favoured and the total is the whole
-  // membership, not just the card payers.
+  // Green regardless of the number: this is money in. A board looking at a
+  // small figure in March is not failing, it is in March.
   function paintDuesTicker(dues, header, after) {
-    if (!dues || !Number.isFinite(Number(dues.total)) || Number(dues.total) <= 0) return;
+    if (!dues || !Number.isFinite(Number(dues.paid))) return;
     if (document.getElementById('dues-ticker')) return;
 
-    const paid = Number(dues.paid) || 0;
-    const total = Number(dues.total) || 0;
-    const pct = Math.max(0, Math.min(100, Number(dues.percent) || 0));
-    const money = c => '$' + Math.round(Number(c || 0) / 100).toLocaleString();
-    const done = paid >= total;
+    const paid = Math.max(0, Number(dues.paid) || 0);
+    const cents = Math.max(0, Number(dues.collected_cents) || 0);
+    const money = '$' + Math.round(cents / 100).toLocaleString();
 
     const el = document.createElement('a');
     el.id = 'dues-ticker';
     el.href = '/club/admin/payments.html';
     el.style.cssText = `
-      display:flex; align-items:center; gap:16px; flex-wrap:wrap;
-      padding:12px 16px; background:#ecfdf5; border-bottom:1px solid #a7f3d0;
+      display:flex; align-items:baseline; gap:10px 22px; flex-wrap:wrap;
+      padding:13px 16px; background:#ecfdf5; border-bottom:1px solid #a7f3d0;
       color:#065f46; text-decoration:none;
     `;
     el.innerHTML = `
-      <span style="font-size:22px; font-weight:800; line-height:1; white-space:nowrap">
-        ${paid} <span style="font-weight:600; font-size:15px; opacity:.75">of ${total} members paid</span>
+      <span style="white-space:nowrap">
+        <span style="font-size:24px; font-weight:800; line-height:1">${paid.toLocaleString()}</span>
+        <span style="font-size:14px; font-weight:600; opacity:.8"> member${paid === 1 ? '' : 's'} paid</span>
       </span>
-      <span style="flex:1; min-width:120px; max-width:320px; height:9px; background:#d1fae5; border-radius:999px; overflow:hidden">
-        <span style="display:block; width:${pct}%; height:100%; background:#059669"></span>
+      <span style="white-space:nowrap">
+        <span style="font-size:24px; font-weight:800; line-height:1">${money}</span>
+        <span style="font-size:14px; font-weight:600; opacity:.8"> collected</span>
       </span>
-      <span style="font-size:15px; font-weight:700; white-space:nowrap">${money(dues.collected_cents)} in</span>
-      ${done
-        ? '<span style="font-size:13px; font-weight:600">everyone has paid</span>'
-        : `<span style="font-size:13px; opacity:.85; white-space:nowrap">${dues.outstanding} still owing${
-            Number(dues.outstanding_cents) > 0 ? ` · ${money(dues.outstanding_cents)}` : ''}</span>`}
     `;
     (after && after.parentNode)
       ? after.parentNode.insertBefore(el, after)

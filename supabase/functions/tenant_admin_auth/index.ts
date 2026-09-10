@@ -601,39 +601,38 @@ Deno.serve(async (req) => {
     const cap = await getHouseholdCapStatus(sb, payload.tid, tenant.plan);
     const usage = capStatusToJson(cap);
 
-    // ── Dues progress ────────────────────────────────────────────────
-    // The number a board actually opens its meeting with. Everything else on
-    // an admin page is administration; this is the season.
+    // ── Dues collected ───────────────────────────────────────────────
+    // Two numbers: how many have paid, and how much is in. Nothing else.
     //
-    // Money is derived from each paid household's tier price rather than from
-    // a payments table, because there isn't one — dues arrive by card, Venmo,
-    // check and cash, and the only thing all four update is the flag on the
-    // household. So it is what the club has BOOKED, not what has cleared a
-    // bank, and the wording says so.
+    // No denominator on purpose. "118 of 150" invites the question of what
+    // 150 is — active households? including the family that moved away in
+    // March? the ones mid-application? — and every answer is arguable, which
+    // makes the headline number arguable too. How many have paid is not.
+    //
+    // Paid means confirmed by either route: a Stripe charge that cleared, or
+    // a Venmo, check or cash payment the treasurer ticked off. Both set the
+    // same flag, so neither is favored.
+    //
+    // The money is derived from each paid household's tier price, because
+    // there is no payments table to sum — dues arrive four different ways and
+    // the only thing all four update is that flag. So it is what the club has
+    // booked, not what has cleared a bank.
     try {
       const { data: hh } = await sb.from('households')
-        .select('tier, dues_paid_for_year')
-        .eq('tenant_id', payload.tid).eq('active', true);
+        .select('tier')
+        .eq('tenant_id', payload.tid).eq('active', true).eq('dues_paid_for_year', true);
       const tiers = (settingsValue.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
       const priceOf = (slug: string | null | undefined) => {
         const t = tiers.find(x => x.slug === slug) ?? tiers[0];
         return Number(t?.price_cents ?? 0) || 0;
       };
       const rows = hh ?? [];
-      const paid = rows.filter(r => r.dues_paid_for_year);
-      const collected = paid.reduce((n, r) => n + priceOf(r.tier as string), 0);
-      const outstanding = rows.filter(r => !r.dues_paid_for_year)
-        .reduce((n, r) => n + priceOf(r.tier as string), 0);
       (usage as Record<string, unknown>).dues = {
-        paid: paid.length,
-        total: rows.length,
-        outstanding: rows.length - paid.length,
-        collected_cents: collected,
-        outstanding_cents: outstanding,
-        percent: rows.length ? Math.round((paid.length / rows.length) * 100) : 0,
+        paid: rows.length,
+        collected_cents: rows.reduce((n, r) => n + priceOf(r.tier as string), 0),
       };
     } catch (e) {
-      console.error('dues progress for ticker (non-fatal):', (e as Error).message);
+      console.error('dues total for ticker (non-fatal):', (e as Error).message);
     }
 
     // Texts left, on every admin page. A club that discovers its allowance is
