@@ -23,17 +23,18 @@ const here   = dirname(fileURLToPath(import.meta.url));
 const shared = join(here, '..', 'supabase', 'functions', '_shared');
 
 const work = mkdtempSync(join(tmpdir(), 'poolside-fees-'));
-for (const f of ['fees.ts', 'fee_attribution.ts']) copyFileSync(join(shared, f), join(work, f));
+for (const f of ['fees.ts', 'fee_attribution.ts', 'referral_cap.ts']) copyFileSync(join(shared, f), join(work, f));
 execFileSync('npx', ['--yes', '-p', 'typescript@5.6.3', 'tsc',
-  join(work, 'fees.ts'), join(work, 'fee_attribution.ts'),
+  join(work, 'fees.ts'), join(work, 'fee_attribution.ts'), join(work, 'referral_cap.ts'),
   '--target', 'es2022', '--module', 'esnext', '--outDir', join(work, 'out'), '--skipLibCheck'],
   { stdio: 'pipe' });
-for (const f of ['fees', 'fee_attribution']) renameSync(join(work, 'out', `${f}.js`), join(work, 'out', `${f}.mjs`));
+for (const f of ['fees', 'fee_attribution', 'referral_cap']) renameSync(join(work, 'out', `${f}.js`), join(work, 'out', `${f}.mjs`));
 
 const {
   FEES_NORMAL, platformFeeCents, planFeeSchedule, planFeeTotal, feePolicyFromTenant,
 } = await import(pathToFileURL(join(work, 'out', 'fees.mjs')).href);
 const { attributeFee, emptyBuckets } = await import(pathToFileURL(join(work, 'out', 'fee_attribution.mjs')).href);
+const { capState, grantableReward } = await import(pathToFileURL(join(work, 'out', 'referral_cap.mjs')).href);
 
 let pass = 0, fail = 0;
 const t = (name, got, want) => {
@@ -146,6 +147,36 @@ console.log('— attribution is by connected account, not metadata —');
   t('uses fee.account', a.account, 'acct_XYZ');
 }
 t('empty bucket set starts at zero', Object.values(emptyBuckets()).every(v => v === 0), true);
+
+// ── referral rewards never exceed the member's own membership ───────────
+const DUES = 60000, REWARD = 10000;
+
+console.log('— earning toward a free season —');
+t('nothing earned yet',      capState(DUES, 0).remaining_cents, DUES);
+t('after two referrals',     capState(DUES, 20000).remaining_cents, 40000);
+t('full reward while there is room', grantableReward(capState(DUES, 20000), REWARD), REWARD);
+t('five referrals = $500 in', capState(DUES, 50000).remaining_cents, 10000);
+t('the sixth makes it free',  grantableReward(capState(DUES, 50000), REWARD), REWARD);
+
+console.log('— and never a penny past it —');
+t('at the cap, grants nothing',   grantableReward(capState(DUES, DUES), REWARD), 0);
+t('somehow over, still nothing',  grantableReward(capState(DUES, 99999), REWARD), 0);
+t('remaining never negative',     capState(DUES, 99999).remaining_cents, 0);
+
+console.log('— partial, so a good referrer is not punished —');
+t('$50 of room grants $50', grantableReward(capState(DUES, 55000), REWARD), 5000);
+t('$1 of room grants $1',   grantableReward(capState(DUES, 59900), REWARD), 100);
+{
+  // Six $100 rewards against $600 of dues: exactly covered, never over.
+  let awarded = 0;
+  for (let i = 0; i < 10; i++) awarded += grantableReward(capState(DUES, awarded), REWARD);
+  t('ten referrals still only cover the membership', awarded, DUES);
+}
+
+console.log('— a club with no priced tiers —');
+t('is uncapped rather than blocked', capState(0, 0).uncapped, true);
+t('and still pays the reward',       grantableReward(capState(0, 0), REWARD), REWARD);
+t('a cheaper membership caps lower', capState(40000, 40000).remaining_cents, 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

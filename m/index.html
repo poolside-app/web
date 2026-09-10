@@ -370,6 +370,18 @@
         </div>
       </div>
 
+      <!-- Progress toward a free season. Hidden when the club has no priced
+           tiers, since there is then nothing to measure against. -->
+      <div id="refer-cap" style="display:none;margin:0 0 14px;padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-weight:700;color:#065f46;font-size:14px" id="refer-cap-headline"></span>
+          <span style="font-size:12px;color:#047857" id="refer-cap-sub"></span>
+        </div>
+        <div style="height:8px;background:#d1fae5;border-radius:999px;overflow:hidden;margin-top:8px">
+          <div id="refer-cap-bar" style="height:100%;width:0%;background:#059669"></div>
+        </div>
+      </div>
+
       <!-- Reward-ready prompt -->
       <div id="refer-claim-row" style="display:none;padding:14px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #fcd34d;border-radius:12px;margin-bottom:14px">
         <div style="font-weight:700;color:#7c2d12;margin-bottom:6px">🎉 You earned a $100 reward!</div>
@@ -1213,6 +1225,26 @@ function renderReferModal() {
   document.getElementById('rs-invites').textContent = r.stats.total_invites;
   document.getElementById('rs-verified').textContent = r.stats.verified_unclaimed + r.stats.rewarded;
   document.getElementById('rs-earned').textContent = '$' + Math.round((r.stats.total_earned_cents || 0) / 100);
+
+  // Progress toward a free season. The motivating number is how close they
+  // are to covering their own dues, not how many people they have invited.
+  const capBox = document.getElementById('refer-cap');
+  const cap = r.cap;
+  if (cap && !cap.uncapped && Number(cap.dues_cents) > 0) {
+    const dues = Number(cap.dues_cents), got = Number(cap.awarded_cents) || 0;
+    const pct = Math.max(0, Math.min(100, Math.round((got / dues) * 100)));
+    const done = got >= dues;
+    document.getElementById('refer-cap-headline').textContent = done
+      ? 'Your membership is fully covered'
+      : `$${Math.round(got/100)} of $${Math.round(dues/100)} earned toward next season`;
+    document.getElementById('refer-cap-sub').textContent = done
+      ? 'The most we can credit is the price of your membership'
+      : `$${Math.round((dues - got)/100)} to go for a free membership`;
+    document.getElementById('refer-cap-bar').style.width = pct + '%';
+    capBox.style.display = '';
+  } else {
+    capBox.style.display = 'none';
+  }
 
   document.getElementById('refer-url').value = r.share_url || '';
 

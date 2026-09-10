@@ -31,6 +31,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { capState, grantableReward } from '../_shared/referral_cap.ts';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -80,6 +81,58 @@ function normalizeEmail(s: string | null | undefined): string | null {
 // or prior member of this tenant. Match on email + phone (separately — either
 // hit means "this person was here before"). Address/family-name fuzzy match
 // would catch more but introduces false positives — skip for v1.
+// ── The cap ────────────────────────────────────────────────────────────
+// A member can earn up to the price of their own membership and no further.
+// Refer enough neighbors and your season is free; refer more and the club
+// does not start owing you money.
+//
+// Counted from the referrals table rather than households.referral_credits_
+// cents, which only records the "discount next year" choice. The refund
+// choice creates a task for the treasurer and touches no column — so a member
+// alternating between the two would have been capped on half their rewards
+// and uncapped on the other half. The rewarded rows are the only place both
+// appear.
+async function referralCap(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  householdId: string | null,
+): Promise<{ dues_cents: number; awarded_cents: number; remaining_cents: number; uncapped: boolean }> {
+  if (!householdId) return { ...capState(0, 0), uncapped: false };
+
+  const [{ data: hh }, { data: settingsRow }] = await Promise.all([
+    sb.from('households').select('tier').eq('id', householdId).maybeSingle(),
+    sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle(),
+  ]);
+  const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
+  const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+
+  const own = tiers.find(t => t.slug === hh?.tier);
+  let dues = Number(own?.price_cents ?? 0) || 0;
+  if (!dues) {
+    // Their own tier has no price — fall back to the cheapest one the club
+    // has configured, so a missing tier does not silently uncap them.
+    const priced = tiers.map(t => Number(t.price_cents ?? 0)).filter(n => n > 0);
+    dues = priced.length ? Math.min(...priced) : 0;
+  }
+  // A club with no priced tiers at all is not collecting dues through Poolside,
+  // so "up to the price of a membership" has nothing to measure against. Let
+  // the reward through rather than blocking it on missing configuration.
+  if (!dues) return capState(0, 0);
+
+  const { data: codes } = await sb.from('referral_codes')
+    .select('id').eq('tenant_id', tenantId).eq('household_id', householdId);
+  const codeIds = (codes ?? []).map(c => c.id as string);
+  let awarded = 0;
+  if (codeIds.length) {
+    const { data: rewarded } = await sb.from('referrals')
+      .select('reward_amount_cents')
+      .eq('tenant_id', tenantId).eq('status', 'rewarded')
+      .in('referral_code_id', codeIds);
+    awarded = (rewarded ?? []).reduce((n, r) => n + (Number(r.reward_amount_cents) || 0), 0);
+  }
+  return capState(dues, awarded);
+}
+
 async function isEligibleNewMember(
   sb: ReturnType<typeof createClient>,
   tenantId: string,
@@ -281,6 +334,10 @@ Deno.serve(async (req) => {
       // /join is server-rendered by tenant_share with the club's name, photo
       // and price in the meta tags, and forwards the ref code to the form.
       share_url: tenant ? `https://${tenant.slug}.poolsideapp.com/join?ref=${rc.code}` : null,
+      // How close they are to a free season. This is the motivating number —
+      // "$400 of your $600 membership earned" is a target, where a count of
+      // referrals is only a tally.
+      cap: await referralCap(sb, tid, rc.household_id as string | null),
       tenant_display_name: tenant?.display_name || null,
       stats,
       referrals: list.map(r => ({
@@ -322,7 +379,28 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    const amount = Number(ref.reward_amount_cents || 10000);
+    const offered = Number(ref.reward_amount_cents || 10000);
+
+    // Never pay out past the price of their own membership. Refer enough
+    // neighbors and the season is free; refer more and the club does not
+    // start owing money.
+    const cap = await referralCap(sb, tid, rc.household_id as string | null);
+    const amount = grantableReward(cap, offered);
+
+    if (!cap.uncapped && amount <= 0) {
+      // Deliberately NOT marked rewarded. Dues rise between seasons, and a
+      // referral banked this year should still be claimable next year when
+      // there is room under the cap again — losing it would punish the member
+      // for referring too well.
+      return jsonResponse({
+        ok: false,
+        capped: true,
+        error: `Your membership is already fully covered — you've earned $${
+          Math.round(cap.awarded_cents / 100)} against $${Math.round(cap.dues_cents / 100)} of dues. ` +
+          `This one stays saved for next season.`,
+        cap,
+      }, 409);
+    }
 
     // Apply the reward immediately based on type chosen.
     if (rewardType === 'next_year_discount') {
@@ -352,6 +430,11 @@ Deno.serve(async (req) => {
     await sb.from('referrals').update({
       status: 'rewarded',
       reward_type: rewardType,
+      // The GRANTED amount, not the offered one. A partial award — the last
+      // referral before the cap, worth $50 of a $100 reward — has to be
+      // written back, or the next cap calculation counts the full $100 and
+      // under-credits them from then on.
+      reward_amount_cents: amount,
       reward_chosen_at: now,
       reward_applied_at: now,
       updated_at: now,
