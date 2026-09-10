@@ -236,6 +236,12 @@ async function chargeInstallment(
     'metadata[installment_id]': installmentId,
     'metadata[tenant_id]': plan.tenant_id as string,
     'metadata[kind]': 'payment_plan_installment',
+    // Split recorded at charge time — application_fee_amount bundles the dues
+    // cut with the member's plan fee and Stripe cannot separate them later.
+    'metadata[fee_plan_cents]': String(planFee),
+    'metadata[fee_dues_cents]': String(policy.waived
+      ? 0
+      : platformFeeCents(installment.amount_cents as number, 'dues', policy)),
     application_fee_amount: policy.waived
       ? 0
       : platformFeeCents(installment.amount_cents as number, 'dues', policy) + planFee,
@@ -935,6 +941,10 @@ Deno.serve(async (req) => {
       'metadata[kind]': 'payment_plan_reactivation',
       'metadata[plan_id]': planId,
       'metadata[tenant_id]': payload.tid,
+      'metadata[fee_plan_cents]': String(planFees),
+      'metadata[fee_dues_cents]': String(reactivationPolicy.waived
+        ? 0
+        : platformFeeCents(balance, 'dues', reactivationPolicy)),
       // Our cut on the dues portion only, plus the plan fees in full.
       application_fee_amount: String(reactivationPolicy.waived
         ? 0

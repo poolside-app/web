@@ -19,19 +19,21 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src  = join(here, '..', 'supabase', 'functions', '_shared', 'fees.ts');
+const here   = dirname(fileURLToPath(import.meta.url));
+const shared = join(here, '..', 'supabase', 'functions', '_shared');
 
 const work = mkdtempSync(join(tmpdir(), 'poolside-fees-'));
-copyFileSync(src, join(work, 'fees.ts'));
-execFileSync('npx', ['--yes', '-p', 'typescript@5.6.3', 'tsc', join(work, 'fees.ts'),
+for (const f of ['fees.ts', 'fee_attribution.ts']) copyFileSync(join(shared, f), join(work, f));
+execFileSync('npx', ['--yes', '-p', 'typescript@5.6.3', 'tsc',
+  join(work, 'fees.ts'), join(work, 'fee_attribution.ts'),
   '--target', 'es2022', '--module', 'esnext', '--outDir', join(work, 'out'), '--skipLibCheck'],
   { stdio: 'pipe' });
-renameSync(join(work, 'out', 'fees.js'), join(work, 'out', 'fees.mjs'));
+for (const f of ['fees', 'fee_attribution']) renameSync(join(work, 'out', `${f}.js`), join(work, 'out', `${f}.mjs`));
 
 const {
   FEES_NORMAL, platformFeeCents, planFeeSchedule, planFeeTotal, feePolicyFromTenant,
 } = await import(pathToFileURL(join(work, 'out', 'fees.mjs')).href);
+const { attributeFee, emptyBuckets } = await import(pathToFileURL(join(work, 'out', 'fee_attribution.mjs')).href);
 
 let pass = 0, fail = 0;
 const t = (name, got, want) => {
@@ -73,6 +75,77 @@ for (const [name, fn] of [
   try { fn(); fail++; console.log(`  FAIL ${name} returned instead of throwing`); }
   catch { pass++; console.log(`  ok   ${name} throws`); }
 }
+
+// ── attribution: turning a Stripe Application Fee into "earned, on what" ──
+const fee = (o) => ({ account: 'acct_1', amount: 0, amount_refunded: 0, ...o });
+const charge = (metadata) => ({ metadata });
+
+console.log('— reading one Stripe application fee —');
+{
+  const a = attributeFee(fee({ amount: 600, charge: charge({ kind: 'application' }) }));
+  t('dues charge -> dues bucket', [a.bucket, a.bucketCents, a.planFeeCents], ['dues', 600, 0]);
+}
+{
+  const a = attributeFee(fee({ amount: 180, charge: charge({ kind: 'program_booking' }) }));
+  t('program -> programs bucket', [a.bucket, a.bucketCents], ['programs', 180]);
+}
+{
+  const a = attributeFee(fee({ amount: 500, charge: charge({ kind: 'party_booking' }) }));
+  t('party -> parties bucket', a.bucket, 'parties');
+}
+{
+  // pre-2026-09-09 charges put `kind` on the Session, which never reaches the Charge
+  const a = attributeFee(fee({ amount: 900, charge: charge({}) }));
+  t('no kind -> uncategorized, not dues', [a.bucket, a.bucketCents], ['uncategorized', 900]);
+}
+{
+  const a = attributeFee(fee({ amount: 900, charge: null }));
+  t('no charge at all -> uncategorized', a.bucket, 'uncategorized');
+}
+
+console.log('— refunds come off, never counted as revenue —');
+{
+  const a = attributeFee(fee({ amount: 600, amount_refunded: 600, charge: charge({ kind: 'application' }) }));
+  t('fully refunded -> nothing kept', [a.netCents, a.bucketCents], [0, 0]);
+}
+{
+  const a = attributeFee(fee({ amount: 600, amount_refunded: 150, charge: charge({ kind: 'application' }) }));
+  t('partially refunded -> net only', [a.netCents, a.bucketCents], [450, 450]);
+}
+{
+  const a = attributeFee(fee({ amount: 600, amount_refunded: 999, charge: charge({ kind: 'application' }) }));
+  t('over-refund cannot go negative', a.netCents, 0);
+}
+
+console.log('— the plan fee is split back out of the bundled amount —');
+{
+  // $600 dues on a 4-payment plan: 1% = $6 dues cut + $16 plan fee = $22 total
+  const a = attributeFee(fee({ amount: 2200, charge: charge({ kind: 'payment_plan_first', fee_plan_cents: '1600' }) }));
+  t('unrefunded split', [a.bucket, a.bucketCents, a.planFeeCents], ['dues', 600, 1600]);
+  t('split sums to net', a.bucketCents + a.planFeeCents, a.netCents);
+}
+{
+  // half refunded: we keep half of each portion, and neither may go negative
+  const a = attributeFee(fee({ amount: 2200, amount_refunded: 1100, charge: charge({ kind: 'payment_plan_first', fee_plan_cents: '1600' }) }));
+  t('half-refunded split', [a.bucketCents, a.planFeeCents], [300, 800]);
+  t('still sums to net', a.bucketCents + a.planFeeCents, a.netCents);
+}
+{
+  // a plan fee larger than the fee itself must not push dues negative
+  const a = attributeFee(fee({ amount: 400, charge: charge({ kind: 'payment_plan_installment', fee_plan_cents: '99999' }) }));
+  t('over-large plan fee clamps', [a.bucketCents >= 0, a.bucketCents + a.planFeeCents], [true, a.netCents]);
+}
+{
+  const a = attributeFee(fee({ amount: 0, amount_refunded: 0, charge: charge({ kind: 'application', fee_plan_cents: '0' }) }));
+  t('a waived club contributes zero', [a.netCents, a.bucketCents, a.planFeeCents], [0, 0, 0]);
+}
+
+console.log('— attribution is by connected account, not metadata —');
+{
+  const a = attributeFee(fee({ account: 'acct_XYZ', amount: 100, charge: charge({ kind: 'application', tenant_id: 'wrong-on-purpose' }) }));
+  t('uses fee.account', a.account, 'acct_XYZ');
+}
+t('empty bucket set starts at zero', Object.values(emptyBuckets()).every(v => v === 0), true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

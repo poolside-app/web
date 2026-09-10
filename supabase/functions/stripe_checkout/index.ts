@@ -99,7 +99,19 @@ async function stripeCheckout(params: {
   body.append('payment_intent_data[application_fee_amount]',
     String(params.policy.waived ? 0 : platformFee));   // clamped at the boundary
   if (params.customerEmail) body.append('customer_email', params.customerEmail);
-  for (const [k, v] of Object.entries(params.metadata)) body.append(`metadata[${k}]`, v);
+  // Metadata twice, deliberately.
+  //
+  // Session metadata is what stripe_webhook reads when the session completes.
+  // But session metadata does NOT propagate to the PaymentIntent or the
+  // Charge — and the Charge is the only thing an Application Fee can be
+  // traced back to. Without `kind` on the charge, Stripe knows exactly how
+  // much we earned from each club and nothing at all about what for, and no
+  // amount of later work recovers it: the categorisation has to exist at the
+  // moment the charge is created or it never exists.
+  for (const [k, v] of Object.entries(params.metadata)) {
+    body.append(`metadata[${k}]`, v);
+    body.append(`payment_intent_data[metadata][${k}]`, v);
+  }
   if (params.saveCard) body.append('payment_intent_data[setup_future_usage]', 'off_session');
 
   try {
@@ -361,10 +373,23 @@ Deno.serve(async (req) => {
     params.append('payment_intent_data[setup_future_usage]', 'off_session');
     params.append('customer_creation', 'always');
     if (app.primary_email) params.append('customer_email', app.primary_email as string);
-    params.append('metadata[kind]', 'payment_plan_first');
-    params.append('metadata[plan_id]', planId);
-    params.append('metadata[application_id]', id);
-    params.append('metadata[tenant_id]', String(app.tenant_id));
+    // Both places, for the reason in createCheckoutSession above: the
+    // session copy is what the webhook reads, the payment_intent copy is what
+    // survives onto the Charge and makes the Application Fee categorisable.
+    for (const [k, v] of Object.entries({
+      kind: 'payment_plan_first',
+      plan_id: planId,
+      application_id: id,
+      tenant_id: String(app.tenant_id),
+      // application_fee_amount bundles our dues cut and the member's plan
+      // fee into a single number, and Stripe has no way to tell them apart
+      // afterwards. Record the split now or the breakdown is lost for good.
+      fee_plan_cents: String(feePolicy.waived ? 0 : firstPlanFee),
+      fee_dues_cents: String(Math.max(0, platformFee - (feePolicy.waived ? 0 : firstPlanFee))),
+    })) {
+      params.append(`metadata[${k}]`, v);
+      params.append(`payment_intent_data[metadata][${k}]`, v);
+    }
 
     try {
       const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
