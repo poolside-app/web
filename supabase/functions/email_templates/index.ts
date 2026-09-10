@@ -200,5 +200,73 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, subject: rendered.subject, html: rendered.html });
   }
 
+  // ── The outbox ─────────────────────────────────────────────────────────
+  // Bulk mail waiting for tomorrow's Resend allowance. This exists only
+  // because the free plan caps at 100 emails a day; on a paid plan there is
+  // no daily quota, nothing ever queues, and the UI hides itself rather than
+  // showing a board a permanently empty box it has to reason about.
+  //
+  // Tenant-scoped, but the underlying allowance is NOT: one Resend account
+  // serves every club, so a busy day at one club delays another. Said plainly
+  // in the response rather than left for someone to deduce.
+
+  if (action === 'outbox') {
+    const { data: queued } = await sb.from('email_queue')
+      .select('id, to_email, subject, category, attempts, last_error, created_at, not_before')
+      .eq('tenant_id', payload.tid).eq('status', 'queued')
+      .order('created_at', { ascending: true }).limit(200);
+
+    const { data: failed } = await sb.from('email_queue')
+      .select('id, to_email, subject, attempts, last_error, created_at')
+      .eq('tenant_id', payload.tid).eq('status', 'failed')
+      .order('created_at', { ascending: false }).limit(50);
+
+    const { count: sentCount } = await sb.from('email_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', payload.tid).eq('status', 'sent');
+
+    const { remainingToday, providerQuotaUsedToday, providerDailyLimit } =
+      await import('../_shared/email_budget.ts');
+    const quotaUsed = await providerQuotaUsedToday(sb);
+
+    // The drain rides on the 14:00 UTC daily cron.
+    const next = new Date();
+    next.setUTCHours(14, 0, 0, 0);
+    if (next.getTime() <= Date.now()) next.setUTCDate(next.getUTCDate() + 1);
+
+    return jsonResponse({
+      ok: true,
+      // Null means Resend has never sent us a quota header, which they only
+      // do on the free plan — so there is no daily ceiling to worry about.
+      quota_limited: quotaUsed !== null,
+      quota_used: quotaUsed,
+      quota_limit: quotaUsed !== null ? providerDailyLimit() : null,
+      remaining_today: await remainingToday(sb),
+      next_send_at: next.toISOString(),
+      queued: queued ?? [],
+      failed: failed ?? [],
+      sent_total: sentCount ?? 0,
+    });
+  }
+
+  if (action === 'outbox_send_now') {
+    // Sends what today's allowance still permits, this club's queue only.
+    // Everyone shares the allowance, so this can take headroom from another
+    // club — fine at this size, worth revisiting at twenty.
+    const { drainEmailQueue } = await import('../_shared/email_budget.ts');
+    const r = await drainEmailQueue(sb, { tenantId: payload.tid });
+    return jsonResponse({ ok: true, ...r });
+  }
+
+  if (action === 'outbox_cancel') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { error } = await sb.from('email_queue')
+      .update({ status: 'cancelled' })
+      .eq('id', id).eq('tenant_id', payload.tid).eq('status', 'queued');
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

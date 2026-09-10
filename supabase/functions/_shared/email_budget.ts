@@ -168,7 +168,7 @@ export async function enqueueEmails(
  */
 export async function drainEmailQueue(
   sb: SupabaseClient,
-  opts: { max?: number } = {},
+  opts: { max?: number; tenantId?: string } = {},
 ): Promise<{ sent: number; failed: number; remaining_budget: number; still_queued: number }> {
   const { sendEmail } = await import('./send_email.ts');
   const budget = Math.min(await remainingToday(sb), opts.max ?? Number.MAX_SAFE_INTEGER);
@@ -176,10 +176,14 @@ export async function drainEmailQueue(
 
   if (budget > 0) {
     const nowIso = new Date().toISOString();
-    const { data: batch } = await sb.from('email_queue')
+    let q = sb.from('email_queue')
       .select('id, tenant_id, to_email, subject, html, reply_to, category, attempts')
       .eq('status', 'queued')
-      .or(`not_before.is.null,not_before.lte.${nowIso}`)
+      .or(`not_before.is.null,not_before.lte.${nowIso}`);
+    // The cron drains everything; a club pressing "send now" drains only its
+    // own, so one club cannot flush another's queue.
+    if (opts.tenantId) q = q.eq('tenant_id', opts.tenantId);
+    const { data: batch } = await q
       .order('created_at', { ascending: true })
       .limit(budget);
 
@@ -234,8 +238,9 @@ export async function drainEmailQueue(
     }
   }
 
-  const { count } = await sb.from('email_queue')
-    .select('id', { count: 'exact', head: true }).eq('status', 'queued');
+  let stillQ = sb.from('email_queue').select('id', { count: 'exact', head: true }).eq('status', 'queued');
+  if (opts.tenantId) stillQ = stillQ.eq('tenant_id', opts.tenantId);
+  const { count } = await stillQ;
 
   return {
     sent,

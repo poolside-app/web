@@ -140,6 +140,13 @@
     <p style="margin:0;color:var(--muted);font-size:13px">Customize the auto-emails Poolside sends. Each one falls back to a sensible default until you edit it.</p>
   </div>
 
+  <!-- Hidden unless there is genuinely something to say. On a paid Resend
+       plan there is no daily quota, nothing ever queues, and a board should
+       not be shown an empty box it has to work out the meaning of. -->
+  <div class="card" id="outbox-card" style="display:none;margin-bottom:16px">
+    <div id="outbox"></div>
+  </div>
+
   <div class="layout">
     <div class="card list" id="template-list">
       <div class="empty-state">Loading…</div>
@@ -536,6 +543,110 @@ function selectTemplate(key) {
   renderEditor();
 }
 
+// ── Outbox ─────────────────────────────────────────────────────────────
+// Bulk mail waiting for tomorrow's send allowance. Only relevant on Resend's
+// free plan, which caps at 100 emails a day; the card hides itself otherwise.
+async function loadOutbox() {
+  const card = document.getElementById('outbox-card');
+  const host = document.getElementById('outbox');
+  if (!card || !host) return;
+  let d;
+  try {
+    const res = await fetch(TPL_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'outbox' }),
+    });
+    d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'Failed');
+  } catch (_) {
+    card.style.display = 'none';       // never let this break the page
+    return;
+  }
+
+  const nothingToSay = !d.quota_limited && !d.queued.length && !d.failed.length;
+  if (nothingToSay) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const when = new Date(d.next_send_at);
+  const whenTxt = when.toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+  const esc = escapeHtml;
+
+  const queuedList = d.queued.length ? `
+    <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      ${d.queued.slice(0, 100).map(q => `
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap">
+          <span style="flex:1;min-width:160px"><b>${esc(q.to_email)}</b><br><span style="color:var(--muted);font-size:12px">${esc(q.subject)}</span></span>
+          <button class="btn" style="font-size:12px;padding:4px 10px" onclick="cancelQueued('${esc(q.id)}')">Cancel</button>
+        </div>`).join('')}
+      ${d.queued.length > 100 ? `<div style="padding:9px 12px;color:var(--muted);font-size:12px">…and ${d.queued.length - 100} more</div>` : ''}
+    </div>` : '';
+
+  // Failures are the ones that matter most: these were never delivered and
+  // never will be without someone looking at them.
+  const failedList = d.failed.length ? `
+    <div style="margin-top:14px;padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px">
+      <div style="font-weight:700;color:#7f1d1d;font-size:13px">${d.failed.length} gave up after repeated failures</div>
+      <div style="font-size:12.5px;color:#7f1d1d;line-height:1.6;margin-top:6px">
+        These were never delivered. Usually a bad address.
+      </div>
+      <div style="margin-top:8px;font-size:12.5px;color:#7f1d1d">
+        ${d.failed.slice(0, 20).map(f => `<div>${esc(f.to_email)} — ${esc(f.last_error || 'unknown')}</div>`).join('')}
+      </div>
+    </div>` : '';
+
+  host.innerHTML = `
+    <h2 style="margin:0 0 4px;font-size:17px">📤 Waiting to send</h2>
+    ${d.queued.length ? `
+      <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.55">
+        <b>${d.queued.length}</b> email${d.queued.length === 1 ? '' : 's'} still to go out. The next batch sends <b>${esc(whenTxt)}</b>, or press the button below to send what today's allowance still allows.
+        ${d.quota_limited ? `<br>Poolside can send ${d.remaining_today} more today (${d.quota_used} of ${d.quota_limit} used).` : ''}
+      </p>
+      <div style="margin-top:10px">
+        <button class="btn btn-primary" id="outbox-now" onclick="sendOutboxNow()">Send what fits now</button>
+        <span id="outbox-msg" style="margin-left:10px;font-size:13px;color:var(--green)"></span>
+      </div>
+      ${queuedList}
+    ` : `
+      <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.55">
+        Nothing waiting. Big sends are spread across days when they exceed the daily limit${d.quota_limited ? ` — ${d.remaining_today} of ${d.quota_limit} left today` : ''}.
+      </p>
+    `}
+    ${failedList}
+  `;
+}
+
+async function sendOutboxNow() {
+  const btn = document.getElementById('outbox-now');
+  const msg = document.getElementById('outbox-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const res = await fetch(TPL_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'outbox_send_now' }),
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'Failed');
+    if (msg) msg.textContent = `Sent ${d.sent}${d.still_queued ? `, ${d.still_queued} still waiting` : ''}.`;
+  } catch (e) {
+    if (msg) { msg.style.color = 'var(--red)'; msg.textContent = e.message; }
+  }
+  setTimeout(loadOutbox, 900);
+}
+
+async function cancelQueued(id) {
+  if (!confirm('Cancel this email? It will never be sent.')) return;
+  try {
+    await fetch(TPL_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
+      body: JSON.stringify({ action: 'outbox_cancel', id }),
+    });
+  } catch (_) { /* reload will show the truth either way */ }
+  loadOutbox();
+}
+
 async function loadTemplates() {
   try {
     const r = await api('list');
@@ -580,6 +691,7 @@ window.addEventListener('hashchange', applyDeepLink);
   document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
   if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   await loadTemplates();
+  loadOutbox();   // independent — a Stripe/Resend hiccup must not block the page
   applyDeepLink();
 })();
 </script>
