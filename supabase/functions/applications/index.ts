@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
     const slug = String(body.slug ?? '').trim().toLowerCase();
     if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
     const { data: tenant } = await sb.from('tenants')
-      .select('id, status, plan').eq('slug', slug).maybeSingle();
+      .select('id, slug, display_name, status, plan').eq('slug', slug).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
     if (tenant.status === 'churned' || tenant.status === 'suspended') {
       return jsonResponse({ ok: false, error: 'This club isn\'t accepting applications right now' }, 403);

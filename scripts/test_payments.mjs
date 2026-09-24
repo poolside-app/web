@@ -128,6 +128,11 @@ if (check('card: application submitted', card.ok && card.application_id, JSON.st
 // ── Venmo ───────────────────────────────────────────────────────────────
 console.log('\nVenmo (simulate button)');
 const venmo = await fn('applications', application('venmo', 'venmo'));
+// The "application received" email is built from the same club record as this
+// response, so a blank name or slug here means a blank name and a dead link there.
+check('venmo: submit knows the club name and web address',
+  venmo.tenant_slug === SLUG && !!venmo.tenant_display_name,
+  `tenant_slug=${venmo.tenant_slug} tenant_display_name=${venmo.tenant_display_name}`);
 if (check('venmo: application submitted', venmo.ok && venmo.application_id, JSON.stringify(venmo).slice(0, 160))) {
   const sim = await fn('applications', { action: 'simulate_venmo_paid', id: venmo.application_id });
   check('venmo: simulated payment accepted', sim.ok === true, JSON.stringify(sim).slice(0, 160));
