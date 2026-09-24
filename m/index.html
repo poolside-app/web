@@ -1778,6 +1778,7 @@ function renderGateDisabled(reason) {
     member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'Ask the board to enable keyfob access for you.' },
     household_inactive:     { line1: 'Your household isn\'t active', line2: 'Reach out to the board.' },
     dues_unpaid:            { line1: 'Pay your dues to unlock the gate', line2: 'Once your dues clear, the unlock button enables automatically.' },
+    gate_offline:           { line1: 'Remote unlock is offline right now', line2: 'The pool\'s gate connection is down. Use your keyfob, or check back later — the button comes back on its own.' },
   };
   const m = messages[reason] || { line1: 'Gate access not available', line2: 'Talk to the board for help.' };
   document.getElementById('gate-card-body').innerHTML = `

@@ -24,6 +24,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { bridgeOnline } from '../_shared/bridge_health.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -59,7 +60,7 @@ async function checkEligibility(
   payload: MemberPayload,
 ): Promise<{ can_unlock: boolean; reason: string; tenant_active: boolean }> {
   const [{ data: panel }, { data: member }] = await Promise.all([
-    sb.from('gate_panels').select('status').eq('tenant_id', payload.tid).maybeSingle(),
+    sb.from('gate_panels').select('status, bridge_last_seen_at').eq('tenant_id', payload.tid).maybeSingle(),
     sb.from('household_members').select('id, active, can_unlock_gate, household_id').eq('id', payload.sub).maybeSingle(),
   ]);
   const tenantActive = panel?.status === 'active';
@@ -72,6 +73,10 @@ async function checkEligibility(
     .eq('id', member.household_id).maybeSingle();
   if (!hh?.active)               return { can_unlock: false, reason: 'household_inactive', tenant_active: true };
   if (!hh?.dues_paid_for_year)   return { can_unlock: false, reason: 'dues_unpaid', tenant_active: true };
+  // Checked last, so a member who also owes dues is told about the dues.
+  if (!bridgeOnline(panel?.bridge_last_seen_at as string | null)) {
+    return { can_unlock: false, reason: 'gate_offline', tenant_active: true };
+  }
 
   return { can_unlock: true, reason: 'ok', tenant_active: true };
 }
@@ -106,6 +111,7 @@ Deno.serve(async (req) => {
         member_not_authorized:   'Your account isn\'t allowed to unlock the gate. Ask the board to enable it.',
         household_inactive:      'Your household is no longer active.',
         dues_unpaid:             'Your dues are unpaid for this season — pay first to enable gate access.',
+        gate_offline:            'Remote unlock is offline right now. Use your keyfob, or call the front desk.',
       };
       return jsonResponse({
         ok: false,
