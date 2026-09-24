@@ -883,13 +883,6 @@ function showField(input, msg) {
   }
 }
 
-// Stripe-not-yet hint
-document.addEventListener('change', (e) => {
-  if (e.target.name !== 'payment_method') return;
-  const hint = document.getElementById('stripe-hint');
-  if (hint) hint.style.display = e.target.value === 'stripe' ? 'block' : 'none';
-});
-
 // Collect adults / children from the dynamic builder
 function collectAdults() {
   const out = [];
