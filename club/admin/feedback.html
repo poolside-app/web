@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Feedback — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -150,6 +151,7 @@ async function loadMe() {
     });
     const me = await res.json();
     if (me.ok && me.user) document.getElementById('whoami').textContent = me.user.name || me.user.email || 'Admin';
+    if (me.tenant && window.PoolTime) PoolTime.setZone(me.tenant.timezone);
   } catch {}
 }
 

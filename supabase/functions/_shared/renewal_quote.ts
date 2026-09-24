@@ -13,6 +13,7 @@ import { sellingYear, renewalOpen, isPaidThrough } from './membership_year.ts';
 import { resolveRules, generateSchedule, suggestedCounts } from './payment_schedule.ts';
 
 import { planFeeTotal, planFeeSchedule, feePolicyFor } from './fees.ts';
+import { poolToday, tenantTimeZone } from './pool_time.ts';
 
 export type RenewalQuote = {
   year: number;
@@ -65,7 +66,7 @@ export async function quoteRenewal(
   let rules: unknown = null;
   let options: Array<{ count: number; installments: unknown[] }> = [];
   if (plansEnabled && duesCents > 0) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = poolToday(await tenantTimeZone(sb, tenantId));
     const r = resolveRules(planCfg, year);
     rules = {
       milestones: r.milestones,

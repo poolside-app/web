@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Parties — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -220,18 +221,9 @@ function formatPhone(e164) {
   const m = String(e164).match(/^\+1(\d{3})(\d{3})(\d{4})$/);
   return m ? `(${m[1]})-${m[2]}-${m[3]}` : String(e164);
 }
-function toLocalInput(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function fromLocalInput(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
+// <input type="datetime-local"> holds POOL time (js/pooltime.js).
+function toLocalInput(iso) { return PoolTime.toInput(iso); }
+function fromLocalInput(v) { return PoolTime.fromInput(v); }
 
 function render(rows) {
   const list = document.getElementById('list');

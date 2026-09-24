@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Loading…</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <!-- PWA / "Add to Home Screen" wiring. /js/pwa.js sets the icon + theme
      color from branding once tenant_public lands. -->
@@ -591,7 +592,7 @@ function fmtEventTime(ev) {
   const opts = { hour: 'numeric', minute: '2-digit' };
   if (!ev.ends_at) return start.toLocaleTimeString(undefined, opts);
   const end = new Date(ev.ends_at);
-  if (start.toDateString() === end.toDateString()) {
+  if (PoolTime.dayKey(start) === PoolTime.dayKey(end)) {
     return `${start.toLocaleTimeString(undefined, opts)} – ${end.toLocaleTimeString(undefined, opts)}`;
   }
   return `${start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} → ${end.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
@@ -599,7 +600,7 @@ function fmtEventTime(ev) {
 function eventDateBadge(ev) {
   const d = new Date(ev.starts_at);
   const mo = d.toLocaleDateString(undefined, { month: 'short' });
-  const da = d.getDate();
+  const da = PoolTime.parts(d).day;
   return `<div class="ev-date"><div class="mo">${escapeHtml(mo)}</div><div class="da">${da}</div></div>`;
 }
 
@@ -893,7 +894,7 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
         ${programs.map(p => {
           const days = (p.weekdays || '').split(',').filter(Boolean).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
           const tm = (p.start_time && p.end_time) ? `${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)}` : (p.start_time ? p.start_time.slice(0,5) : '');
-          const dr = (p.start_date && p.end_date) ? `${new Date(p.start_date).toLocaleDateString()}–${new Date(p.end_date).toLocaleDateString()}` : (p.start_date ? `from ${new Date(p.start_date).toLocaleDateString()}` : '');
+          const dr = (p.start_date && p.end_date) ? `${PoolTime.fmtDay(p.start_date)}–${PoolTime.fmtDay(p.end_date)}` : (p.start_date ? `from ${PoolTime.fmtDay(p.start_date)}` : '');
           const meta = [days, tm, dr].filter(Boolean).join(' · ');
           const price = (p.price_cents || 0) ? `$${(p.price_cents/100).toFixed(2)}` : 'Free';
           return `
@@ -1071,16 +1072,16 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
   const slug = getSlugFromHostname();
   if (!slug) { renderNotFound(null); return; }
   try {
-    const __ds = new Date(); __ds.setHours(0, 0, 0, 0);
-    const __de = new Date(); __de.setHours(24, 0, 0, 0);
+    // The server works out the pool's "today" for the check-in counter.
     const res = await fetch(PUBLIC_LOOKUP, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug, day_start: __ds.toISOString(), day_end: __de.toISOString() }),
+      body: JSON.stringify({ slug }),
     });
     if (res.status === 404) { renderNotFound(slug); return; }
     const data = await res.json();
     if (!data.ok || !data.tenant) { renderNotFound(slug); return; }
+    if (window.PoolTime) PoolTime.setZone(data.tenant.timezone);
     window.__PUBLIC_PAYLOAD = data;
     renderTenant(data.tenant, data.public_settings || {}, data.posts || [], data.events || [], data.photos || [], data.documents || [], data.programs || [], data.sponsors || [], data.member_count || null);
 

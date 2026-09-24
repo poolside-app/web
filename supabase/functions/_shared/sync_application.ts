@@ -15,6 +15,7 @@ import {
   updateRowCellByAppId,
 } from './google_drive.ts';
 import { renderApplicationPdf, type ApplicationForPdf, type PolicyForPdf } from './application_pdf.ts';
+import { fmtPoolStamp, poolDate, tenantTimeZone, wallParts, zoneOrDefault } from './pool_time.ts';
 
 export type SyncResult =
   | { ok: true; pdf_id: string; spreadsheet_id: string; tab_name: string; row_index: number; skipped?: never }
@@ -31,11 +32,11 @@ export async function loadApplicationForPdf(
   applicationId: string,
 ): Promise<ApplicationForPdf | null> {
   const [tenantRes, appRes] = await Promise.all([
-    sb.from('tenants').select('id, slug, display_name').eq('id', tenantId).maybeSingle(),
+    sb.from('tenants').select('id, slug, display_name, timezone').eq('id', tenantId).maybeSingle(),
     sb.from('applications').select('*').eq('id', applicationId).eq('tenant_id', tenantId).maybeSingle(),
   ]);
   if (!tenantRes.data || !appRes.data) return null;
-  const tenant = tenantRes.data as { id: string; slug: string; display_name: string };
+  const tenant = tenantRes.data as { id: string; slug: string; display_name: string; timezone?: string };
   const app    = appRes.data    as Record<string, unknown>;
 
   const { data: policies } = await sb.from('policies')
@@ -45,7 +46,9 @@ export async function loadApplicationForPdf(
 
   const policyTitles: Record<string, string> = {};
   const waivers = (app.waivers_accepted as Record<string, boolean> | null) ?? {};
-  const acceptedAt = (app.accepted_at as string | null) ?? null;
+  const acceptedAt = app.accepted_at
+    ? fmtPoolStamp(app.accepted_at as string, zoneOrDefault(tenant.timezone))
+    : null;
   const policiesFull: PolicyForPdf[] = (policies ?? []).map(p => {
     policyTitles[p.slug as string] = p.title as string;
     return {
@@ -71,7 +74,8 @@ export async function loadApplicationForPdf(
   return {
     id: app.id as string,
     tenant_display_name: tenant.display_name,
-    submitted_at: submittedAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',
+    // Pool time, with its zone named ("Sep 23, 2026, 7:49:22 PM PDT") so it stays unambiguous.
+    submitted_at: fmtPoolStamp(submittedAt, zoneOrDefault(tenant.timezone)),
     family_name:       (app.family_name       as string) ?? '',
     primary_name:      (app.primary_name      as string | null) ?? null,
     primary_email:     (app.primary_email     as string | null) ?? null,
@@ -122,17 +126,20 @@ export async function syncApplicationToDrive(
 
   // 3) Load tenant + app for row-append fields (always need raw app columns).
   const [tenantRes, appRes] = await Promise.all([
-    sb.from('tenants').select('id, slug, display_name').eq('id', args.tenantId).maybeSingle(),
+    sb.from('tenants').select('id, slug, display_name, timezone').eq('id', args.tenantId).maybeSingle(),
     sb.from('applications').select('*').eq('id', args.applicationId).eq('tenant_id', args.tenantId).maybeSingle(),
   ]);
   if (!tenantRes.data) return { ok: false, error: 'tenant not found' };
   if (!appRes.data)    return { ok: false, error: 'application not found' };
-  const tenant = tenantRes.data as { id: string; slug: string; display_name: string };
+  const tenant = tenantRes.data as { id: string; slug: string; display_name: string; timezone?: string };
   const app    = appRes.data    as Record<string, unknown>;
 
   // 4) PDF data + bytes — reuse prebuilt if provided, otherwise build now.
+  // The board reads the Drive sheet in pool time, so it's written in pool time.
+  const tz = zoneOrDefault(tenant.timezone);
   const submittedAt = new Date(app.created_at as string);
-  const year = String(submittedAt.getUTCFullYear());
+  const submitted = wallParts(submittedAt, tz);
+  const year = String(submitted.year);
 
   let pdfData: ApplicationForPdf;
   let pdfBytes: Uint8Array;
@@ -164,13 +171,13 @@ export async function syncApplicationToDrive(
 
   // 6) Upload PDF first (so the link can be embedded in the sheet row).
   const safeFamily = (app.family_name as string ?? 'Family').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
-  const dateStr = submittedAt.toISOString().slice(0, 10);
+  const dateStr = poolDate(submittedAt, tz);
   const pdfFilename = `${safeFamily}-${dateStr}-${(app.id as string).slice(0, 8)}.pdf`;
   const pdfId = await uploadPdf(accessToken, yearFolderId, pdfFilename, pdfBytes);
 
   // 7) Append row to year tab. Order MUST match SHEET_COLUMNS in google_drive.ts.
   // Date as Sheets serial via DATE formula gives clean numberFormat rendering.
-  const dateSerial = `=DATE(${submittedAt.getUTCFullYear()},${submittedAt.getUTCMonth()+1},${submittedAt.getUTCDate()})+TIME(${submittedAt.getUTCHours()},${submittedAt.getUTCMinutes()},${submittedAt.getUTCSeconds()})`;
+  const dateSerial = `=DATE(${submitted.year},${submitted.month},${submitted.day})+TIME(${submitted.hour},${submitted.minute},${submitted.second})`;
   const waiversAccepted = (app.waivers_accepted as Record<string, boolean> | null) ?? {};
   const accCount = Object.values(waiversAccepted).filter(Boolean).length;
   const totCount = Object.keys(waiversAccepted).length;
@@ -189,7 +196,7 @@ export async function syncApplicationToDrive(
   let verifiedCell = '';
   if (app.payment_status === 'paid' && app.verified_at) {
     const v = new Date(app.verified_at as string);
-    const dShort = v.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dShort = v.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
     verifiedCell = paidByRaw === 'stripe' ? `Stripe ✓ ${dShort}` : `Manual ✓ ${dShort}`;
   }
 
@@ -273,7 +280,7 @@ export async function markVerifiedInDrive(
     if (!grant) return;
 
     const accessToken = await getAccessToken(grant.refresh_token, args.googleClientId, args.googleClientSecret);
-    const dShort = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dShort = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: await tenantTimeZone(sb, args.tenantId) });
     const verifiedString = args.method === 'stripe'
       ? `Stripe ✓ ${dShort}`
       : `Manual ✓ ${dShort}`;

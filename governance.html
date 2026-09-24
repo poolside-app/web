@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Governance — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -166,6 +167,7 @@ function getSlug() {
 
   // Header / page title
   if (pubRes.ok && pubRes.tenant) {
+    if (window.PoolTime) PoolTime.setZone(pubRes.tenant.timezone);
     document.getElementById('club-name').textContent = pubRes.tenant.display_name || slug;
     document.getElementById('page-title').textContent = `${pubRes.tenant.display_name || slug} — Governance`;
     document.title = `Governance — ${pubRes.tenant.display_name || 'Poolside'}`;
@@ -189,10 +191,10 @@ function getSlug() {
     return;
   }
   meetHost.innerHTML = meetings.map((m, idx) => {
-    const dObj = new Date(m.meeting_date + 'T00:00:00');
-    const dayMonth = dObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const year = dObj.getFullYear();
-    const fullDate = dObj.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    // meeting_date is a date, not a moment — format it without a zone shift.
+    const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
+    const year = String(m.meeting_date).slice(0, 4);
+    const fullDate = PoolTime.fmtDay(m.meeting_date, { month: 'long', day: 'numeric', year: 'numeric' });
     const attendees = (m.attendees_json || []).filter(a => a && a.name);
     const votes = (m.votes_json || []);
     const fu = (m.follow_ups_json || []).filter(f => f && f.description);
@@ -244,7 +246,7 @@ function getSlug() {
         <ul style="margin:0;padding-left:20px;line-height:1.6">
           ${fu.map(f => {
             const status = f.status === 'done' ? ' <span style="color:var(--green)">✓ done</span>' : f.status === 'cancelled' ? ' <span style="color:var(--muted)">(skipped)</span>' : '';
-            const due = f.due_date ? ` <span style="color:var(--muted)">— due ${escapeHtml(new Date(f.due_date + 'T00:00:00').toLocaleDateString())}</span>` : '';
+            const due = f.due_date ? ` <span style="color:var(--muted)">— due ${escapeHtml(PoolTime.fmtDay(f.due_date))}</span>` : '';
             const who = f.assigned_to ? ` <span style="color:var(--muted)">→ ${escapeHtml(f.assigned_to)}</span>` : '';
             return `<li>${escapeHtml(f.description)}${who}${due}${status}</li>`;
           }).join('')}

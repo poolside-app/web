@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Family — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
@@ -294,6 +295,7 @@ async function callMember(action, extra = {}, pathOverride = null) {
 
 async function loadMe() {
   const me = await callMember('me');
+  if (window.PoolTime) PoolTime.setZone(me && me.tenant && me.tenant.timezone);
   if (!me.ok) { logout(); throw new Error(me.error || 'Not signed in'); }
   if (me.refreshed_token) { try { localStorage.setItem('poolside_member_token', me.refreshed_token); } catch (_) {} }
   return me;

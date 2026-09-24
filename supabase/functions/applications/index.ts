@@ -23,6 +23,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, requireOwner } from '../_shared/auth.ts';
+import { fmtPoolDate, poolToday, tenantTimeZone, zoneOrDefault } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -284,7 +285,7 @@ Deno.serve(async (req) => {
     const slug = String(body.slug ?? '').trim().toLowerCase();
     if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
     const { data: tenant } = await sb.from('tenants')
-      .select('id, slug, display_name, status, plan').eq('slug', slug).maybeSingle();
+      .select('id, slug, display_name, status, plan, timezone').eq('slug', slug).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
     if (tenant.status === 'churned' || tenant.status === 'suspended') {
       return jsonResponse({ ok: false, error: 'This club isn\'t accepting applications right now' }, 403);
@@ -405,7 +406,7 @@ Deno.serve(async (req) => {
         .flatMap(r => r.data ?? []);
       if (appHits.length > 0) {
         const since = appHits[0].created_at
-          ? `from ${new Date(appHits[0].created_at).toLocaleDateString()}`
+          ? `from ${fmtPoolDate(appHits[0].created_at, zoneOrDefault(tenant.timezone), { dateStyle: 'medium' })}`
           : 'on file';
         return jsonResponse({
           ok: false,
@@ -713,7 +714,7 @@ Deno.serve(async (req) => {
         if (pdfBytes) {
           const { bytesToBase64 } = await import('../_shared/send_email.ts');
           const safeFamily = family_name.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
-          const dateStr = new Date().toISOString().slice(0, 10);
+          const dateStr = poolToday(zoneOrDefault(tenant.timezone));
           attachments = [{
             filename: `${safeFamily}-application-${dateStr}.pdf`,
             content: bytesToBase64(pdfBytes),
@@ -1465,7 +1466,7 @@ Deno.serve(async (req) => {
           if (pdfData) {
             const pdfBytes = await renderApplicationPdf(pdfData);
             const safeFamily = (app.family_name || 'Family').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
-            const dateStr = new Date().toISOString().slice(0, 10);
+            const dateStr = poolToday(await tenantTimeZone(sb, TID));
             welcomeAttachments = [{
               filename: `${safeFamily}-application-${dateStr}.pdf`,
               content: bytesToBase64(pdfBytes),

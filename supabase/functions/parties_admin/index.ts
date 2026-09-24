@@ -23,6 +23,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
+import { partyWhen, fmtPoolDate, zoneOrDefault } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -54,7 +55,7 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, household_id, requested_by, title, body, starts_at, ends_at, expected_guests, location, status, admin_notes, decided_at, decided_by, event_id, price_cents, payment_method, payment_status, paid_at, verified_at, verified_by, stripe_session_id, policies_accepted, accepted_at, created_at, updated_at';
+const FIELDS = 'id, tenant_id, household_id, requested_by, title, body, starts_at, ends_at, expected_guests, location, status, admin_notes, decided_at, decided_by, event_id, price_cents, payment_method, payment_status, paid_at, verified_at, verified_by, stripe_session_id, policies_accepted, accepted_at, created_at, updated_at, pool_date';
 
 function strOrNull(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -139,15 +140,12 @@ Deno.serve(async (req) => {
     // Day-block at approve time too — if another booking has already paid +
     // locked this date between request and approve, reject early instead of
     // wasting the host's time on a payment they can't complete.
-    const startsDate = new Date(bk.starts_at as string);
-    const dayKey = startsDate.toISOString().slice(0, 10);
-    const dayStart = `${dayKey}T00:00:00.000Z`;
-    const dayEnd = new Date(new Date(dayKey).getTime() + 86400_000).toISOString();
+    // pool_date is the pool's calendar day, stamped by a database trigger.
     const { data: collisions } = await sb.from('party_bookings')
       .select('id').eq('tenant_id', TID)
       .neq('id', id)
       .eq('status', 'approved').eq('payment_status', 'paid')
-      .gte('starts_at', dayStart).lt('starts_at', dayEnd)
+      .eq('pool_date', bk.pool_date)
       .limit(1);
     if (collisions && collisions.length > 0) {
       return jsonResponse({ ok: false, error: 'That day already has a confirmed party — reject this request and pick another date.' }, 409);
@@ -186,7 +184,7 @@ Deno.serve(async (req) => {
         .select('name, email').eq('id', bk.requested_by).maybeSingle();
       if (requester?.email) {
         const { renderAndSend } = await import('../_shared/email_template.ts');
-        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', TID).maybeSingle();
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug, timezone').eq('id', TID).maybeSingle();
         const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
         const sv = (settings?.value as Record<string, unknown> | undefined) ?? {};
         const venmoHandle = (sv.payments as Record<string, unknown> | undefined)?.venmo_handle as string | undefined;
@@ -197,8 +195,7 @@ Deno.serve(async (req) => {
             tenant_name: tenant?.display_name || 'Your club',
             primary_name: requester.name as string,
             party_title: updated.title,
-            party_date: new Date(updated.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'full' }),
-            party_time: new Date(updated.starts_at as string).toLocaleTimeString(undefined, { timeStyle: 'short' }),
+            ...partyWhen(updated.starts_at as string, zoneOrDefault(tenant?.timezone)),
             price: updated.price_cents ? `$${(updated.price_cents / 100).toFixed(0)}` : 'see club',
             venmo_handle: venmoHandle ? String(venmoHandle).replace(/^@+/, '') : '',
             club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
@@ -214,7 +211,7 @@ Deno.serve(async (req) => {
   // ── verify_payment (Venmo: admin confirms payment landed) ────────────
   // Flips party to confirmed: marks paid, materializes the calendar event,
   // closes the venmo-claim task. The unique partial index on (tenant_id,
-  // starts_at::date) where status=approved and payment_status=paid is the
+  // pool_date) where status=approved and payment_status=paid is the
   // last-line day-block defense — if a race lets two parties get to this
   // step on the same day, the second insert here errors cleanly.
   if (action === 'verify_payment') {
@@ -235,15 +232,12 @@ Deno.serve(async (req) => {
     }
 
     // Day-block at confirm time — last chance to catch a race.
-    const startsDate = new Date(bk.starts_at as string);
-    const dayKey = startsDate.toISOString().slice(0, 10);
-    const dayStart = `${dayKey}T00:00:00.000Z`;
-    const dayEnd = new Date(new Date(dayKey).getTime() + 86400_000).toISOString();
+    // pool_date is the pool's calendar day, stamped by a database trigger.
     const { data: collisions } = await sb.from('party_bookings')
       .select('id').eq('tenant_id', TID)
       .neq('id', id)
       .eq('status', 'approved').eq('payment_status', 'paid')
-      .gte('starts_at', dayStart).lt('starts_at', dayEnd)
+      .eq('pool_date', bk.pool_date)
       .limit(1);
     if (collisions && collisions.length > 0) {
       return jsonResponse({ ok: false, error: 'Another party already confirmed for that day. Cancel one before verifying this.' }, 409);
@@ -290,7 +284,7 @@ Deno.serve(async (req) => {
         .select('name, email').eq('id', bk.requested_by).maybeSingle();
       if (requester?.email) {
         const { renderAndSend } = await import('../_shared/email_template.ts');
-        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', TID).maybeSingle();
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug, timezone').eq('id', TID).maybeSingle();
         await renderAndSend(sb, {
           tenantId: TID, templateKey: 'party_confirmed',
           to: requester.email as string,
@@ -298,8 +292,7 @@ Deno.serve(async (req) => {
             tenant_name: tenant?.display_name || 'Your club',
             primary_name: requester.name as string,
             party_title: updated.title,
-            party_date: startsDate.toLocaleDateString(undefined, { dateStyle: 'full' }),
-            party_time: startsDate.toLocaleTimeString(undefined, { timeStyle: 'short' }),
+            ...partyWhen(bk.starts_at as string, zoneOrDefault(tenant?.timezone)),
             club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
           },
         });
@@ -339,7 +332,7 @@ Deno.serve(async (req) => {
         .select('name, email').eq('id', data.requested_by).maybeSingle();
       if (requester?.email) {
         const { renderAndSend } = await import('../_shared/email_template.ts');
-        const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', TID).maybeSingle();
+        const { data: tenant } = await sb.from('tenants').select('display_name, slug, timezone').eq('id', TID).maybeSingle();
         await renderAndSend(sb, {
           tenantId: TID, templateKey: 'party_rejected',
           to: requester.email as string,
@@ -347,7 +340,7 @@ Deno.serve(async (req) => {
             tenant_name: tenant?.display_name || 'Your club',
             primary_name: requester.name as string,
             party_title: data.title,
-            party_date: new Date(data.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'full' }),
+            party_date: fmtPoolDate(data.starts_at as string, zoneOrDefault(tenant?.timezone)),
             admin_notes: adminNotes || 'No reason was provided. Reach out to the board if you have questions.',
             club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
           },

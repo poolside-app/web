@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Programs — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -216,8 +217,8 @@ function fmtSchedule(p) {
   const days = (p.weekdays || '').split(',').filter(Boolean).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
   const tm = (p.start_time && p.end_time) ? ` · ${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)}`
     : p.start_time ? ` · ${p.start_time.slice(0,5)}` : '';
-  const dr = (p.start_date && p.end_date) ? ` · ${new Date(p.start_date).toLocaleDateString()}–${new Date(p.end_date).toLocaleDateString()}`
-    : p.start_date ? ` · from ${new Date(p.start_date).toLocaleDateString()}` : '';
+  const dr = (p.start_date && p.end_date) ? ` · ${PoolTime.fmtDay(p.start_date)}–${PoolTime.fmtDay(p.end_date)}`
+    : p.start_date ? ` · from ${PoolTime.fmtDay(p.start_date)}` : '';
   return (days || '—') + tm + dr;
 }
 function fmtPrice(c) { if (!c) return 'Free'; return '$' + (c / 100).toFixed(2); }

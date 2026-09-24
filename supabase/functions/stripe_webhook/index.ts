@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { partyWhen, tenantTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -415,17 +416,15 @@ Deno.serve(async (req) => {
     // Idempotent: re-deliveries hit `payment_status === 'paid'` and no-op.
     if (kind === 'party_booking' && md.party_id && tenantId) {
       const { data: party } = await sb.from('party_bookings')
-        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id')
+        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id, pool_date')
         .eq('id', md.party_id).eq('tenant_id', tenantId).maybeSingle();
       if (party && party.payment_status !== 'paid') {
         // Day-block check (in case another party paid between approve and now).
-        const dayKey = new Date(party.starts_at as string).toISOString().slice(0, 10);
-        const dayStart = `${dayKey}T00:00:00.000Z`;
-        const dayEnd = new Date(new Date(dayKey).getTime() + 86400_000).toISOString();
+        // pool_date is the pool's calendar day, stamped by a database trigger.
         const { data: collisions } = await sb.from('party_bookings')
           .select('id').eq('tenant_id', tenantId).neq('id', party.id)
           .eq('status', 'approved').eq('payment_status', 'paid')
-          .gte('starts_at', dayStart).lt('starts_at', dayEnd).limit(1);
+          .eq('pool_date', party.pool_date).limit(1);
         if (collisions && collisions.length > 0) {
           // Race lost: someone else's payment confirmed first. We mark this
           // payment as paid but leave the party cancelled (no calendar event).
@@ -484,7 +483,7 @@ Deno.serve(async (req) => {
             if (requester?.email) {
               const { renderAndSend } = await import('../_shared/email_template.ts');
               const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
-              const startsDate = new Date(party.starts_at as string);
+              const { party_date, party_time } = partyWhen(party.starts_at as string, await tenantTimeZone(sb, tenantId));
               await renderAndSend(sb, {
                 tenantId, templateKey: 'party_confirmed',
                 to: requester.email as string,
@@ -492,8 +491,8 @@ Deno.serve(async (req) => {
                   tenant_name: tenant?.display_name || 'Your club',
                   primary_name: requester.name as string,
                   party_title: party.title as string,
-                  party_date: startsDate.toLocaleDateString(undefined, { dateStyle: 'full' }),
-                  party_time: startsDate.toLocaleTimeString(undefined, { timeStyle: 'short' }),
+                  party_date,
+                  party_time,
                   club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
                 },
               });

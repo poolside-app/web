@@ -459,6 +459,8 @@
 
   function apply(features, user, tenant, usage) {
     features = features || {};
+    // Every date on the admin pages is shown in the pool's time zone.
+    if (tenant && window.PoolTime) window.PoolTime.setZone(tenant.timezone);
     if (tenant) brandHeader(tenant);
     if (usage) paintUsageTicker(usage);
     paintImpersonationBanner(user, tenant);
@@ -593,6 +595,7 @@
       }
       throw new Error(data.error || 'me returned ok=false');
     }
+    if (data.tenant && window.PoolTime) window.PoolTime.setZone(data.tenant.timezone);
     return data;
   }
 

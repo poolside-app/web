@@ -256,6 +256,7 @@ async function fakeSubmit() {
       body: JSON.stringify({
         display_name, slug, email, password, phone_e164, plan: 'free',
         admin_name: (document.getElementById('admin_name')?.value || '').trim(),
+        timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { return undefined; } })(),
         // When Google-signup, we forward the verified sub so tenant_signup
         // can link this admin to it (skip-password path on the server).
         google_sub: GOOGLE_SUB || undefined,

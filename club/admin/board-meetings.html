@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Board minutes — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -409,9 +410,9 @@ async function loadList() {
       return;
     }
     host.innerHTML = meetings.map(m => {
-      const d = new Date(m.meeting_date + 'T00:00:00');
-      const dayMonth = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      const year = d.getFullYear();
+      // meeting_date is a date, not a moment — format it without a zone shift.
+      const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
+      const year = String(m.meeting_date).slice(0, 4);
       const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Completed</span>'
                        : m.status === 'in_progress' ? '<span class="badge badge-progress">In progress</span>'
                        : '<span class="badge badge-draft">Draft</span>';

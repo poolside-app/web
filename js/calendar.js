@@ -13,6 +13,9 @@
  *
  * The widget owns its own modal — clicks on an event chip open a detail
  * popup with kind, time, location, and body.
+ *
+ * Days, "today" and repeats are the POOL's (js/pooltime.js must load first),
+ * so an 11:30 PM event sits on its own day on a phone in any time zone.
  * ============================================================================= */
 (function () {
   'use strict';
@@ -29,9 +32,9 @@
   function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
   }
-  const pad = (n) => String(n).padStart(2, '0');
-  const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-  const fmtMonth = (d) => d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const PT = window.PoolTime;
+  const dateKey = (d) => PT.dayKey(d);
+  const fmtMonth = (monthKey) => PT.fmtDay(monthKey, { month: 'long', year: 'numeric' });
   const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const fmtLong = (d) => d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -40,7 +43,7 @@
     if (ev.all_day) return 'All day';
     if (!ev.ends_at) return fmtTime(start);
     const end = new Date(ev.ends_at);
-    if (start.toDateString() === end.toDateString()) return `${fmtTime(start)} – ${fmtTime(end)}`;
+    if (PT.dayKey(start) === PT.dayKey(end)) return `${fmtTime(start)} – ${fmtTime(end)}`;
     return `${start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} → ${end.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
   }
 
@@ -90,23 +93,24 @@
   function render({ rootEl, events, openHoursLabel, onDayClick, onChipClick }) {
     if (!rootEl) return;
 
-    const cursor = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
-    const today  = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+    const todayKey = PT.todayKey();
+    let cursor = todayKey.slice(0, 8) + '01';   // first of the month on show, 'YYYY-MM-01'
 
     // Bucket events by yyyy-mm-dd, expanding 'weekly' / 'monthly'
     // recurrence forward through the recurrence_until horizon (capped at
     // ~2 years from the original start to keep things bounded).
     const byDay = new Map();
-    function addToDay(ev, dateOverride) {
-      const k = dateKey(dateOverride || new Date(ev.starts_at));
+    function addToDay(ev, instanceStart) {
+      const k = dateKey(instanceStart || new Date(ev.starts_at));
       if (!byDay.has(k)) byDay.set(k, []);
       // For recurring instances we synthesize a virtual event with adjusted dates
       // so the modal shows the right time when clicked.
-      if (dateOverride) {
-        const orig = new Date(ev.starts_at);
-        const delta = dateOverride.getTime() - new Date(orig.getFullYear(), orig.getMonth(), orig.getDate()).getTime();
-        const virt = { ...ev, starts_at: new Date(new Date(ev.starts_at).getTime() + delta).toISOString() };
-        if (ev.ends_at) virt.ends_at = new Date(new Date(ev.ends_at).getTime() + delta).toISOString();
+      if (instanceStart) {
+        const virt = { ...ev, starts_at: instanceStart.toISOString() };
+        if (ev.ends_at) {
+          const dur = new Date(ev.ends_at).getTime() - new Date(ev.starts_at).getTime();
+          virt.ends_at = new Date(instanceStart.getTime() + dur).toISOString();
+        }
         byDay.get(k).push(virt);
       } else {
         byDay.get(k).push(ev);
@@ -121,14 +125,17 @@
       const until = ev.recurrence_until ? new Date(ev.recurrence_until)
         : new Date(start.getTime() + HORIZON_MS);
       if (isNaN(until.getTime())) continue;
-      const cur = new Date(start);
-      // Step forward until we exceed `until`. Cap iterations defensively.
-      for (let i = 0; i < 600; i++) {
-        if (ev.recurrence === 'weekly') cur.setDate(cur.getDate() + 7);
-        else if (ev.recurrence === 'monthly') cur.setMonth(cur.getMonth() + 1);
+      // Repeats keep the pool's weekday and clock time, across DST changes too.
+      const sp = PT.parts(start);
+      const firstKey = PT.dayKey(start);
+      for (let i = 1; i <= 600; i++) {
+        let key;
+        if (ev.recurrence === 'weekly') key = PT.addDays(firstKey, 7 * i);
+        else if (ev.recurrence === 'monthly') key = PT.addMonths(firstKey, i);
         else break;
-        if (cur > until) break;
-        addToDay(ev, new Date(cur));
+        const inst = PT.atTime(key, sp.hour, sp.minute);
+        if (inst > until) break;
+        addToDay(ev, inst);
       }
     }
 
@@ -138,10 +145,9 @@
     const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
     function draw() {
-      const firstDay = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-      const lastDay  = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-      const start = new Date(firstDay); start.setDate(start.getDate() - start.getDay());
-      const end   = new Date(lastDay);  end.setDate(end.getDate() + (6 - end.getDay()));
+      const lastKey  = PT.addDays(PT.addMonths(cursor, 1), -1);
+      const startKey = PT.addDays(cursor, -PT.weekdayOfKey(cursor));
+      const endKey   = PT.addDays(lastKey, 6 - PT.weekdayOfKey(lastKey));
 
       let html = `
         <div class="pcal-head">
@@ -154,21 +160,18 @@
         </div>
         <div class="pcal-grid">${dows.map(d => `<div class="pcal-dow">${d}</div>`).join('')}`;
 
-      const cur = new Date(start);
-      while (cur <= end) {
-        const k = dateKey(cur);
-        const otherMonth = cur.getMonth() !== cursor.getMonth();
-        const isToday    = cur.getTime() === today.getTime();
+      for (let k = startKey; k <= endKey; k = PT.addDays(k, 1)) {
+        const otherMonth = k.slice(0, 7) !== cursor.slice(0, 7);
+        const isToday    = k === todayKey;
         const dayEvents  = byDay.get(k) || [];
         const visible    = dayEvents.slice(0, 3);
         const overflow   = dayEvents.length - visible.length;
         const hours = (!otherMonth && openHoursLabel)
           ? `<div class="pcal-hours">${escapeHtml(openHoursLabel)}</div>` : '';
-        const dayDataAttr = `${cur.getFullYear()}-${pad(cur.getMonth()+1)}-${pad(cur.getDate())}`;
         html += `
           <div class="pcal-day ${otherMonth ? 'pcal-other' : ''} ${isToday ? 'pcal-today-cell' : ''}"
-               data-day="${dayDataAttr}">
-            <div class="pcal-num">${cur.getDate()}</div>
+               data-day="${k}">
+            <div class="pcal-num">${+k.slice(8, 10)}</div>
             ${hours}
             ${visible.map(ev => {
               // Per-event color override (used by external/iCal feeds — Google
@@ -194,7 +197,6 @@
             `;}).join('')}
             ${overflow > 0 ? `<div class="pcal-more" data-k="${k}">+ ${overflow} more</div>` : ''}
           </div>`;
-        cur.setDate(cur.getDate() + 1);
       }
       html += `</div>`;
       rootEl.innerHTML = html;
@@ -202,13 +204,9 @@
       rootEl.querySelectorAll('.pcal-nav-btn').forEach(b => {
         b.addEventListener('click', () => {
           const a = b.dataset.action;
-          if (a === 'prev') cursor.setMonth(cursor.getMonth() - 1);
-          else if (a === 'next') cursor.setMonth(cursor.getMonth() + 1);
-          else if (a === 'today') {
-            cursor.setFullYear(today.getFullYear());
-            cursor.setMonth(today.getMonth());
-            cursor.setDate(1);
-          }
+          if (a === 'prev') cursor = PT.addMonths(cursor, -1);
+          else if (a === 'next') cursor = PT.addMonths(cursor, 1);
+          else if (a === 'today') cursor = todayKey.slice(0, 8) + '01';
           draw();
         });
       });

@@ -45,6 +45,7 @@ const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 // three literals in payment_plans, so a change here alone silently missed
 // every installment payment.
 import { FEE_BPS, planFeeSchedule, feePolicyFromTenant, type FeePolicy } from '../_shared/fees.ts';
+import { fmtPoolDate, poolToday, zoneOrDefault } from '../_shared/pool_time.ts';
 const FEE_BPS_DUES     = FEE_BPS.dues;
 const FEE_BPS_PROGRAMS = FEE_BPS.programs;
 const FEE_BPS_DEFAULT  = FEE_BPS.default;
@@ -232,7 +233,7 @@ Deno.serve(async (req) => {
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
 
     const { data: tenant } = await sb.from('tenants')
-      .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle();
+      .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived, timezone').eq('id', app.tenant_id).maybeSingle();
     const testMode = await paymentsTestMode(sb, app.tenant_id);
     if (!testMode && (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled)) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
@@ -321,7 +322,7 @@ Deno.serve(async (req) => {
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
 
     const { data: tenant } = await sb.from('tenants')
-      .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle();
+      .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived, timezone').eq('id', app.tenant_id).maybeSingle();
     const testMode = await paymentsTestMode(sb, app.tenant_id);
     if (!testMode && (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled)) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
@@ -343,7 +344,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Payment plans not enabled for this club' }, 400);
     }
     const cutoff = planConfig.plan_signup_cutoff_date as string | null;
-    const today = new Date().toISOString().slice(0, 10);
+    // The cutoff and the schedule start are pool dates, not UTC ones.
+    const today = poolToday(zoneOrDefault(tenant.timezone));
     if (cutoff && today > cutoff) {
       return jsonResponse({ ok: false, error: 'Payment plan signup window has closed; please pay in full' }, 400);
     }
@@ -522,7 +524,7 @@ Deno.serve(async (req) => {
   const TID = String(payload.tid);
 
   const { data: tenant } = await sb.from('tenants')
-    .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', TID).maybeSingle();
+    .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived, timezone').eq('id', TID).maybeSingle();
   const testMode = await paymentsTestMode(sb, TID);
   if (!testMode && (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled)) {
     return jsonResponse({ ok: false, error: 'Stripe isn\'t connected for this club yet' }, 400);
@@ -570,7 +572,7 @@ Deno.serve(async (req) => {
     // billing the member the gross amount, the club nets the full party fee.
     // Caller can opt to pass `gross_up: true` (default) to include both fees
     // in the displayed price; otherwise the member pays exactly amountCents.
-    const dateLabel = new Date(party.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'medium' });
+    const dateLabel = fmtPoolDate(party.starts_at as string, zoneOrDefault(tenant.timezone), { dateStyle: 'medium' });
     const session = await stripeCheckout({
       tenantStripeAccount: tenant.stripe_account_id,
       amountCents,

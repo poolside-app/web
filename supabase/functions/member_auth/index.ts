@@ -20,6 +20,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { partyWhen, fmtPoolDate, fmtPoolStamp, poolDate, poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 
@@ -505,7 +506,7 @@ Deno.serve(async (req) => {
         .select('id, name, email, phone_e164, role, household_id, can_unlock_gate, can_book_parties, directory_visible, active')
         .eq('id', payload.sub as string).maybeSingle(),
       sb.from('tenants')
-        .select('slug, display_name, status')
+        .select('slug, display_name, status, timezone')
         .eq('id', payload.tid as string).maybeSingle(),
       sb.from('households')
         .select('id, family_name, tier, fob_number, dues_paid_for_year, paid_until_year, address, city, zip, emergency_contact, active')
@@ -828,14 +829,13 @@ Deno.serve(async (req) => {
     // already locked — saves them from filling out a form for nothing.
     // Confirmed = status=approved AND payment_status=paid. Pending/unpaid
     // requests don't lock the date (board can decide which to approve).
-    const dayKey = startsDate.toISOString().slice(0, 10);  // YYYY-MM-DD UTC
-    const dayStart = `${dayKey}T00:00:00.000Z`;
-    const dayEnd = new Date(new Date(dayKey).getTime() + 86400_000).toISOString();
+    // The day is the pool's calendar day (pool_date, stamped by a trigger).
+    const tz = await tenantTimeZone(sb, payload.tid as string);
     const { data: collisions } = await sb.from('party_bookings')
       .select('id, title, starts_at')
       .eq('tenant_id', payload.tid as string)
       .eq('status', 'approved').eq('payment_status', 'paid')
-      .gte('starts_at', dayStart).lt('starts_at', dayEnd)
+      .eq('pool_date', poolDate(startsDate, tz))
       .limit(1);
     if (collisions && collisions.length > 0) {
       return jsonResponse({ ok: false, error: 'That day already has a confirmed party — pick another date.' }, 409);
@@ -872,7 +872,7 @@ Deno.serve(async (req) => {
       const { data: hh } = await sb.from('households')
         .select('family_name').eq('id', member.household_id as string).maybeSingle();
       const familyName = hh?.family_name ? `the ${hh.family_name}` : '';
-      const dateLabel = startsDate.toLocaleDateString(undefined, { dateStyle: 'medium' });
+      const dateLabel = fmtPoolDate(startsDate, tz, { dateStyle: 'medium' });
       await enqueueAdminTask(sb, {
         tenant_id: payload.tid as string,
         target_scopes: ['parties', 'operations'],
@@ -898,8 +898,7 @@ Deno.serve(async (req) => {
             tenant_name: tenant?.display_name || 'Your club',
             primary_name: member.name as string,
             party_title: title,
-            party_date: startsDate.toLocaleDateString(undefined, { dateStyle: 'full' }),
-            party_time: startsDate.toLocaleTimeString(undefined, { timeStyle: 'short' }),
+            ...partyWhen(startsDate, tz),
             club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
           },
         });
@@ -937,7 +936,7 @@ Deno.serve(async (req) => {
     if (!existing) {
       try {
         const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-        const dateLabel = new Date(party.starts_at as string).toLocaleDateString(undefined, { dateStyle: 'medium' });
+        const dateLabel = fmtPoolDate(party.starts_at as string, await tenantTimeZone(sb, party.tenant_id as string), { dateStyle: 'medium' });
         await enqueueAdminTask(sb, {
           tenant_id: party.tenant_id as string,
           target_scopes: ['parties', 'payments', 'operations'],
@@ -1124,7 +1123,8 @@ Deno.serve(async (req) => {
 
       if (tenant && household) {
         const { renderAddedMemberPdf } = await import('../_shared/household_member_pdf.ts');
-        const addedAt = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+        // Pool time with its zone named, e.g. "Sep 23, 2026, 7:49:22 PM PDT".
+        const addedAt = fmtPoolStamp(new Date(), await tenantTimeZone(sb, me.data.tenant_id));
         pdfBytes = await renderAddedMemberPdf({
           member_id: created.id,
           tenant_display_name: tenant.display_name,
@@ -1147,6 +1147,8 @@ Deno.serve(async (req) => {
           guardian_signature_data_url: (role === 'teen' || role === 'child') ? guardianSignature : null,
         });
 
+        // Filenames and the Drive year folder use the pool's date, not UTC.
+        const poolDay = poolToday(await tenantTimeZone(sb, me.data.tenant_id));
         // Email primary with PDF attached (registry-backed, admin can override).
         const { data: primary } = await sb.from('household_members')
           .select('email').eq('id', payload.sub as string).maybeSingle();
@@ -1155,7 +1157,7 @@ Deno.serve(async (req) => {
           const { renderAndSend } = await import('../_shared/email_template.ts');
           const { bytesToBase64 } = await import('../_shared/send_email.ts');
           const safeFamily = (household.family_name as string).replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
-          const dateStr = new Date().toISOString().slice(0, 10);
+          const dateStr = poolDay;
           const r = await renderAndSend(sb, {
             tenantId: me.data.tenant_id,
             templateKey: 'household_member_added',
@@ -1192,12 +1194,12 @@ Deno.serve(async (req) => {
               const accessToken = await getAccessToken(grant.refresh_token, GOOGLE_ID, GOOGLE_SEC);
               const rootId = await ensureFolder(accessToken, 'Poolside Archive', 'root', grant.root_folder_id);
               const clubId = await ensureFolder(accessToken, tenant.display_name || tenant.slug, rootId, grant.club_folder_id);
-              const year = String(new Date().getUTCFullYear());
+              const year = poolDay.slice(0, 4);
               const additionsParent = await ensureFolder(accessToken, 'Household additions', clubId, null);
               const yearFolder = await ensureFolder(accessToken, year, additionsParent, null);
               const safeFamily = (household.family_name as string).replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
               const safeMember = name.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
-              const dateStr = new Date().toISOString().slice(0, 10);
+              const dateStr = poolDay;
               const filename = `${safeFamily}-${safeMember}-${dateStr}-${created.id.slice(0, 8)}.pdf`;
               await uploadPdf(accessToken, yearFolder, filename, pdfBytes);
               // Persist any new top-level cache fields we may have minted.

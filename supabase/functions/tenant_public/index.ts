@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { poolDayBounds, validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -38,20 +39,19 @@ Deno.serve(async (req) => {
   const slug = String(body.slug ?? '').trim().toLowerCase();
   if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
 
-  // Local-day window for the "checked in today" counter (resets daily). The
-  // client passes its local midnight boundaries; fall back to UTC day if absent.
-  const dayStart = typeof body.day_start === 'string' ? body.day_start
-    : new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
-  const dayEnd = typeof body.day_end === 'string' ? body.day_end
-    : new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString();
-
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const { data: tenant } = await sb.from('tenants')
-    .select('id, slug, display_name, status, plan, custom_domain, stripe_account_id, stripe_charges_enabled')
+    .select('id, slug, display_name, status, plan, custom_domain, stripe_account_id, stripe_charges_enabled, timezone')
     .eq('slug', slug)
     .maybeSingle();
 
   if (!tenant) return jsonResponse({ ok: false, error: 'Not found' }, 404);
+
+  // The "checked in today" counter resets at the pool's midnight. Pages pass
+  // that window; older cached pages that don't still get the pool's day.
+  const poolDay = poolDayBounds(new Date(), validTimeZone(tenant.timezone) ? tenant.timezone : DEFAULT_TZ);
+  const dayStart = typeof body.day_start === 'string' ? body.day_start : poolDay.startIso;
+  const dayEnd = typeof body.day_end === 'string' ? body.day_end : poolDay.endIso;
 
   // Pull a SANITIZED slice of settings.value for public landing pages.
   // Internal flags (e.g. setup_wizard_complete) are deliberately excluded.

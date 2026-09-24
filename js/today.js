@@ -13,6 +13,8 @@
 //     weekday + time + date-range schedule.
 //   • Recurring events (weekly/monthly) and imported iCal events are expanded so
 //     they land on the right day.
+//   • "Today" is the POOL's today and every time is pool time (js/pooltime.js,
+//     which must load first), whatever zone the viewer's phone is in.
 // Usage:
 //   PoolsideToday.render({ rootEl, events, programs, publicSettings, slug,
 //                          checkinsCount, clubName });
@@ -35,8 +37,7 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function startOfDay(d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
-  function endOfDay(d) { var x = new Date(d); x.setHours(24, 0, 0, 0); return x; }
+  var PT = window.PoolTime;
 
   function fmtTimeRange(start, end, allDay) {
     if (allDay) return 'All day';
@@ -54,13 +55,13 @@
     return mm === '00' ? (h + ' ' + ap) : (h + ':' + mm + ' ' + ap);
   }
 
-  // Does this event have an occurrence on `now`'s local day? Returns the
-  // occurrence's { start, end } (Date objects, today) or null. Handles single,
+  // Does this event have an occurrence on the pool's day `todayKey`? Returns
+  // the occurrence's { start, end } (Date objects) or null. Handles single,
   // multi-day, and weekly/monthly recurrence. External feed events arrive
   // pre-expanded (no recurrence) so they're treated as single instances.
-  function occursToday(ev, now) {
+  function occursToday(ev, todayKey) {
     if (!ev || !ev.starts_at) return null;
-    var ds = startOfDay(now), de = endOfDay(now);
+    var ds = PT.startOfDay(todayKey), de = PT.endOfDay(todayKey);
     var start = new Date(ev.starts_at);
     if (isNaN(start.getTime())) return null;
     var durMs = ev.ends_at ? (new Date(ev.ends_at).getTime() - start.getTime()) : 0;
@@ -76,45 +77,45 @@
     }
 
     // Recurring: only forward from the first occurrence, up to recurrence_until.
-    if (startOfDay(start) > ds) return null;
-    var until = ev.recurrence_until ? new Date(ev.recurrence_until) : new Date(now.getFullYear() + 2, 0, 1);
-    if (until < ds) return null;
+    // Weekday, day-of-month and clock time are all read on the pool's clock.
+    if (PT.dayKey(start) > todayKey) return null;
+    if (ev.recurrence_until && new Date(ev.recurrence_until) < ds) return null;
+    var sp = PT.parts(start);
     var match = false;
-    if (ev.recurrence === 'weekly') match = (start.getDay() === now.getDay());
-    else if (ev.recurrence === 'monthly') match = (start.getDate() === now.getDate());
+    if (ev.recurrence === 'weekly') match = (sp.weekday === PT.weekdayOfKey(todayKey));
+    else if (ev.recurrence === 'monthly') match = (sp.day === +todayKey.slice(8, 10));
     if (!match) return null;
-    var occStart = new Date(now); occStart.setHours(start.getHours(), start.getMinutes(), 0, 0);
+    var occStart = PT.atTime(todayKey, sp.hour, sp.minute);
     var occEnd = ev.ends_at ? new Date(occStart.getTime() + durMs) : null;
     return { start: occStart, end: occEnd };
   }
 
-  // Program sessions (swim lessons / practice) scheduled for today.
-  function programsToday(programs, now) {
+  // Program sessions (swim lessons / practice) scheduled for the pool's today.
+  // start_date/end_date are pool dates and start_time/end_time pool clock times.
+  function programsToday(programs, todayKey) {
     var out = [];
-    var key = WEEKDAY_KEY[now.getDay()];
-    var ds = startOfDay(now), de = endOfDay(now);
+    var key = WEEKDAY_KEY[PT.weekdayOfKey(todayKey)];
     (programs || []).forEach(function (p) {
       var days = String(p.weekdays || '').toLowerCase().split(',').map(function (s) { return s.trim(); });
       if (days.indexOf(key) === -1) return;
-      if (p.start_date && startOfDay(new Date(p.start_date + 'T00:00:00')) > de) return;
-      if (p.end_date && endOfDay(new Date(p.end_date + 'T00:00:00')) < ds) return;
-      var start = new Date(now), end = null;
+      if (p.start_date && String(p.start_date).slice(0, 10) > todayKey) return;
+      if (p.end_date && String(p.end_date).slice(0, 10) < todayKey) return;
+      var end = null;
       var sm = String(p.start_time || '').match(/^(\d{1,2}):(\d{2})/);
-      if (sm) start.setHours(parseInt(sm[1], 10), parseInt(sm[2], 10), 0, 0);
-      else start.setHours(9, 0, 0, 0);
+      var start = sm ? PT.atTime(todayKey, parseInt(sm[1], 10), parseInt(sm[2], 10)) : PT.atTime(todayKey, 9, 0);
       var em = String(p.end_time || '').match(/^(\d{1,2}):(\d{2})/);
-      if (em) { end = new Date(now); end.setHours(parseInt(em[1], 10), parseInt(em[2], 10), 0, 0); }
+      if (em) end = PT.atTime(todayKey, parseInt(em[1], 10), parseInt(em[2], 10));
       out.push({ icon: '🏊', label: p.name || 'Program', sub: '', kind: 'lesson',
         start: start, end: end, allDay: false, location: p.location || '' });
     });
     return out;
   }
 
-  function buildItems(events, programs, now) {
+  function buildItems(events, programs, todayKey) {
     var items = [];
     (events || []).forEach(function (ev) {
       if (!SHOW_KINDS[ev.kind] && !ev.external) return;     // meeting + unknowns hidden
-      var occ = occursToday(ev, now);
+      var occ = occursToday(ev, todayKey);
       if (!occ) return;
       if (ev.kind === 'party') {
         items.push({ icon: '🎉', label: 'Pool reserved', sub: ' · private event', kind: 'party',
@@ -124,7 +125,7 @@
           start: occ.start, end: occ.end, allDay: !!ev.all_day, location: ev.location || '' });
       }
     });
-    programsToday(programs, now).forEach(function (s) { items.push(s); });
+    programsToday(programs, todayKey).forEach(function (s) { items.push(s); });
     // All-day first, then chronological.
     items.sort(function (a, b) {
       if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
@@ -137,8 +138,9 @@
     var rootEl = ctx.rootEl;
     if (!rootEl) return;
     var now = new Date();
+    var todayKey = PT.todayKey();
     var ps = ctx.publicSettings || {};
-    var items = buildItems(events, ctx.programs, now);
+    var items = buildItems(events, ctx.programs, todayKey);
 
     // ── Hours line ───────────────────────────────────────────────────────
     var seasonClosed = ps.season && ps.season.open === false;

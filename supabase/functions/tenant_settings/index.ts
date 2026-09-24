@@ -10,9 +10,10 @@
 //   { action: 'get' }
 //     → { ok, settings, tenant: { display_name, slug } }
 //
-//   { action: 'save', value, display_name? }
+//   { action: 'save', value, display_name?, timezone? }
 //     • value: JSON object (replaces settings.value)
 //     • display_name: if provided, also updates tenants.display_name
+//     • timezone: IANA name (e.g. America/Chicago); updates tenants.timezone
 //     → { ok }
 //
 //   { action: 'mark_wizard_complete' }
@@ -27,6 +28,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireOwner } from '../_shared/auth.ts';
+import { validTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -80,7 +82,7 @@ Deno.serve(async (req) => {
   if (action === 'get') {
     const [{ data: settings }, { data: tenant }] = await Promise.all([
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
-      sb.from('tenants').select('slug, display_name, status, plan').eq('id', payload.tid).maybeSingle(),
+      sb.from('tenants').select('slug, display_name, status, plan, timezone').eq('id', payload.tid).maybeSingle(),
     ]);
     return jsonResponse({
       ok: true,
@@ -99,6 +101,10 @@ Deno.serve(async (req) => {
     const value = (body.value ?? {}) as Record<string, unknown>;
     if (typeof value !== 'object' || Array.isArray(value)) {
       return jsonResponse({ ok: false, error: '`value` must be a JSON object' }, 400);
+    }
+    // Checked before anything is written, so a bad zone saves nothing.
+    if (body.timezone !== undefined && !validTimeZone(body.timezone)) {
+      return jsonResponse({ ok: false, error: 'Unknown time zone' }, 400);
     }
 
     // Upsert settings row, merging with what's already there so a save from
@@ -162,6 +168,10 @@ Deno.serve(async (req) => {
       if (dn) {
         await sb.from('tenants').update({ display_name: dn }).eq('id', payload.tid);
       }
+    }
+    if (typeof body.timezone === 'string') {
+      const { error } = await sb.from('tenants').update({ timezone: body.timezone }).eq('id', payload.tid);
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     }
 
     return jsonResponse({ ok: true });

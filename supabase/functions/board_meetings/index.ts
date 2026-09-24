@@ -42,6 +42,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
+import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -243,7 +244,7 @@ Deno.serve(async (req) => {
     const title = String(body.title ?? '').trim() || 'Board Meeting';
     let meeting_date = String(body.meeting_date ?? '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(meeting_date)) {
-      meeting_date = new Date().toISOString().slice(0, 10);
+      meeting_date = poolToday(await tenantTimeZone(sb, payload.tid));
     }
     const location = strOrNull(body.location);
 

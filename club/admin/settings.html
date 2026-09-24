@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Settings — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -197,6 +198,16 @@
       <input id="display_name">
       <label>Location <span class="opt">(shown on the home page)</span></label>
       <input id="location" placeholder="Concord, California">
+      <label>Time zone <span class="opt">(every time in the app — hours, parties, events, emails — is shown in this zone)</span></label>
+      <select id="timezone">
+        <option value="America/New_York">Eastern</option>
+        <option value="America/Chicago">Central</option>
+        <option value="America/Denver">Mountain</option>
+        <option value="America/Phoenix">Arizona (no daylight saving)</option>
+        <option value="America/Los_Angeles">Pacific</option>
+        <option value="America/Anchorage">Alaska</option>
+        <option value="Pacific/Honolulu">Hawaii</option>
+      </select>
       <div class="row2" style="margin-top:6px">
         <div><label>Default city <span class="opt">(prefills new households)</span></label><input id="default_city"></div>
         <div><label>Default zip</label><input id="default_zip"></div>
@@ -1012,6 +1023,14 @@ function useMyLocation() {
 
 function populate(s) {
   setVal('display_name',     TENANT?.display_name);
+  const tzSel = document.getElementById('timezone');
+  if (tzSel && TENANT?.timezone) {
+    // A zone outside the short list (set by support) still shows and saves.
+    if (![...tzSel.options].some(o => o.value === TENANT.timezone)) {
+      tzSel.add(new Option(TENANT.timezone.replace(/_/g, ' '), TENANT.timezone));
+    }
+    tzSel.value = TENANT.timezone;
+  }
   setVal('location',         s.club?.location);
   setVal('default_city',     s.club?.default_city);
   setVal('default_zip',      s.club?.default_zip);
@@ -1168,10 +1187,12 @@ async function save() {
     }
 
     const dn = val('display_name') || (TENANT?.display_name ?? null);
-    const data = await call(SETTINGS_URL, 'save', { value, display_name: dn });
+    const timezone = val('timezone') || TENANT?.timezone || undefined;
+    const data = await call(SETTINGS_URL, 'save', { value, display_name: dn, timezone });
     if (!data.ok) throw new Error(data.error || 'Save failed');
     LAST_SETTINGS = value;
-    if (TENANT) TENANT.display_name = dn;
+    if (TENANT) { TENANT.display_name = dn; if (timezone) TENANT.timezone = timezone; }
+    if (timezone && window.PoolTime) PoolTime.setZone(timezone);
     toast('Saved.');
   } catch (e) {
     showErr(e.message);

@@ -587,7 +587,7 @@ Deno.serve(async (req) => {
         // billing page that we take nothing — worth more in writing than as
         // the founder's word at a board meeting. The `me` payload spreads
         // ...tenant, so selecting it here is all that is needed.
-        .select('slug, display_name, status, plan, platform_fees_waived')
+        .select('slug, display_name, status, plan, platform_fees_waived, timezone')
         .eq('id', payload.tid).maybeSingle(),
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
     ]);

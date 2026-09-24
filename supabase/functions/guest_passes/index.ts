@@ -25,6 +25,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
+import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -74,12 +75,14 @@ function dateOrNull(v: unknown): string | null {
   const d = new Date(String(v));
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
-function isExpired(pack: { expires_on: string | null }): boolean {
+// A pack is good through the end of its expiry day at the pool. `today` is
+// the pool's date — comparing against 23:59 UTC expired packs at 5 PM Pacific.
+function isExpired(pack: { expires_on: string | null }, today: string): boolean {
   if (!pack.expires_on) return false;
-  return new Date(pack.expires_on + 'T23:59:59Z').getTime() < Date.now();
+  return today > pack.expires_on;
 }
-function withRemaining<T extends { total_count: number; used_count: number; expires_on: string | null }>(p: T) {
-  return { ...p, remaining: Math.max(0, p.total_count - p.used_count), expired: isExpired(p) };
+function withRemaining<T extends { total_count: number; used_count: number; expires_on: string | null }>(p: T, today: string) {
+  return { ...p, remaining: Math.max(0, p.total_count - p.used_count), expired: isExpired(p, today) };
 }
 
 // Atomic decrement via the SQL UPDATE … RETURNING trick. We avoid a
@@ -94,7 +97,7 @@ async function tryConsumeOne(
   if (!pack) return { ok: false, error: 'Pack not found' };
   if (!pack.active) return { ok: false, error: 'Pack is archived' };
   if (!pack.paid) return { ok: false, error: 'Pack is unpaid — pay before redeeming' };
-  if (isExpired(pack)) return { ok: false, error: 'Pack expired' };
+  if (isExpired(pack, poolToday(await tenantTimeZone(sb, tenantId)))) return { ok: false, error: 'Pack expired' };
   if (pack.used_count >= pack.total_count) return { ok: false, error: 'No passes left' };
 
   // Use the gt() guard so two concurrent redemptions can't both succeed.
@@ -133,6 +136,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Missing required scope: passes' }, 403);
   }
   const TID = payload.tid;
+  const today = poolToday(await tenantTimeZone(sb, TID));
   const isMember = payload.kind === 'member';
   const isAdmin  = payload.kind === 'tenant_admin';
 
@@ -150,7 +154,7 @@ Deno.serve(async (req) => {
         .order('redeemed_at', { ascending: false }).limit(20);
       return jsonResponse({
         ok: true,
-        packs: (packs ?? []).map(withRemaining),
+        packs: (packs ?? []).map(p => withRemaining(p, today)),
         recent_uses: uses ?? [],
       });
     }
@@ -182,7 +186,7 @@ Deno.serve(async (req) => {
         notes: strOrNull(body.notes),
       }).select(USE_FIELDS).single();
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-      return jsonResponse({ ok: true, use, pack: withRemaining(consume.pack as { total_count: number; used_count: number; expires_on: string | null }) });
+      return jsonResponse({ ok: true, use, pack: withRemaining(consume.pack as { total_count: number; used_count: number; expires_on: string | null }, today) });
     }
 
     return jsonResponse({ ok: false, error: `Unknown member action: ${action}` }, 400);
@@ -208,7 +212,7 @@ Deno.serve(async (req) => {
     const byHid = new Map((households ?? []).map(h => [h.id, h.family_name]));
     return jsonResponse({
       ok: true,
-      packs: (data ?? []).map(p => ({ ...withRemaining(p), family_name: byHid.get(p.household_id) ?? null })),
+      packs: (data ?? []).map(p => ({ ...withRemaining(p, today), family_name: byHid.get(p.household_id) ?? null })),
     });
   }
 
@@ -233,7 +237,7 @@ Deno.serve(async (req) => {
       notes:       strOrNull(body.notes),
     }).select(PACK_FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, pack: withRemaining(data) });
+    return jsonResponse({ ok: true, pack: withRemaining(data, today) });
   }
 
   if (action === 'mark_paid') {
@@ -244,7 +248,7 @@ Deno.serve(async (req) => {
       .update({ paid, updated_at: new Date().toISOString() })
       .eq('id', pack_id).eq('tenant_id', TID).select(PACK_FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, pack: withRemaining(data) });
+    return jsonResponse({ ok: true, pack: withRemaining(data, today) });
   }
 
   if (action === 'archive') {
@@ -266,7 +270,7 @@ Deno.serve(async (req) => {
     const { data: uses } = await sb.from('guest_pass_uses').select(USE_FIELDS)
       .eq('tenant_id', TID).eq('pack_id', pack_id)
       .order('redeemed_at', { ascending: false });
-    return jsonResponse({ ok: true, pack: withRemaining(pack), uses: uses ?? [] });
+    return jsonResponse({ ok: true, pack: withRemaining(pack, today), uses: uses ?? [] });
   }
 
   if (action === 'admin_redeem') {
@@ -283,7 +287,7 @@ Deno.serve(async (req) => {
       notes: strOrNull(body.notes),
     }).select(USE_FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, use, pack: withRemaining(consume.pack as { total_count: number; used_count: number; expires_on: string | null }) });
+    return jsonResponse({ ok: true, use, pack: withRemaining(consume.pack as { total_count: number; used_count: number; expires_on: string | null }, today) });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Activity log — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -182,11 +183,9 @@ function humanizeKind(kind) {
 function fmtTime(iso) { return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
 function fmtDay(iso) {
   const d = new Date(iso);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-  const dayOnly = new Date(d); dayOnly.setHours(0,0,0,0);
-  if (dayOnly.getTime() === today.getTime()) return 'Today';
-  if (dayOnly.getTime() === yesterday.getTime()) return 'Yesterday';
+  const key = PoolTime.dayKey(d), today = PoolTime.todayKey();
+  if (key === today) return 'Today';
+  if (key === PoolTime.addDays(today, -1)) return 'Yesterday';
   return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 }
 

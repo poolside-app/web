@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Donations — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -262,7 +263,7 @@ async function loadMe() {
 function renderStats() {
   const verified = CACHE.filter(d => d.status === 'verified');
   const total = verified.reduce((a,d) => a + d.amount_cents, 0);
-  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const monthStart = PoolTime.startOfDay(PoolTime.todayKey().slice(0, 8) + '01');   // the 1st, at the pool
   const month = verified.filter(d => new Date(d.created_at) >= monthStart).reduce((a,d) => a + d.amount_cents, 0);
   const avg = verified.length ? Math.round(total / verified.length) : 0;
   document.getElementById('s-raised').textContent = fmt(total);

@@ -20,6 +20,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
+import { validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -202,6 +203,9 @@ Deno.serve(async (req) => {
     status: 'trial',
     trial_ends_at: trialEnds.toISOString(),
     notes: `Self-served signup at ${new Date().toISOString()}`,
+    // The founder signing up is almost always at the pool, so their browser's
+    // zone is the pool's. They can change it under Settings → Club info.
+    timezone: validTimeZone(body.timezone) ? body.timezone : DEFAULT_TZ,
   }).select('id, slug, display_name, status, plan, trial_ends_at').single();
 
   if (tErr || !tenant) {

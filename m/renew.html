@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Renew — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
@@ -317,6 +318,7 @@ async function submit() {
       // and renew_start is idempotent, so simply re-rendering is enough.
     }
     const me = await callMember('me');
+    if (window.PoolTime) PoolTime.setZone(me && me.tenant && me.tenant.timezone);
     if (!me.ok) { logout(); return; }
     if (me.refreshed_token) { try { localStorage.setItem('poolside_member_token', me.refreshed_token); } catch (_) {} }
     document.getElementById('brand-name').textContent = me.tenant?.display_name || 'Poolside';

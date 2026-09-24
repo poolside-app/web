@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apply for membership — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <!-- PWA wiring on the apply page so the icon + theme color match if a user
      adds it to their home screen mid-application. (We don't show an install
@@ -531,7 +532,7 @@ function onSignupModeChange() {
 function validateDob(el) {
   const v = el.value;
   const min = el.min || '1900-01-01';
-  const max = el.max || new Date().toISOString().slice(0, 10);
+  const max = el.max || PoolTime.todayKey();
   let invalid = false;
   if (v) {
     const d = new Date(v + 'T00:00:00');
@@ -579,7 +580,7 @@ function rebuildPeople() {
   // DOB constraints — nobody alive before 1900, no future birthdays.
   // The min/max attributes constrain native pickers AND drive form
   // validity flags so _goNext can block submit on out-of-range typed input.
-  const todayDob = new Date().toISOString().slice(0, 10);
+  const todayDob = PoolTime.todayKey();
   const minDob   = '1900-01-01';
   for (let i = 0; i < a; i++) {
     aBox.insertAdjacentHTML('beforeend', `
@@ -829,7 +830,7 @@ function _goNext() {
 
     // Final DOB sweep — re-run validateDob on every dob input so typed-in
     // out-of-range years are caught before allowing advance.
-    const todayDob = new Date().toISOString().slice(0, 10);
+    const todayDob = PoolTime.todayKey();
     const dobInputs = document.querySelectorAll('[data-field="dob"]');
     let badDob = null;
     dobInputs.forEach(el => {
@@ -1356,6 +1357,7 @@ async function prefillFromClaim(token) {
       const d = await r.json();
       if (d.ok && d.tenant) {
         TENANT_PUBLIC = d;
+        if (window.PoolTime) PoolTime.setZone(d.tenant.timezone);
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
         // Show the Stripe option whenever the tenant has *connected* Stripe,
@@ -1373,7 +1375,7 @@ async function prefillFromClaim(token) {
           // (b) we're before the signup cutoff date.
           const plan = d.public_settings && d.public_settings.payment_plan;
           if (plan && plan.enabled && plan.final_due_date) {
-            const today = new Date().toISOString().slice(0, 10);
+            const today = PoolTime.todayKey();
             const cutoffOk = !plan.plan_signup_cutoff_date || today <= plan.plan_signup_cutoff_date;
             if (cutoffOk) {
               const planOpt = document.getElementById('pay-opt-stripe-plan');

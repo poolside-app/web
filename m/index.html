@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Club — Poolside</title>
+<script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <!-- PWA / "Add to Home Screen" wiring. Manifest is per-tenant via Vercel
      rewrite; apple-touch-icon + theme-color get set by /js/pwa.js once the
@@ -589,14 +590,14 @@ function fmtEventTime(ev) {
   const opts = { hour: 'numeric', minute: '2-digit' };
   if (!ev.ends_at) return start.toLocaleTimeString(undefined, opts);
   const end = new Date(ev.ends_at);
-  if (start.toDateString() === end.toDateString()) {
+  if (PoolTime.dayKey(start) === PoolTime.dayKey(end)) {
     return `${start.toLocaleTimeString(undefined, opts)} – ${end.toLocaleTimeString(undefined, opts)}`;
   }
   return start.toLocaleDateString();
 }
 function eventDateBadge(ev) {
   const d = new Date(ev.starts_at);
-  return `<div class="ev-date"><div class="mo">${d.toLocaleDateString(undefined, { month:'short' })}</div><div class="da">${d.getDate()}</div></div>`;
+  return `<div class="ev-date"><div class="mo">${d.toLocaleDateString(undefined, { month:'short' })}</div><div class="da">${PoolTime.parts(d).day}</div></div>`;
 }
 function fmtPostDate(iso) {
   if (!iso) return '';
@@ -661,18 +662,9 @@ async function callMember(action, extra = {}, pathOverride = null) {
   return res.json();
 }
 
-function toLocalInput(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function fromLocalInput(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
+// datetime-local boxes hold POOL time, whatever zone the phone is in.
+function toLocalInput(iso) { return PoolTime.toInput(iso); }
+function fromLocalInput(v) { return PoolTime.fromInput(v); }
 
 function formatPhoneInput(el) {
   const digits = el.value.replace(/\D/g, '').slice(0, 10);
@@ -699,9 +691,10 @@ function closePhotoUpload() { document.getElementById('photo-scrim').classList.r
 let __POOL_PASS_TICK = null;
 function tickPoolPassClock() {
   const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
+  const t = PoolTime.parts(now);
+  const hh = String(t.hour).padStart(2, '0');
+  const mm = String(t.minute).padStart(2, '0');
+  const ss = String(t.second).padStart(2, '0');
   const el = document.getElementById('pp-clock');
   if (el) el.textContent = `${hh}:${mm}:${ss}`;
   const dateEl = document.getElementById('pp-date');
@@ -781,9 +774,7 @@ async function submitPhoto() {
 
 // ── Party request flow ─────────────────────────────────────────────────
 function openPartyModal() {
-  const start = new Date();
-  start.setDate(start.getDate() + 7);
-  start.setHours(14, 0, 0, 0);
+  const start = PoolTime.atTime(PoolTime.addDays(PoolTime.todayKey(), 7), 14, 0);   // a week out, 2 PM at the pool
   document.getElementById('p-title').value = '';
   document.getElementById('p-starts').value = toLocalInput(start.toISOString());
   const end = new Date(start.getTime() + 2 * 60 * 60_000);
@@ -977,8 +968,8 @@ function fmtProgramSchedule(p) {
   const days = (p.weekdays || '').split(',').filter(Boolean).map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
   const tm = (p.start_time && p.end_time) ? ` · ${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)}`
     : p.start_time ? ` · ${p.start_time.slice(0,5)}` : '';
-  const dr = (p.start_date && p.end_date) ? ` · ${new Date(p.start_date).toLocaleDateString()}–${new Date(p.end_date).toLocaleDateString()}`
-    : p.start_date ? ` · from ${new Date(p.start_date).toLocaleDateString()}` : '';
+  const dr = (p.start_date && p.end_date) ? ` · ${PoolTime.fmtDay(p.start_date)}–${PoolTime.fmtDay(p.end_date)}`
+    : p.start_date ? ` · from ${PoolTime.fmtDay(p.start_date)}` : '';
   return (days || '—') + tm + dr;
 }
 function fmtProgramPrice(c) { if (!c) return 'Free'; return '$' + (c / 100).toFixed(2); }
@@ -1942,6 +1933,8 @@ async function submitProfile() {
     return;
   }
   if (!me.ok) { logout(); return; }
+  // Everything below renders in the pool's time zone.
+  if (window.PoolTime) PoolTime.setZone(me.tenant && me.tenant.timezone);
 
   // Sliding session: server returns a freshly-minted 5-year token on every
   // `me` call. Persist it so each visit rolls the expiry forward — active
@@ -1973,11 +1966,10 @@ async function submitProfile() {
   let publicData = { events: [], posts: [], public_settings: {} };
   if (slug) {
     try {
-      const __ds = new Date(); __ds.setHours(0, 0, 0, 0);
-      const __de = new Date(); __de.setHours(24, 0, 0, 0);
+      // The server works out the pool's "today" for the check-in counter.
       const r = await fetch(PUBLIC_URL, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slug, day_start: __ds.toISOString(), day_end: __de.toISOString() }),
+        body: JSON.stringify({ slug }),
       });
       const d = await r.json();
       if (d.ok) publicData = d;
@@ -2044,7 +2036,7 @@ async function submitProfile() {
     document.getElementById('pp-member-name').textContent = user.name || user.email || '';
     const pill = document.getElementById('pp-paid-pill');
     if (household.dues_paid_for_year) {
-      pill.textContent = `✓ PAID — ${household.paid_until_year ?? new Date().getFullYear()} SEASON`;
+      pill.textContent = `✓ PAID — ${household.paid_until_year ?? PoolTime.todayKey().slice(0, 4)} SEASON`;
       pill.style.background = '#22c55e';
     } else {
       pill.textContent = '⚠ DUES UNPAID';
@@ -2061,12 +2053,12 @@ async function submitProfile() {
   const eb = publicData.public_settings?.renewals?.early_bird;
   let earlyBirdBanner = '';
   if (!household.dues_paid_for_year && eb && eb.enabled && eb.deadline) {
-    const deadlineDate = new Date(eb.deadline + 'T23:59:59');
-    if (Number.isFinite(deadlineDate.getTime()) && deadlineDate >= new Date()) {
+    // The deadline is a pool date and runs to the end of that day at the pool.
+    if (/^\d{4}-\d{2}-\d{2}/.test(eb.deadline) && PoolTime.todayKey() <= String(eb.deadline).slice(0, 10)) {
       const off = eb.discount_cents > 0
         ? `$${(eb.discount_cents / 100).toFixed(0)} off`
         : (eb.discount_percent > 0 ? `${eb.discount_percent}% off` : 'a discount');
-      const fmtDate = deadlineDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const fmtDate = PoolTime.fmtDay(eb.deadline, { month: 'short', day: 'numeric' });
       earlyBirdBanner = `
         <div style="margin:0 0 14px;padding:14px 16px;background:linear-gradient(90deg,#fef3c7,#fef08a);border:1px solid #fcd34d;border-radius:12px;display:flex;gap:10px;align-items:flex-start">
           <div style="font-size:20px;line-height:1">⏰</div>
