@@ -22,7 +22,7 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
 
 ## Step 7 — Real people try it
 - Doug's wife, daughter, neighbor and board members sign up on the live site with their own info, fake-pay, get approved, and get the welcome email and text with a sign-in link.
-- Tell testers **not to tap "Unlock the gate"** (the bridge is off, so it spins for 8 seconds then fails). See step A2.
+- The gate card now says "Remote unlock is offline right now" while the bridge is off (A2, fixed 9/24).
 
 ## Step 8 — Clean up (only when Doug says)
 - Delete every SimTest and tester application and household, then turn test mode off.
@@ -37,7 +37,7 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
   - Its subject is "We got your application — " with nothing after it, and the body says "thanks for applying to" with a blank where the club name should be.
   - Its club link is `https://undefined.poolsideapp.com`.
   - Cause: `applications` submit loads the club without its name or web address. One-line fix.
-- **A2. "Unlock the gate" shows even when the gate connection is offline.**
+- **A2. ✅ Fixed 9/24:** "Unlock the gate" showed even when the gate connection was offline.
   - Tapping it waits 8 seconds, then fails.
   - Fix: `unlock_gate` check returns "offline" when the bridge hasn't been seen for a few minutes, and the card says so.
 - **A3. Synced calendar events show 7 hours early.** The member home shows "Pool Open 12:00 AM – 1:00 PM" next to "Open today 8 AM – 8 PM".
