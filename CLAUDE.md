@@ -40,6 +40,8 @@ Every script runs against live production, and every call counts against the Sup
 
 ~53 Deno functions in `supabase/functions/`. Static HTML pages call them directly by URL (`${SUPABASE_URL}/functions/v1/<name>`), hardcoded per page. Functions use the service-role key and enforce tenant scoping **in application code**, not via RLS policies — most tables have RLS enabled with no policies, which is intentional given nothing reaches Postgres except these functions. Do not assume RLS is protecting a table.
 
+Database functions are private too. The anon key ships in every page, so a function the anon role can execute is callable by anyone at `/rest/v1/rpc/<name>`. Since 2026-09-24, functions a migration creates start with no public EXECUTE (default privileges revoked). If the service role needs to call one, `grant execute ... to service_role`, and never to anon or authenticated. `node scripts/test_rpc_lockdown.mjs` checks this.
+
 Shared logic lives in `supabase/functions/_shared/`: `auth.ts` (JWT verify + role/scope gates), `send_email.ts`, `plan_caps.ts`, `sms_cap.ts`, `google_drive.ts`, `sync_application.ts`, PDF builders.
 
 ### Three separate auth audiences, all HMAC-signed with `ADMIN_JWT_SECRET`

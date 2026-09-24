@@ -75,7 +75,9 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
     - Cost: about 100–200 calls.
 
 ### B. Security, before any real member data
-- **B1. Seven database functions can be triggered by anyone on the internet** (Supabase's own security advisor flags them):
+- **B1. ✅ Fixed 9/24:** seven database functions could be triggered by anyone on the internet (Supabase's own security advisor flagged them).
+  - Proof: `scripts/test_rpc_lockdown.mjs` passes 11/11. A stranger is refused on all seven, the server still spends text credits, and the scheduler ran a job after the lock.
+  - New functions now start private, so this can't creep back. The advisor no longer flags any open functions.
   - 2 drain a club's prepaid text credits.
   - 5 run background jobs, including **auto-renew card charging**.
   - Fix: one migration revoking public access. Nothing legitimate calls them that way.
