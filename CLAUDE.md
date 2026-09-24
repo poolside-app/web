@@ -8,17 +8,20 @@ Poolside — multi-tenant SaaS for community pool clubs (members, gate access, a
 
 Production: `poolsideapp.com` (Vercel) + Supabase project `sdewylbddkcvidwosgxo` (`poolside-prod`).
 
-**`PLAN.md` is a stale April 2026 planning artifact.** It describes tables and a tier model that no longer exist (`gate_bridges`, `bridge_status`, feature-gated pricing). Trust the code and the live schema over that doc.
+**`PLAN.md` is the current step-by-step working plan** (since 2026-09-23). Doug approves one step at a time. The April 2026 architecture plan it replaced is in git history and described tables that no longer exist.
 
 ## Commands
 
 ```bash
-./scripts/smoke.sh [slug]        # public-surface smoke test, defaults to bishopestates. Run after every deploy.
-python scripts/e2e.py            # end-to-end: mints synthetic JWTs, real DB writes against live infra, self-cleaning
-node scripts/frontend_smoke.mjs  # headless Chrome render check of EVERY page (public + authed), catches JS errors
+./scripts/smoke.sh [slug]         # public-surface smoke test, defaults to bishopestates
+python scripts/e2e.py             # end-to-end: mints synthetic JWTs, real DB writes against live infra, self-cleaning
+node scripts/frontend_smoke.mjs   # headless Chrome render check of EVERY page (public + authed), catches JS errors
+node scripts/test_payments.mjs    # targeted: fake card + fake Venmo signup end to end, ~15 function calls
 ```
 
-All three read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
+All of these read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
+
+Every script runs against live production, and every call counts against the Supabase invocation quota. Prefer the targeted script for what changed. Run the full suites only when a full check is actually wanted. CI (`verify.yml`) is manual-only for the same reason.
 
 ## Deploying
 
