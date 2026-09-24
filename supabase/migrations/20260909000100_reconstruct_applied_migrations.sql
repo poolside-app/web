@@ -4,7 +4,7 @@
 -- Between 2026-09-06 and 2026-09-08 five schema changes were applied straight
 -- to production through the management API and never written down here:
 --
---   sms_segment_metering          sms_log.segments + spend_sms_credits()
+--   sms_segment_metering          sms_log.segments + consume_sms_credits()
 --   tenants_desired_plan          tenants.desired_plan
 --   tenants_trial_notice_tracking tenants.trial_notice_stage
 --   applications_wants_auto_renew applications.wants_auto_renew
@@ -43,62 +43,40 @@ alter table public.sms_log
 create index if not exists sms_log_tenant_sent_idx
   on public.sms_log (tenant_id, sent_at desc);
 
--- Spend purchased credits, denominated in segments. Returns how many were
--- actually taken, which may be fewer than asked for when the balance is short.
---
--- Guarded rather than `create or replace`: this function already exists in
--- production from the migration that was never written down, and the body
--- below is reconstructed from its call site, not copied from the live
--- definition. Replacing a working function with a guess is the one thing
--- this file must not do — so it is only created if genuinely absent.
+-- Spend purchased credits, denominated in segments, all-or-nothing.
+-- Copied from the live definition on 2026-09-23 (pg_get_functiondef), not
+-- reconstructed: an earlier draft of this file guessed the name as
+-- spend_sms_credits, which nothing calls — _shared/sms_cap.ts calls this one.
+-- Guarded so production's working copy is never replaced.
 do $guard$
 begin
   if not exists (
     select 1 from pg_proc pr
       join pg_namespace n on n.oid = pr.pronamespace
-     where n.nspname = 'public' and pr.proname = 'spend_sms_credits'
+     where n.nspname = 'public' and pr.proname = 'consume_sms_credits'
   ) then
     execute $fn$
-      create function public.spend_sms_credits(p_tenant uuid, p_n int)
-      returns int
+      create function public.consume_sms_credits(p_tenant uuid, p_n integer default 1)
+      returns boolean
       language plpgsql
       security definer
-      set search_path = public
+      set search_path to 'public'
       as $body$
       declare
-        available int;
-        spent     int;
+        v_left int;
+        v_take int := greatest(1, coalesce(p_n, 1));
       begin
-        if p_n is null or p_n <= 0 then
-          return 0;
-        end if;
-
-        -- for update: two sends landing together must not both spend the
-        -- same credit and drive the balance negative.
-        select sms_credits into available
-          from public.tenants
-         where id = p_tenant
-           for update;
-
-        if available is null then
-          return 0;
-        end if;
-
-        spent := least(p_n, greatest(0, available));
-
-        if spent > 0 then
-          update public.tenants
-             set sms_credits = sms_credits - spent
-           where id = p_tenant;
-        end if;
-
-        return spent;
+        -- All-or-nothing: never leave a club with a negative balance, and never
+        -- half-charge for a message. If the balance cannot cover the whole
+        -- message the caller falls back to the plan allowance or refuses.
+        update public.tenants
+           set sms_credits = sms_credits - v_take
+         where id = p_tenant and sms_credits >= v_take
+         returning sms_credits into v_left;
+        return v_left is not null;
       end;
       $body$;
     $fn$;
-
-    revoke all on function public.spend_sms_credits(uuid, int) from public, anon, authenticated;
-    grant execute on function public.spend_sms_credits(uuid, int) to service_role;
   end if;
 end
 $guard$;
