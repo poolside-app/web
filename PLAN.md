@@ -15,7 +15,7 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
   - Also walked both flows in a real browser: form → fake card checkout → "Payment received" → signed in to the member home, and form → "Simulate Venmo payment" → approved.
   - Whole night used ~110 Supabase calls.
 - Test data now in Bishop:
-  - 4 approved, paid households: SimTest Card 157230, SimTest Venmo 157230, SimTest UI Family, SimTest UIVenmo Family.
+  - 8 approved, paid SimTest households (4 more from the two A1 test runs on 9/24).
   - 2 unpaid SimTest …758543 applications left over from the failing run. The card one auto-deletes after 60 minutes.
   - Welcome emails went to doug.frevele+simtest…@gmail.com.
 - Test mode is ON. Twilio balance is $5.99, about 700 texts.
@@ -33,7 +33,7 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
 ## Proposed next steps from the 9/24 code review (each needs Doug's OK)
 
 ### A. Before testers start (small, today)
-- **A1. The Venmo "application received" email is broken.**
+- **A1. ✅ Fixed 9/24:** the Venmo "application received" email was broken.
   - Its subject is "We got your application — " with nothing after it, and the body says "thanks for applying to" with a blank where the club name should be.
   - Its club link is `https://undefined.poolsideapp.com`.
   - Cause: `applications` submit loads the club without its name or web address. One-line fix.
