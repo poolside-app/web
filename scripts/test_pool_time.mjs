@@ -76,6 +76,9 @@ const [member] = await sql(`select m.id, m.household_id from household_members m
 const memberToken = jwt({ sub: member.id, kind: 'member', tid: tenant.id, slug: SLUG, hid: member.household_id });
 const adminToken = jwt({ sub: '00000000-0000-0000-0000-000000000000', kind: 'tenant_admin', tid: tenant.id, slug: SLUG,
   synthetic: true, impersonated_by: '00000000-0000-0000-0000-000000000000' });
+// Some actions check the admin's own scopes, which a synthetic token doesn't carry.
+const [owner] = await sql(`select id from admin_users where tenant_id = ${q(tenant.id)} and active and role_template = 'owner' limit 1`);
+const ownerToken = jwt({ sub: owner.id, kind: 'tenant_admin', tid: tenant.id, slug: SLUG });
 
 // ── A3.1 ────────────────────────────────────────────────────────────────
 console.log('A3.1  Each club has its own time zone');
@@ -119,6 +122,16 @@ await attempt('_shared/pool_time.ts loads', async () => {
   const b = pt.poolDayBounds('2026-07-13T01:00:00Z', LA);
   check('pool day July 12 runs 07:00 UTC to 07:00 UTC',
     b.key === '2026-07-12' && b.startIso === '2026-07-12T07:00:00.000Z' && b.endIso === '2026-07-13T07:00:00.000Z', JSON.stringify(b));
+});
+await attempt('text history groups by pool day', async () => {
+  const h = await fn('sms_blasts', { action: 'history', days: 30 }, ownerToken);
+  check('Billing → text history loads', h.ok === true, `status ${h.status}`);
+  const [latest] = await sql(`select sent_at from sms_log where tenant_id = ${q(tenant.id)} order by sent_at desc limit 1`);
+  if (h.ok && latest) {
+    const pt = await importTs('supabase/functions/_shared/pool_time.ts');
+    check('…grouped by the pool\'s date', h.items.some(i => i.day === pt.poolDate(latest.sent_at, LA)),
+      `expected a ${pt.poolDate(latest.sent_at, LA)} row`);
+  }
 });
 await attempt('parties carry a pool date', async () => {
   try {
@@ -172,9 +185,36 @@ await attempt('_shared/ical.ts loads', async () => {
 await attempt('Bishop\'s real feed matches Google after a re-sync', async () => {
   const [feed] = await sql(`select id, ical_url from external_calendar_feeds where tenant_id = ${q(tenant.id)} and enabled limit 1`);
   const text = await (await fetch(feed.ical_url)).text();
+  // Only events the sync keeps: from a week ago to six months out.
+  const lo = new Date(Date.now() - 6 * 86400_000).toISOString().slice(0, 10).replace(/-/g, '');
+  const hi = new Date(Date.now() + 170 * 86400_000).toISOString().slice(0, 10).replace(/-/g, '');
   const block = text.replace(/\r\n[ \t]/g, '').split('BEGIN:VEVENT').slice(1)
-    .find(b => /DTSTART;TZID=/.test(b) && !/RRULE/.test(b) && /SUMMARY:/.test(b));
-  if (!block) { console.log('  (feed has no single timed event with a TZID — skipped)'); return; }
+    .find(b => {
+      const m = b.match(/DTSTART;TZID=[^:;\r\n]+:(\d{8})T\d{6}/);
+      return m && m[1] >= lo && m[1] <= hi && !/RRULE/.test(b) && /SUMMARY:/.test(b);
+    });
+  if (!block) {
+    // Fall back to a daily repeat still running (Bishop's "Pool Open"):
+    // tomorrow's instance must sit at the DTSTART wall-clock time in its zone.
+    const twoDaysOut = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10).replace(/-/g, '');
+    const daily = text.replace(/\r\n[ \t]/g, '').split('BEGIN:VEVENT').slice(1).find(b => {
+      const u = b.match(/RRULE:FREQ=DAILY[^\r\n]*UNTIL=(\d{8})/);
+      return /DTSTART;TZID=[^:;\r\n]+:\d{8}T\d{6}/.test(b) && u && u[1] > twoDaysOut;
+    });
+    if (!daily) { console.log('  (feed has no timed event in the sync window to compare — skipped)'); return; }
+    const [, dtz, dwall] = daily.match(/DTSTART;TZID=([^:;\r\n]+):(\d{8}T\d{6})/);
+    const dsum = daily.match(/SUMMARY:(.*)/)[1].trim();
+    const pt = await importTs('supabase/functions/_shared/pool_time.ts');
+    const tom = pt.poolDate(new Date(Date.now() + 86400_000), dtz);
+    const exp = pt.wallTimeToUtc(+tom.slice(0, 4), +tom.slice(5, 7), +tom.slice(8, 10),
+      +dwall.slice(9, 11), +dwall.slice(11, 13), 0, dtz).toISOString();
+    const r = await fn('external_calendar', { action: 'cron_sync_all' }, null, { 'x-cron-secret': CRON_SECRET });
+    check('re-sync ran', r.ok === true, JSON.stringify(r));
+    const [row] = await sql(`select 1 as ok from external_calendar_feeds f, jsonb_array_elements(f.cached_events) e
+      where f.id = ${q(feed.id)} and e->>'summary' = ${q(dsum)} and e->>'starts_at' = ${q(exp)} limit 1`);
+    check(`daily "${dsum}" at ${dwall.slice(9, 11)}:${dwall.slice(11, 13)} ${dtz} is stored for ${tom} as ${exp}`, !!row, 'not found at the expected time');
+    return;
+  }
   const [, tzid, wall] = block.match(/DTSTART;TZID=([^:;\r\n]+):(\d{8}T\d{6})/);
   const summary = block.match(/SUMMARY:(.*)/)[1].trim();
   const pt = await importTs('supabase/functions/_shared/pool_time.ts');

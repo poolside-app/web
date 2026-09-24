@@ -40,9 +40,39 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
 - **A2. ✅ Fixed 9/24:** "Unlock the gate" showed even when the gate connection was offline.
   - Tapping it waits 8 seconds, then fails.
   - Fix: `unlock_gate` check returns "offline" when the bridge hasn't been seen for a few minutes, and the card says so.
-- **A3. Synced calendar events show 7 hours early.** The member home shows "Pool Open 12:00 AM – 1:00 PM" next to "Open today 8 AM – 8 PM".
-  - Cause: `external_calendar` stores times from Google Calendar (which carry a timezone) as if they were UTC.
-  - Fix: convert with the event's timezone. Also re-sync.
+- **A3. ✅ Done 9/24: every time in the app follows the pool's own time zone** (Doug, 9/24: "ALL times current to the pool — open/close, parties, events, etc.").
+  - Proof: `scripts/test_pool_time.mjs` passes 35/35, including real pages on a New York clock and Bishop's real Google feed. "Pool Open" is now stored at 7:00 AM Pacific.
+  - The page-render check passed 54/55. The one failure was a separate bug from 9/9 (Billing → text history crashed on an undefined helper), fixed in the same pass.
+  - Also fixed along the way: guest passes expiring at 5 PM, evening lifeguard shifts opening on the next day, program dates showing a day early, and Drive sheet and PDF times stamped in UTC.
+
+  **Found:**
+  - Synced Google Calendar events show 7 hours early ("Pool Open 12:00 AM – 1:00 PM").
+  - Party emails and texts print UTC: a 2 PM party says 9:00 PM.
+  - The one-party-per-day rule (in the code *and* the database) uses UTC days. Any party after 5 PM counts as the next day, so two parties can book the same evening.
+  - Deadlines ("today", payment-plan cutoff, early-bird, board meeting date, Drive sheet dates) flip to tomorrow at 5 PM Pacific.
+  - Every screen shows the viewer's phone time, and times admins type are read in the admin's phone time. That's wrong for anyone outside the pool's zone (Doug setting up a Texas club, a treasurer on vacation).
+  - Weekly repeating events shift an hour across daylight-saving changes for those viewers.
+
+  **Sub-steps.** Each one gets a failing test first, then the fix, then proof.
+  - **A3.1 Each club gets a time zone.**
+    - New `tenants.timezone` field. Bishop = Pacific.
+    - Club owners can change it in Settings. New clubs get it automatically from the signup browser, and can change it.
+    - The member app, admin pages and public page all receive it with the club details they already load, so no extra calls.
+  - **A3.2 Server uses pool time.**
+    - A shared `pool_time` helper.
+    - Party emails and texts, and every "today" and deadline check, use it.
+    - The one-party-per-day rule keys on the pool's date: a database trigger stamps each party's pool date, and the unique index moves to that column.
+  - **A3.3 Calendar sync reads Google's time zone**, including all-day events. Then Bishop's feed is re-synced.
+  - **A3.4 Every date and time a club page shows is in pool time**, whatever the phone's zone is. One shared `js/pooltime.js`.
+    - This covers the member app, public club page and club admin.
+    - Doug's own cross-club `/admin` pages are left alone.
+  - **A3.5 "Today" and typed-in times are pool time.**
+    - What's-on-today, open/closed, the calendar grid, weekly repeats and the check-in counter.
+    - Admin event/party/volunteer/lifeguard/meeting/campaign times, and the member's party request form.
+  - **A3.6 Proof.**
+    - A targeted test script for the server parts.
+    - The key pages opened in a headless browser with its clock set to New York; they must still show Pacific times.
+    - Cost: about 100–200 calls.
 
 ### B. Security, before any real member data
 - **B1. Seven database functions can be triggered by anyone on the internet** (Supabase's own security advisor flags them):

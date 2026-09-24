@@ -23,6 +23,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { measureSms, renderBlast, estimateCostCents, normalizeForSms } from '../_shared/sms_text.ts';
 import { checkSmsCap } from '../_shared/sms_cap.ts';
 import { sendSms } from '../_shared/send_sms.ts';
+import { poolDate, tenantTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -303,12 +304,13 @@ Deno.serve(async (req) => {
 
     // Group by day + kind: a 300-recipient blast is one thing that happened,
     // not 300 rows a treasurer has to scroll past.
+    const tz = await tenantTimeZone(sb, TID);
     const buckets = new Map<string, {
       day: string; category: string; source: string;
       messages: number; segments: number; failed: number;
     }>();
     for (const r of (rows ?? [])) {
-      const day = String(r.sent_at).slice(0, 10);
+      const day = poolDate(r.sent_at as string, tz);   // the pool's day, not UTC's
       const key = `${day}|${r.category}|${r.source ?? ''}`;
       const b = buckets.get(key) ?? {
         day, category: String(r.category), source: String(r.source ?? ''),
@@ -328,7 +330,7 @@ Deno.serve(async (req) => {
                    cost_cents: t.cost_cents + i.cost_cents }),
       { messages: 0, segments: 0, cost_cents: 0 });
 
-    return jsonResponse({ ok: true, days, items, totals });
+    return j({ ok: true, days, items, totals });
   }
 
   if (action === 'list') {
