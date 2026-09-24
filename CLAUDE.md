@@ -78,6 +78,12 @@ Real hardware: an on-prem bridge polls `gate_bridge` and drives a MENGQI-CONTROL
 - Vanilla HTML/CSS/JS. **Every page is self-contained** — inline `<style>` and `<script>`, no bundler, no framework. Shared behavior lives in `js/` and is pulled in with plain `<script src>`.
 - Fraunces (display) + Inter (body), loaded from Google Fonts.
 - New admin pages should be copied structurally from an existing sibling in `club/admin/` (nav, auth guard, subtabs, styling all follow one pattern).
+- **Every time is the pool's time** (`tenants.timezone`). This applies to server and screens alike, never UTC and never the viewer's phone.
+  - Server: use `_shared/pool_time.ts` (`poolToday`, `poolDate`, `partyWhen`, `fmtPoolStamp`, `wallTimeToUtc`). Never `toISOString().slice(0, 10)` for "today", and never `toLocale*` without a `timeZone`.
+  - Club pages: load `js/pooltime.js` first. `scripts/add_pooltime.py` adds it to new pages. It makes pool time the default for all `toLocale*` display.
+    - Day arithmetic and `datetime-local` boxes go through `PoolTime` (`todayKey`, `dayKey`, `atTime`, `toInput`, `fromInput`).
+    - Date-only values (`YYYY-MM-DD`) go through `PoolTime.fmtDay`, never `new Date(value)`.
+  - Test with `node scripts/test_pool_time.mjs`.
 
 ## Gotchas
 
