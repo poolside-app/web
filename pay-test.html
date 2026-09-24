@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Test checkout — Poolside</title>
+<script src="/js/errors.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-l:#e6eef5; --bg:#fefdfb; --bg-2:#f7f3eb;
+    --text:#0f172a; --muted:#5d6b81; --border:#e5e7eb; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; }
+  main { padding:28px 16px; display:flex; justify-content:center; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:18px; padding:26px; box-shadow:var(--shadow); max-width:460px; width:100%; }
+  .banner { background:#fef3c7; border:1.5px solid #fcd34d; color:#78350f; border-radius:12px; padding:10px 14px; font-size:13px; line-height:1.45; margin-bottom:18px; }
+  .banner b { color:#92400e; }
+  h1 { font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:22px; margin:0 0 4px; color:var(--blue); }
+  .desc { color:var(--muted); font-size:13.5px; margin:0 0 18px; }
+  .amount { font-family:'Fraunces', Georgia, serif; font-size:40px; font-weight:600; margin:0 0 18px; }
+  .fake-card { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; background:var(--bg-2); border:1px dashed var(--border); border-radius:12px; padding:12px 14px; font-size:13px; color:var(--muted); margin-bottom:18px; font-variant-numeric:tabular-nums; }
+  .btn { display:block; width:100%; padding:14px 22px; border-radius:12px; font:600 15px 'Inter'; cursor:pointer; border:1.5px solid transparent; }
+  .btn-primary { background:var(--blue); color:#fff; }
+  .btn-primary:disabled { opacity:.6; cursor:wait; }
+  .btn-ghost { background:#fff; color:var(--muted); border-color:var(--border); margin-top:10px; }
+  .err { display:none; margin-top:14px; padding:10px 12px; border-radius:10px; background:#fee2e2; color:#7f1d1d; font-size:13px; }
+  .err.show { display:block; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card" id="card">
+    <div class="banner"><b>Test mode.</b> This is a simulated card payment. No card is charged and nothing is sent to Stripe — but the club's system treats it as paid.</div>
+    <h1 id="name">Test checkout</h1>
+    <p class="desc" id="desc"></p>
+    <div class="amount" id="amount"></div>
+    <div class="fake-card" id="fake-card"><span>💳 4242 4242 4242 4242 · 12/34 · 123</span><span>test card</span></div>
+    <button class="btn btn-primary" id="pay" type="button">Pay (simulated)</button>
+    <button class="btn btn-ghost" id="cancel" type="button">Cancel</button>
+    <div class="err" id="err"></div>
+  </div>
+</main>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+
+function claims(t) {
+  try {
+    const b64 = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(escape(atob(b64))));
+  } catch (_) { return null; }
+}
+// Only ever navigate within this club's site: the token sits in the URL, so
+// its redirect targets can't be trusted to point anywhere else.
+function sameOrigin(u) {
+  try { return new URL(u, location.href).origin === location.origin ? u : '/'; } catch (_) { return '/'; }
+}
+function showErr(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg; el.classList.add('show');
+}
+
+const c = claims(token);
+if (!c) {
+  document.getElementById('name').textContent = 'Nothing to pay';
+  document.getElementById('desc').textContent = 'This test checkout link is incomplete. Go back and start the payment again.';
+  document.getElementById('pay').style.display = 'none';
+  document.getElementById('fake-card').style.display = 'none';
+  document.getElementById('cancel').onclick = () => { location.href = '/'; };
+} else {
+  document.getElementById('name').textContent = c.name || 'Test checkout';
+  document.getElementById('desc').textContent = c.desc || '';
+  document.getElementById('amount').textContent = '$' + (Number(c.amt || 0) / 100).toFixed(2);
+  document.getElementById('cancel').onclick = () => { location.href = sameOrigin(c.no); };
+  document.getElementById('pay').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true; btn.textContent = 'Processing…';
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'simulate_complete', token }),
+      }).then(res => res.json());
+      if (!r.ok) throw new Error(r.error || 'Payment simulation failed');
+      location.href = sameOrigin(r.redirect);
+    } catch (err) {
+      showErr(err.message);
+      btn.disabled = false; btn.textContent = 'Pay (simulated)';
+    }
+  };
+}
+</script>
+</body>
+</html>

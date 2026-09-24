@@ -132,6 +132,9 @@
       <div class="step-counter"><span id="step-num">1</span> of 4</div>
     </div>
     <div class="progress"><div class="progress-fill" id="progress" style="width:25%"></div></div>
+    <div id="test-mode-banner" style="display:none;background:#fef3c7;border:1.5px solid #fcd34d;color:#78350f;border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.45;margin-bottom:6px">
+      <b style="color:#92400e">🧪 Test mode.</b> Payments on this club are simulated — card checkout is fake, and you'll get a button to simulate a Venmo payment. Everything else (approval, emails, texts) runs for real.
+    </div>
     <p class="lede" id="lede">A few quick steps. Your info goes to the board for review and you'll get an email link to sign in once approved.</p>
 
     <!-- Step 1 — Family + contact -->
@@ -441,7 +444,8 @@ function paintVenmoQR() {
   const block = document.getElementById('venmo-block');
   const method = document.querySelector('input[name="payment_method"]:checked')?.value || '';
   const handle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
-  document.getElementById('stripe-hint').style.display = method === 'stripe' ? 'block' : 'none';
+  const testMode = !!TENANT_PUBLIC?.public_settings?.payments?.test_mode;
+  document.getElementById('stripe-hint').style.display = method === 'stripe' && !testMode ? 'block' : 'none';
   if (method !== 'venmo' || !handle) { block.style.display = 'none'; return; }
   block.style.display = 'block';
   // Strip any leading @ the admin saved
@@ -1094,6 +1098,14 @@ async function submitApplication() {
             ? ` You'll get a welcome email from the board once you're in.`
             : ` You'll get a welcome email with a magic-link sign-in when you're in.`}`
         : `The board will review and reach out within 1–10 days — it's a volunteer-run board.`}</p>
+      ${isVenmo && TENANT_PUBLIC?.public_settings?.payments?.test_mode ? `
+        <div style="margin-top:18px;padding:16px;border:1.5px solid #fcd34d;border-radius:14px;background:#fef3c7;font-size:13.5px;line-height:1.55">
+          <div style="font-weight:600;color:#92400e;margin-bottom:6px">🧪 Test mode</div>
+          <div style="color:#78350f;margin-bottom:12px">Skip the real Venmo and the board's check. This marks the dues paid and approves the membership, exactly as if the board had clicked <b>Approve &amp; verify</b>.</div>
+          <button type="button" data-app-id="${escapeAttr(appId)}" onclick="simulateVenmo(this)" style="padding:10px 18px;background:#92400e;color:#fff;border:0;border-radius:10px;font:600 13px 'Inter';cursor:pointer">Simulate Venmo payment</button>
+          <div id="sim-venmo-err" style="display:none;margin-top:10px;color:#7f1d1d;font-size:13px"></div>
+        </div>
+      ` : ''}
       ${isNoApp ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);font-size:13.5px;color:var(--text);line-height:1.55">
           <b>📝 No-app member — you're all set.</b><br>
@@ -1109,6 +1121,28 @@ async function submitApplication() {
       ` : (!isNoApp ? `<p style="margin-top:14px;font-size:13px;color:var(--muted)">You can close this tab.</p>` : '')}
     `;
   } catch (e) { show(e.message); btn.disabled = false; btn.textContent = orig; }
+}
+
+async function simulateVenmo(btn) {
+  const errEl = document.getElementById('sim-venmo-err');
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Simulating…';
+  try {
+    const r = await fetch(APPLY_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'simulate_venmo_paid', id: btn.dataset.appId }),
+    }).then(res => res.json());
+    if (!r.ok) throw new Error(r.error || 'Simulation failed');
+    await renderPostPaymentSuccess(
+      '✓ Venmo payment simulated',
+      'Your dues are marked paid and your membership is approved — just as if the board had verified it.',
+      btn.dataset.appId,
+    );
+    appendAdminContinueIfNeeded();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = '';
+    btn.disabled = false; btn.textContent = 'Simulate Venmo payment';
+  }
 }
 
 // Renders the post-Stripe success card with a "Sign in now" button. Polls
@@ -1337,7 +1371,9 @@ async function prefillFromClaim(token) {
         // shouldn't make the option vanish on the apply form).
         // If charges actually fail at Checkout time, Stripe surfaces a
         // clear error to the user — much better UX than silently hiding.
-        if (d.tenant.stripe_account_id) {
+        const testMode = !!d.public_settings?.payments?.test_mode;
+        if (testMode) document.getElementById('test-mode-banner').style.display = '';
+        if (d.tenant.stripe_account_id || testMode) {
           const opt = document.getElementById('pay-opt-stripe');
           if (opt) opt.style.display = '';
           // Pay-in-2 option requires (a) plan enabled in club settings,

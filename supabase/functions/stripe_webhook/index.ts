@@ -99,7 +99,10 @@ Deno.serve(async (req) => {
 
   // If no secret configured, accept the event but log loudly. Useful for
   // bring-up before the dashboard webhook is fully configured.
-  if (WEBHOOK_SECRET) {
+  // Internal callers (stripe_checkout's test-payment simulator) authenticate
+  // with the service-role key instead of a Stripe signature.
+  const internal = req.headers.get('x-poolside-internal') === SERVICE_ROLE;
+  if (WEBHOOK_SECRET && !internal) {
     const ok = await verifyStripeSignature(rawBody, sig, WEBHOOK_SECRET);
     if (!ok) return new Response('Invalid signature', { status: 400 });
   }

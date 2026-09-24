@@ -19,10 +19,16 @@
 // All sessions specify an `application_fee_amount` per Poolside's tier:
 // 1% dues, 1.5% programs/snack, 2% tickets, 0% donations, 5% late fees.
 // Rates live in _shared/fees.ts — never inline them here.
+//
+// Test payments (settings.payments.test_mode): every action above returns a
+// /pay-test.html URL instead of a Stripe one, and nothing reaches Stripe.
+//   { action: 'simulate_complete', token }  → { ok, redirect }
+// posts a synthetic checkout.session.completed to stripe_webhook, so every
+// downstream automation runs exactly as it would for a real card payment.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { create, getNumericDate, verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -52,14 +58,47 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
 }
 
+async function jwtKey(): Promise<CryptoKey> {
+  return await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET!),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+}
+
 async function verifyToken(token: string): Promise<Record<string, unknown> | null> {
   if (!JWT_SECRET) return null;
   try {
-    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET),
-      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
-    const p = await verify(token, key) as Record<string, unknown>;
+    const p = await verify(token, await jwtKey()) as Record<string, unknown>;
     if (!p.sub || !p.tid) return null;
     return p;
+  } catch { return null; }
+}
+
+async function paymentsTestMode(sb: ReturnType<typeof createClient>, tenantId: string): Promise<boolean> {
+  const { data } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+  const pay = (data?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined;
+  return pay?.test_mode === true;
+}
+
+type SimCheckout = {
+  tid: string; sid: string; amt: number; name: string; desc: string;
+  ok: string; no: string; md: Record<string, string>;
+};
+
+// The token carries everything the fake checkout needs, signed so the amount
+// and metadata can't be edited in the browser. It deliberately has no `sub`:
+// several functions accept any signed token with sub + tid as a login.
+async function simulatedCheckoutUrl(p: Omit<SimCheckout, 'sid'>): Promise<{ url: string; session_id: string }> {
+  const sid = 'sim_cs_' + crypto.randomUUID().replace(/-/g, '');
+  const token = await create({ alg: 'HS256', typ: 'JWT' },
+    { kind: 'sim_checkout', ...p, sid, exp: getNumericDate(60 * 60) }, await jwtKey());
+  return { url: `${new URL(p.ok).origin}/pay-test.html#t=${token}`, session_id: sid };
+}
+
+async function verifySimToken(token: string): Promise<SimCheckout | null> {
+  if (!JWT_SECRET || !token) return null;
+  try {
+    const p = await verify(token, await jwtKey()) as Record<string, unknown>;
+    if (p.kind !== 'sim_checkout' || !p.tid || !p.sid) return null;
+    return p as unknown as SimCheckout;
   } catch { return null; }
 }
 
@@ -80,7 +119,15 @@ async function stripeCheckout(params: {
   // the payment and forgets the card, and next season's charge has nothing to
   // charge against.
   saveCard?: boolean;
+  simulate: boolean;
 }): Promise<{ ok: boolean; url?: string; session_id?: string; error?: string }> {
+  if (params.simulate) {
+    return { ok: true, ...await simulatedCheckoutUrl({
+      tid: params.metadata.tenant_id, amt: params.amountCents,
+      name: params.productName, desc: params.description ?? '',
+      ok: params.successUrl, no: params.cancelUrl, md: params.metadata,
+    }) };
+  }
   if (!STRIPE_KEY) return { ok: false, error: 'STRIPE_SECRET_KEY not set' };
   // Applied here rather than at each caller, so one check covers every kind
   // routed through this helper — and again below, where it reaches Stripe.
@@ -140,6 +187,40 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+  // ── simulate_complete: public — the "Pay" button on /pay-test.html
+  if (action === 'simulate_complete') {
+    const sim = await verifySimToken(String(body.token ?? ''));
+    if (!sim) return jsonResponse({ ok: false, error: 'This test checkout has expired — start again' }, 400);
+    // Re-checked here, not only when the link was made: turning test mode
+    // off has to kill any test links still open in someone's browser.
+    if (!(await paymentsTestMode(sb, sim.tid))) {
+      return jsonResponse({ ok: false, error: 'Test payments are turned off for this club' }, 403);
+    }
+    const event = {
+      // Derived from the session id, so a double-click replays the same event
+      // and stripe_webhook's idempotency check drops the second one.
+      id: `evt_${sim.sid}`,
+      type: 'checkout.session.completed',
+      data: { object: {
+        id: sim.sid, object: 'checkout.session',
+        status: 'complete', payment_status: 'paid',
+        amount_total: sim.amt, currency: 'usd',
+        payment_intent: null, customer: null,
+        metadata: sim.md,
+      } },
+    };
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/stripe_webhook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+      body: JSON.stringify(event),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      return jsonResponse({ ok: false, error: `Webhook failed (${r.status}): ${t.slice(0, 200)}` }, 502);
+    }
+    return jsonResponse({ ok: true, redirect: sim.ok });
+  }
+
   // ── application: public action — anyone with the application id can pay
   if (action === 'application') {
     const id = String(body.application_id ?? '');
@@ -152,9 +233,11 @@ Deno.serve(async (req) => {
 
     const { data: tenant } = await sb.from('tenants')
       .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle();
-    if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
+    const testMode = await paymentsTestMode(sb, app.tenant_id);
+    if (!testMode && (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled)) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
     }
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
 
     // Resolve tier price from settings
     const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
@@ -216,6 +299,7 @@ Deno.serve(async (req) => {
       feeBps: FEE_BPS_DUES,
       policy: feePolicyFromTenant(tenant),
       saveCard,
+      simulate: testMode,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
 
@@ -238,9 +322,11 @@ Deno.serve(async (req) => {
 
     const { data: tenant } = await sb.from('tenants')
       .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle();
-    if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
+    const testMode = await paymentsTestMode(sb, app.tenant_id);
+    if (!testMode && (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled)) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
     }
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
     // This action builds its Stripe params inline rather than through
     // createCheckoutSession, so the waiver has to be applied by hand below.
     const feePolicy = feePolicyFromTenant(tenant);
@@ -348,24 +434,49 @@ Deno.serve(async (req) => {
       ? 0
       : Math.max(0, Math.floor(firstCents * FEE_BPS_DUES / 10000)) + firstPlanFee;
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    const params = new URLSearchParams();
-    params.append('mode', 'payment');
-    params.append('success_url', app.is_renewal
+    const successUrl = app.is_renewal
       ? `${clubUrl}/m/?renewed=1&plan=1`
-      : `${clubUrl}/apply.html?plan_started=1&app_id=${id}`);
-    params.append('cancel_url', app.is_renewal
+      : `${clubUrl}/apply.html?plan_started=1&app_id=${id}`;
+    const cancelUrl = app.is_renewal
       ? `${clubUrl}/m/renew.html?cancelled=1`
-      : `${clubUrl}/apply.html?plan_started=0`);
-    params.append('line_items[0][price_data][currency]', 'usd');
-    params.append('line_items[0][price_data][product_data][name]',
-      `${tenant.display_name} dues — payment 1 of ${schedule.length} (${(tier?.label as string) || 'family'})`);
-    params.append('line_items[0][price_data][product_data][description]',
-      (laterCount === 1
+      : `${clubUrl}/apply.html?plan_started=0`;
+    const productName = `${tenant.display_name} dues — payment 1 of ${schedule.length} (${(tier?.label as string) || 'family'})`;
+    const description = (laterCount === 1
         ? `The remaining $${(secondCents / 100).toFixed(2)} auto-charges on ${finalDueDate}.`
         : `${laterCount} more payments totalling $${(secondCents / 100).toFixed(2)} auto-charge through ${finalDueDate}.`)
       + (firstPlanFee > 0
         ? ` Includes a $${(firstPlanFee / 100).toFixed(2)} payment-plan fee per payment.`
-        : ''));
+        : '');
+    const metadata: Record<string, string> = {
+      kind: 'payment_plan_first',
+      plan_id: planId,
+      application_id: id,
+      tenant_id: String(app.tenant_id),
+      // application_fee_amount bundles our dues cut and the member's plan
+      // fee into a single number, and Stripe has no way to tell them apart
+      // afterwards. Record the split now or the breakdown is lost for good.
+      fee_plan_cents: String(feePolicy.waived ? 0 : firstPlanFee),
+      fee_dues_cents: String(Math.max(0, platformFee - (feePolicy.waived ? 0 : firstPlanFee))),
+    };
+
+    if (testMode) {
+      const sim = await simulatedCheckoutUrl({
+        tid: String(app.tenant_id), amt: firstChargeCents, name: productName, desc: description,
+        ok: successUrl, no: cancelUrl, md: metadata,
+      });
+      await sb.from('payment_plan_installments').update({
+        stripe_session_id: sim.session_id,
+      }).eq('plan_id', planId).eq('sequence', 1);
+      return jsonResponse({ ok: true, url: sim.url, plan_id: planId, first_cents: firstCents, second_cents: secondCents, second_due: finalDueDate });
+    }
+
+    const params = new URLSearchParams();
+    params.append('mode', 'payment');
+    params.append('success_url', successUrl);
+    params.append('cancel_url', cancelUrl);
+    params.append('line_items[0][price_data][currency]', 'usd');
+    params.append('line_items[0][price_data][product_data][name]', productName);
+    params.append('line_items[0][price_data][product_data][description]', description);
     params.append('line_items[0][price_data][unit_amount]', String(firstChargeCents));
     params.append('line_items[0][quantity]', '1');
     params.append('payment_intent_data[application_fee_amount]',
@@ -376,17 +487,7 @@ Deno.serve(async (req) => {
     // Both places, for the reason in createCheckoutSession above: the
     // session copy is what the webhook reads, the payment_intent copy is what
     // survives onto the Charge and makes the Application Fee categorisable.
-    for (const [k, v] of Object.entries({
-      kind: 'payment_plan_first',
-      plan_id: planId,
-      application_id: id,
-      tenant_id: String(app.tenant_id),
-      // application_fee_amount bundles our dues cut and the member's plan
-      // fee into a single number, and Stripe has no way to tell them apart
-      // afterwards. Record the split now or the breakdown is lost for good.
-      fee_plan_cents: String(feePolicy.waived ? 0 : firstPlanFee),
-      fee_dues_cents: String(Math.max(0, platformFee - (feePolicy.waived ? 0 : firstPlanFee))),
-    })) {
+    for (const [k, v] of Object.entries(metadata)) {
       params.append(`metadata[${k}]`, v);
       params.append(`payment_intent_data[metadata][${k}]`, v);
     }
@@ -422,9 +523,11 @@ Deno.serve(async (req) => {
 
   const { data: tenant } = await sb.from('tenants')
     .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', TID).maybeSingle();
-  if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
+  const testMode = await paymentsTestMode(sb, TID);
+  if (!testMode && (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled)) {
     return jsonResponse({ ok: false, error: 'Stripe isn\'t connected for this club yet' }, 400);
   }
+  if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
   const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
 
   if (action === 'program_booking') {
@@ -445,6 +548,7 @@ Deno.serve(async (req) => {
       metadata: { kind: 'program_booking', booking_id: bk.id, tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,
       policy: feePolicyFromTenant(tenant),
+      simulate: testMode,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('program_bookings').update({ stripe_session_id: session.session_id }).eq('id', bk.id);
@@ -476,6 +580,7 @@ Deno.serve(async (req) => {
       metadata: { kind: 'party_booking', party_id: party.id, tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,    // 1.5% — parties bucket
       policy: feePolicyFromTenant(tenant),
+      simulate: testMode,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('party_bookings').update({ stripe_session_id: session.session_id }).eq('id', party.id);
@@ -498,6 +603,7 @@ Deno.serve(async (req) => {
       metadata: { kind: 'guest_pass_pack', pack_id: pack.id, tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,
       policy: feePolicyFromTenant(tenant),
+      simulate: testMode,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('guest_pass_packs').update({ stripe_session_id: session.session_id }).eq('id', pack.id);

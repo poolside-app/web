@@ -829,6 +829,36 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── simulate_venmo_paid (public, test mode only) ───────────────────────
+  // Stands in for both halves of a Venmo payment — the money arriving and the
+  // board confirming it — by running the same approve/verify path the board's
+  // "Approve & verify" button does, so every downstream automation fires.
+  if (action === 'simulate_venmo_paid') {
+    const id = String(body.id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, status, payment_status').eq('id', id).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    const { data: st } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
+    const pay = (st?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined;
+    if (pay?.test_mode !== true) {
+      return jsonResponse({ ok: false, error: 'Test payments are turned off for this club' }, 403);
+    }
+    if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    if (app.status !== 'pending' && app.status !== 'approved') {
+      return jsonResponse({ ok: false, error: `Application is ${app.status}` }, 409);
+    }
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+      body: JSON.stringify(app.status === 'pending'
+        ? { action: 'approve', id, tenant_id: app.tenant_id, verify_venmo_payment: true, venmo_note: 'Simulated payment (test mode)' }
+        : { action: 'verify_payment', id, tenant_id: app.tenant_id, method: 'venmo', note: 'Simulated payment (test mode)' }),
+    });
+    const out = await r.json().catch(() => ({ ok: false, error: `approve failed (${r.status})` }));
+    return jsonResponse(out, r.status);
+  }
+
   // ── get_renewal (public, token) ────────────────────────────────────────
   // The no-login renewal path. A club texts or emails a one-time link; the
   // member taps it and sees what they owe and how they can pay, without ever

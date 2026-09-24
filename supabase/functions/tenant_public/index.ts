@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
       // Customizable verify-window copy on member-facing surfaces. Default
       // 3 business days; admins can edit per their treasurer's cadence.
       offline_verify_window_days: Number((v.payments as Record<string, unknown> | undefined)?.offline_verify_window_days ?? 3),
+      test_mode: (v.payments as Record<string, unknown> | undefined)?.test_mode === true,
     },
     // Payment plan public surface: minimal config fields needed by the apply
     // form to decide whether to show the 'Pay in 2 installments' option and
