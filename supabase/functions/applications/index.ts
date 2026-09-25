@@ -103,7 +103,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact';
 
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
@@ -505,6 +505,7 @@ Deno.serve(async (req) => {
       address: strOrNull(body.address),
       city:    strOrNull(body.city),
       zip:     strOrNull(body.zip),
+      emergency_contact: strOrNull(body.emergency_contact)?.slice(0, 200) ?? null,
       num_adults: adults_json.length || intOrDefault(body.num_adults, 2),
       num_kids:   children_json.length || intOrDefault(body.num_kids, 0),
       body:    strOrNull(body.body),
@@ -1304,6 +1305,7 @@ Deno.serve(async (req) => {
       address: app.address,
       city: app.city,
       zip: app.zip,
+      emergency_contact: app.emergency_contact ?? null,
       active: true,
       // Honour the opt-in taken at signup. The charge run additionally
       // requires a saved card (auto_renew_pm_id), which the Stripe webhook

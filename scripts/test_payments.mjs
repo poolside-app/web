@@ -2,13 +2,15 @@
 // Targeted check of test payments (fake card + fake Venmo) against production.
 // Costs about 15 Edge Function calls a run — never run the full suites for this.
 //
-// Creates two applications on bishopestates named "SimTest …" and leaves them
-// in place: Doug deletes test data himself once testing is over. Welcome
-// emails go to doug.frevele+simtest…@gmail.com; the 555 phone numbers are
-// deliberately undeliverable, so a text is attempted and logged but never sent.
+// Creates two applications on bishopestates named "SimTest … <run>" and
+// removes them, with everything they touched, when it finishes — real testers'
+// families are the only ones the board should see. Welcome emails go to
+// doug.frevele+simtest…@gmail.com; the 555 phone numbers are deliberately
+// undeliverable, so a text is attempted and logged but never sent.
 //
 // Usage: node scripts/test_payments.mjs
 import { readFileSync } from 'node:fs';
+import { purgeTestFamilies } from './lib/testdata.mjs';
 
 const env = Object.fromEntries(readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
   .split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l))
@@ -65,6 +67,7 @@ function application(kind, method) {
     primary_name: `Sim ${kind === 'card' ? 'Card' : 'Venmo'} Tester`,
     primary_email: email, primary_phone: phone,
     address: '1 Test Lane', city: 'Testville', zip: '00000',
+    emergency_contact: `Emergency Tester ${n} — (555) 000-00${n}${n}`,
     adults: [{ name: `Sim ${kind === 'card' ? 'Card' : 'Venmo'} Tester`, email, phone }],
     children: [],
     waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
@@ -75,7 +78,7 @@ function application(kind, method) {
 async function appState(id) {
   const [a] = await sql(`select a.status, a.payment_status, a.payment_method, a.stripe_session_id,
       a.household_id, a.membership_year, a.paid_at, a.primary_phone,
-      h.dues_paid_for_year, h.paid_until_year
+      h.dues_paid_for_year, h.paid_until_year, h.emergency_contact
     from applications a left join households h on h.id = a.household_id where a.id = ${q(id)}`);
   return a;
 }
@@ -90,6 +93,8 @@ async function assertMember(id, method, label) {
   check(`${label}: household created and paid for ${s?.membership_year}`,
     !!s?.household_id && s?.dues_paid_for_year === true && s?.paid_until_year === s?.membership_year,
     `household=${s?.household_id} dues=${s?.dues_paid_for_year} until=${s?.paid_until_year}`);
+  check(`${label}: emergency contact carried onto the family`, /^Emergency Tester \d — /.test(s?.emergency_contact || ''),
+    `emergency_contact=${s?.emergency_contact}`);
   const actions = await sql(`select kind, body from application_actions where application_id = ${q(id)}`);
   const welcome = actions.find(x => x.kind === 'welcome_sent');
   check(`${label}: welcome email sent`, !!welcome && /email via Resend/.test(welcome.body || ''), `welcome=${JSON.stringify(welcome)}`);
@@ -148,6 +153,9 @@ const off = await fn('applications', { action: 'simulate_venmo_paid', id: venmo.
 check('test mode off → simulating is refused', off.ok === false && off.status === 403, JSON.stringify(off).slice(0, 160));
 await sql(`update settings set value = jsonb_set(value, '{payments,test_mode}', 'true'::jsonb) where tenant_id = ${q(tenant.id)}`);
 console.log('  (test mode switched back on)');
+
+await purgeTestFamilies(sql, tenant.id, `SimTest % ${STAMP}`);
+console.log('  (test families removed)');
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed · ${calls} Edge Function calls`);
 process.exit(failed ? 1 : 0);

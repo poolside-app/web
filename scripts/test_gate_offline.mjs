@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
+import { makeTempMember, purgeTestFamilies } from './lib/testdata.mjs';
 
 // web/package.json says "commonjs", so a plain import() of a .ts file fails.
 async function importTs(relPath) {
@@ -63,30 +64,32 @@ try {
 }
 
 console.log('\nLive, bishopestates');
-const [m] = await sql(`select m.id, m.household_id, t.id as tid, t.slug, g.bridge_last_seen_at
-  from household_members m join households h on h.id = m.household_id
-  join tenants t on t.id = h.tenant_id join gate_panels g on g.tenant_id = t.id
-  where t.slug = 'bishopestates' and h.family_name like 'SimTest%' and m.role = 'primary'
-    and m.active and m.can_unlock_gate and h.active and h.dues_paid_for_year
-  order by h.created_at limit 1`);
-if (!m) { console.log('  no eligible SimTest member found'); process.exit(2); }
-const offlineSecs = m.bridge_last_seen_at ? (Date.now() - Date.parse(m.bridge_last_seen_at)) / 1000 : Infinity;
+const [club] = await sql(`select t.id as tid, t.slug, g.bridge_last_seen_at from tenants t
+  join gate_panels g on g.tenant_id = t.id where t.slug = 'bishopestates'`);
+const offlineSecs = club.bridge_last_seen_at ? (Date.now() - Date.parse(club.bridge_last_seen_at)) / 1000 : Infinity;
 if (offlineSecs < 600) {
   console.log('  Bridge was seen in the last 10 minutes — refusing to run, a tap could open the real gate.');
   process.exit(2);
 }
-const token = memberJwt({ sub: m.id, tid: m.tid, slug: m.slug, hid: m.household_id });
-const c = await gate('check', token);
-if (check('check says the gate is offline', c.ok && c.can_unlock === false && c.reason === 'gate_offline',
-  JSON.stringify(c).slice(0, 160))) {
-  const t = await gate('tap', token);
-  check('a tap is refused with the offline reason', t.status === 403 && t.reason === 'gate_offline',
-    JSON.stringify(t).slice(0, 160));
-  const [{ n }] = await sql(`select count(*)::int as n from gate_unlocks
-    where member_id = '${m.id}' and requested_at > now() - interval '2 minutes'`);
-  check('no unlock was queued', n === 0, `queued=${n}`);
-} else {
-  console.log('  (tap skipped — it would queue a real unlock)');
+const FAMILY = `SimTest gate ${String(Date.now()).slice(-6)}`;
+const m = { ...(await makeTempMember(sql, club.tid, FAMILY)), tid: club.tid, slug: club.slug };
+try {
+  const token = memberJwt({ sub: m.id, tid: m.tid, slug: m.slug, hid: m.household_id });
+  const c = await gate('check', token);
+  if (check('check says the gate is offline', c.ok && c.can_unlock === false && c.reason === 'gate_offline',
+    JSON.stringify(c).slice(0, 160))) {
+    const t = await gate('tap', token);
+    check('a tap is refused with the offline reason', t.status === 403 && t.reason === 'gate_offline',
+      JSON.stringify(t).slice(0, 160));
+    const [{ n }] = await sql(`select count(*)::int as n from gate_unlocks
+      where member_id = '${m.id}' and requested_at > now() - interval '2 minutes'`);
+    check('no unlock was queued', n === 0, `queued=${n}`);
+  } else {
+    console.log('  (tap skipped — it would queue a real unlock)');
+  }
+} finally {
+  await sql(`delete from gate_unlocks where member_id = '${m.id}'`);
+  await purgeTestFamilies(sql, club.tid, FAMILY);
 }
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

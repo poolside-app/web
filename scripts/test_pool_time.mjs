@@ -12,6 +12,7 @@ import { createServer } from 'node:http';
 import { stripTypeScriptTypes } from 'node:module';
 import { extname, join, normalize } from 'node:path';
 import puppeteer from 'puppeteer-core';
+import { makeTempMember, purgeTestFamilies } from './lib/testdata.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const env = Object.fromEntries(readFileSync(join(ROOT, '.env.local'), 'utf8')
@@ -70,9 +71,9 @@ async function importTs(...rels) {
 const q = s => `'${String(s).replace(/'/g, "''")}'`;
 
 const [tenant] = await sql(`select id from tenants where slug = ${q(SLUG)}`);
-const [member] = await sql(`select m.id, m.household_id from household_members m join households h on h.id = m.household_id
-  where h.tenant_id = ${q(tenant.id)} and h.family_name like 'SimTest%' and m.role = 'primary' and m.active
-  order by h.created_at limit 1`);
+// A throwaway paid family for the member-side checks; removed at the end.
+const FAMILY = `SimTest time ${String(Date.now()).slice(-6)}`;
+const member = await makeTempMember(sql, tenant.id, FAMILY);
 const memberToken = jwt({ sub: member.id, kind: 'member', tid: tenant.id, slug: SLUG, hid: member.household_id });
 const adminToken = jwt({ sub: '00000000-0000-0000-0000-000000000000', kind: 'tenant_admin', tid: tenant.id, slug: SLUG,
   synthetic: true, impersonated_by: '00000000-0000-0000-0000-000000000000' });
@@ -302,6 +303,7 @@ try {
 } finally {
   await browser.close();
   server.close();
+  await purgeTestFamilies(sql, tenant.id, FAMILY);
 }
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed · ~${calls} Edge Function calls`);

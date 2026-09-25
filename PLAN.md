@@ -25,11 +25,12 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
 - The gate card now says "Remote unlock is offline right now" while the bridge is off (A2, fixed 9/24).
 
 ## Before testers (found 9/24 walking the app at phone size)
-- **T1. The emergency contact is thrown away.**
+- **T1. ✅ Fixed 9/25:** the emergency contact was being thrown away.
   - The signup form requires it, but the server never saves it: `applications` has no column for it, so it's dropped at submit.
   - The family's "Emergency contact" box is blank after approval.
   - Fix: save it on the application and copy it to the household at approval.
-- **T2. Clear my leftover test data so testers and Doug see only real people.**
+- **T2. ✅ Done 9/25:** cleared my leftover test data, so testers and Doug see only real people. The test scripts now remove their own families when they finish.
+  - **Found while doing it:** Bishop's Google Drive backup has been disconnected since June (Google says "token expired or revoked"), so no application has been backed up. Doug has to reconnect it in Settings → Drive backup with his Google login.
   - 12 SimTest households and their applications.
   - An old automated-test program ("E2E Swim 736327", $50, "Coach E2E") that shows on the public page and in "Today".
   - Four stale "Gate bridge offline" tasks.
