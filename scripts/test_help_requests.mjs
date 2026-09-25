@@ -80,6 +80,20 @@ try {
   check('Done on the dashboard marks the request solved', /help\.request/.test(tasksFn) && /markHelpSolved/.test(tasksFn));
 }
 
+console.log('\nMember app (E3, offline)');
+{
+  const app = read('m/index.html');
+  check('the member home has an Ask the board button and a list of their questions',
+    /Ask the board/.test(app) && /help_requests/.test(app) && /function openHelp\(/.test(app) && /id="help-list"/.test(app));
+  check('the topic picker has all five topics', ['keyfob', 'membership', 'parties', 'facility', 'other']
+    .every(t => new RegExp(`data-topic="${t}"`).test(app)));
+  check('the link in the reply text opens that conversation, even after signing in',
+    /#help=/.test(app) && /poolside_member_return/.test(app));
+  check('"not set up for gate access" offers to ask the keyfob person',
+    /member_not_authorized[\s\S]{0,400}openHelp\('keyfob'/.test(app));
+  check('photos are shrunk on the phone before sending', /toBlob|toDataURL\('image\/jpeg'/.test(app));
+}
+
 if (process.argv.includes('--offline')) {
   console.log(`\n${failed ? 'FAILED' : 'PASSED'} (offline only): ${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

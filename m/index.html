@@ -198,6 +198,27 @@
   .perr { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
   .perr.show { display:block; }
 
+  /* Ask the board (help requests) */
+  .help-topics { display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:6px; }
+  .help-topic { display:flex; align-items:center; gap:8px; padding:11px 12px; border:1.5px solid var(--border); border-radius:12px; background:#fff; font:600 13.5px 'Inter'; color:var(--text); cursor:pointer; text-align:left; }
+  .help-topic.on { border-color:var(--blue); background:var(--blue-l); color:var(--blue); }
+  .help-topic:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .help-row { display:flex; gap:10px; align-items:flex-start; width:100%; text-align:left; padding:12px; border:1px solid var(--border); border-radius:12px; background:#fff; margin-top:8px; cursor:pointer; font:inherit; color:inherit; }
+  .help-row .t { font-weight:600; font-size:14px; }
+  .help-row .s { font-size:12.5px; color:var(--muted); margin-top:3px; line-height:1.4; overflow-wrap:anywhere; }
+  .help-chip { display:inline-block; padding:2px 8px; border-radius:999px; font:700 10.5px 'Inter'; text-transform:uppercase; letter-spacing:.04em; background:var(--blue-l); color:var(--blue); white-space:nowrap; }
+  .help-chip.in_progress { background:#fef3c7; color:#92400e; }
+  .help-chip.solved { background:#dcfce7; color:#166534; }
+  .help-chip.new { background:var(--sun); color:#0a3b5c; }
+  .help-msgs { display:flex; flex-direction:column; gap:10px; margin:14px 0; }
+  .help-msg { max-width:86%; padding:10px 12px; border-radius:14px; font-size:14px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .help-msg.member { align-self:flex-end; background:var(--blue); color:#fff; border-bottom-right-radius:4px; }
+  .help-msg.board { align-self:flex-start; background:#f1f5f9; color:var(--text); border-bottom-left-radius:4px; }
+  .help-msg.note { align-self:center; background:none; color:var(--muted); font-size:12px; padding:0; }
+  .help-msg .who { font:600 11.5px 'Inter'; opacity:.8; margin-bottom:3px; }
+  .help-msg img { display:block; max-width:100%; border-radius:10px; margin-top:8px; }
+  .help-msg .when { font-size:11px; opacity:.7; margin-top:4px; }
+
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 
   /* Hide the "Add to home screen" instructions whenever the page is running
@@ -527,6 +548,63 @@
   </div>
 </div>
 
+<!-- Ask the board: a new question for the board member who handles the
+     topic (or the president). See help_requests. -->
+<div class="scrim" id="help-scrim" onclick="if (event.target === this) closeHelp()">
+  <div class="pmodal">
+    <div id="help-form">
+      <h2 style="margin:0;font-family:'Fraunces',Georgia,serif;color:var(--blue)">🙋 Ask the board</h2>
+      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px;line-height:1.55">It goes straight to the board member who handles it. You'll get a text when they reply.</p>
+      <label>What's it about?</label>
+      <div class="help-topics" id="help-topics">
+        <button type="button" class="help-topic" data-topic="keyfob" onclick="pickHelpTopic('keyfob')">🔑 Keyfob &amp; gate</button>
+        <button type="button" class="help-topic" data-topic="membership" onclick="pickHelpTopic('membership')">🪪 Membership &amp; dues</button>
+        <button type="button" class="help-topic" data-topic="parties" onclick="pickHelpTopic('parties')">🎉 Parties &amp; events</button>
+        <button type="button" class="help-topic" data-topic="facility" onclick="pickHelpTopic('facility')">🛠️ Pool problem</button>
+        <button type="button" class="help-topic" data-topic="other" onclick="pickHelpTopic('other')">💬 Something else</button>
+      </div>
+      <label for="help-body" style="margin-top:14px">Your message</label>
+      <textarea id="help-body" rows="5" maxlength="2000" placeholder="What's going on? The more detail, the faster they can help."></textarea>
+      <label for="help-photo">Add a photo (optional)</label>
+      <input type="file" id="help-photo" accept="image/*">
+      <div class="perr" id="help-err"></div>
+      <div class="pmodal-foot">
+        <button class="btn btn-ghost" onclick="closeHelp()">Cancel</button>
+        <button class="btn" id="help-send" onclick="sendHelp()" style="background:var(--blue);color:#fff">Send</button>
+      </div>
+    </div>
+    <div id="help-done" style="display:none;text-align:center;padding:10px 0">
+      <div style="font-size:40px">✅</div>
+      <h2 style="margin:6px 0;font-family:'Fraunces',Georgia,serif;color:var(--blue)">Sent</h2>
+      <p id="help-done-text" style="color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 16px"></p>
+      <button class="btn" onclick="closeHelp()" style="background:var(--blue);color:#fff">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- One conversation with the board. Opened from "Questions for the
+     board" or the link in a reply text (/m/#help=<id>). -->
+<div class="scrim" id="help-thread-scrim" onclick="if (event.target === this) closeHelpThread()">
+  <div class="pmodal">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <h2 id="help-thread-title" style="margin:0;font-family:'Fraunces',Georgia,serif;color:var(--blue)">Your question</h2>
+      <button class="btn btn-ghost" onclick="closeHelpThread()" aria-label="Close" style="padding:4px 12px">×</button>
+    </div>
+    <div id="help-thread-sub" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
+    <div class="help-msgs" id="help-thread-msgs"><div class="empty">Loading…</div></div>
+    <div id="help-thread-reply">
+      <label for="help-reply-body">Reply</label>
+      <textarea id="help-reply-body" rows="3" maxlength="2000" placeholder="Write back to the board"></textarea>
+      <label for="help-reply-photo">Add a photo (optional)</label>
+      <input type="file" id="help-reply-photo" accept="image/*">
+      <div class="perr" id="help-thread-err"></div>
+      <div class="pmodal-foot">
+        <button class="btn" id="help-reply-send" onclick="sendHelpReply()" style="background:var(--blue);color:#fff">Send reply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="/js/calendar.js"></script>
 <script src="/js/today.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
@@ -550,6 +628,7 @@ function token() { return localStorage.getItem('poolside_member_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escapeAttr(s) { return String(s ?? '').replace(/["']/g, c => ({'"':'&quot;',"'":'&#39;'}[c])); }
 function logout() {
+  rememberHelpLink();
   localStorage.removeItem('poolside_member_token');
   localStorage.removeItem('poolside_member_user');
   localStorage.removeItem('poolside_member_tenant');
@@ -1723,6 +1802,199 @@ async function submitFeedback() {
   btn.disabled = false; btn.textContent = orig;
 }
 
+// ── Ask the board (help requests) ───────────────────────────────────────
+// A member's question goes to the board member who handles its topic, or
+// the president. Board replies arrive by text with a /m/#help=<id> link.
+const HELP_PATH = '/functions/v1/help_requests';
+const HELP_TOPIC_NAMES = {
+  keyfob: '🔑 Keyfob & gate', membership: '🪪 Membership & dues', parties: '🎉 Parties & events',
+  facility: '🛠️ Pool problem', other: '💬 Something else',
+};
+const HELP_STATUS = { open: 'Sent', in_progress: 'Being handled', solved: 'Solved' };
+let HELP_TOPIC = null;
+let HELP_OPEN_ID = null;
+const callHelp = (action, extra) => callMember(action, extra, HELP_PATH);
+
+// The reply text links to /m/#help=<id>. If that lands on a signed-out
+// phone, keep it through sign-in and open it afterwards.
+function rememberHelpLink() {
+  try { if (/^#help=/.test(window.location.hash)) localStorage.setItem('poolside_member_return', window.location.hash); } catch (_) {}
+}
+function takeHelpLink() {
+  let h = window.location.hash;
+  try {
+    const saved = localStorage.getItem('poolside_member_return');
+    localStorage.removeItem('poolside_member_return');
+    if (!/^#help=/.test(h) && saved) h = saved;
+  } catch (_) {}
+  const m = (h || '').match(/^#help=([0-9a-f-]{36})$/i);
+  return m ? m[1] : null;
+}
+
+// The link can also arrive while the app is already open.
+window.addEventListener('hashchange', () => {
+  const m = window.location.hash.match(/^#help=([0-9a-f-]{36})$/i);
+  if (m && m[1] !== HELP_OPEN_ID && token()) openHelpThread(m[1]);
+});
+
+function showHelpErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('show'); }
+
+function openHelp(topic, text) {
+  document.getElementById('help-form').style.display = '';
+  document.getElementById('help-done').style.display = 'none';
+  document.getElementById('help-err').classList.remove('show');
+  document.getElementById('help-body').value = text || '';
+  document.getElementById('help-photo').value = '';
+  pickHelpTopic(topic || null);
+  document.getElementById('help-scrim').classList.add('open');
+}
+function closeHelp() { document.getElementById('help-scrim').classList.remove('open'); }
+function pickHelpTopic(t) {
+  HELP_TOPIC = t;
+  document.querySelectorAll('#help-topics .help-topic').forEach(b => b.classList.toggle('on', b.dataset.topic === t));
+}
+
+// Phone photos are several MB. Shrink to 1600px JPEG before sending; if the
+// browser can't read the file (some HEIC), send it as-is when it's a type
+// the server takes.
+async function shrinkPhoto(file) {
+  if (!file) return {};
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    return { photo_content_type: 'image/jpeg', photo_base64: c.toDataURL('image/jpeg', 0.85).split(',')[1] };
+  } catch (_) {
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) throw new Error('That photo couldn\'t be read. Try a screenshot of it instead.');
+    if (file.size > 8 * 1024 * 1024) throw new Error('That photo is too big (8 MB at most).');
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] || '');
+      r.onerror = () => rej(new Error('Could not read the photo'));
+      r.readAsDataURL(file);
+    });
+    return { photo_content_type: file.type, photo_base64: b64 };
+  }
+}
+
+async function sendHelp() {
+  document.getElementById('help-err').classList.remove('show');
+  if (!HELP_TOPIC) return showHelpErr('help-err', 'Pick what it\'s about.');
+  const text = document.getElementById('help-body').value.trim();
+  if (!text) return showHelpErr('help-err', 'Write a short message for the board.');
+  const btn = document.getElementById('help-send');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const photo = await shrinkPhoto(document.getElementById('help-photo').files[0] || null);
+    const r = await callHelp('submit', { topic: HELP_TOPIC, body: text, ...photo });
+    if (!r.ok) throw new Error(r.error || 'Could not send');
+    const who = r.request.assigned_name ? `${r.request.assigned_name}, who handles ${r.request.topic_label.toLowerCase()}` : 'the board president';
+    document.getElementById('help-done-text').textContent =
+      `It went to ${who}. You'll get a text when they reply, and you can follow it under Questions for the board.`;
+    document.getElementById('help-form').style.display = 'none';
+    document.getElementById('help-done').style.display = '';
+    loadHelpList();
+  } catch (e) {
+    showHelpErr('help-err', e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send';
+  }
+}
+
+function renderHelpCard() {
+  return `
+    <div class="card" id="help-card">
+      <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        🙋 Questions for the board
+        <button class="btn btn-ghost" onclick="openHelp()" style="font-size:12px;padding:6px 12px">Ask the board</button>
+      </h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:0">Keyfob not working? Question about dues or a party? It goes to the board member who handles it, and they text you back.</p>
+      <div id="help-list"></div>
+    </div>`;
+}
+
+async function loadHelpList() {
+  const host = document.getElementById('help-list');
+  if (!host) return;
+  try {
+    const r = await callHelp('mine');
+    const rows = (r && r.ok && r.requests) || [];
+    host.innerHTML = rows.map(q => {
+      const fresh = q.last_from_board && q.status !== 'solved';
+      return `
+        <button class="help-row" onclick="openHelpThread('${escapeAttr(q.id)}')">
+          <div style="flex:1;min-width:0">
+            <div class="t">${escapeHtml(HELP_TOPIC_NAMES[q.topic] || q.topic_label)}</div>
+            <div class="s">${fresh ? `<b>${escapeHtml(q.assigned_name || 'The board')} replied:</b> ` : ''}${escapeHtml(q.last_snippet || '')}</div>
+          </div>
+          <span class="help-chip ${fresh ? 'new' : escapeAttr(q.status)}">${fresh ? 'New reply' : escapeHtml(HELP_STATUS[q.status] || q.status)}</span>
+        </button>`;
+    }).join('');
+  } catch (_) { host.innerHTML = ''; }
+}
+
+async function openHelpThread(id) {
+  HELP_OPEN_ID = id;
+  history.replaceState(null, '', '#help=' + id);
+  document.getElementById('help-thread-msgs').innerHTML = '<div class="empty">Loading…</div>';
+  document.getElementById('help-thread-err').classList.remove('show');
+  document.getElementById('help-reply-body').value = '';
+  document.getElementById('help-reply-photo').value = '';
+  document.getElementById('help-thread-scrim').classList.add('open');
+  try {
+    const r = await callHelp('get', { id });
+    if (!r.ok) throw new Error(r.error || 'Could not open this question');
+    paintHelpThread(r);
+  } catch (e) {
+    document.getElementById('help-thread-msgs').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+  }
+}
+function closeHelpThread() {
+  HELP_OPEN_ID = null;
+  document.getElementById('help-thread-scrim').classList.remove('open');
+  if (/^#help=/.test(window.location.hash)) history.replaceState(null, '', window.location.pathname);
+}
+function paintHelpThread(r) {
+  const q = r.request;
+  document.getElementById('help-thread-title').textContent = HELP_TOPIC_NAMES[q.topic] || q.topic_label;
+  const handler = q.assigned_name ? `${q.assigned_name} is handling this` : 'The board president is handling this';
+  document.getElementById('help-thread-sub').innerHTML =
+    `<span class="help-chip ${escapeAttr(q.status)}">${escapeHtml(HELP_STATUS[q.status] || q.status)}</span> &nbsp;${escapeHtml(handler)}`;
+  const when = iso => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  document.getElementById('help-thread-msgs').innerHTML = (r.messages || []).map(m => {
+    if (m.author_kind === 'note') return `<div class="help-msg note">${escapeHtml(m.body)} · ${escapeHtml(when(m.created_at))}</div>`;
+    const who = m.author_kind === 'board' ? `<div class="who">${escapeHtml(m.author_name || 'The board')}</div>` : '';
+    const img = m.photo_url ? `<a href="${escapeAttr(m.photo_url)}" target="_blank" rel="noopener"><img src="${escapeAttr(m.photo_url)}" alt="Photo"></a>` : '';
+    return `<div class="help-msg ${m.author_kind === 'board' ? 'board' : 'member'}">${who}${escapeHtml(m.body)}${img}<div class="when">${escapeHtml(when(m.created_at))}</div></div>`;
+  }).join('');
+  document.getElementById('help-reply-send').textContent = q.status === 'solved' ? 'Reopen and send' : 'Send reply';
+}
+async function sendHelpReply() {
+  if (!HELP_OPEN_ID) return;
+  document.getElementById('help-thread-err').classList.remove('show');
+  const text = document.getElementById('help-reply-body').value.trim();
+  if (!text) return showHelpErr('help-thread-err', 'Write a message first.');
+  const btn = document.getElementById('help-reply-send');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const photo = await shrinkPhoto(document.getElementById('help-reply-photo').files[0] || null);
+    const r = await callHelp('reply', { id: HELP_OPEN_ID, body: text, ...photo });
+    if (!r.ok) throw new Error(r.error || 'Could not send');
+    await openHelpThread(HELP_OPEN_ID);
+    loadHelpList();
+  } catch (e) {
+    showHelpErr('help-thread-err', e.message);
+  } finally {
+    btn.disabled = false; if (btn.textContent === 'Sending…') btn.textContent = label;
+  }
+}
+
 // ── Remote keyfob (gate unlock) ─────────────────────────────────────────
 // Checks eligibility on load + after dues changes. Shows nothing if the
 // tenant doesn't have the gate add-on. Otherwise: big "Unlock gate" button
@@ -1764,18 +2036,25 @@ function renderGateEnabled() {
 }
 
 function renderGateDisabled(reason) {
+  // `ask` opens Ask the board with the right topic and a starter message.
   const messages = {
-    member_inactive:        { line1: 'Your membership isn\'t active', line2: 'Reach out to the board to reactivate.' },
-    member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'Ask the board to enable keyfob access for you.' },
-    household_inactive:     { line1: 'Your household isn\'t active', line2: 'Reach out to the board.' },
+    member_inactive:        { line1: 'Your membership isn\'t active', line2: 'The membership chair can help you reactivate.',
+                              ask: () => openHelp('membership', 'The app says my membership isn\'t active. Can you help me reactivate?') },
+    member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'The board member who handles keyfobs can turn it on for you.',
+                              ask: () => openHelp('keyfob', 'The app says I\'m not set up for gate access. Can you turn it on for me?') },
+    household_inactive:     { line1: 'Your household isn\'t active', line2: 'The membership chair can help.',
+                              ask: () => openHelp('membership', 'The app says our household isn\'t active. Can you help?') },
     dues_unpaid:            { line1: 'Pay your dues to unlock the gate', line2: 'Once your dues clear, the unlock button enables automatically.' },
     gate_offline:           { line1: 'Remote unlock is offline right now', line2: 'The pool\'s gate connection is down. Use your keyfob, or check back later — the button comes back on its own.' },
   };
-  const m = messages[reason] || { line1: 'Gate access not available', line2: 'Talk to the board for help.' };
+  const m = messages[reason] || { line1: 'Gate access not available', line2: 'The board member who handles keyfobs can help.',
+    ask: () => openHelp('keyfob', 'I can\'t unlock the gate from the app. Can you help?') };
   document.getElementById('gate-card-body').innerHTML = `
     <div style="font:600 16px 'Fraunces',Georgia,serif;color:#fff">🔒 ${escapeHtml(m.line1)}</div>
     <div style="margin-top:6px;font-size:13px;color:rgba(255,255,255,.8);line-height:1.5">${escapeHtml(m.line2)}</div>
+    ${m.ask ? `<button type="button" id="gate-ask-btn" class="btn" style="margin-top:12px;background:#fff;color:#0a3b5c;font-weight:700">🙋 Ask the board</button>` : ''}
   `;
+  if (m.ask) document.getElementById('gate-ask-btn').addEventListener('click', m.ask);
 }
 
 let unlockInFlight = false;
@@ -2076,6 +2355,7 @@ async function submitProfile() {
   heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, get $100 off</button>`);
   if (user.can_book_parties) heroActions.push(`<button class="btn btn-ghost" onclick="openPartyModal()">🎉 Request a party</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openPhotoUpload()">📸 Upload a photo</button>`);
+  heroActions.push(`<button class="btn btn-ghost" onclick="openHelp()">🙋 Ask the board</button>`);
   // "Edit my info" + "Add a household member" both moved to /m/family.html
   // — the household card below is the link in. Hero stays focused on
   // engagement actions, not chores.
@@ -2236,8 +2516,14 @@ async function submitProfile() {
       <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
     </a>
 
+    ${renderHelpCard()}
+
     ${renderFeedbackCard()}
   `;
+  loadHelpList();
+  // Opened from the link in a reply text (possibly before signing in).
+  const helpId = takeHelpLink();
+  if (helpId) openHelpThread(helpId);
 
   // "Today at the pool" — shared engine (same as the public page).
   if (window.PoolsideToday) {
