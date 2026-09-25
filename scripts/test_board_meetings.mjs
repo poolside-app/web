@@ -6,11 +6,15 @@
 // F2: closing a meeting puts it on the public page at once, unless it was
 // switched to board-only, and the page shows its start and end times in
 // pool time (checked in headless Chrome on a New York clock).
+// F3: the note-taker and the president can fix a closed meeting. It stays
+// public with its real times, shows "Edited … by …", and the old version is
+// kept in the audit log. Only the president can delete closed minutes.
 // Offline checks cost nothing. The live part is about 18 Edge Function
 // calls and uses temporary board logins that can't sign in, removed at the
 // end. The page check serves this checkout's governance.html.
 //
-// Usage: node scripts/test_board_meetings.mjs
+// Usage: node scripts/test_board_meetings.mjs [--offline]
+//   --offline runs only the free checks.
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
@@ -93,12 +97,18 @@ console.log('\nEvery board member can find it (offline)');
     !/requireScope\([^)]*'meetings'\)/.test(read('supabase/functions/board_meetings/index.ts')));
   check('the button says Close meeting and says where the minutes go',
     /Close meeting/.test(page) && /public page/i.test(page.slice(page.indexOf('async function finalize'))));
+  check('a closed meeting is fixed with Save changes, not by re-opening it',
+    !/'reopen'/.test(page) && /'amend'/.test(page) && /Save changes/.test(page));
   check('Public is the first choice, board-only is for closed sessions',
     page.indexOf('id="vis-public"') > 0 && page.indexOf('id="vis-public"') < page.indexOf('id="vis-private"')
     && /closed session/i.test(page));
 }
 
 // ── Live ────────────────────────────────────────────────────────────────
+if (process.argv.includes('--offline')) {
+  console.log(`\n${failed ? 'FAILED' : 'PASSED'} (offline only): ${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+}
 console.log('\nLive, bishopestates');
 const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
 const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
@@ -159,6 +169,28 @@ try {
   check('…but every board member can still read it',
     (ol.meetings || []).some(x => x.id === cs.meeting?.id && x.visibility === 'private'), short(ol));
 
+  console.log('\nFixing a closed meeting (F3)');
+  const [before] = await sql(`select started_at, ended_at, notes_md from board_meetings where id = '${m.id}'`);
+  const x1 = await meetings('amend', tok(otherId), { id: m.id, notes_md: 'not mine' });
+  check('another board member can\'t change closed minutes', x1.status === 403, short(x1));
+  const x2 = await meetings('amend', tok(noteId), { id: m.id, notes_md: 'Pool opens May 23. Snack bar opens June 1.' });
+  const am = x2.meeting || {};
+  check('the note-taker can fix them', x2.ok && am.notes_md === 'Pool opens May 23. Snack bar opens June 1.', short(x2));
+  check('…they stay closed and public, with the real start and end times',
+    am.status === 'completed' && am.visibility === 'public'
+    && Date.parse(am.started_at) === Date.parse(before.started_at) && Date.parse(am.ended_at) === Date.parse(before.ended_at),
+    short({ status: am.status, visibility: am.visibility, started_at: am.started_at, ended_at: am.ended_at }));
+  check('…and record who edited them', !!am.edited_at && am.edited_by_name === 'SimTest Note', short(am));
+  const [aud] = await sql(`select metadata from audit_log where entity_id = '${m.id}' and kind = 'board_meeting.edited'
+    order by created_at desc limit 1`);
+  check('the old version is kept in the audit log', aud?.metadata?.before?.notes_md === before.notes_md, short(aud ?? {}));
+  const d1 = await meetings('delete', tok(noteId), { id: m.id });
+  check('only the president can delete closed minutes', d1.status === 403, short(d1));
+  const d2 = await meetings('delete', tok(owner.id), { id: cs.meeting?.id });
+  const [kept] = await sql(`select metadata from audit_log where entity_id = '${cs.meeting?.id}' and kind = 'board_meeting.deleted'`);
+  check('the president can, and a copy is kept in the audit log',
+    d2.ok && kept?.metadata?.before?.title === 'SimTest closed session', short(d2));
+
   const browser = await puppeteer.launch({
     executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'],
   });
@@ -182,6 +214,8 @@ try {
     check('…with the start and end time, in pool time on a New York phone', /7:02 PM – 8:15 PM/.test(text),
       (text.match(/[^\n]*\d:\d\d[^\n]*/) || ['no time shown'])[0].slice(0, 120));
     check('…and not the closed session', !/SimTest closed session/.test(text));
+    check('…with the fix, marked edited', /Snack bar opens June 1/.test(text) && /Edited \w+ \d+ by SimTest Note/.test(text),
+      (text.match(/Edited[^\n]*/) || ['no edited line'])[0]);
   } finally {
     await browser.close();
   }

@@ -344,7 +344,6 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" onclick="saveNow()" id="save-btn">💾 Save</button>
         <button class="btn btn-success" onclick="finalize()" id="final-btn" style="display:none">✓ Close meeting</button>
-        <button class="btn btn-ghost" onclick="reopen()" id="reopen-btn" style="display:none">🔓 Re-open for editing</button>
       </div>
     </div>
   </div>
@@ -361,6 +360,7 @@ let MEETING = null;
 let ADMINS = [];
 let LIST = [];
 let CLOCK = null;
+let DIRTY = false;   // unsaved fixes to a closed meeting (those don't autosave)
 let SAVE_TIMER = null;
 let SAVE_GENERATION = 0;
 
@@ -482,6 +482,8 @@ function openMeeting(id) {
   loadEditor(id);
 }
 function closeModal() {
+  if (DIRTY && !confirm('You have changes that aren\'t saved. Close without saving them?')) return;
+  DIRTY = false;
   if (CLOCK) { clearInterval(CLOCK); CLOCK = null; }
   document.getElementById('scrim').classList.remove('open');
   document.body.style.overflow = '';
@@ -534,7 +536,7 @@ function applyReadOnly() {
   modal.querySelectorAll('input, textarea, select, button').forEach(el => {
     if (!el.classList.contains('modal-close')) el.disabled = true;
   });
-  ['del-btn', 'save-btn', 'final-btn', 'reopen-btn'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+  ['del-btn', 'save-btn', 'final-btn'].forEach(id => { document.getElementById(id).style.display = 'none'; });
   document.getElementById('state-actions').innerHTML = '';
   modal.querySelectorAll('button[onclick^="add"]').forEach(el => { el.style.display = 'none'; });
 }
@@ -568,16 +570,23 @@ function paintStateBanner() {
   if (CLOCK) { clearInterval(CLOCK); CLOCK = null; }
   const byLine = m.note_taker ? ` · notes by ${escapeHtml(m.note_taker)}` : '';
   const roLine = m.can_edit ? '' : `<br><span style="font-size:12.5px">Only ${escapeHtml(m.note_taker || 'the note-taker')} and the president can change this meeting.</span>`;
+  // Once a meeting is closed, only the president can delete it.
+  document.getElementById('del-btn').style.display = m.can_delete ? '' : 'none';
+  const saveBtn = document.getElementById('save-btn');
+  saveBtn.textContent = m.status === 'completed' ? '💾 Save changes' : '💾 Save';
   if (m.status === 'completed') {
     banner.classList.add('completed');
     const posted = m.visibility === 'public'
       ? ' · <a href="/governance.html" target="_blank" rel="noopener" style="color:inherit">posted on the public page</a>'
       : ' · board only';
-    text.innerHTML = `<b>✓ Closed</b> · ${escapeHtml(meetingTimes(m) || 'no times recorded')}${posted}${byLine}${roLine}`;
+    const edited = m.edited_at
+      ? ` · edited ${escapeHtml(new Date(m.edited_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}${m.edited_by_name ? ' by ' + escapeHtml(m.edited_by_name) : ''}`
+      : '';
+    const fixLine = m.can_edit ? '<br><span style="font-size:12.5px">To fix something, change it below and tap Save changes. The times and public page stay as they are.</span>' : '';
+    text.innerHTML = `<b>✓ Closed</b> · ${escapeHtml(meetingTimes(m) || 'no times recorded')}${posted}${byLine}${edited}${roLine}${fixLine}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = 'none';
-    document.getElementById('reopen-btn').style.display = '';
-    document.getElementById('save-btn').style.display = 'none';
+    saveBtn.style.display = '';
   } else if (m.status === 'in_progress') {
     banner.classList.add('progress');
     const started = m.started_at ? new Date(m.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now';
@@ -586,15 +595,13 @@ function paintStateBanner() {
     CLOCK = setInterval(tickClock, 15000);
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = '';
-    document.getElementById('reopen-btn').style.display = 'none';
-    document.getElementById('save-btn').style.display = '';
+    saveBtn.style.display = '';
   } else {
     banner.classList.add('draft');
     text.innerHTML = `<b>Draft</b> · fill in the title and date, then hit Start meeting${byLine}${roLine}`;
     actions.innerHTML = `<button class="btn btn-success btn-big" onclick="startMeeting()">▶ Start meeting now</button>`;
     document.getElementById('final-btn').style.display = 'none';
-    document.getElementById('reopen-btn').style.display = 'none';
-    document.getElementById('save-btn').style.display = '';
+    saveBtn.style.display = '';
   }
 }
 
@@ -851,13 +858,17 @@ function removeFollowUp(i) {
 
 // ── Autosave ────────────────────────────────────────────────────────────
 function scheduleSave() {
-  if (!MEETING || MEETING.status === 'completed' || !MEETING.can_edit) return;
+  if (!MEETING || !MEETING.can_edit) return;
+  // Fixes to closed minutes wait for Save changes, so a half-typed edit
+  // never lands on the public page.
+  if (MEETING.status === 'completed') { DIRTY = true; setSaveStatus('saving', 'Not saved yet'); return; }
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   setSaveStatus('saving', 'Saving…');
   SAVE_TIMER = setTimeout(() => { saveNow(); }, 1500);
 }
 async function saveNow() {
-  if (!MEETING || MEETING.status === 'completed' || !MEETING.can_edit) return;
+  if (!MEETING || !MEETING.can_edit) return;
+  const closed = MEETING.status === 'completed';
   const myGen = ++SAVE_GENERATION;
   setSaveStatus('saving', 'Saving…');
   MEETING.title = document.getElementById('m-title').value.trim() || 'Board Meeting';
@@ -866,7 +877,7 @@ async function saveNow() {
   MEETING.notes_md = document.getElementById('m-notes').value;
   MEETING.visibility = document.getElementById('vis-public').checked ? 'public' : 'private';
   try {
-    const r = await call('update', {
+    const r = await call(closed ? 'amend' : 'update', {
       id: MEETING.id,
       title: MEETING.title,
       meeting_date: MEETING.meeting_date,
@@ -881,6 +892,7 @@ async function saveNow() {
     if (!r.ok) throw new Error(r.error || 'Save failed');
     MEETING = r.meeting;
     document.getElementById('modal-title').textContent = MEETING.title || 'Board Meeting';
+    if (closed) { DIRTY = false; paintStateBanner(); }
     setSaveStatus('saved', '✓ Saved');
   } catch (e) {
     if (myGen !== SAVE_GENERATION) return;
@@ -919,19 +931,16 @@ async function finalize() {
     paintEditor();
   } catch (e) { alert(e.message); }
 }
-async function reopen() {
-  try {
-    const r = await call('reopen', { id: MEETING.id });
-    if (!r.ok) throw new Error(r.error || 'Could not re-open');
-    MEETING = r.meeting;
-    paintEditor();
-  } catch (e) { alert(e.message); }
-}
 async function deleteMeeting() {
-  if (!confirm(`Delete "${MEETING.title}" (${MEETING.meeting_date})? This can't be undone.`)) return;
+  const closed = MEETING.status === 'completed';
+  const what = closed
+    ? `Delete the minutes of "${MEETING.title}" (${MEETING.meeting_date})? They come off the public page. A copy is kept in the audit log.`
+    : `Delete "${MEETING.title}" (${MEETING.meeting_date})? This can't be undone.`;
+  if (!confirm(what)) return;
   try {
     const r = await call('delete', { id: MEETING.id });
     if (!r.ok) throw new Error(r.error || 'Delete failed');
+    DIRTY = false;
     closeModal();
   } catch (e) { alert(e.message); }
 }

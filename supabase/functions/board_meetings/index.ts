@@ -22,19 +22,27 @@
 //     → { ok, meeting }              // status='in_progress', started_at=now
 //
 //   { action: 'update', id, ...partial fields }
-//     → { ok, meeting }              // autosave; reject if status='completed'
-//                                    // unless 'reopen' was called first.
+//     → { ok, meeting }              // autosave while the meeting is open;
+//                                    // refused once it's closed (use amend)
+//
+//   { action: 'amend', id, ...partial fields }
+//     → { ok, meeting }              // fix a closed meeting: stays closed and
+//                                    // public, keeps its start/end times,
+//                                    // sets edited_at/edited_by, and puts the
+//                                    // old version in audit_log
 //
 //   { action: 'finalize', id }
 //     → { ok, meeting }              // "Close meeting": status='completed',
 //                                    // ended_at=now. A public meeting (the
 //                                    // default) is on list_public from here.
-//
-//   { action: 'reopen', id }
-//     → { ok, meeting }              // unlocks a completed meeting for edits
+//                                    // Closing twice keeps the first time.
 //
 //   { action: 'delete', id }
-//     → { ok }                       // hard-delete; secretary can rebuild
+//     → { ok }                       // hard-delete. Once closed, president
+//                                    // only, and a copy goes to audit_log.
+//
+// There is no 'reopen': it cleared the real end time and pulled the
+// minutes off the public page while they were edited. amend replaced it.
 //
 //   { action: 'list_active_admins' }
 //     → { ok, admins: [{id, name, role_label}] }
@@ -48,7 +56,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
-import { boardCaller, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
+import { boardCaller, canDeleteMeeting, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -81,8 +89,10 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, title, meeting_date, location, status, started_at, ended_at, visibility, notes_md, attendees_json, votes_json, follow_ups_json, created_by, created_at, updated_at';
-const PUBLIC_FIELDS = 'id, title, meeting_date, location, started_at, ended_at, notes_md, attendees_json, votes_json, follow_ups_json';
+const FIELDS = 'id, tenant_id, title, meeting_date, location, status, started_at, ended_at, visibility, notes_md, attendees_json, votes_json, follow_ups_json, created_by, created_at, updated_at, edited_at, edited_by';
+const PUBLIC_FIELDS = 'id, title, meeting_date, location, started_at, ended_at, notes_md, attendees_json, votes_json, follow_ups_json, edited_at, edited_by';
+// What a correction can change, and what the audit log keeps of the old one.
+const CONTENT = ['title', 'meeting_date', 'location', 'notes_md', 'attendees_json', 'votes_json', 'follow_ups_json', 'visibility'] as const;
 
 const VALID_VIS = new Set(['private', 'public']);
 
@@ -168,6 +178,31 @@ function sanitizeFollowUps(input: unknown): Array<Record<string, unknown>> {
   }).filter((x): x is Record<string, unknown> => !!x);
 }
 
+// The fields a note-taker types, from an update or amend body. Anything not
+// sent is left alone.
+function contentPatch(body: Record<string, unknown>): { patch: Record<string, unknown>; bad?: Response } {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (body.title !== undefined) {
+    const v = String(body.title).trim();
+    patch.title = v || 'Board Meeting';
+  }
+  if (body.meeting_date !== undefined) {
+    const s = String(body.meeting_date).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) patch.meeting_date = s;
+  }
+  if (body.location !== undefined)   patch.location = strOrNull(body.location);
+  if (body.notes_md !== undefined)   patch.notes_md = String(body.notes_md ?? '').slice(0, 50000);
+  if (body.attendees !== undefined)  patch.attendees_json  = sanitizeAttendees(body.attendees);
+  if (body.votes !== undefined)      patch.votes_json      = sanitizeVotes(body.votes);
+  if (body.follow_ups !== undefined) patch.follow_ups_json = sanitizeFollowUps(body.follow_ups);
+  if (body.visibility !== undefined) {
+    const v = String(body.visibility);
+    if (!VALID_VIS.has(v)) return { patch, bad: jsonResponse({ ok: false, error: 'invalid visibility' }, 400) };
+    patch.visibility = v;
+  }
+  return { patch };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -193,7 +228,18 @@ Deno.serve(async (req) => {
       .order('meeting_date', { ascending: false })
       .limit(100);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meetings: data ?? [] });
+    // "Edited Sep 30 by Kristin": the editor's name, never their login id.
+    const editors = new Map<string, string>();
+    const ids = [...new Set((data ?? []).map(m => m.edited_by).filter(Boolean))] as string[];
+    if (ids.length) {
+      const { data: who } = await sb.from('admin_users').select('id, display_name')
+        .eq('tenant_id', tenant.id).in('id', ids);
+      for (const a of who ?? []) editors.set(a.id, a.display_name || 'the board');
+    }
+    const meetings = (data ?? []).map(({ edited_by, ...m }) => ({
+      ...m, edited_by_name: edited_by ? editors.get(edited_by) ?? 'the board' : null,
+    }));
+    return jsonResponse({ ok: true, meetings });
   }
 
   // ── Admin-only actions below ───────────────────────────────────────────
@@ -210,7 +256,7 @@ Deno.serve(async (req) => {
 
   // Adds who is taking the notes and whether the caller may change it.
   async function decorate(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
-    const ids = [...new Set(rows.map(r => r.created_by).filter(Boolean))] as string[];
+    const ids = [...new Set(rows.flatMap(r => [r.created_by, r.edited_by]).filter(Boolean))] as string[];
     const names = new Map<string, string>();
     if (ids.length) {
       const { data } = await sb.from('admin_users').select('id, display_name, email')
@@ -220,7 +266,9 @@ Deno.serve(async (req) => {
     return rows.map(r => ({
       ...r,
       note_taker: r.created_by ? names.get(r.created_by as string) ?? null : null,
+      edited_by_name: r.edited_by ? names.get(r.edited_by as string) ?? null : null,
       can_edit: canEditMeeting(r as { created_by?: string | null }, me!),
+      can_delete: canDeleteMeeting(r as { created_by?: string | null; status?: string }, me!),
     }));
   }
   const one = async (row: Record<string, unknown>) => (await decorate([row]))[0];
@@ -235,6 +283,20 @@ Deno.serve(async (req) => {
       return { deny: jsonResponse({ ok: false, error: 'Only the note-taker and the president can change this meeting.' }, 403) };
     }
     return { row: data };
+  }
+
+  // Keeps the version being replaced or deleted, so closed minutes can
+  // always be traced back.
+  async function audit(kind: string, row: Record<string, unknown>, summary: string) {
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind, entity_type: 'board_meeting', entity_id: row.id,
+        summary,
+        actor_id: payload!.synthetic ? null : me!.id,
+        actor_kind: 'tenant_admin',
+        metadata: { before: Object.fromEntries(CONTENT.map(k => [k, row[k]])) },
+      });
+    } catch { /* never block the change on the audit write */ }
   }
 
   // ── list ────────────────────────────────────────────────────────────────
@@ -326,28 +388,10 @@ Deno.serve(async (req) => {
     const { row: existing, deny } = await editable(id);
     if (deny) return deny;
     if (existing!.status === 'completed') {
-      return jsonResponse({ ok: false, error: 'Meeting is finalized. Re-open it before editing.' }, 409);
+      return jsonResponse({ ok: false, error: 'This meeting is closed. Use Save changes to fix it.' }, 409);
     }
-
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.title !== undefined) {
-      const v = String(body.title).trim();
-      patch.title = v || 'Board Meeting';
-    }
-    if (body.meeting_date !== undefined) {
-      const s = String(body.meeting_date).slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) patch.meeting_date = s;
-    }
-    if (body.location !== undefined)   patch.location = strOrNull(body.location);
-    if (body.notes_md !== undefined)   patch.notes_md = String(body.notes_md ?? '').slice(0, 50000);
-    if (body.attendees !== undefined)  patch.attendees_json  = sanitizeAttendees(body.attendees);
-    if (body.votes !== undefined)      patch.votes_json      = sanitizeVotes(body.votes);
-    if (body.follow_ups !== undefined) patch.follow_ups_json = sanitizeFollowUps(body.follow_ups);
-    if (body.visibility !== undefined) {
-      const v = String(body.visibility);
-      if (!VALID_VIS.has(v)) return jsonResponse({ ok: false, error: 'invalid visibility' }, 400);
-      patch.visibility = v;
-    }
+    const { patch, bad } = contentPatch(body);
+    if (bad) return bad;
 
     const { data, error } = await sb.from('board_meetings').update(patch)
       .eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
@@ -355,11 +399,33 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
+  // ── amend — fix closed minutes without re-opening them ─────────────────
+  if (action === 'amend') {
+    const id = String(body.id ?? '');
+    const { row: existing, deny } = await editable(id);
+    if (deny) return deny;
+    if (existing!.status !== 'completed') {
+      return jsonResponse({ ok: false, error: 'This meeting is still open; its changes save as you type.' }, 409);
+    }
+    const { patch, bad } = contentPatch(body);
+    if (bad) return bad;
+    patch.edited_at = patch.updated_at;
+    patch.edited_by = payload.synthetic ? null : me.id;
+
+    const { data, error } = await sb.from('board_meetings').update(patch)
+      .eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await audit('board_meeting.edited', existing!, `Edited minutes: "${existing!.title}" (${existing!.meeting_date})`);
+    return jsonResponse({ ok: true, meeting: await one(data) });
+  }
+
   // ── finalize ───────────────────────────────────────────────────────────
   if (action === 'finalize') {
     const id = String(body.id ?? '');
-    const { deny } = await editable(id);
+    const { row: existing, deny } = await editable(id);
     if (deny) return deny;
+    // A second tap must not move the real end time.
+    if (existing!.status === 'completed') return jsonResponse({ ok: true, meeting: await one(existing!) });
     const now = new Date().toISOString();
     const { data, error } = await sb.from('board_meetings').update({
       status: 'completed',
@@ -370,27 +436,17 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
-  // ── reopen ─────────────────────────────────────────────────────────────
-  // Lets a finalized meeting be edited again. Status goes back to
-  // in_progress (not draft) since it has real content. ended_at is cleared.
-  if (action === 'reopen') {
-    const id = String(body.id ?? '');
-    const { deny } = await editable(id);
-    if (deny) return deny;
-    const { data, error } = await sb.from('board_meetings').update({
-      status: 'in_progress',
-      ended_at: null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meeting: await one(data) });
-  }
-
   // ── delete ─────────────────────────────────────────────────────────────
   if (action === 'delete') {
     const id = String(body.id ?? '');
-    const { deny } = await editable(id);
+    const { row: existing, deny } = await editable(id);
     if (deny) return deny;
+    if (!canDeleteMeeting(existing!, me)) {
+      return jsonResponse({ ok: false, error: 'Only the president can delete minutes once the meeting is closed.' }, 403);
+    }
+    if (existing!.status === 'completed') {
+      await audit('board_meeting.deleted', existing!, `Deleted minutes: "${existing!.title}" (${existing!.meeting_date})`);
+    }
     const { error } = await sb.from('board_meetings')
       .delete().eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);

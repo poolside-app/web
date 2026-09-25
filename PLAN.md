@@ -195,7 +195,14 @@ Steps (each: failing test first, then the fix, then proof):
   - Bishop's one existing meeting (an empty June draft) keeps its board-only setting.
   - New meetings are public by default, with a board-only switch kept for closed sessions (member discipline, legal).
   - The public page shows the date plus start and end times.
-- **F3. Edits after closing.**
+- **F3. ✅ Done 9/25: edits after closing.**
+  - Proof: `scripts/test_board_meetings.mjs` passes 41/41 (`--offline` runs just the free checks).
+    - The note-taker fixes closed minutes. They stay closed and public with the same start and end times, record who edited them, and the old version is in the audit log.
+    - Another board member can't fix them. The note-taker can't delete them, and the president can (a copy goes to the audit log).
+    - The public page shows "Edited Sep 25 by …".
+    - Also clicked through in a phone-sized browser: typing shows "Not saved yet", and Save changes shows "edited Sep 25 by …" with the times unchanged.
+  - "Re-open for editing" is gone. Closing twice no longer moves the end time.
+  - Closing the editor with unsaved fixes asks first.
   - The note-taker and the president can edit a closed meeting. It stays public, and its real start and end times are kept.
   - Changes are saved with a Save button. The page then shows "Edited Sep 30 by Kristin", and the previous version is kept in the audit log.
   - Only the president can delete published minutes.

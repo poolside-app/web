@@ -5,7 +5,8 @@
 // logins (role 'gate_attendant'), which exist only for the check-in page.
 // Any board member can start a meeting and read all minutes, including
 // board-only ones. Only the note-taker (whoever started it) and the
-// president (an owner login) can change a meeting.
+// president (an owner login) can change a meeting. Once it's closed, only
+// the president can delete it.
 // Tested offline by scripts/test_board_meetings.mjs.
 // =============================================================================
 
@@ -28,6 +29,11 @@ export function isBoardMember(a: Login): boolean {
 
 export function canEditMeeting(meeting: { created_by?: string | null }, caller: { id: string; isOwner: boolean }): boolean {
   return caller.isOwner || (!!meeting.created_by && meeting.created_by === caller.id);
+}
+
+export function canDeleteMeeting(meeting: { created_by?: string | null; status?: string | null }, caller: { id: string; isOwner: boolean }): boolean {
+  if (meeting.status === 'completed') return caller.isOwner;
+  return canEditMeeting(meeting, caller);
 }
 
 /** The signed-in board member, or null for anyone who isn't one. */
