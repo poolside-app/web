@@ -30,6 +30,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { taskVisibleTo, type Caller } from '../_shared/task_routing.ts';
 import { markFollowUpDone } from '../_shared/meeting_follow_ups.ts';
+import { markHelpSolved } from '../_shared/help_tasks.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -143,6 +144,10 @@ Deno.serve(async (req) => {
     const fid = (task.metadata as Record<string, string> | null)?.follow_up_id;
     if (task.kind === 'meeting.follow_up' && task.source_id && fid) {
       await markFollowUpDone(sb, TID, task.source_id, fid);
+    }
+    // A member help request marked done here is solved.
+    if (task.kind === 'help.request' && task.source_id) {
+      await markHelpSolved(sb, TID, task.source_id, payload.synthetic ? null : payload.sub);
     }
     return jsonResponse({ ok: true });
   }

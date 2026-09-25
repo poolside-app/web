@@ -65,12 +65,35 @@ export async function enqueueAdminTask(
     return { task_id: null };
   }
 
-  // 2. Fire push (fire-and-forget; never block on it).
+  // 2. Fire push (best-effort; never fails the task).
   if (input.skip_push) return { task_id, pushed: null };
+  const tag = input.source_kind && input.source_id
+    ? `${input.source_kind}:${input.source_id}`
+    : input.kind;
+  const pushed = await pushBoard({
+    tenant_id: input.tenant_id,
+    target_scopes: input.target_scopes,
+    assigned_admin_id: input.assigned_admin_id ?? null,
+    title: input.push_title ?? input.summary,
+    body: input.push_body ?? '',
+    url: input.push_url ?? input.link_url ?? '/club/admin/',
+    tag,
+  });
+  return { task_id, pushed };
+}
+
+/** A phone pop-up with no new task, e.g. "Jane replied" on a request that
+ *  is already on someone's dashboard. Same targeting as a task. */
+export async function pushBoard(input: {
+  tenant_id: string;
+  target_scopes: string[];
+  assigned_admin_id?: string | null;
+  title: string;
+  body: string;
+  url: string;
+  tag: string;
+}): Promise<{ sent: number; failed: number } | null> {
   try {
-    const tag = input.source_kind && input.source_id
-      ? `${input.source_kind}:${input.source_id}`
-      : input.kind;
     const r = await fetch(`${SUPABASE_URL}/functions/v1/push_admin`, {
       method: 'POST',
       headers: {
@@ -83,18 +106,18 @@ export async function enqueueAdminTask(
         tenant_id: input.tenant_id,
         scopes: input.target_scopes,
         assigned_admin_id: input.assigned_admin_id ?? null,
-        title: input.push_title ?? input.summary,
-        body: input.push_body ?? '',
-        url: input.push_url ?? input.link_url ?? '/club/admin/',
-        tag,
+        title: input.title,
+        body: input.body,
+        url: input.url,
+        tag: input.tag,
       }),
     });
     if (r.ok) {
       const j = await r.json().catch(() => null);
-      return { task_id, pushed: j ? { sent: j.sent ?? 0, failed: j.failed ?? 0 } : null };
+      return j ? { sent: j.sent ?? 0, failed: j.failed ?? 0 } : null;
     }
   } catch (e) {
-    console.error('enqueueAdminTask: push fan-out failed', (e as Error).message);
+    console.error('pushBoard: push fan-out failed', (e as Error).message);
   }
-  return { task_id, pushed: null };
+  return null;
 }

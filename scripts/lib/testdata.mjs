@@ -30,7 +30,8 @@ export async function purgeTestFamilies(sql, tenantId, familyLike) {
     create temp table x_members on commit drop as
       select m.id, m.phone_e164, m.email from household_members m where m.household_id in (select id from x_hh);
     delete from admin_tasks where tenant_id = ${T}
-      and (source_id in (select id from x_apps) or source_id in (select id from x_hh));
+      and (source_id in (select id from x_apps) or source_id in (select id from x_hh)
+        or (source_kind = 'help_request' and source_id in (select id from help_requests where household_id in (select id from x_hh))));
     delete from audit_log where tenant_id = ${T}
       and (entity_id in (select id from x_apps) or entity_id in (select id from x_hh) or entity_id in (select id from x_members));
     delete from drive_sync_queue where application_id in (select id from x_apps);
