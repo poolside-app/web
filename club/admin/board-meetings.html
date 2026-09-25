@@ -227,6 +227,7 @@
   /* Visibility radios */
   .vis-radio { display:flex; align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fff;cursor:pointer;flex:1;min-width:240px;font-weight:500; }
   .vis-radio input { width:auto; margin-top:3px; }
+  .modal.read-only input:not([type=checkbox]):not([type=radio]), .modal.read-only textarea { background: var(--bg-2); color: var(--text); }
 
   footer { padding: 22px; text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); background: #fff; margin-top: 48px; }
 </style>
@@ -252,9 +253,12 @@
 <main>
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
     <h1>Board minutes</h1>
-    <button class="btn btn-primary" onclick="newMeeting()">+ New meeting</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="newMeeting()">Plan one for later</button>
+      <button class="btn btn-primary" onclick="startNewMeeting()">▶ Start a meeting</button>
+    </div>
   </div>
-  <p class="lede">Notes from board meetings live here. Click any meeting to open it. Mark a meeting <b>public</b> if you want members to see it on your governance page; otherwise it stays board-only.</p>
+  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Mark a meeting <b>public</b> if you want members to see it on your governance page; otherwise it stays board-only.</p>
   <div id="list-host">
     <div class="card" style="height:60px"></div>
     <div class="card" style="height:60px"></div>
@@ -355,6 +359,8 @@ const ME_URL  = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
 let MEETING = null;
 let ADMINS = [];
+let LIST = [];
+let CLOCK = null;
 let SAVE_TIMER = null;
 let SAVE_GENERATION = 0;
 
@@ -399,12 +405,13 @@ async function loadList() {
     const r = await call('list');
     if (!r.ok) throw new Error(r.error || 'Failed to load');
     const meetings = r.meetings || [];
+    LIST = meetings;
     if (!meetings.length) {
       host.innerHTML = `
         <div class="empty">
           <div class="big">🗒️</div>
           <h3 style="font-size:18px;margin:6px 0 4px;color:var(--text)">No board meetings yet</h3>
-          <p style="font-size:14px;margin:0">Click <b>+ New meeting</b> above to start your first one.</p>
+          <p style="font-size:14px;margin:0">Tap <b>▶ Start a meeting</b> when your board sits down. It records the time, and you check off who's there.</p>
         </div>
       `;
       return;
@@ -422,6 +429,7 @@ async function loadList() {
       const sub = [
         attCount > 0 ? `${attCount} attendee${attCount === 1 ? '' : 's'}` : null,
         voteCount > 0 ? `${voteCount} motion${voteCount === 1 ? '' : 's'}` : null,
+        m.note_taker ? `notes by ${m.note_taker}` : null,
       ].filter(Boolean).join(' · ') || 'Empty';
       return `
         <button class="list-row" onclick="openMeeting('${m.id}')">
@@ -435,6 +443,26 @@ async function loadList() {
   } catch (e) {
     host.innerHTML = `<div class="card" style="color:var(--red)">Couldn't load: ${escapeHtml(e.message)}</div>`;
   }
+}
+
+// One tap: create the meeting with the clock already running. If one is
+// already going (someone else may have started it), offer that instead.
+async function startNewMeeting() {
+  const running = LIST.find(m => m.status === 'in_progress');
+  if (running) {
+    const at = running.started_at ? new Date(running.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    const who = running.note_taker ? ` by ${running.note_taker}` : '';
+    if (confirm(`A meeting started${at ? ' at ' + at : ''}${who} is still going.\n\nTap OK to open it, or Cancel to start a separate one.`)) {
+      openMeeting(running.id);
+      return;
+    }
+  }
+  try {
+    const r = await call('create', { start: true });
+    if (!r.ok) throw new Error(r.error || 'Could not start the meeting');
+    openMeeting(r.meeting.id);
+    loadList();
+  } catch (e) { alert(e.message); }
 }
 
 async function newMeeting() {
@@ -454,6 +482,7 @@ function openMeeting(id) {
   loadEditor(id);
 }
 function closeModal() {
+  if (CLOCK) { clearInterval(CLOCK); CLOCK = null; }
   document.getElementById('scrim').classList.remove('open');
   document.body.style.overflow = '';
   history.replaceState(null, '', window.location.pathname);
@@ -492,6 +521,34 @@ function paintEditor() {
   paintAttendance();
   paintVotes();
   paintFollowUps();
+  applyReadOnly();
+}
+
+// Every board member can read a meeting; only the note-taker and the
+// president can change it (the server enforces this too).
+function applyReadOnly() {
+  const ro = !MEETING.can_edit;
+  const modal = document.querySelector('#scrim .modal');
+  modal.classList.toggle('read-only', ro);
+  if (!ro) return;
+  modal.querySelectorAll('input, textarea, select, button').forEach(el => {
+    if (!el.classList.contains('modal-close')) el.disabled = true;
+  });
+  ['del-btn', 'save-btn', 'final-btn', 'reopen-btn'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+  document.getElementById('state-actions').innerHTML = '';
+  modal.querySelectorAll('button[onclick^="add"]').forEach(el => { el.style.display = 'none'; });
+}
+
+function fmtElapsed(ms) {
+  const min = Math.max(0, Math.floor(ms / 60000));
+  if (min < 1) return 'just started';
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} hr ${min % 60} min`;
+}
+function tickClock() {
+  const el = document.getElementById('elapsed');
+  if (!el || !MEETING || MEETING.status !== 'in_progress' || !MEETING.started_at) return;
+  el.textContent = 'Running ' + fmtElapsed(Date.now() - new Date(MEETING.started_at).getTime());
 }
 
 function paintStateBanner() {
@@ -500,25 +557,30 @@ function paintStateBanner() {
   const text = document.getElementById('state-text');
   const actions = document.getElementById('state-actions');
   banner.classList.remove('draft', 'progress', 'completed');
+  if (CLOCK) { clearInterval(CLOCK); CLOCK = null; }
+  const byLine = m.note_taker ? ` · notes by ${escapeHtml(m.note_taker)}` : '';
+  const roLine = m.can_edit ? '' : `<br><span style="font-size:12.5px">Only ${escapeHtml(m.note_taker || 'the note-taker')} and the president can change this meeting.</span>`;
   if (m.status === 'completed') {
     banner.classList.add('completed');
     const ended = m.ended_at ? new Date(m.ended_at).toLocaleString() : 'just now';
-    text.innerHTML = `<b>✓ Finalized</b> · locked on ${escapeHtml(ended)}`;
+    text.innerHTML = `<b>✓ Finalized</b> · locked on ${escapeHtml(ended)}${byLine}${roLine}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = 'none';
     document.getElementById('reopen-btn').style.display = '';
     document.getElementById('save-btn').style.display = 'none';
   } else if (m.status === 'in_progress') {
     banner.classList.add('progress');
-    const started = m.started_at ? new Date(m.started_at).toLocaleString() : 'just now';
-    text.innerHTML = `<b>📝 Meeting in progress</b> · started ${escapeHtml(started)}`;
+    const started = m.started_at ? new Date(m.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now';
+    text.innerHTML = `<b>📝 Meeting in progress</b> · started ${escapeHtml(started)} · <b id="elapsed"></b>${byLine}${roLine}`;
+    tickClock();
+    CLOCK = setInterval(tickClock, 15000);
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = '';
     document.getElementById('reopen-btn').style.display = 'none';
     document.getElementById('save-btn').style.display = '';
   } else {
     banner.classList.add('draft');
-    text.innerHTML = `<b>Draft</b> · fill in the title and date, then hit Start meeting`;
+    text.innerHTML = `<b>Draft</b> · fill in the title and date, then hit Start meeting${byLine}${roLine}`;
     actions.innerHTML = `<button class="btn btn-success btn-big" onclick="startMeeting()">▶ Start meeting now</button>`;
     document.getElementById('final-btn').style.display = 'none';
     document.getElementById('reopen-btn').style.display = 'none';
@@ -539,7 +601,8 @@ function paintAttendance() {
     host.innerHTML = ADMINS.map(a => {
       // Show the board title (e.g. "President") if set, else fall back to
       // the role slug (e.g. "treasurer"). Title is the human label.
-      const titleOrRole = a.board_title || (a.role || '').replace(/_/g, ' ');
+      // "custom" means hand-picked permissions, which isn't a title.
+      const titleOrRole = a.board_title || (a.role === 'custom' ? '' : (a.role || '').replace(/_/g, ' '));
       return `
         <label class="attendee-row ${checkedIds.has(a.id) ? 'checked' : ''}">
           <input type="checkbox" data-admin-id="${escapeHtml(a.id)}" ${checkedIds.has(a.id) ? 'checked' : ''} onchange="toggleAdminAttendee('${escapeHtml(a.id)}', this.checked, this.parentElement)">
@@ -778,13 +841,13 @@ function removeFollowUp(i) {
 
 // ── Autosave ────────────────────────────────────────────────────────────
 function scheduleSave() {
-  if (!MEETING || MEETING.status === 'completed') return;
+  if (!MEETING || MEETING.status === 'completed' || !MEETING.can_edit) return;
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   setSaveStatus('saving', 'Saving…');
   SAVE_TIMER = setTimeout(() => { saveNow(); }, 1500);
 }
 async function saveNow() {
-  if (!MEETING || MEETING.status === 'completed') return;
+  if (!MEETING || MEETING.status === 'completed' || !MEETING.can_edit) return;
   const myGen = ++SAVE_GENERATION;
   setSaveStatus('saving', 'Saving…');
   MEETING.title = document.getElementById('m-title').value.trim() || 'Board Meeting';
@@ -874,7 +937,13 @@ async function deleteMeeting() {
     if (window.PoolsideFlags) PoolsideFlags.apply(d.tenant.features || {}, d.user, d.tenant, d.usage);
   } catch (_) { /* keep going */ }
 
-  loadList();
+  // #start (the dashboard's Start a meeting button) starts one once the
+  // list is in, so a meeting that's already running can be offered first.
+  // Clear the hash first so a refresh doesn't start a second meeting.
+  const wantsStart = window.location.hash === '#start';
+  if (wantsStart) history.replaceState(null, '', window.location.pathname);
+  await loadList();
+  if (wantsStart) { startNewMeeting(); return; }
 
   // Hash deep-link: #m=<id> opens the modal automatically.
   const hashMatch = (window.location.hash || '').match(/^#m=(.+)$/);

@@ -1,18 +1,22 @@
 // =============================================================================
 // board_meetings — Secretary's note-taking surface for board meetings
 // =============================================================================
-// Auth: tenant_admin token. Most actions require the 'meetings' scope (or
-// owner). Public list is anonymous (slug-based).
+// Auth: tenant_admin token of a board member (_shared/board.ts). Any board
+// member can start a meeting and read all minutes; only the note-taker
+// (created_by) and the president can change one. Lifeguard / gate-iPad
+// logins are refused. Public list is anonymous (slug-based).
 //
 // Admin actions:
 //   { action: 'list' }
-//     → { ok, meetings: [...] }     // newest-first, all statuses
+//     → { ok, meetings: [...] }     // newest-first, all statuses. Every
+//                                    // meeting carries note_taker + can_edit.
 //
 //   { action: 'get', id }
 //     → { ok, meeting }
 //
-//   { action: 'create', title?, meeting_date?, location? }
-//     → { ok, meeting }              // status='draft' until 'start' is called
+//   { action: 'create', title?, meeting_date?, location?, start? }
+//     → { ok, meeting }              // status='draft' until 'start' is called;
+//                                    // start:true starts the clock at once
 //
 //   { action: 'start', id }
 //     → { ok, meeting }              // status='in_progress', started_at=now
@@ -32,7 +36,8 @@
 //
 //   { action: 'list_active_admins' }
 //     → { ok, admins: [{id, name, role_label}] }
-//                                    // Helper for the attendance checkbox list
+//                                    // Board members, for the attendance
+//                                    // checkboxes (no lifeguard logins)
 //
 // Public action (no auth, used by the /governance.html public page):
 //   { action: 'list_public', slug }
@@ -41,7 +46,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
-import { requireScope } from '../_shared/auth.ts';
+import { boardCaller, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -195,10 +200,40 @@ Deno.serve(async (req) => {
   const payload = token ? await verifyTenantAdmin(token) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
-  if (!(payload as { synthetic?: boolean }).synthetic && !(await requireScope(sb, payload as never, 'meetings'))) {
-    return jsonResponse({ ok: false, error: 'Missing required scope: meetings' }, 403);
-  }
+  const me: BoardCaller | null = payload.synthetic
+    ? { id: payload.sub, isOwner: true, name: 'Poolside' }
+    : await boardCaller(sb, payload.sub, payload.tid);
+  if (!me) return jsonResponse({ ok: false, error: 'Board minutes are for board members only.' }, 403);
   const TID = payload.tid;
+
+  // Adds who is taking the notes and whether the caller may change it.
+  async function decorate(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
+    const ids = [...new Set(rows.map(r => r.created_by).filter(Boolean))] as string[];
+    const names = new Map<string, string>();
+    if (ids.length) {
+      const { data } = await sb.from('admin_users').select('id, display_name, email')
+        .eq('tenant_id', TID).in('id', ids);
+      for (const a of data ?? []) names.set(a.id, a.display_name || a.email);
+    }
+    return rows.map(r => ({
+      ...r,
+      note_taker: r.created_by ? names.get(r.created_by as string) ?? null : null,
+      can_edit: canEditMeeting(r as { created_by?: string | null }, me!),
+    }));
+  }
+  const one = async (row: Record<string, unknown>) => (await decorate([row]))[0];
+
+  // Loads a meeting the caller may change, or the refusal to send instead.
+  async function editable(id: string): Promise<{ row?: Record<string, unknown>; deny?: Response }> {
+    if (!id) return { deny: jsonResponse({ ok: false, error: 'id required' }, 400) };
+    const { data } = await sb.from('board_meetings').select(FIELDS)
+      .eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!data) return { deny: jsonResponse({ ok: false, error: 'Meeting not found' }, 404) };
+    if (!canEditMeeting(data, me!)) {
+      return { deny: jsonResponse({ ok: false, error: 'Only the note-taker and the president can change this meeting.' }, 403) };
+    }
+    return { row: data };
+  }
 
   // ── list ────────────────────────────────────────────────────────────────
   if (action === 'list') {
@@ -207,7 +242,7 @@ Deno.serve(async (req) => {
       .order('meeting_date', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meetings: data ?? [] });
+    return jsonResponse({ ok: true, meetings: await decorate(data ?? []) });
   }
 
   // ── get ─────────────────────────────────────────────────────────────────
@@ -218,7 +253,7 @@ Deno.serve(async (req) => {
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     if (!data) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
-    return jsonResponse({ ok: true, meeting: data });
+    return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
   // ── list_active_admins — checkbox source for the attendance UI ──────────
@@ -229,7 +264,7 @@ Deno.serve(async (req) => {
       .order('display_name', { ascending: true });
     return jsonResponse({
       ok: true,
-      admins: (data ?? []).map(a => ({
+      admins: (data ?? []).filter(isBoardMember).map(a => ({
         id: a.id,
         name: a.display_name || a.email,
         role: (a.roles && a.roles[0]) || a.role_template || 'owner',
@@ -240,22 +275,26 @@ Deno.serve(async (req) => {
 
   // ── create ──────────────────────────────────────────────────────────────
   if (action === 'create') {
-    const created_by = payload.synthetic ? null : payload.sub;
+    const created_by = payload.synthetic ? null : me.id;
     const title = String(body.title ?? '').trim() || 'Board Meeting';
     let meeting_date = String(body.meeting_date ?? '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(meeting_date)) {
       meeting_date = poolToday(await tenantTimeZone(sb, payload.tid));
     }
     const location = strOrNull(body.location);
+    // "Start a meeting" creates and starts in one call; the older two-step
+    // path (draft now, Start later) is still there for planning ahead.
+    const startNow = body.start === true;
 
     const { data, error } = await sb.from('board_meetings').insert({
       tenant_id: TID,
       title, meeting_date, location,
-      status: 'draft',
+      status: startNow ? 'in_progress' : 'draft',
+      started_at: startNow ? new Date().toISOString() : null,
       created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meeting: data });
+    return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
   // ── start ───────────────────────────────────────────────────────────────
@@ -264,12 +303,10 @@ Deno.serve(async (req) => {
   // secretary clicks twice.
   if (action === 'start') {
     const id = String(body.id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: existing } = await sb.from('board_meetings').select(FIELDS)
-      .eq('id', id).eq('tenant_id', TID).maybeSingle();
-    if (!existing) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
-    if (existing.status === 'in_progress') return jsonResponse({ ok: true, meeting: existing });
-    if (existing.status === 'completed') {
+    const { row: existing, deny } = await editable(id);
+    if (deny) return deny;
+    if (existing!.status === 'in_progress') return jsonResponse({ ok: true, meeting: await one(existing!) });
+    if (existing!.status === 'completed') {
       return jsonResponse({ ok: false, error: 'Meeting is already finalized. Re-open it first.' }, 409);
     }
     const now = new Date().toISOString();
@@ -277,17 +314,15 @@ Deno.serve(async (req) => {
       status: 'in_progress', started_at: now, updated_at: now,
     }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meeting: data });
+    return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
   // ── update — autosave for live note-taking ──────────────────────────────
   if (action === 'update') {
     const id = String(body.id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: existing } = await sb.from('board_meetings').select('status')
-      .eq('id', id).eq('tenant_id', TID).maybeSingle();
-    if (!existing) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
-    if (existing.status === 'completed') {
+    const { row: existing, deny } = await editable(id);
+    if (deny) return deny;
+    if (existing!.status === 'completed') {
       return jsonResponse({ ok: false, error: 'Meeting is finalized. Re-open it before editing.' }, 409);
     }
 
@@ -314,13 +349,14 @@ Deno.serve(async (req) => {
     const { data, error } = await sb.from('board_meetings').update(patch)
       .eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meeting: data });
+    return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
   // ── finalize ───────────────────────────────────────────────────────────
   if (action === 'finalize') {
     const id = String(body.id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { deny } = await editable(id);
+    if (deny) return deny;
     const now = new Date().toISOString();
     const { data, error } = await sb.from('board_meetings').update({
       status: 'completed',
@@ -328,7 +364,7 @@ Deno.serve(async (req) => {
       updated_at: now,
     }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meeting: data });
+    return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
   // ── reopen ─────────────────────────────────────────────────────────────
@@ -336,20 +372,22 @@ Deno.serve(async (req) => {
   // in_progress (not draft) since it has real content. ended_at is cleared.
   if (action === 'reopen') {
     const id = String(body.id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { deny } = await editable(id);
+    if (deny) return deny;
     const { data, error } = await sb.from('board_meetings').update({
       status: 'in_progress',
       ended_at: null,
       updated_at: new Date().toISOString(),
     }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meeting: data });
+    return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
   // ── delete ─────────────────────────────────────────────────────────────
   if (action === 'delete') {
     const id = String(body.id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
+    const { deny } = await editable(id);
+    if (deny) return deny;
     const { error } = await sb.from('board_meetings')
       .delete().eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);

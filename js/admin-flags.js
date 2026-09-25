@@ -211,7 +211,8 @@
     impact:        'a[href="/club/admin/impact.html"]',
     audit:         'a[href="/club/admin/audit.html"]',
     settings:      'a[href="/club/admin/settings.html"]',
-    meetings:      'a[href="/club/admin/board-meetings.html"]',
+    // meetings: no entry — every board member can start a meeting and read
+    // the minutes (board_meetings checks who may change one).
   };
 
   function escapeHtml(s) {

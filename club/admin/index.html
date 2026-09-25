@@ -335,6 +335,15 @@ document.getElementById('signout').addEventListener('click', logout);
       <div id="tasks-list"></div>
     </div>
 
+    <div class="card" id="meetings-card">
+      <h2>Board meeting</h2>
+      <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Taking notes at a board meeting? Start one here. It records the time, and you check off who's there.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <a href="/club/admin/board-meetings.html#start" style="padding:10px 18px;background:var(--blue);color:#fff;text-decoration:none;border-radius:10px;font:600 14px 'Inter'">▶ Start a meeting</a>
+        <a href="/club/admin/board-meetings.html" style="font:600 13px 'Inter';color:var(--blue)">Past minutes</a>
+      </div>
+    </div>
+
     <div class="card">
       <h1>${escapeHtml(tenant.display_name)}</h1>
       <p class="lede">Admin dashboard — your club is at <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">${escapeHtml(tenant.slug)}.poolsideapp.com</a></p>

@@ -183,7 +183,10 @@ Problems found:
 - Starting takes two steps (New meeting, then Start).
 
 Steps (each: failing test first, then the fix, then proof):
-- **F1. Anyone on the board can start.**
+- **F1. ✅ Done 9/25: anyone on the board can start.**
+  - Proof: `scripts/test_board_meetings.mjs` passes 22/22 with temporary board logins. A board member without the secretary permission starts a meeting in one tap. Another board member can read it but can't change it, and the president can. Also checked in a phone-sized browser: dashboard → Start a meeting → the clock is running; a second board member sees it read-only.
+  - The dashboard has a "Start a meeting" card, since some board members can't see the Content tab. If a meeting is already running, it offers to open that one first.
+  - Lifeguard / gate-iPad logins are not board members. They can't open minutes and aren't on the attendance list.
   - One "Start a meeting" button creates the meeting and starts the clock, with a running timer.
   - Every board member can read all minutes, including board-only ones.
 - **F2. Closing publishes.**

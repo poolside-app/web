@@ -58,7 +58,7 @@
     content: [
       { key: 'announcements', label: 'Announcements', href: '/club/admin/announcements.html',  scope: 'announcements' },
       { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
-      { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: 'meetings'      },
+      { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: ''              },  // every board member
       { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
     ],
     insights: [

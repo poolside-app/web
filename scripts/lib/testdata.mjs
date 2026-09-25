@@ -46,20 +46,21 @@ export async function purgeTestFamilies(sql, tenantId, familyLike) {
 }
 
 /** A board login that can't sign in (no real password), for checking who
- *  sees what. `scopes` are its permissions; it is never an owner. */
-export async function makeTempAdmin(sql, tenantId, name, scopes = []) {
+ *  sees what. `scopes` are its permissions; it is never an owner.
+ *  roleTemplate 'gate_attendant' makes a lifeguard / gate-iPad login. */
+export async function makeTempAdmin(sql, tenantId, name, scopes = [], roleTemplate = 'custom') {
   const handle = `simtest-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${String(Date.now()).slice(-6)}`;
   const arr = `array[${scopes.map(q).join(',')}]::text[]`;
   const [a] = await sql(`insert into admin_users (tenant_id, username, email, password_hash, display_name,
       role_template, scopes, is_default_pw, active)
     values (${q(tenantId)}, ${q(handle)}, ${q(`doug.frevele+${handle}@gmail.com`)}, 'simtest-no-login',
-      ${q('SimTest ' + name)}, 'custom', ${arr}, false, true)
+      ${q('SimTest ' + name)}, ${q(roleTemplate)}, ${arr}, false, true)
     returning id`);
   return a.id;
 }
 
-/** Remove temp board logins made by makeTempAdmin, and their tasks and
- *  phone-alert subscriptions. */
+/** Remove temp board logins made by makeTempAdmin, and their tasks,
+ *  meetings and phone-alert subscriptions. */
 export async function purgeTempAdmins(sql, tenantId) {
   const T = q(tenantId);
   await sql(`begin;
@@ -68,6 +69,8 @@ export async function purgeTempAdmins(sql, tenantId) {
     delete from admin_tasks where tenant_id = ${T}
       and (assigned_admin_id in (select id from x_admins) or completed_by in (select id from x_admins) or kind like 'simtest.%');
     delete from admin_push_subscriptions where admin_user_id in (select id from x_admins);
+    delete from board_meetings where tenant_id = ${T}
+      and (created_by in (select id from x_admins) or title like 'SimTest%');
     delete from audit_log where tenant_id = ${T} and actor_id in (select id from x_admins);
     delete from admin_users where id in (select id from x_admins);
     commit;`);
