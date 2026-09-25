@@ -58,6 +58,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, canDeleteMeeting, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
+import { clearFollowUpTasks, syncFollowUpTasks, type MeetingForTasks } from '../_shared/meeting_follow_ups.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -168,10 +169,14 @@ function sanitizeFollowUps(input: unknown): Array<Record<string, unknown>> {
     // on autosave just because description hasn't been typed yet.
     const hasAnyData = !!description || !!assigned_to || !!due_date || (status && status !== 'open');
     if (!hasAnyData) return null;
+    // Set when the name was picked from the board list: the follow-up then
+    // goes on that board member's dashboard when the meeting closes.
+    const aid = String(r.assigned_admin_id ?? '');
     return {
       id: r.id ? String(r.id).slice(0, 40) : crypto.randomUUID(),
       description,
       assigned_to: assigned_to || null,
+      assigned_admin_id: assigned_to && /^[0-9a-f-]{36}$/i.test(aid) ? aid : null,
       due_date,
       status: VALID_S.has(status) ? status : 'open',
     };
@@ -416,6 +421,7 @@ Deno.serve(async (req) => {
       .eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await audit('board_meeting.edited', existing!, `Edited minutes: "${existing!.title}" (${existing!.meeting_date})`);
+    await syncFollowUpTasks(sb, data as MeetingForTasks, payload.synthetic ? null : me.id);
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
@@ -433,6 +439,8 @@ Deno.serve(async (req) => {
       updated_at: now,
     }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // Follow-ups for board members go on their dashboards now.
+    await syncFollowUpTasks(sb, data as MeetingForTasks, payload.synthetic ? null : me.id);
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
@@ -450,6 +458,7 @@ Deno.serve(async (req) => {
     const { error } = await sb.from('board_meetings')
       .delete().eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await clearFollowUpTasks(sb, TID, id);
     return jsonResponse({ ok: true });
   }
 

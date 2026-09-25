@@ -29,6 +29,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { taskVisibleTo, type Caller } from '../_shared/task_routing.ts';
+import { markFollowUpDone } from '../_shared/meeting_follow_ups.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -127,7 +128,7 @@ Deno.serve(async (req) => {
   if (action === 'complete') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, completed_at')
+    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, completed_at, kind, source_id, metadata')
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!task) return jsonResponse({ ok: false, error: 'Task not found' }, 404);
     if (!taskVisibleTo(task, caller)) {
@@ -138,6 +139,11 @@ Deno.serve(async (req) => {
       .update({ completed_at: new Date().toISOString(), completed_by: payload.synthetic ? null : payload.sub })
       .eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // A meeting follow-up done here is done in the minutes too.
+    const fid = (task.metadata as Record<string, string> | null)?.follow_up_id;
+    if (task.kind === 'meeting.follow_up' && task.source_id && fid) {
+      await markFollowUpDone(sb, TID, task.source_id, fid);
+    }
     return jsonResponse({ ok: true });
   }
 

@@ -9,7 +9,9 @@
 // F3: the note-taker and the president can fix a closed meeting. It stays
 // public with its real times, shows "Edited … by …", and the old version is
 // kept in the audit log. Only the president can delete closed minutes.
-// Offline checks cost nothing. The live part is about 18 Edge Function
+// F4: when a meeting closes, each open follow-up assigned to a board member
+// goes on that person's dashboard. Done in either place is done in both.
+// Offline checks cost nothing. The live part is about 30 Edge Function
 // calls and uses temporary board logins that can't sign in, removed at the
 // end. The page check serves this checkout's governance.html.
 //
@@ -64,6 +66,13 @@ async function meetings(action, token, extra = {}) {
   return { status: r.status, ...(await r.json().catch(() => ({}))) };
 }
 const short = o => JSON.stringify(o).slice(0, 180);
+async function tasks_(action, token, extra = {}) {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/admin_tasks`, {
+    method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  return { status: r.status, ...(await r.json().catch(() => ({}))) };
+}
 
 // ── Offline ─────────────────────────────────────────────────────────────
 console.log('Who is on the board, and who can change a meeting (offline, no calls)');
@@ -99,6 +108,8 @@ console.log('\nEvery board member can find it (offline)');
     /Close meeting/.test(page) && /public page/i.test(page.slice(page.indexOf('async function finalize'))));
   check('a closed meeting is fixed with Save changes, not by re-opening it',
     !/'reopen'/.test(page) && /'amend'/.test(page) && /Save changes/.test(page));
+  check('a follow-up assigned to someone on the board list is linked to them',
+    /assigned_admin_id/.test(page) && /dashboard/i.test(page.slice(page.indexOf('function paintFollowUps'))));
   check('Public is the first choice, board-only is for closed sessions',
     page.indexOf('id="vis-public"') > 0 && page.indexOf('id="vis-public"') < page.indexOf('id="vis-private"')
     && /closed session/i.test(page));
@@ -219,6 +230,36 @@ try {
   } finally {
     await browser.close();
   }
+
+  console.log('\nFollow-ups go on the assignee\'s dashboard (F4)');
+  const fm = (await meetings('create', tok(noteId), { start: true, title: 'SimTest follow-up meeting' })).meeting;
+  const fKeys = crypto.randomUUID(), fPat = crypto.randomUUID(), fLater = crypto.randomUUID();
+  const fuTasks = () => sql(`select id, assigned_admin_id, summary, completed_at, dismissed_at, metadata->>'follow_up_id' as fid
+    from admin_tasks where source_kind = 'board_meeting' and source_id = '${fm.id}' order by created_at`);
+  await meetings('update', tok(noteId), { id: fm.id, follow_ups: [
+    { id: fKeys, description: 'Order 20 new keyfobs', assigned_to: 'SimTest Other', assigned_admin_id: otherId, due_date: '2026-10-01', status: 'open' },
+    { id: fPat, description: 'Ask Pat about the pump noise', assigned_to: 'Pat (member)', status: 'open' },
+  ] });
+  check('nothing goes on dashboards while the meeting is still going', (await fuTasks()).length === 0);
+  await meetings('finalize', tok(noteId), { id: fm.id });
+  let ft = await fuTasks();
+  check('closing puts the board member\'s follow-up on their dashboard, with its due date',
+    ft.length === 1 && ft[0].assigned_admin_id === otherId && /Order 20 new keyfobs/.test(ft[0].summary) && /Oct 1/.test(ft[0].summary),
+    short(ft));
+  check('…and not the one for someone who isn\'t on the board', !ft.some(t => t.fid === fPat));
+  const done = await tasks_('complete', tok(otherId), { id: ft[0]?.id });
+  const [afterDone] = await sql(`select follow_ups_json from board_meetings where id = '${fm.id}'`);
+  check('marking it done on the dashboard marks it done in the minutes',
+    done.ok && afterDone.follow_ups_json.find(f => f.id === fKeys)?.status === 'done', short(afterDone.follow_ups_json));
+  const withLater = [...afterDone.follow_ups_json,
+    { id: fLater, description: 'Get three quotes for shade sails', assigned_to: 'SimTest Note', assigned_admin_id: noteId, status: 'open' }];
+  await meetings('amend', tok(noteId), { id: fm.id, follow_ups: withLater });
+  ft = await fuTasks();
+  const later = ft.find(t => t.fid === fLater && !t.completed_at && !t.dismissed_at);
+  check('a follow-up added after closing goes on the dashboard too', later?.assigned_admin_id === noteId, short(ft));
+  await meetings('amend', tok(noteId), { id: fm.id, follow_ups: withLater.map(f => f.id === fLater ? { ...f, status: 'done' } : f) });
+  const [laterNow] = await sql(`select completed_at from admin_tasks where id = '${later?.id}'`);
+  check('marking it done in the minutes clears it from the dashboard', !!laterNow?.completed_at);
 } finally {
   await purgeTempAdmins(sql, club.id);
 }

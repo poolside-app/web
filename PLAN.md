@@ -206,7 +206,13 @@ Steps (each: failing test first, then the fix, then proof):
   - The note-taker and the president can edit a closed meeting. It stays public, and its real start and end times are kept.
   - Changes are saved with a Save button. The page then shows "Edited Sep 30 by Kristin", and the previous version is kept in the audit log.
   - Only the president can delete published minutes.
-- **F4. Follow-ups are tracked.**
+- **F4. ✅ Done 9/25: follow-ups are tracked.**
+  - Proof: `scripts/test_board_meetings.mjs` passes 48/48.
+    - Nothing goes on a dashboard while the meeting is running.
+    - Closing puts the board member's follow-up on their dashboard with its due date, and leaves out one for a non-board member.
+    - Marking it done on the dashboard marks it done in the minutes.
+    - A follow-up added after closing goes on the dashboard, and marking it done in the minutes clears it.
+  - Typing a board member's name (from the suggestions) links it. A hint under the row says whether it goes on their dashboard or stays in the minutes only.
   - Each follow-up can be assigned to someone from the board list, or to a typed-in name for someone who isn't on the board.
   - When the meeting closes, each follow-up assigned to a board member becomes a task on that person's dashboard, with its due date and a pop-up. Uses E1.
   - Marking it done in either place marks it done in both.

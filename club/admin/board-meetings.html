@@ -209,6 +209,8 @@
   .follow-row.done { background: #f0fdf4; opacity: .7; }
   .follow-row input { padding: 7px 10px; font-size: 13.5px; }
   .follow-row .x { background: transparent; border: 0; color: var(--red); cursor: pointer; font-size: 18px; padding: 0 6px; }
+  .follow-row .fu-hint { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: -4px; }
+  .follow-row .fu-hint:empty { display: none; }
   @media (max-width: 700px) {
     .follow-row { grid-template-columns: 1fr; }
   }
@@ -835,8 +837,20 @@ function paintFollowUps() {
         <option value="cancelled" ${f.status === 'cancelled' ? 'selected' : ''}>Skip</option>
       </select>
       <button class="x" onclick="removeFollowUp(${i})" title="Remove">×</button>
+      <div class="fu-hint" id="fu-hint-${i}">${escapeHtml(fuHint(f))}</div>
     </div>
   `).join('');
+}
+// Picking a name from the board list links the follow-up to that board
+// member, so it goes on their dashboard when the meeting closes (and stays
+// until it's done). Anyone else is kept in the minutes only.
+function fuHint(f) {
+  if (f.status !== 'open' || !f.assigned_to) return '';
+  if (!f.assigned_admin_id) return 'Not on the board list, so this stays in the minutes only.';
+  const who = f.assigned_to;
+  return MEETING.status === 'completed'
+    ? `📲 On ${who}'s dashboard until it's marked done.`
+    : `📲 Goes on ${who}'s dashboard when the meeting closes.`;
 }
 function addFollowUp() {
   if (!MEETING.follow_ups_json) MEETING.follow_ups_json = [];
@@ -845,8 +859,16 @@ function addFollowUp() {
   scheduleSave();
 }
 function updateFollowUp(i, key, value) {
-  if (!MEETING.follow_ups_json[i]) return;
-  MEETING.follow_ups_json[i][key] = value || null;
+  const f = MEETING.follow_ups_json[i];
+  if (!f) return;
+  f[key] = value || null;
+  if (key === 'assigned_to') {
+    const typed = String(value || '').trim().toLowerCase();
+    const hit = typed && ADMINS.find(a => String(a.name || '').trim().toLowerCase() === typed);
+    f.assigned_admin_id = hit ? hit.id : null;
+  }
+  const hint = document.getElementById(`fu-hint-${i}`);
+  if (hint) hint.textContent = fuHint(f);
   if (key === 'status') paintFollowUps();
   scheduleSave();
 }

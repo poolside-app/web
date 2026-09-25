@@ -70,6 +70,8 @@ export async function purgeTempAdmins(sql, tenantId) {
       and (assigned_admin_id in (select id from x_admins) or completed_by in (select id from x_admins) or kind like 'simtest.%');
     delete from admin_push_subscriptions where admin_user_id in (select id from x_admins);
     delete from audit_log where tenant_id = ${T} and kind like 'board_meeting.%' and summary like '%SimTest%';
+    delete from admin_tasks where tenant_id = ${T} and source_kind = 'board_meeting' and source_id in
+      (select id from board_meetings where tenant_id = ${T} and (created_by in (select id from x_admins) or title like 'SimTest%'));
     delete from board_meetings where tenant_id = ${T}
       and (created_by in (select id from x_admins) or title like 'SimTest%');
     delete from audit_log where tenant_id = ${T} and actor_id in (select id from x_admins);
