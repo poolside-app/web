@@ -258,7 +258,7 @@
       <button class="btn btn-primary" onclick="startNewMeeting()">▶ Start a meeting</button>
     </div>
   </div>
-  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Mark a meeting <b>public</b> if you want members to see it on your governance page; otherwise it stays board-only.</p>
+  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Closing a meeting posts its minutes on the club's public page, unless you switch it to board-only for a closed session.</p>
   <div id="list-host">
     <div class="card" style="height:60px"></div>
     <div class="card" style="height:60px"></div>
@@ -318,21 +318,21 @@
     <p class="lede" style="margin:0 0 10px">Anything that needs to happen after the meeting. Mark Done when it's handled.</p>
     <div id="follow-host"></div>
 
-    <h3 style="margin: 22px 0 4px">Visibility</h3>
-    <p class="lede" style="margin:0 0 10px">Choose who can see this meeting's minutes after you finalize them.</p>
+    <h3 style="margin: 22px 0 4px">Who can see these minutes?</h3>
+    <p class="lede" style="margin:0 0 10px">Decide before you close the meeting.</p>
     <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <label class="vis-radio">
+        <input type="radio" name="vis" value="public" id="vis-public" onchange="scheduleSave()">
+        <div>
+          <div style="font-weight:700">🌐 Everyone</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Goes on the club's public minutes page when you close the meeting. Default.</div>
+        </div>
+      </label>
       <label class="vis-radio">
         <input type="radio" name="vis" value="private" id="vis-private" onchange="scheduleSave()">
         <div>
           <div style="font-weight:700">🔒 Board only</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Only admins can see this. Default.</div>
-        </div>
-      </label>
-      <label class="vis-radio">
-        <input type="radio" name="vis" value="public" id="vis-public" onchange="scheduleSave()">
-        <div>
-          <div style="font-weight:700">🌐 Public</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Visible on the club's governance page.</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">For a closed session, like a member discipline or legal matter.</div>
         </div>
       </label>
     </div>
@@ -343,7 +343,7 @@
       <button class="btn btn-danger" onclick="deleteMeeting()" id="del-btn">🗑️ Delete</button>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" onclick="saveNow()" id="save-btn">💾 Save</button>
-        <button class="btn btn-success" onclick="finalize()" id="final-btn" style="display:none">✓ Finalize meeting</button>
+        <button class="btn btn-success" onclick="finalize()" id="final-btn" style="display:none">✓ Close meeting</button>
         <button class="btn btn-ghost" onclick="reopen()" id="reopen-btn" style="display:none">🔓 Re-open for editing</button>
       </div>
     </div>
@@ -420,10 +420,10 @@ async function loadList() {
       // meeting_date is a date, not a moment — format it without a zone shift.
       const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
       const year = String(m.meeting_date).slice(0, 4);
-      const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Completed</span>'
+      const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Closed</span>'
                        : m.status === 'in_progress' ? '<span class="badge badge-progress">In progress</span>'
                        : '<span class="badge badge-draft">Draft</span>';
-      const visBadge = m.visibility === 'public' ? '<span class="badge badge-public">Public</span>' : '<span class="badge badge-private">Board only</span>';
+      const visBadge = m.visibility === 'public' ? '<span class="badge badge-public">Everyone</span>' : '<span class="badge badge-private">Board only</span>';
       const attCount = (m.attendees_json || []).length;
       const voteCount = (m.votes_json || []).length;
       const sub = [
@@ -539,6 +539,14 @@ function applyReadOnly() {
   modal.querySelectorAll('button[onclick^="add"]').forEach(el => { el.style.display = 'none'; });
 }
 
+// "7:02 PM – 8:15 PM" in pool time (pooltime.js makes that the default).
+function meetingTimes(m) {
+  const t = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (m.started_at && m.ended_at) return `${t(m.started_at)} – ${t(m.ended_at)}`;
+  if (m.started_at) return `started ${t(m.started_at)}`;
+  return '';
+}
+
 function fmtElapsed(ms) {
   const min = Math.max(0, Math.floor(ms / 60000));
   if (min < 1) return 'just started';
@@ -562,8 +570,10 @@ function paintStateBanner() {
   const roLine = m.can_edit ? '' : `<br><span style="font-size:12.5px">Only ${escapeHtml(m.note_taker || 'the note-taker')} and the president can change this meeting.</span>`;
   if (m.status === 'completed') {
     banner.classList.add('completed');
-    const ended = m.ended_at ? new Date(m.ended_at).toLocaleString() : 'just now';
-    text.innerHTML = `<b>✓ Finalized</b> · locked on ${escapeHtml(ended)}${byLine}${roLine}`;
+    const posted = m.visibility === 'public'
+      ? ' · <a href="/governance.html" target="_blank" rel="noopener" style="color:inherit">posted on the public page</a>'
+      : ' · board only';
+    text.innerHTML = `<b>✓ Closed</b> · ${escapeHtml(meetingTimes(m) || 'no times recorded')}${posted}${byLine}${roLine}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = 'none';
     document.getElementById('reopen-btn').style.display = '';
@@ -896,7 +906,11 @@ async function startMeeting() {
   } catch (e) { alert(e.message); }
 }
 async function finalize() {
-  if (!confirm('Finalize this meeting? You can re-open it later if you need to edit, but finalizing locks it for now and makes it visible on the public governance page (if visibility is set to Public).')) return;
+  const isPublic = document.getElementById('vis-public').checked;
+  const where = isPublic
+    ? 'The minutes go on the club\'s public page right away.'
+    : 'It\'s set to board only, so it won\'t go on the public page.';
+  if (!confirm(`Close this meeting? ${where}`)) return;
   await saveNow();
   try {
     const r = await call('finalize', { id: MEETING.id });

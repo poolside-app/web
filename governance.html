@@ -185,7 +185,7 @@ function getSlug() {
       <div class="empty">
         <div class="big">🗒️</div>
         <h3 style="font-size:16px;margin:6px 0 4px;color:var(--text)">No public meeting minutes yet</h3>
-        <p style="font-size:13.5px;margin:0">When the secretary publishes board meeting minutes here, they'll show with attendance, votes, and follow-up items.</p>
+        <p style="font-size:13.5px;margin:0">When the board closes a meeting, its minutes show up here with attendance, votes, and follow-up items.</p>
       </div>
     `;
     return;
@@ -194,7 +194,11 @@ function getSlug() {
     // meeting_date is a date, not a moment — format it without a zone shift.
     const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
     const year = String(m.meeting_date).slice(0, 4);
-    const fullDate = PoolTime.fmtDay(m.meeting_date, { month: 'long', day: 'numeric', year: 'numeric' });
+    const fullDate = PoolTime.fmtDay(m.meeting_date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    // Clock times are moments, shown in pool time (pooltime.js default).
+    const clock = iso => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const times = m.started_at && m.ended_at ? `${clock(m.started_at)} – ${clock(m.ended_at)}`
+      : m.started_at ? `started ${clock(m.started_at)}` : '';
     const attendees = (m.attendees_json || []).filter(a => a && a.name);
     const votes = (m.votes_json || []);
     const fu = (m.follow_ups_json || []).filter(f => f && f.description);
@@ -262,7 +266,7 @@ function getSlug() {
           <span class="chev">›</span>
         </summary>
         <div class="body">
-          <div style="font-size:12.5px;color:var(--muted);margin:4px 0 0">${escapeHtml(fullDate)}${m.location ? ` · ${escapeHtml(m.location)}` : ''}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin:4px 0 0">${escapeHtml(fullDate)}${times ? ` · ${escapeHtml(times)}` : ''}${m.location ? ` · ${escapeHtml(m.location)}` : ''}</div>
           ${attBlock}${notesBlock}${votesBlock}${fuBlock}
         </div>
       </details>

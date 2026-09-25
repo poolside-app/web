@@ -3,13 +3,18 @@
 // F1: any board member can start a meeting in one tap and every board member
 // can read all minutes, but only the note-taker and the president can change
 // them. Lifeguard / gate-iPad logins are not board members.
-// Offline checks cost nothing. The live part is 8 Edge Function calls and
-// uses temporary board logins that can't sign in, removed at the end.
+// F2: closing a meeting puts it on the public page at once, unless it was
+// switched to board-only, and the page shows its start and end times in
+// pool time (checked in headless Chrome on a New York clock).
+// Offline checks cost nothing. The live part is about 18 Edge Function
+// calls and uses temporary board logins that can't sign in, removed at the
+// end. The page check serves this checkout's governance.html.
 //
 // Usage: node scripts/test_board_meetings.mjs
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
+import puppeteer from 'puppeteer-core';
 import { makeTempAdmin, purgeTempAdmins } from './lib/testdata.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -86,6 +91,11 @@ console.log('\nEvery board member can find it (offline)');
     && !/key: 'meetings',[^}]*scope: 'meetings'/.test(read('js/admin-subtabs.js')));
   check('the server no longer needs the secretary permission',
     !/requireScope\([^)]*'meetings'\)/.test(read('supabase/functions/board_meetings/index.ts')));
+  check('the button says Close meeting and says where the minutes go',
+    /Close meeting/.test(page) && /public page/i.test(page.slice(page.indexOf('async function finalize'))));
+  check('Public is the first choice, board-only is for closed sessions',
+    page.indexOf('id="vis-public"') > 0 && page.indexOf('id="vis-public"') < page.indexOf('id="vis-private"')
+    && /closed session/i.test(page));
 }
 
 // ── Live ────────────────────────────────────────────────────────────────
@@ -105,7 +115,7 @@ try {
 
   const l = await meetings('list', tok(otherId));
   const seen = (l.meetings || []).find(x => x.id === m.id);
-  check('another board member can read it, even board-only', !!seen && seen.visibility === 'private', short(l));
+  check('another board member can read it', !!seen, short(l));
   check('…sees who is taking notes, and that it\'s read-only for them',
     seen?.note_taker === 'SimTest Note' && seen?.can_edit === false, short(seen ?? {}));
 
@@ -122,6 +132,59 @@ try {
   const names = (a.admins || []).map(x => x.name);
   check('the attendance list has board members but not the lifeguard login',
     names.includes('SimTest Note') && names.includes('SimTest Other') && !names.includes('SimTest Guard'), names.join(', '));
+
+  console.log('\nClosing a meeting posts the minutes (F2)');
+  const [{ d }] = await sql(`select column_default as d from information_schema.columns
+    where table_schema = 'public' and table_name = 'board_meetings' and column_name = 'visibility'`);
+  check('new meetings are public unless switched to board-only', m.visibility === 'public' && /'public'/.test(d ?? ''),
+    `${m.visibility} / default ${d}`);
+  const f = await meetings('finalize', tok(noteId), { id: m.id });
+  check('the note-taker closes it', f.ok && f.meeting?.status === 'completed', short(f));
+  const cs = await meetings('create', tok(noteId), { start: true, title: 'SimTest closed session' });
+  await meetings('update', tok(noteId), { id: cs.meeting?.id, visibility: 'private' });
+  await meetings('finalize', tok(noteId), { id: cs.meeting?.id });
+  // Pin the clock so the page has known times to show: 7:02–8:15 PM Pacific.
+  await sql(`update board_meetings set
+      started_at = (meeting_date + time '19:02') at time zone 'America/Los_Angeles',
+      ended_at   = (meeting_date + time '20:15') at time zone 'America/Los_Angeles'
+    where id = '${m.id}'`);
+  const lp = await fetch(`${SUPABASE_URL}/functions/v1/board_meetings`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'list_public', slug: 'bishopestates' }),
+  }).then(r => r.json());
+  const pubIds = (lp.meetings || []).map(x => x.id);
+  check('closing put it on the public list', pubIds.includes(m.id), short(lp));
+  check('a board-only closed session stays off it', cs.meeting && !pubIds.includes(cs.meeting.id));
+  const ol = await meetings('list', tok(otherId));
+  check('…but every board member can still read it',
+    (ol.meetings || []).some(x => x.id === cs.meeting?.id && x.visibility === 'private'), short(ol));
+
+  const browser = await puppeteer.launch({
+    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'],
+  });
+  try {
+    const pg = await browser.newPage();
+    await pg.emulateTimezone('America/New_York');
+    await pg.setRequestInterception(true);
+    const LOCAL = { '/governance.html': 'governance.html', '/js/pooltime.js': 'js/pooltime.js' };
+    pg.on('request', r => {
+      const u = new URL(r.url());
+      if (u.hostname === 'bishopestates.poolsideapp.com' && LOCAL[u.pathname]) {
+        return r.respond({ status: 200, contentType: u.pathname.endsWith('.js') ? 'application/javascript' : 'text/html', body: read(LOCAL[u.pathname]) });
+      }
+      r.continue();
+    });
+    await pg.goto('https://bishopestates.poolsideapp.com/governance.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    // Its two requests run side by side, so wait for the list itself.
+    await pg.waitForSelector('#meetings-host details, #meetings-host .empty', { timeout: 20000 });
+    const text = (await pg.evaluate(() => document.body.innerText)).replace(/[\u202f\u00a0]/g, ' ');
+    check('the public page shows the minutes', /SimTest board meeting/.test(text) && /Pool opens May 23/.test(text));
+    check('…with the start and end time, in pool time on a New York phone', /7:02 PM – 8:15 PM/.test(text),
+      (text.match(/[^\n]*\d:\d\d[^\n]*/) || ['no time shown'])[0].slice(0, 120));
+    check('…and not the closed session', !/SimTest closed session/.test(text));
+  } finally {
+    await browser.close();
+  }
 } finally {
   await purgeTempAdmins(sql, club.id);
 }

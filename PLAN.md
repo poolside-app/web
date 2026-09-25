@@ -189,7 +189,10 @@ Steps (each: failing test first, then the fix, then proof):
   - Lifeguard / gate-iPad logins are not board members. They can't open minutes and aren't on the attendance list.
   - One "Start a meeting" button creates the meeting and starts the clock, with a running timer.
   - Every board member can read all minutes, including board-only ones.
-- **F2. Closing publishes.**
+- **F2. ✅ Done 9/25: closing publishes.**
+  - Proof: `scripts/test_board_meetings.mjs` passes 32/32. A new meeting is public. Closing it puts it on the public list, and the public page shows it as "Friday, September 25, 2026 · 7:02 PM – 8:15 PM" even on a New York phone clock. A board-only closed session stays off the page, but every board member can still read it.
+  - The button now says "Close meeting", and its confirmation says whether the minutes go public. The closed banner shows the times and links to the public page.
+  - Bishop's one existing meeting (an empty June draft) keeps its board-only setting.
   - New meetings are public by default, with a board-only switch kept for closed sessions (member discipline, legal).
   - The public page shows the date plus start and end times.
 - **F3. Edits after closing.**

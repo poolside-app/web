@@ -26,7 +26,9 @@
 //                                    // unless 'reopen' was called first.
 //
 //   { action: 'finalize', id }
-//     → { ok, meeting }              // status='completed', ended_at=now
+//     → { ok, meeting }              // "Close meeting": status='completed',
+//                                    // ended_at=now. A public meeting (the
+//                                    // default) is on list_public from here.
 //
 //   { action: 'reopen', id }
 //     → { ok, meeting }              // unlocks a completed meeting for edits
@@ -291,6 +293,7 @@ Deno.serve(async (req) => {
       title, meeting_date, location,
       status: startNow ? 'in_progress' : 'draft',
       started_at: startNow ? new Date().toISOString() : null,
+      visibility: 'public',   // board-only is a switch, for closed sessions
       created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
