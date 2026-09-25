@@ -130,7 +130,79 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
 - **D12.** Members → Households on a phone: the table is cut off after two columns (dues and fob are off-screen), and the Help button covers the list. Use cards on narrow screens.
 - **D13.** Login: the placeholder is cut off on phones, and the button says "Send me a link" even when a phone number gets a code instead.
 
+### E. Member help requests (Doug, 9/25)
+Goal: a member sends a question or problem from the app. It goes to the one board member who handles that topic, it's tracked until solved, and the board texts the member back.
+
+Doug decided (9/25):
+- Topics: Keyfob & gate, Membership & dues, Parties & events, Pool problem. Anything else, or a topic with nobody assigned, goes to the president.
+- Members send it in the app, not by text. They can add a photo.
+- The assigned board member gets a phone pop-up only, no text or email.
+- Board replies are saved in the app and texted to the member.
+- No reminders. Open requests stay on the dashboard until someone marks them solved.
+
+What exists today: only the anonymous feedback box. It can't route or reply, and its alerts reach only the president. It stays as is, for anonymous suggestions.
+
+Defaults I chose (say if any are wrong):
+- The pop-up goes only to the assigned person. The president can see every request, but only gets pop-ups for unassigned topics.
+- A board member can hand a request to someone else ("this is really a keyfob thing").
+- If the member has no cell number, the reply goes by email instead.
+- The member sees their requests, status and replies in the app, and can reply back.
+- Photos are private: only the member and the board can open them.
+- A board member who handles a topic but hasn't turned on pop-ups sees a warning on their dashboard. With "pop-up only", that person otherwise gets nothing.
+- The gate's "Ask the board to enable keyfob access" message links straight to a Keyfob help request.
+
+Steps (each: failing test first, then the fix, then proof; about 10–30 Supabase calls each):
+- **E1. ✅ Done 9/25: tasks can be for one person.**
+  - Proof: `scripts/test_task_routing.mjs` passes 20/20, including two temporary board logins: the keyfob person sees and closes their task, and the party person, who has the same permission, can't see it. Cost: 4 calls, plus 6 to start the deployed functions and about 10 for the page check.
+  - Added: every board member now gets a "Turn on pop-ups" card on the dashboard. The only switch was in Settings, which only the president can open, so nobody else could ever have received a pop-up. On an iPhone that hasn't added the board app to its Home Screen, the card explains how.
+  - Also: tasks meant only for the president never popped up at all. They do now.
+  - Dashboard tasks can name one board member. Only that person and the president see them, and the pop-up goes only to that person.
+  - Also fixes a mislabel. Some alerts are tagged with permission names that don't exist ("operations", "membership"), so only the president ever sees them. This covers anonymous feedback, gate offline and "primary member changed". Gate offline goes to the keyfob person.
+- **E2. Help requests on the server.** Save a request, save each reply, and text the member.
+- **E3. Member app.** A "Get help" button, the topic picker, and a "My requests" list with the conversation.
+- **E4. Board side.**
+  - A Help inbox page: mine, all, open and solved; the conversation; a reply box that texts the member; and buttons for Being handled, Solved and hand-off.
+  - Settings → Help topics, where you pick who handles each topic.
+
+### F. Board meeting minutes (Doug, 9/25)
+Already built: a start button that records the time; attendance checkboxes from the board members in the app, plus a box to add people by hand; notes; motions with vote counts; follow-ups; and a public minutes page (footer link "Bylaws & board minutes").
+
+Doug decided (9/25):
+- Any board member can start a meeting and take notes.
+- Closing a meeting puts it on the public page right away.
+- Afterward, only the note-taker and the president can edit, and the page shows "edited on".
+- Follow-ups stay on the assigned person's dashboard until marked done.
+
+Problems found:
+- New meetings default to "Board only", so closing one doesn't publish it.
+- Only the secretary and the president can use it. Kristin can't.
+- Re-opening to fix a typo erases the real end time, and when it's closed again, the end time becomes the edit time.
+- The minutes disappear from the public page while being edited.
+- There's no record of edits, and anyone with access can permanently delete published minutes.
+- The public page doesn't show what time the meeting started and ended.
+- Starting takes two steps (New meeting, then Start).
+
+Steps (each: failing test first, then the fix, then proof):
+- **F1. Anyone on the board can start.**
+  - One "Start a meeting" button creates the meeting and starts the clock, with a running timer.
+  - Every board member can read all minutes, including board-only ones.
+- **F2. Closing publishes.**
+  - New meetings are public by default, with a board-only switch kept for closed sessions (member discipline, legal).
+  - The public page shows the date plus start and end times.
+- **F3. Edits after closing.**
+  - The note-taker and the president can edit a closed meeting. It stays public, and its real start and end times are kept.
+  - Changes are saved with a Save button. The page then shows "Edited Sep 30 by Kristin", and the previous version is kept in the audit log.
+  - Only the president can delete published minutes.
+- **F4. Follow-ups are tracked.**
+  - Each follow-up can be assigned to someone from the board list, or to a typed-in name for someone who isn't on the board.
+  - When the meeting closes, each follow-up assigned to a board member becomes a task on that person's dashboard, with its due date and a pop-up. Uses E1.
+  - Marking it done in either place marks it done in both.
+
+Suggested order: E1 first (both features use it), then F1–F4 (small, mostly fixes), then E2–E4.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
 - Keep the bridge off until its polling is fixed and the test households are deleted.
+- Reconnect Google Drive (Settings → Drive backup). It has been disconnected since June.
+- Invite the other board members as admins (keyfob, parties, etc.). Only Doug and Kristin are in the app today. Each one turns on pop-ups once from the dashboard; on iPhone, the admin page has to be added to the Home Screen first.

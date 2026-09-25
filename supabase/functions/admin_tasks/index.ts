@@ -4,11 +4,13 @@
 // When a member submits an application or claims a Venmo payment, the
 // system writes a task here. Anyone with a matching scope (or owner role)
 // sees it on their dashboard. First admin to handle it closes it for
-// everyone — no double-handling.
+// everyone — no double-handling. A task with assigned_admin_id is for that
+// one board member (and owners). Rules: _shared/task_routing.ts.
 //
 // Actions:
 //   { action: 'list', include_completed? }
-//     → { ok, tasks: [...] }   — open tasks visible to caller, newest first
+//     → { ok, tasks: [...], me }  — open tasks visible to caller, newest
+//                                   first; assigned ones carry assigned_name
 //
 //   { action: 'count' }
 //     → { ok, open: N }        — fast pill for the dashboard
@@ -26,6 +28,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { taskVisibleTo, type Caller } from '../_shared/task_routing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -57,27 +60,21 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, target_scopes, kind, summary, link_url, source_kind, source_id, metadata, created_at, completed_at, completed_by, dismissed_at';
+const FIELDS = 'id, tenant_id, target_scopes, assigned_admin_id, kind, summary, link_url, source_kind, source_id, metadata, created_at, completed_at, completed_by, dismissed_at';
 
 // Returns the caller's effective scopes + owner flag, sourced from the DB
 // rather than the JWT (so role changes take effect immediately on next call).
-async function getCallerScope(sb: ReturnType<typeof createClient>, payload: Payload): Promise<{ isOwner: boolean; scopes: string[] }> {
-  if (payload.synthetic) return { isOwner: true, scopes: [] };
+async function getCaller(sb: ReturnType<typeof createClient>, payload: Payload): Promise<Caller> {
+  if (payload.synthetic) return { id: payload.sub, isOwner: true, scopes: [] };
   const { data: user } = await sb.from('admin_users')
     .select('role_template, scopes, active')
     .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle();
-  if (!user || !user.active) return { isOwner: false, scopes: [] };
+  if (!user || !user.active) return { id: payload.sub, isOwner: false, scopes: [] };
   return {
+    id: payload.sub,
     isOwner: (user.role_template ?? 'owner') === 'owner',
     scopes: (user.scopes ?? []) as string[],
   };
-}
-
-function visibleToCaller(task: Record<string, unknown>, isOwner: boolean, callerScopes: string[]): boolean {
-  if (isOwner) return true;
-  const targets = (task.target_scopes ?? []) as string[];
-  if (!targets.length) return false;     // empty = owners only
-  return targets.some(s => callerScopes.includes(s));
 }
 
 Deno.serve(async (req) => {
@@ -95,7 +92,7 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '');
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
-  const { isOwner, scopes } = await getCallerScope(sb, payload);
+  const caller = await getCaller(sb, payload);
 
   if (action === 'list') {
     let q = sb.from('admin_tasks').select(FIELDS).eq('tenant_id', TID);
@@ -105,25 +102,35 @@ Deno.serve(async (req) => {
     q = q.order('created_at', { ascending: false }).limit(100);
     const { data, error } = await q;
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    const tasks = (data ?? []).filter(t => visibleToCaller(t, isOwner, scopes));
-    return jsonResponse({ ok: true, tasks });
+    const tasks = (data ?? []).filter(t => taskVisibleTo(t, caller));
+    // Name who each assigned task is for ("For you" / "For Kristin").
+    const ids = [...new Set(tasks.map(t => t.assigned_admin_id).filter(Boolean))];
+    if (ids.length) {
+      const { data: who } = await sb.from('admin_users').select('id, display_name, email')
+        .eq('tenant_id', TID).in('id', ids);
+      const names = new Map((who ?? []).map(a => [a.id, a.display_name || a.email]));
+      for (const t of tasks as Record<string, unknown>[]) {
+        if (t.assigned_admin_id) t.assigned_name = names.get(t.assigned_admin_id as string) ?? null;
+      }
+    }
+    return jsonResponse({ ok: true, tasks, me: caller.id });
   }
 
   if (action === 'count') {
-    const { data, error } = await sb.from('admin_tasks').select('id, target_scopes')
+    const { data, error } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id')
       .eq('tenant_id', TID).is('completed_at', null).is('dismissed_at', null);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    const open = (data ?? []).filter(t => visibleToCaller(t, isOwner, scopes)).length;
+    const open = (data ?? []).filter(t => taskVisibleTo(t, caller)).length;
     return jsonResponse({ ok: true, open });
   }
 
   if (action === 'complete') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, completed_at')
+    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, completed_at')
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!task) return jsonResponse({ ok: false, error: 'Task not found' }, 404);
-    if (!visibleToCaller(task as Record<string, unknown>, isOwner, scopes)) {
+    if (!taskVisibleTo(task, caller)) {
       return jsonResponse({ ok: false, error: 'Not your scope' }, 403);
     }
     if (task.completed_at) return jsonResponse({ ok: true });
@@ -137,10 +144,10 @@ Deno.serve(async (req) => {
   if (action === 'dismiss') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, dismissed_at')
+    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, dismissed_at')
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!task) return jsonResponse({ ok: false, error: 'Task not found' }, 404);
-    if (!visibleToCaller(task as Record<string, unknown>, isOwner, scopes)) {
+    if (!taskVisibleTo(task, caller)) {
       return jsonResponse({ ok: false, error: 'Not your scope' }, 403);
     }
     if (task.dismissed_at) return jsonResponse({ ok: true });

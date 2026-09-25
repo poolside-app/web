@@ -7,6 +7,9 @@
  *                        creates push subscription, posts to push_admin
  *   .unsubscribe()    → { ok }
  *   .test()           → { ok, sent, failed } — fires a test notification
+ *   .mountPrompt(el)  — a small "turn on pop-ups" card for the dashboard.
+ *                        Settings (owner-only) has the full card; every
+ *                        other board member only ever sees the dashboard.
  *
  * Uses VAPID public key fetched from push_admin/vapid_public_key.
  * ============================================================================= */
@@ -125,5 +128,48 @@
     return await call('test');
   }
 
-  window.AdminPush = { status, subscribe, unsubscribe, test };
+  // Shares the "Not now" choice with the Settings card.
+  const DISMISS_KEY = 'poolside_push_dismissed';
+  function dismissed() { try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch (_) { return false; } }
+  function dismiss() { try { localStorage.setItem(DISMISS_KEY, '1'); } catch (_) { /* private mode */ } }
+
+  async function mountPrompt(el) {
+    if (!el) return;
+    const st = await status();
+    const iphone = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const installed = navigator.standalone === true
+      || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if (st.subscribed || st.permission === 'denied' || dismissed()) { el.style.display = 'none'; return; }
+
+    const btn = 'padding:8px 14px;border-radius:9px;font:600 13px Inter,sans-serif;cursor:pointer';
+    let body;
+    if (st.supported) {
+      body = `<div style="font-size:13.5px;line-height:1.45;margin-bottom:10px">Get a pop-up on this phone when something is for you, like a member's keyfob question.</div>
+        <button type="button" data-act="on" style="${btn};background:var(--blue,#1e40af);color:#fff;border:0">Turn on pop-ups</button>
+        <button type="button" data-act="later" style="${btn};background:transparent;color:#92400e;border:0">Not now</button>
+        <div data-msg style="font-size:12px;color:#92400e;margin-top:8px;min-height:14px"></div>`;
+    } else if (iphone && !installed) {
+      body = `<div style="font-size:13.5px;line-height:1.45;margin-bottom:10px">To get pop-ups on iPhone: tap <b>Share</b>, then <b>Add to Home Screen</b>. Open the board app from your Home Screen and turn pop-ups on there.</div>
+        <button type="button" data-act="later" style="${btn};background:transparent;color:#92400e;border:1.5px solid #fde68a">Got it</button>`;
+    } else {
+      el.style.display = 'none';
+      return;
+    }
+    el.innerHTML = `<div style="background:linear-gradient(135deg,#fff7ed,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:14px 16px;color:#78350f">📲 ${body}</div>`;
+    el.style.display = '';
+    el.addEventListener('click', async (e) => {
+      const act = e.target && e.target.dataset && e.target.dataset.act;
+      if (act === 'later') { dismiss(); el.style.display = 'none'; }
+      if (act === 'on') {
+        e.target.disabled = true;
+        const r = await subscribe();
+        if (r.ok) { el.style.display = 'none'; return; }
+        e.target.disabled = false;
+        const msg = el.querySelector('[data-msg]');
+        if (msg) msg.textContent = r.error || 'Could not turn on pop-ups.';
+      }
+    });
+  }
+
+  window.AdminPush = { status, subscribe, unsubscribe, test, mountPrompt };
 })();

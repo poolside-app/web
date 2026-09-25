@@ -7,8 +7,9 @@
 // member just won't get a phone buzz — they'll see it on the dashboard
 // when they next log in.
 //
-// Push targeting: scopes from the task's target_scopes array. Owner-role
-// admins get the push regardless (mirrors the dashboard scope check).
+// Push targeting (_shared/task_routing.ts): a task with assigned_admin_id
+// pops up for that board member only. Otherwise everyone holding one of its
+// target_scopes, plus owner-role admins (mirrors the dashboard check).
 //
 // Anti-spam: tag === source_kind:source_id, so a re-fired task for the
 // same entity replaces the previous OS notification rather than stacking
@@ -24,6 +25,7 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 export type TaskInput = {
   tenant_id: string;
   target_scopes: string[];                  // e.g. ['applications', 'payments']
+  assigned_admin_id?: string | null;        // for one board member only
   kind: string;                             // 'application.submitted', 'venmo.claim', etc.
   summary: string;                          // human-readable for the queue UI
   link_url?: string;                        // dashboard deep-link
@@ -47,6 +49,7 @@ export async function enqueueAdminTask(
     const { data } = await sb.from('admin_tasks').insert({
       tenant_id: input.tenant_id,
       target_scopes: input.target_scopes,
+      assigned_admin_id: input.assigned_admin_id ?? null,
       kind: input.kind,
       summary: input.summary,
       link_url: input.link_url ?? null,
@@ -79,6 +82,7 @@ export async function enqueueAdminTask(
         action: 'send_scoped',
         tenant_id: input.tenant_id,
         scopes: input.target_scopes,
+        assigned_admin_id: input.assigned_admin_id ?? null,
         title: input.push_title ?? input.summary,
         body: input.push_body ?? '',
         url: input.push_url ?? input.link_url ?? '/club/admin/',

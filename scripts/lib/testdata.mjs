@@ -44,3 +44,31 @@ export async function purgeTestFamilies(sql, tenantId, familyLike) {
     delete from households where id in (select id from x_hh);
     commit;`);
 }
+
+/** A board login that can't sign in (no real password), for checking who
+ *  sees what. `scopes` are its permissions; it is never an owner. */
+export async function makeTempAdmin(sql, tenantId, name, scopes = []) {
+  const handle = `simtest-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${String(Date.now()).slice(-6)}`;
+  const arr = `array[${scopes.map(q).join(',')}]::text[]`;
+  const [a] = await sql(`insert into admin_users (tenant_id, username, email, password_hash, display_name,
+      role_template, scopes, is_default_pw, active)
+    values (${q(tenantId)}, ${q(handle)}, ${q(`doug.frevele+${handle}@gmail.com`)}, 'simtest-no-login',
+      ${q('SimTest ' + name)}, 'custom', ${arr}, false, true)
+    returning id`);
+  return a.id;
+}
+
+/** Remove temp board logins made by makeTempAdmin, and their tasks and
+ *  phone-alert subscriptions. */
+export async function purgeTempAdmins(sql, tenantId) {
+  const T = q(tenantId);
+  await sql(`begin;
+    create temp table x_admins on commit drop as
+      select id from admin_users where tenant_id = ${T} and username like 'simtest-%';
+    delete from admin_tasks where tenant_id = ${T}
+      and (assigned_admin_id in (select id from x_admins) or completed_by in (select id from x_admins) or kind like 'simtest.%');
+    delete from admin_push_subscriptions where admin_user_id in (select id from x_admins);
+    delete from audit_log where tenant_id = ${T} and actor_id in (select id from x_admins);
+    delete from admin_users where id in (select id from x_admins);
+    commit;`);
+}

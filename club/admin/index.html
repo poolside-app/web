@@ -117,6 +117,7 @@
 <script src="/js/admin-subtabs.js"></script>
 <script src="/js/admin-flags.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
+<script src="/js/admin-push.js" defer></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
@@ -326,9 +327,11 @@ document.getElementById('signout').addEventListener('click', logout);
       <div class="placeholder">Loading…</div>
     </div>
 
+    <div id="push-prompt" style="display:none;margin-bottom:16px"></div>
+
     <div class="card" id="tasks-card" style="display:none">
       <h2>Your tasks</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to your role. First admin to handle one closes it for everyone.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to you or your role. First admin to handle one closes it for everyone.</p>
       <div id="tasks-list"></div>
     </div>
 
@@ -695,6 +698,14 @@ document.getElementById('signout').addEventListener('click', logout);
     // Card stays hidden — no harm, no log spam.
   }
 
+  // The full phone-alerts card lives on settings.html, which only owners can
+  // open. Everyone else gets this small prompt (AdminPush.mountPrompt builds
+  // its own markup), because tasks now go to one board member and pop-ups
+  // are how they hear about them. admin-push.js is deferred, so wait for it.
+  const mountPush = () => window.AdminPush && window.AdminPush.mountPrompt(document.getElementById('push-prompt'));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountPush);
+  else mountPush();
+
   // Per-role task queue (admin_tasks)
   try {
     const r = await fetch(TASKS_URL, {
@@ -722,7 +733,7 @@ document.getElementById('signout').addEventListener('click', logout);
           <div style="font-size:20px;flex-shrink:0">${KIND_ICON[t.kind] || '🔔'}</div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;font-size:14px">${escapeHtml(t.summary)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(age)} · ${escapeHtml((t.target_scopes || []).join(', ') || 'owners')}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(age)} · ${escapeHtml(taskFor(t, tdata.me))}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             ${t.link_url ? `<a href="${escapeHtml(t.link_url)}" style="padding:6px 12px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px 'Inter'">Open</a>` : ''}
@@ -732,13 +743,13 @@ document.getElementById('signout').addEventListener('click', logout);
     }).join('');
   } catch { /* non-critical */ }
 
-  // The phone-alerts opt-in used to be wired here, but its markup has always
-  // lived on settings.html — "a one-time setup, not daily content" — which is
-  // also the only page that loads /js/admin-push.js. So this page held the
-  // wiring and no elements, settings.html held the elements and no wiring, and
-  // between them nobody was ever shown the opt-in. Moved to settings.html
-  // 2026-09-09. Do not re-add it here without moving the markup too.
 })();
+
+// Who a task is for: one board member, a role, or the president.
+function taskFor(t, me) {
+  if (t.assigned_admin_id) return t.assigned_admin_id === me ? 'For you' : `For ${t.assigned_name || 'a board member'}`;
+  return (t.target_scopes || []).join(', ') || 'President';
+}
 
 async function completeTask(id) {
   const t = localStorage.getItem('poolside_tenant_token');

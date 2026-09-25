@@ -173,7 +173,7 @@ async function sendLapseAdminAlert(sb: SupabaseClient, tenantId: string, plan: R
   const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
   await enqueueAdminTask(sb, {
     tenant_id: tenantId,
-    target_scopes: ['payments', 'membership'],
+    target_scopes: ['payments', 'households'],
     kind: 'plan.lapsed',
     summary: `${plan.family_name}: payment plan lapsed — contact household and reactivate`,
     link_url: '/club/admin/payments.html',
@@ -593,7 +593,7 @@ Deno.serve(async (req) => {
           } catch { /* best-effort; the admin task below is the backstop */ }
 
           await sb.from('admin_tasks').insert({
-            tenant_id: tenant.id, kind: 'renewal.auto_renew_failed',
+            tenant_id: tenant.id, target_scopes: ['payments'], kind: 'renewal.auto_renew_failed',
             summary: `Auto-renew failed for ${hh.family_name} — card declined`,
             source_kind: 'household', source_id: hh.id,
           });

@@ -67,6 +67,10 @@ Capacity-gated, **not** feature-gated: every tier gets every feature; only house
 
 The Free Forever tier was retired 2026-09; `plan='free'` survives only as a legacy value on tenants created before then, and maps to the Starter cap rather than locking a club out mid-season. New clubs get a **free first season** instead — uncapped, then they pick a plan. Prices live in three places that must move together: `pricing.html`, `home.html`, and the `TIERS` array in `club/admin/billing.html`. They disagreed until 2026-09-09, when billing.html was still showing Pro at $799 against $1,400 on the public site.
 
+### Dashboard tasks
+
+`admin_tasks` rows are the board's to-do list. `_shared/task_routing.ts` decides who sees each one and who gets the phone pop-up. A task goes to one board member (`assigned_admin_id`), or to everyone holding one of its `target_scopes`, and owners always see everything. Every scope used must be a real one from `ALL_SCOPES` in `tenant_admin_auth`. A made-up scope silently hides the task from everyone but the owner. `node scripts/test_task_routing.mjs` checks this, offline.
+
 ### Scheduled work
 
 Four `pg_cron` jobs call edge functions: payment plans, applications cleanup, external calendar sync, gate-bridge monitor. Defined in migrations, not in app code.

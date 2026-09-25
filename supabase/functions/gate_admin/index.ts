@@ -47,6 +47,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
+import { topicOwnerId } from '../_shared/task_routing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -423,10 +424,12 @@ Deno.serve(async (req) => {
               : 'no contact_phone on file';
           }
 
-          // Board dashboard task + push.
+          // Board dashboard task + push, to whoever handles keyfob & gate
+          // help (Settings → Help topics), else the president.
           await enqueueAdminTask(sb, {
             tenant_id: tenantId,
-            target_scopes: ['operations'],
+            target_scopes: [],
+            assigned_admin_id: await topicOwnerId(sb, tenantId, 'keyfob'),
             kind: 'gate.bridge_offline',
             summary: `Gate bridge offline ${GA.humanDuration(offlineMin)} - key fobs still work, phone unlock is down`,
             link_url: '/club/admin/settings.html#gate',

@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
       await enqueueAdminTask(sb, {
         tenant_id: tenant.id,
-        target_scopes: ['operations'],
+        target_scopes: [],   // the president
         kind: 'feedback.submitted',
         summary: `Anonymous feedback: "${comment.slice(0, 60)}${comment.length > 60 ? '…' : ''}"`,
         link_url: '/club/admin/feedback.html',

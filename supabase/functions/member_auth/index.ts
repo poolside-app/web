@@ -875,7 +875,7 @@ Deno.serve(async (req) => {
       const dateLabel = fmtPoolDate(startsDate, tz, { dateStyle: 'medium' });
       await enqueueAdminTask(sb, {
         tenant_id: payload.tid as string,
-        target_scopes: ['parties', 'operations'],
+        target_scopes: ['parties'],
         kind: 'party.requested',
         summary: `Party request: ${title}${familyName ? ` from ${familyName}` : ''} — ${dateLabel}`,
         link_url: '/club/admin/parties.html',
@@ -939,7 +939,7 @@ Deno.serve(async (req) => {
         const dateLabel = fmtPoolDate(party.starts_at as string, await tenantTimeZone(sb, party.tenant_id as string), { dateStyle: 'medium' });
         await enqueueAdminTask(sb, {
           tenant_id: party.tenant_id as string,
-          target_scopes: ['parties', 'payments', 'operations'],
+          target_scopes: ['parties', 'payments'],
           kind: 'party.venmo_claim',
           summary: `Venmo party payment to verify: ${party.title} (${dateLabel})`,
           link_url: '/club/admin/parties.html',
@@ -1451,7 +1451,7 @@ Deno.serve(async (req) => {
       });
       await sb.from('admin_tasks').insert({
         tenant_id: payload.tid as string,
-        target_scopes: ['membership'],
+        target_scopes: ['households'],
         kind: 'household.transfer_primary',
         summary: `Primary role transferred to ${target.name}`,
         link_url: '/club/admin/members.html#households',

@@ -24,16 +24,18 @@
 //                                to all of the caller's own subscriptions
 //
 // Internal action (service-role only, x-poolside-internal header):
-//   { action: 'send_scoped', tenant_id, scopes, title, body, url?, tag? }
+//   { action: 'send_scoped', tenant_id, scopes, assigned_admin_id?, title, body, url?, tag? }
 //     → { ok, sent, failed }
-//     Fans out to every admin in tenant_id whose role includes ANY of
-//     `scopes` (or whose role_template === 'owner'). Used by other edge
-//     functions when an admin_tasks row is inserted.
+//     With assigned_admin_id: that board member only. Otherwise every admin
+//     in tenant_id whose role includes ANY of `scopes`, plus owners (empty
+//     scopes = owners only). Rules live in _shared/task_routing.ts. Used by
+//     other edge functions when an admin_tasks row is inserted.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import webpush from 'npm:web-push@3.6.7';
+import { pushRecipients } from '../_shared/task_routing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -135,23 +137,16 @@ Deno.serve(async (req) => {
     const tenant_id = String(body.tenant_id ?? '');
     if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
     const scopes = Array.isArray(body.scopes) ? (body.scopes as string[]) : [];
-    if (scopes.length === 0) return jsonResponse({ ok: false, error: 'scopes required' }, 400);
+    const assigned_admin_id = body.assigned_admin_id ? String(body.assigned_admin_id) : null;
     const title = String(body.title || 'Action needed');
     body.body  = String(body.body  || '');
     const url   = body.url ? String(body.url) : '/club/admin/';
     const tag   = body.tag ? String(body.tag) : 'poolside-action';
 
-    // Find admins matching ANY scope (or owner-role).
     const { data: admins } = await sb.from('admin_users')
       .select('id, role_template, scopes, active')
       .eq('tenant_id', tenant_id).eq('active', true);
-    const targetAdminIds = (admins ?? [])
-      .filter(a => {
-        if ((a.role_template ?? 'owner') === 'owner') return true;
-        const userScopes = (a.scopes ?? []) as string[];
-        return scopes.some(s => userScopes.includes(s));
-      })
-      .map(a => a.id);
+    const targetAdminIds = pushRecipients(admins ?? [], { scopes, assigned_admin_id });
 
     if (targetAdminIds.length === 0) {
       return jsonResponse({ ok: true, sent: 0, failed: 0, no_targets: true });
