@@ -24,6 +24,24 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
 - Doug's wife, daughter, neighbor and board members sign up on the live site with their own info, fake-pay, get approved, and get the welcome email and text with a sign-in link.
 - The gate card now says "Remote unlock is offline right now" while the bridge is off (A2, fixed 9/24).
 
+## Before testers (found 9/24 walking the app at phone size)
+- **T1. The emergency contact is thrown away.**
+  - The signup form requires it, but the server never saves it: `applications` has no column for it, so it's dropped at submit.
+  - The family's "Emergency contact" box is blank after approval.
+  - Fix: save it on the application and copy it to the household at approval.
+- **T2. Clear my leftover test data so testers and Doug see only real people.**
+  - 12 SimTest households and their applications.
+  - An old automated-test program ("E2E Swim 736327", $50, "Coach E2E") that shows on the public page and in "Today".
+  - Four stale "Gate bridge offline" tasks.
+  - This also resets the "$7,200 collected" figure, which is counting fake payments.
+- **T3. Bishop's own settings (Doug's call).**
+  - Pool hours say 8 AM – 8 PM, but Bishop's Google Calendar says "Pool Open 7:00 AM – 8:00 PM", and both show together.
+  - The home page still says "SUMMER 2026".
+- **Tester notes.**
+  - One signup per household. Each person needs their own email and cell, because the same one can't be used twice.
+  - A daughter at home is best added from My family → Add a member, which also tests that feature.
+  - Keep the platform daily text limit (`SMS_GLOBAL_DAILY_CAP`) at 100 until testing is over.
+
 ## Step 8 — Clean up (only when Doug says)
 - Delete every SimTest and tester application and household, then turn test mode off.
 - **Must happen before the gate bridge is turned back on.** Every approved test household has gate access.
@@ -104,6 +122,12 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
   - Fix: show card only when Stripe can actually charge, and delete the note.
 - **D6.** Login has no "send it again" button, and the email path has no check-your-spam hint.
 - **D7.** A 🧪 Test tag on simulated payments in the Members list, so they're easy to tell apart and clean up.
+- **D8.** Member home: put "your family · dues paid" near the top. Right now it's the last card, under photos, news and the calendar.
+- **D9.** "Coming up: No upcoming events" sits above a calendar full of events, because feed events (Google Calendar) aren't counted. The admin dashboard's "Upcoming events: 0" has the same cause.
+- **D10.** The admin money ticker counts simulated payments as money collected. Show them separately, or leave them out.
+- **D11.** Gate-offline alerts pile up: four open tasks for the same outage. Keep one open task per outage.
+- **D12.** Members → Households on a phone: the table is cut off after two columns (dues and fob are off-screen), and the Help button covers the list. Use cards on narrow screens.
+- **D13.** Login: the placeholder is cut off on phones, and the button says "Send me a link" even when a phone number gets a code instead.
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
