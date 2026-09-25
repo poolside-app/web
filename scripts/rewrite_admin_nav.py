@@ -75,6 +75,7 @@ PAGE_TO_TAB = {
     "photos.html":         "content",
     "board-meetings.html": "content",
     "feedback.html":       "content",
+    "member-help.html":    "content",
     # Insights
     "impact.html":         "insights",
     "audit.html":          "insights",

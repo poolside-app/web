@@ -71,6 +71,12 @@ The Free Forever tier was retired 2026-09; `plan='free'` survives only as a lega
 
 `admin_tasks` rows are the board's to-do list. `_shared/task_routing.ts` decides who sees each one and who gets the phone pop-up. A task goes to one board member (`assigned_admin_id`), or to everyone holding one of its `target_scopes`, and owners always see everything. Every scope used must be a real one from `ALL_SCOPES` in `tenant_admin_auth`. A made-up scope silently hides the task from everyone but the owner. `node scripts/test_task_routing.mjs` checks this, offline.
 
+### Member help
+
+Members ask the board from the app (`help_requests` function, `help_requests` + `help_messages` tables). Each topic goes to the board member picked in the Member help inbox (`settings.value.help_topics`), else the president. Only they see it, it keeps one dashboard task until solved, and board replies are texted to the member with a `/m/#help=<id>` link. Photos live in the private `help-photos` bucket behind signed links. SQL can't delete storage files, so delete a request through the function (president) to remove its photos. `node scripts/test_help_requests.mjs [--offline]`.
+
+Offline tests load Edge Function helpers with `scripts/lib/importts.mjs`, which follows their relative `.ts` imports.
+
 ### Scheduled work
 
 Four `pg_cron` jobs call edge functions: payment plans, applications cleanup, external calendar sync, gate-bridge monitor. Defined in migrations, not in app code.

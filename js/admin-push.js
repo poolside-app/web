@@ -7,9 +7,14 @@
  *                        creates push subscription, posts to push_admin
  *   .unsubscribe()    → { ok }
  *   .test()           → { ok, sent, failed } — fires a test notification
- *   .mountPrompt(el)  — a small "turn on pop-ups" card for the dashboard.
+ *   .mountPrompt(el, { mustFor?, devices? })
+ *                      — a small "turn on pop-ups" card for the dashboard.
  *                        Settings (owner-only) has the full card; every
  *                        other board member only ever sees the dashboard.
+ *                        mustFor = the member-help topics that come to this
+ *                        person; with no device getting pop-ups (devices 0)
+ *                        the card can't be dismissed, since pop-ups are the
+ *                        only way they hear about a member's question.
  *
  * Uses VAPID public key fetched from push_admin/vapid_public_key.
  * ============================================================================= */
@@ -133,24 +138,35 @@
   function dismissed() { try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch (_) { return false; } }
   function dismiss() { try { localStorage.setItem(DISMISS_KEY, '1'); } catch (_) { /* private mode */ } }
 
-  async function mountPrompt(el) {
+  async function mountPrompt(el, opts = {}) {
     if (!el) return;
     const st = await status();
     const iphone = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const installed = navigator.standalone === true
       || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-    if (st.subscribed || st.permission === 'denied' || dismissed()) { el.style.display = 'none'; return; }
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const topics = (opts.mustFor || []).join(', ');
+    const must = !!topics && !(opts.devices > 0);
+    if (st.subscribed || (!must && (st.permission === 'denied' || dismissed()))) { el.style.display = 'none'; return; }
 
     const btn = 'padding:8px 14px;border-radius:9px;font:600 13px Inter,sans-serif;cursor:pointer';
+    const why = must
+      ? `Members' <b>${esc(topics)}</b> questions come to you, but pop-ups aren't on for any of your devices, so you won't know when one arrives.`
+      : 'Get a pop-up on this phone when something is for you, like a member\'s keyfob question.';
+    const later = must ? '' : `<button type="button" data-act="later" style="${btn};background:transparent;color:#92400e;border:0">Not now</button>`;
     let body;
-    if (st.supported) {
-      body = `<div style="font-size:13.5px;line-height:1.45;margin-bottom:10px">Get a pop-up on this phone when something is for you, like a member's keyfob question.</div>
+    if (st.supported && st.permission === 'denied') {
+      body = `<div style="font-size:13.5px;line-height:1.45">${why} Pop-ups are blocked for this site on this device. Allow notifications for it in your phone or browser settings, then reload.</div>`;
+    } else if (st.supported) {
+      body = `<div style="font-size:13.5px;line-height:1.45;margin-bottom:10px">${why}</div>
         <button type="button" data-act="on" style="${btn};background:var(--blue,#1e40af);color:#fff;border:0">Turn on pop-ups</button>
-        <button type="button" data-act="later" style="${btn};background:transparent;color:#92400e;border:0">Not now</button>
+        ${later}
         <div data-msg style="font-size:12px;color:#92400e;margin-top:8px;min-height:14px"></div>`;
     } else if (iphone && !installed) {
-      body = `<div style="font-size:13.5px;line-height:1.45;margin-bottom:10px">To get pop-ups on iPhone: tap <b>Share</b>, then <b>Add to Home Screen</b>. Open the board app from your Home Screen and turn pop-ups on there.</div>
-        <button type="button" data-act="later" style="${btn};background:transparent;color:#92400e;border:1.5px solid #fde68a">Got it</button>`;
+      body = `<div style="font-size:13.5px;line-height:1.45;margin-bottom:10px">${must ? why + ' ' : ''}To get pop-ups on iPhone: tap <b>Share</b>, then <b>Add to Home Screen</b>. Open the board app from your Home Screen and turn pop-ups on there.</div>
+        ${must ? '' : `<button type="button" data-act="later" style="${btn};background:transparent;color:#92400e;border:1.5px solid #fde68a">Got it</button>`}`;
+    } else if (must) {
+      body = `<div style="font-size:13.5px;line-height:1.45">${why} This browser can't show pop-ups. Open the board app on your phone to turn them on.</div>`;
     } else {
       el.style.display = 'none';
       return;

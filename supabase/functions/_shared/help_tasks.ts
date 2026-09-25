@@ -18,7 +18,7 @@ type Req = { id: string; tenant_id: string; topic: string; assigned_admin_id: st
  *  handles the topic), unless it's already there — then just pop up. */
 export async function openHelpTask(sb: SupabaseClient, req: Req, memberName: string, text: string, isReply: boolean): Promise<void> {
   const label = TOPIC_LABELS[req.topic as Topic] ?? 'Help';
-  const url = `/club/admin/help.html#r=${req.id}`;
+  const url = `/club/admin/member-help.html#r=${req.id}`;
   const { data: open } = await sb.from('admin_tasks').select('id')
     .eq('tenant_id', req.tenant_id).eq('source_kind', 'help_request').eq('source_id', req.id)
     .is('completed_at', null).is('dismissed_at', null).limit(1);

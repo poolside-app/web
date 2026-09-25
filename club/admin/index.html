@@ -335,6 +335,12 @@ document.getElementById('signout').addEventListener('click', logout);
       <div id="tasks-list"></div>
     </div>
 
+    <div class="card" id="member-help-card">
+      <h2>Member help</h2>
+      <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Questions and problems members send from the app. Each one goes to the board member who handles that topic. <span id="member-help-mine" style="color:var(--text);font-weight:600"></span></p>
+      <a href="/club/admin/member-help.html" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;text-decoration:none;border-radius:10px;font:600 14px 'Inter'">Open the inbox</a>
+    </div>
+
     <div class="card" id="meetings-card">
       <h2>Board meeting</h2>
       <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Taking notes at a board meeting? Start one here. It records the time, and you check off who's there.</p>
@@ -707,50 +713,73 @@ document.getElementById('signout').addEventListener('click', logout);
     // Card stays hidden — no harm, no log spam.
   }
 
-  // The full phone-alerts card lives on settings.html, which only owners can
-  // open. Everyone else gets this small prompt (AdminPush.mountPrompt builds
-  // its own markup), because tasks now go to one board member and pop-ups
-  // are how they hear about them. admin-push.js is deferred, so wait for it.
-  const mountPush = () => window.AdminPush && window.AdminPush.mountPrompt(document.getElementById('push-prompt'));
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountPush);
-  else mountPush();
-
-  // Per-role task queue (admin_tasks)
+  // Per-role task queue (admin_tasks). The same call says which member-help
+  // topics come to this board member, for the Member help card and the
+  // pop-up prompt below.
+  let tdata = null;
   try {
     const r = await fetch(TASKS_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
       body: JSON.stringify({ action: 'list' }),
     });
-    const tdata = await r.json();
+    tdata = await r.json();
     if (!tdata.ok) throw new Error(tdata.error || 'Failed');
     const tasks = tdata.tasks || [];
-    if (!tasks.length) return;
-    const card = document.getElementById('tasks-card');
-    const list = document.getElementById('tasks-list');
-    card.style.display = 'block';
-    const KIND_ICON = {
-      'application.submitted': '📨',
-      'venmo.claim':           '💸',
-      'party.requested':       '🎉',
-    };
-    list.innerHTML = tasks.map(t => {
-      const ageHours = Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / 3600_000));
-      const age = ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`;
-      return `
-        <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff">
-          <div style="font-size:20px;flex-shrink:0">${KIND_ICON[t.kind] || '🔔'}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:14px">${escapeHtml(t.summary)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(age)} · ${escapeHtml(taskFor(t, tdata.me))}</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            ${t.link_url ? `<a href="${escapeHtml(t.link_url)}" style="padding:6px 12px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px 'Inter'">Open</a>` : ''}
-            <button onclick="completeTask('${t.id}')" style="padding:6px 12px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font:600 12px 'Inter';cursor:pointer">✓ Done</button>
-          </div>
-        </div>`;
-    }).join('');
+    if (tasks.length) {
+      const card = document.getElementById('tasks-card');
+      const list = document.getElementById('tasks-list');
+      card.style.display = 'block';
+      const KIND_ICON = {
+        'application.submitted': '📨',
+        'venmo.claim':           '💸',
+        'party.requested':       '🎉',
+        'help.request':          '🙋',
+        'meeting.follow_up':     '🗒️',
+      };
+      list.innerHTML = tasks.map(t => {
+        const ageHours = Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / 3600_000));
+        const age = ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`;
+        return `
+          <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff">
+            <div style="font-size:20px;flex-shrink:0">${KIND_ICON[t.kind] || '🔔'}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:14px">${escapeHtml(t.summary)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(age)} · ${escapeHtml(taskFor(t, tdata.me))}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              ${t.link_url ? `<a href="${escapeHtml(t.link_url)}" style="padding:6px 12px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px 'Inter'">Open</a>` : ''}
+              <button onclick="completeTask('${t.id}')" style="padding:6px 12px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font:600 12px 'Inter';cursor:pointer">✓ Done</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
   } catch { /* non-critical */ }
+
+  // Member help: what's waiting on you, and which topics come to you.
+  const helpNote = document.getElementById('member-help-mine');
+  if (helpNote && tdata && tdata.ok) {
+    const waiting = (tdata.tasks || []).filter(t => t.kind === 'help.request'
+      && (t.assigned_admin_id === tdata.me || !t.assigned_admin_id)).length;
+    const mine = tdata.help_topics_mine || [];
+    helpNote.textContent = [
+      waiting ? `${waiting} waiting on you.` : '',
+      mine.length ? `Coming to you: ${mine.join(', ')}.` : '',
+    ].join(' ').trim();
+  }
+
+  // The full phone-alerts card lives on settings.html, which only owners can
+  // open. Everyone else gets this small prompt (AdminPush.mountPrompt builds
+  // its own markup), because tasks now go to one board member and pop-ups
+  // are how they hear about them. For someone member-help questions come
+  // to, with no device getting pop-ups, it can't be dismissed.
+  // admin-push.js is deferred, so wait for it.
+  const mountPush = () => window.AdminPush && window.AdminPush.mountPrompt(document.getElementById('push-prompt'), {
+    mustFor: (tdata && tdata.help_topics_mine) || [],
+    devices: tdata && tdata.ok ? tdata.push_devices : 1,
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountPush);
+  else mountPush();
 
 })();
 

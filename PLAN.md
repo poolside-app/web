@@ -158,11 +158,26 @@ Steps (each: failing test first, then the fix, then proof; about 10–30 Supabas
   - Also: tasks meant only for the president never popped up at all. They do now.
   - Dashboard tasks can name one board member. Only that person and the president see them, and the pop-up goes only to that person.
   - Also fixes a mislabel. Some alerts are tagged with permission names that don't exist ("operations", "membership"), so only the president ever sees them. This covers anonymous feedback, gate offline and "primary member changed". Gate offline goes to the keyfob person.
-- **E2. Help requests on the server.** Save a request, save each reply, and text the member.
-- **E3. Member app.** A "Get help" button, the topic picker, and a "My requests" list with the conversation.
-- **E4. Board side.**
-  - A Help inbox page: mine, all, open and solved; the conversation; a reply box that texts the member; and buttons for Being handled, Solved and hand-off.
-  - Settings → Help topics, where you pick who handles each topic.
+- **E2. ✅ Done 9/25: help requests on the server.** New `help_requests` function and tables. Photos are stored privately.
+- **E3. ✅ Done 9/25: member app.**
+  - "Ask the board" is in the hero and in a "Questions for the board" card. Pick a topic, write, and optionally add a photo (shrunk on the phone).
+  - The member sees who it went to, its status, and replies, and can reply back.
+  - The reply text's link opens the conversation, even from a signed-out phone after signing in.
+  - The gate's "not set up" message offers Ask the board with the keyfob topic.
+- **E4. ✅ Done 9/25: board side.**
+  - A Member help inbox (Content → Member help, plus a dashboard card) with Open / Solved / All.
+  - The conversation, a reply box that texts the member, I'm on it / Mark solved / Reopen, hand-off, and delete (president only).
+  - "Who handles what" sits at the top of the inbox, not in Settings, because Settings is president-only and the inbox is where everyone looks. The president picks, and everyone sees it.
+  - A board member who gets questions but has pop-ups off on every device gets a dashboard warning they can't dismiss.
+  - Proof: `scripts/test_help_requests.mjs` passes 46/46.
+    - Routing by topic, and the president for "Something else".
+    - Nobody else can see a request.
+    - A private photo.
+    - Reply texted to the member.
+    - Member reply, hand-off, solve, reopen by reply, and Done on the dashboard = solved.
+    - President-only delete removes the photo.
+    - Only the president picks topics.
+  - Also walked through both sides in a phone-sized browser.
 
 ### F. Board meeting minutes (Doug, 9/25)
 Already built: a start button that records the time; attendance checkboxes from the board members in the app, plus a box to add people by hand; notes; motions with vote counts; follow-ups; and a public minutes page (footer link "Bylaws & board minutes").

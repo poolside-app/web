@@ -31,6 +31,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { taskVisibleTo, type Caller } from '../_shared/task_routing.ts';
 import { markFollowUpDone } from '../_shared/meeting_follow_ups.ts';
 import { markHelpSolved } from '../_shared/help_tasks.ts';
+import { TOPIC_LABELS } from '../_shared/help.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -115,7 +116,19 @@ Deno.serve(async (req) => {
         if (t.assigned_admin_id) t.assigned_name = names.get(t.assigned_admin_id as string) ?? null;
       }
     }
-    return jsonResponse({ ok: true, tasks, me: caller.id });
+    // For the dashboard: the member-help topics that come to this board
+    // member, and how many of their devices get pop-ups. Pop-ups are the
+    // only alert for help requests, so a topic owner with none hears nothing.
+    const [{ data: st }, { count: devices }] = await Promise.all([
+      sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle(),
+      sb.from('admin_push_subscriptions').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', TID).eq('admin_user_id', caller.id),
+    ]);
+    const assigned = ((st?.value as Record<string, unknown> | null)?.help_topics ?? {}) as Record<string, string | null>;
+    const help_topics_mine = (Object.keys(TOPIC_LABELS) as (keyof typeof TOPIC_LABELS)[])
+      .filter(t => assigned[t] === caller.id || (caller.isOwner && (t === 'other' || !assigned[t])))
+      .map(t => TOPIC_LABELS[t]);
+    return jsonResponse({ ok: true, tasks, me: caller.id, help_topics_mine, push_devices: devices ?? 0 });
   }
 
   if (action === 'count') {

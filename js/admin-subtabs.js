@@ -60,6 +60,7 @@
       { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
       { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: ''              },  // every board member
       { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
+      { key: 'memberhelp',    label: 'Member help',   href: '/club/admin/member-help.html',    scope: ''              },  // every board member
     ],
     insights: [
       { key: 'impact', label: 'Impact',    href: '/club/admin/impact.html', scope: 'impact'   },
@@ -88,7 +89,7 @@
     'events.html': 'calendar', 'programs.html': 'calendar', 'parties.html': 'calendar',
     'volunteer.html': 'calendar', 'lifeguards.html': 'calendar', 'my-shifts.html': 'calendar',
     'announcements.html': 'content', 'photos.html': 'content',
-    'board-meetings.html': 'content', 'feedback.html': 'content',
+    'board-meetings.html': 'content', 'feedback.html': 'content', 'member-help.html': 'content',
     'impact.html': 'insights', 'audit.html': 'insights', 'health.html': 'insights',
     'settings.html': 'settings', 'admins.html': 'settings', 'billing.html': 'settings',
   };

@@ -94,6 +94,22 @@ console.log('\nMember app (E3, offline)');
   check('photos are shrunk on the phone before sending', /toBlob|toDataURL\('image\/jpeg'/.test(app));
 }
 
+console.log('\nBoard side (E4, offline)');
+{
+  const inbox = (() => { try { return read('club/admin/member-help.html'); } catch { return ''; } })();
+  check('there is a Member help inbox page', /help_requests/.test(inbox)
+    && ['list', 'get', 'reply', 'set_status', 'assign', 'topics', 'set_topics'].every(a => new RegExp(`'${a}'`).test(inbox)));
+  check('it opens a request from a dashboard link (#r=)', /#r=/.test(inbox));
+  check('dashboard tasks link to it', /member-help\.html#r=/.test(read('supabase/functions/_shared/help_tasks.ts')));
+  const subtabs = read('js/admin-subtabs.js');
+  check('every board member can reach it from the nav', /member-help\.html',\s+scope: ''/.test(subtabs) && /'member-help\.html': 'content'/.test(subtabs)
+    && /"member-help\.html":\s+"content"/.test(read('scripts/rewrite_admin_nav.py')));
+  const dash = read('club/admin/index.html');
+  check('the dashboard has a Member help card', /member-help\.html/.test(dash) && /id="member-help-card"/.test(dash));
+  check('a topic owner without pop-ups gets a warning they can\'t dismiss',
+    /help_topics_mine/.test(dash) && /mustFor/.test(read('js/admin-push.js')));
+}
+
 if (process.argv.includes('--offline')) {
   console.log(`\n${failed ? 'FAILED' : 'PASSED'} (offline only): ${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
@@ -121,13 +137,23 @@ try {
   const other = await makeTempMember(sql, club.id, FAMILY + ' B');
   const fobId = await makeTempAdmin(sql, club.id, 'Keyfob');
   const partyId = await makeTempAdmin(sql, club.id, 'Parties');
-  await sql(`update settings set value = jsonb_set(coalesce(value, '{}'::jsonb), '{help_topics}',
-    coalesce(value->'help_topics', '{}'::jsonb) || jsonb_build_object('keyfob', '${fobId}')) where tenant_id = '${club.id}'`);
   const memTok = jwt({ sub: mem.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: mem.household_id });
   const otherTok = jwt({ sub: other.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: other.household_id });
   const fobTok = jwt({ sub: fobId, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
   const partyTok = jwt({ sub: partyId, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
   const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+
+  console.log('\nWho handles what (E4)');
+  const keep = { ...(savedTopics || {}), keyfob: fobId };
+  const st1 = await help('set_topics', fobTok, { topics: keep });
+  check('only the president can choose who handles each topic', st1.status === 403, short(st1));
+  const st2 = await help('set_topics', ownerTok, { topics: keep });
+  check('the president hands keyfob & gate to the keyfob person', st2.ok, short(st2));
+  const tp = await help('topics', fobTok);
+  check('the keyfob person sees that it\'s theirs', tp.ok && tp.topics?.keyfob?.admin_id === fobId && tp.mine?.includes('keyfob'), short(tp));
+  const dt = await fn('admin_tasks', 'list', fobTok);
+  check('their dashboard knows it, and that pop-ups are off everywhere for them',
+    dt.ok && (dt.help_topics_mine || []).includes('Keyfob & gate') && dt.push_devices === 0, short({ mine: dt.help_topics_mine, devices: dt.push_devices }));
 
   console.log('\nA member asks for help (E2)');
   const s1 = await help('submit', memTok, { topic: 'keyfob', body: 'My fob stopped working at the side gate.', photo_content_type: 'image/png', photo_base64: PNG });
