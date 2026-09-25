@@ -162,9 +162,13 @@ Deno.serve(async (req) => {
       arr.push(m);
       byHh.set(m.household_id as string, arr);
     }
+    // Families paid with a test payment get a 🧪 Test tag in the list.
+    const { testPaidHouseholds } = await import('../_shared/test_payments.ts');
+    const testIds = await testPaidHouseholds(sb, TID);
     const enriched = (households ?? []).map(h => ({
       ...h,
       members: byHh.get(h.id as string) ?? [],
+      test_paid: testIds.has(h.id as string),
     }));
     return jsonResponse({ ok: true, households: enriched });
   }

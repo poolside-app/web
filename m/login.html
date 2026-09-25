@@ -98,10 +98,10 @@
     <p class="lede" id="sub">Every adult and teen in your household can sign in with their own phone or email — whatever the club has on file for them.</p>
 
     <label for="email">Email or phone</label>
-    <input id="email" type="text" autocomplete="email" required placeholder="you@example.com or (555) 123-4567">
+    <input id="email" type="text" autocomplete="email" required placeholder="Email or cell number">
     <p style="font-size:11px;color:var(--muted);margin:4px 0 0;line-height:1.5">Email = sign-in link in your inbox. Phone = sign-in code by text. Either way, no password to remember.<br>By submitting your phone number, you consent to receive transactional SMS (sign-in codes, dues reminders, account notifications) from Poolside. Msg &amp; data rates may apply, ~1–5 msgs/mo. Reply STOP to opt out, HELP for help. <a href="https://www.poolsideapp.com/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="https://www.poolsideapp.com/terms.html" target="_blank" rel="noopener">Terms</a>.</p>
 
-    <button class="btn" id="submit" type="submit">Send me a link</button>
+    <button class="btn" id="submit" type="submit">Continue</button>
 
     <div style="margin:18px 0;text-align:center;color:var(--muted);font-size:12px;position:relative">
       <span style="background:var(--bg);padding:0 10px;position:relative;z-index:1">or</span>
@@ -122,7 +122,7 @@
              maxlength="6" pattern="[0-9]*" placeholder="123456"
              style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font:600 20px/1.2 'Inter';letter-spacing:.28em;text-align:center">
       <button class="btn" id="code-submit" type="button" style="margin-top:10px;width:100%">Sign in →</button>
-      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0">Didn't get it? Check the text — you can also just tap the link in it.</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:8px 0 0">Didn't get it? Give it a minute, then tap <b>Send it again</b> above. You can also just tap the link in the text.</p>
     </div>
 
     <div id="err" class="err"></div>
@@ -274,6 +274,42 @@ async function autoSignInIfPossible() {
   } catch (_) { /* contextual hint is best-effort */ }
 })();
 
+// The button says what will happen: a cell number gets a code by text, an
+// email gets a link. After a send it counts down to "Send it again", since
+// "nothing came" is the most common sign-in problem (D6/D13, 2026-09-25).
+let SENT_TO = '';
+let RESEND_T = null;
+function idKind(v) {
+  v = String(v || '').trim();
+  if (v.includes('@')) return 'email';
+  return v.replace(/\D/g, '').length >= 7 ? 'phone' : '';
+}
+function paintSubmit() {
+  const btn = document.getElementById('submit');
+  const v = document.getElementById('email').value.trim();
+  if (SENT_TO && v === SENT_TO) return;   // the resend countdown owns the label
+  SENT_TO = '';
+  clearInterval(RESEND_T);
+  btn.disabled = false;
+  const k = idKind(v);
+  btn.textContent = k === 'email' ? 'Email me a link' : k === 'phone' ? 'Text me a code' : 'Continue';
+}
+document.getElementById('email').addEventListener('input', paintSubmit);
+function startResendTimer(value) {
+  SENT_TO = value;
+  const btn = document.getElementById('submit');
+  let left = 30;
+  btn.disabled = true;
+  const tick = () => {
+    if (left <= 0) { clearInterval(RESEND_T); btn.disabled = false; btn.textContent = 'Send it again'; return; }
+    btn.textContent = `Send it again in ${left}s`;
+    left--;
+  };
+  clearInterval(RESEND_T);
+  tick();
+  RESEND_T = setInterval(tick, 1000);
+}
+
 async function doStart() {
   const btn = document.getElementById('submit');
   const errEl = document.getElementById('err');
@@ -285,6 +321,7 @@ async function doStart() {
   if (!SLUG) { errEl.textContent = 'No club detected from URL.'; errEl.classList.add('show'); return; }
   if (!raw) { errEl.textContent = 'Email or phone is required.'; errEl.classList.add('show'); return; }
 
+  clearInterval(RESEND_T); SENT_TO = '';   // a failed resend must not strand the button
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
   try {
     // 15s timeout so the button doesn't sit on "Sending..." indefinitely
@@ -312,7 +349,7 @@ async function doStart() {
       const byCode = data.mode === 'code';
       okEl.innerHTML = byCode
         ? `✓ ${escapeHtml(data.message || 'A sign-in code is on the way.')} Enter the 6 digits below.`
-        : `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in.`;
+        : `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in. Not in your inbox after a minute? Check your spam or promotions folder for an email from noreply@poolsideapp.com.`;
       okEl.classList.add('show');
       if (byCode) {
         LAST_IDENTIFIER = raw;
@@ -320,15 +357,14 @@ async function doStart() {
         document.getElementById('code').focus();
       }
     }
-    // Keep the phone number on screen for the code path — it is the second
-    // half of the credential, and clearing it makes the form look reset.
-    if (data.mode !== 'code') document.getElementById('email').value = '';
+    // Keep what they typed on screen: the phone number is the second half of
+    // the code credential, and either way it's what Send it again sends to.
+    if (!data.dev_link) startResendTimer(raw);
   } catch (e) {
     errEl.textContent = e.name === 'AbortError' ? 'Request timed out — try again.' : e.message;
     errEl.classList.add('show');
   } finally {
-    btn.disabled = false;
-    btn.textContent = orig;
+    if (!SENT_TO) { btn.disabled = false; btn.textContent = orig; paintSubmit(); }
   }
 }
 

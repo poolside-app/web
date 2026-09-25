@@ -17,7 +17,10 @@ Production: `poolsideapp.com` (Vercel) + Supabase project `sdewylbddkcvidwosgxo`
 python scripts/e2e.py             # end-to-end: mints synthetic JWTs, real DB writes against live infra, self-cleaning
 node scripts/frontend_smoke.mjs   # headless Chrome render check of EVERY page (public + authed), catches JS errors
 node scripts/test_payments.mjs    # targeted: fake card + fake Venmo signup end to end, ~15 function calls
+node scripts/test_screens.mjs [--live] [--render]   # member/board screens (D1–D13); offline by default
 ```
+
+Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`.
 
 All of these read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
 

@@ -82,6 +82,7 @@
 
   .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
   .err.show { display:block; }
+  .field-err { margin-top:6px; font-size:12.5px; font-weight:600; color:#b91c1c; }
   .nav-row { display:flex; justify-content:space-between; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
 
   .sig-wrap { position:relative; border:2px dashed var(--border); border-radius: 10px; background: #fff; height: 140px; }
@@ -269,7 +270,6 @@
         🗓️ <b><span id="plan-label">Pay in 2 installments via Stripe</span></b>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Two card charges. Card saved for the second one.</div>
       </label>
-      <p id="stripe-hint" style="display:none;font-size:11px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:6px">Stripe checkout isn't fully wired — we'll email you a payment link after the board approves.</p>
       <!-- Auto-renew, offered at the one moment the family is demonstrably
            willing to set up recurring payment: while they are already
            entering a card. Hidden for Venmo/offline, where there is no
@@ -303,7 +303,6 @@
 
     </div>
 
-    <div class="err" id="err-top" style="margin-bottom:14px"></div>
     <div class="err" id="err"></div>
 
     <div class="nav-row">
@@ -445,8 +444,6 @@ function paintVenmoQR() {
   const block = document.getElementById('venmo-block');
   const method = document.querySelector('input[name="payment_method"]:checked')?.value || '';
   const handle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
-  const testMode = !!TENANT_PUBLIC?.public_settings?.payments?.test_mode;
-  document.getElementById('stripe-hint').style.display = method === 'stripe' && !testMode ? 'block' : 'none';
   if (method !== 'venmo' || !handle) { block.style.display = 'none'; return; }
   block.style.display = 'block';
   // Strip any leading @ the admin saved
@@ -803,7 +800,7 @@ function goNext() {
 }
 function _goNext() {
   const errEl = document.getElementById('err'); errEl.classList.remove('show');
-  const errTop = document.getElementById('err-top'); if (errTop) errTop.classList.remove('show');
+  clearFieldErrs();
   if (CURRENT_STEP === 1) {
     const fam     = document.getElementById('family_name');
     const addr    = document.getElementById('address');
@@ -860,28 +857,37 @@ function _goNext() {
   }
   showStep(CURRENT_STEP + 1);
 }
+// One error, in one place. A step-wide problem (policies, signatures) goes
+// next to the button that was just tapped; a missing field gets its message
+// right under that field. Both used to show twice — a top banner plus the
+// bottom pill — which on a phone read as two separate problems.
+// iOS Safari sometimes ignores smooth-scroll, so scrolling uses 'auto'.
 function show(msg) {
-  // Show the error in BOTH locations so it's visible no matter where the
-  // user is scrolled. Top banner catches eyes; bottom pill is next to the
-  // button. iOS Safari sometimes ignores smooth-scroll, so we use 'auto'
-  // and scroll to the top banner.
-  const top = document.getElementById('err-top');
   const bot = document.getElementById('err');
-  if (top) { top.textContent = msg; top.classList.add('show'); }
-  if (bot) { bot.textContent = msg; bot.classList.add('show'); }
-  if (top) top.scrollIntoView({ behavior: 'auto', block: 'center' });
+  if (!bot) return;
+  bot.textContent = msg;
+  bot.classList.add('show');
+  bot.scrollIntoView({ behavior: 'auto', block: 'center' });
+}
+function clearFieldErrs() {
+  document.querySelectorAll('.field-err').forEach(n => n.remove());
 }
 function showField(input, msg) {
-  show(msg);
-  if (input) {
-    try { input.focus({ preventScroll: false }); } catch { input.focus(); }
-    input.style.borderColor = '#dc2626';
-    input.style.boxShadow = '0 0 0 3px rgba(220,38,38,.15)';
-    input.addEventListener('input', () => {
-      input.style.borderColor = '';
-      input.style.boxShadow = '';
-    }, { once: true });
-  }
+  clearFieldErrs();
+  if (!input) return show(msg);
+  const note = document.createElement('div');
+  note.className = 'field-err';
+  note.textContent = msg;
+  input.insertAdjacentElement('afterend', note);
+  try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+  input.scrollIntoView({ behavior: 'auto', block: 'center' });
+  input.style.borderColor = '#dc2626';
+  input.style.boxShadow = '0 0 0 3px rgba(220,38,38,.15)';
+  input.addEventListener('input', () => {
+    input.style.borderColor = '';
+    input.style.boxShadow = '';
+    note.remove();
+  }, { once: true });
 }
 
 // Collect adults / children from the dynamic builder
@@ -1084,14 +1090,17 @@ async function submitApplication() {
     // "magic-link sign-in" promise for guest-checkout members — they don't
     // want it, mentioning it makes the welcome flow feel forced.
     const isNoApp = (document.querySelector('input[name="signup_mode"]:checked')?.value === 'no_app');
+    // Same wait the Venmo option showed, from the club's own setting.
+    const verifyDays = Math.max(1, Math.min(30, Number(TENANT_PUBLIC?.public_settings?.payments?.offline_verify_window_days ?? 3)));
+    const within = `${verifyDays} business day${verifyDays === 1 ? '' : 's'}`;
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. ${isVenmo
-        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot — typically within <b>1–10 days</b> (it's a volunteer-run board).${isNoApp
+        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot, usually within <b>${within}</b>.${isNoApp
             ? ` You'll get a welcome email from the board once you're in.`
             : ` You'll get a welcome email with a magic-link sign-in when you're in.`}`
-        : `The board will review and reach out within 1–10 days — it's a volunteer-run board.`}</p>
+        : `The board will review it and reach out, usually within ${within}.`}</p>
       ${isVenmo && TENANT_PUBLIC?.public_settings?.payments?.test_mode ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid #fcd34d;border-radius:14px;background:#fef3c7;font-size:13.5px;line-height:1.55">
           <div style="font-weight:600;color:#92400e;margin-bottom:6px">🧪 Test mode</div>
@@ -1360,15 +1369,13 @@ async function prefillFromClaim(token) {
         if (window.PoolTime) PoolTime.setZone(d.tenant.timezone);
         document.title = `Apply — ${d.tenant.display_name}`;
         document.getElementById('title').textContent = `Apply to ${d.tenant.display_name}`;
-        // Show the Stripe option whenever the tenant has *connected* Stripe,
-        // even if charges_enabled is briefly false (Stripe periodically
-        // re-evaluates test-mode accounts and toggles this flag, which
-        // shouldn't make the option vanish on the apply form).
-        // If charges actually fail at Checkout time, Stripe surfaces a
-        // clear error to the user — much better UX than silently hiding.
+        // Card options only when Stripe can actually take the payment (or
+        // test payments are on). A club that has connected Stripe but not
+        // finished its setup can't charge, and offering card anyway sent
+        // the family into an error at checkout (D5, 2026-09-25).
         const testMode = !!d.public_settings?.payments?.test_mode;
         if (testMode) document.getElementById('test-mode-banner').style.display = '';
-        if (d.tenant.stripe_account_id || testMode) {
+        if (d.tenant.stripe_charges_enabled || testMode) {
           const opt = document.getElementById('pay-opt-stripe');
           if (opt) opt.style.display = '';
           // Pay-in-2 option requires (a) plan enabled in club settings,

@@ -46,8 +46,11 @@
           + '#poolside-help-fab:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}'
           + '#poolside-help-fab .label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}'
           + '@media (prefers-reduced-motion: reduce){#poolside-help-fab{transition:none}#poolside-help-fab:hover{transform:none}}'
-          // Mobile: scoot up so it doesn't sit on top of any sticky bottom bar
-          + '@media (max-width: 600px){#poolside-help-fab{right:12px;bottom:12px;width:52px;height:52px;font-size:24px}}';
+          // Mobile: scoot up so it doesn't sit on top of any sticky bottom bar,
+          // and leave room under the page so the last row of a list can
+          // scroll clear of the button instead of hiding behind it (D12).
+          + '@media (max-width: 600px){#poolside-help-fab{right:12px;bottom:12px;width:52px;height:52px;font-size:24px}'
+          +   'body{padding-bottom:76px}}';
         document.head.appendChild(style);
       }
       var a = document.createElement('a');

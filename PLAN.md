@@ -110,25 +110,26 @@ Rule: one step at a time. Doug says "execute Step N"; I do it, prove it worked, 
   - They also get the generic welcome email, and the success page never shows the sign-in button.
   - Not hit at Bishop today, since no plan is set up.
 
-### D. Friendlier screens
-- **D1.** Apply form: every validation error shows twice.
-- **D2.** Venmo confirmation says "1–10 days". The club's own setting (and the payment option) says 7.
-- **D3.** A brand-new member's first screen says "Welcome back".
-- **D4.** The member app uses 20 browser pop-ups.
-  - Program and volunteer sign-up asks you to *type* who's signing up instead of picking from your family.
-  - Errors appear as raw alert boxes.
-  - Replace with in-page panels, starting with sign-ups.
-- **D5.** With test mode off, the card option still appears for clubs whose Stripe isn't finished (Bishop's is not), then errors at checkout.
-  - The "we'll email you a payment link" note is wrong in every case.
-  - Fix: show card only when Stripe can actually charge, and delete the note.
-- **D6.** Login has no "send it again" button, and the email path has no check-your-spam hint.
-- **D7.** A 🧪 Test tag on simulated payments in the Members list, so they're easy to tell apart and clean up.
-- **D8.** Member home: put "your family · dues paid" near the top. Right now it's the last card, under photos, news and the calendar.
-- **D9.** "Coming up: No upcoming events" sits above a calendar full of events, because feed events (Google Calendar) aren't counted. The admin dashboard's "Upcoming events: 0" has the same cause.
-- **D10.** The admin money ticker counts simulated payments as money collected. Show them separately, or leave them out.
-- **D11.** Gate-offline alerts pile up: four open tasks for the same outage. Keep one open task per outage.
-- **D12.** Members → Households on a phone: the table is cut off after two columns (dues and fob are off-screen), and the Help button covers the list. Use cards on narrow screens.
-- **D13.** Login: the placeholder is cut off on phones, and the button says "Send me a link" even when a phone number gets a code instead.
+### D. Friendlier screens — ✅ all done 9/25
+Proof: `scripts/test_screens.mjs` passes 41/41: 28 offline checks, 3 live (`--live`), and 12 in a phone-sized browser (`--render`).
+- **D1. ✅** Signup form errors show once. A missing field gets its message right under that field; a whole-step problem shows next to the button.
+- **D2. ✅** The Venmo thank-you uses the club's own wait (Bishop: 7 business days), not "1–10 days".
+- **D3. ✅** A member's first visit says "Welcome to…", and later ones say "Welcome back".
+- **D4. ✅** The member app has no browser pop-ups left (there were 20).
+  - Messages and confirmations are in the page.
+  - Program and volunteer sign-ups pick from your family, with "Someone else" to type a name.
+  - Found along the way: every Cancel button in the member app's pop-up panels, plus "+ Upload a photo" and "Join waitlist", was white text on white. Fixed.
+- **D5. ✅** Card payment is offered only when Stripe can actually charge (or test payments are on). The wrong "we'll email you a payment link" note is deleted.
+- **D6. ✅** Sign-in: after sending, the button counts down to "Send it again". The email message says to check spam and promotions.
+- **D7. ✅** Families paid with a test payment get a 🧪 Test tag in Members.
+- **D8. ✅** The family and dues card is right under the greeting on the member home.
+- **D9. ✅** "Coming up" and the dashboard's "Upcoming events" include Google Calendar events.
+  - A daily event like "Pool Open" is left out, since Today already shows the hours.
+  - A weekly event shows only its next date.
+- **D10. ✅** The "$ collected" total leaves out test payments and says how many it left out.
+- **D11. ✅** Gate-offline alerts: one open task per outage, closed automatically when the bridge comes back. The "back online" and "integration is live" pop-ups no longer use the made-up "operations" label.
+- **D12. ✅** Members → Households shows as cards on a phone. Admin pages leave room under the list so the Help button doesn't cover the last row.
+- **D13. ✅** The sign-in box placeholders fit on a phone (member and board). The member button says "Text me a code" or "Email me a link", depending on what's typed.
 
 ### E. Member help requests (Doug, 9/25)
 Goal: a member sends a question or problem from the app. It goes to the one board member who handles that topic, it's tracked until solved, and the board texts the member back.

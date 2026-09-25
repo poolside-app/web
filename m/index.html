@@ -70,8 +70,13 @@
     display: inline-block;
   }
   .btn:hover { background: var(--blue-l); }
-  .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.4); }
-  .btn-ghost:hover { background: rgba(255,255,255,.1); }
+  /* Ghost buttons are white only on the dark banner at the top. Everywhere
+     else they sit on white (cards, pop-up panels), where white text made
+     every Cancel button, "+ Upload a photo" and "Join waitlist" invisible. */
+  .btn-ghost { background: transparent; color: var(--blue); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--blue-l); }
+  .hero-card .btn-ghost { color: #fff; border-color: rgba(255,255,255,.4); }
+  .hero-card .btn-ghost:hover { background: rgba(255,255,255,.1); }
 
   .card {
     background: #fff; border: 1px solid var(--border);
@@ -197,6 +202,15 @@
   .pmodal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
   .perr { display:none; margin-top:10px; padding:10px 12px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }
   .perr.show { display:block; }
+
+  /* In-page messages and confirmations (the app uses no browser pop-ups) */
+  .m-toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%, 20px); max-width:min(92vw, 460px); padding:12px 16px; border-radius:12px; background:#14532d; color:#fff; font:600 14px/1.45 'Inter'; box-shadow:0 10px 30px rgba(15,23,42,.25); opacity:0; pointer-events:none; transition:.2s; z-index:400; text-align:center; }
+  .m-toast.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+  .m-toast.err { background:#7f1d1d; }
+  .pick-list { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+  .pick-row { display:flex !important; align-items:center; gap:10px; padding:11px 12px; border:1.5px solid var(--border); border-radius:12px; font:500 14.5px 'Inter' !important; margin:0 !important; cursor:pointer; }
+  .pick-row input { width:auto !important; margin:0; }
+  .pick-row:has(input:checked) { border-color:var(--blue); background:var(--blue-l); }
 
   /* Ask the board (help requests) */
   .help-topics { display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:6px; }
@@ -548,6 +562,19 @@
   </div>
 </div>
 
+<!-- In-page stand-ins for the browser's alert, confirm and prompt boxes. -->
+<div class="m-toast" id="m-toast" role="status" aria-live="polite"></div>
+<div class="scrim" id="ask-scrim">
+  <div class="pmodal" style="max-width:440px">
+    <p id="ask-text" style="font-size:15px;line-height:1.55;margin:0;white-space:pre-line"></p>
+    <div id="ask-extra"></div>
+    <div class="pmodal-foot">
+      <button class="btn btn-ghost" id="ask-no" type="button">Cancel</button>
+      <button class="btn" id="ask-yes" type="button" style="background:var(--blue);color:#fff">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ask the board: a new question for the board member who handles the
      topic (or the president). See help_requests. -->
 <div class="scrim" id="help-scrim" onclick="if (event.target === this) closeHelp()">
@@ -606,6 +633,7 @@
 </div>
 
 <script src="/js/calendar.js"></script>
+<script src="/js/upcoming.js"></script>
 <script src="/js/today.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
@@ -726,6 +754,61 @@ document.addEventListener('keydown', (e) => {
 })();
 
 let ME_USER = null;
+let ME_HOUSEHOLD = null;
+
+// ── In-page messages and confirmations ──────────────────────────────────
+// The app used 20 browser pop-ups (alert/confirm/prompt). On a phone those
+// are ugly system boxes that can't be styled or read comfortably, and
+// sign-ups asked you to *type* who was signing up. These replace them.
+function notify(msg, kind) {
+  const el = document.getElementById('m-toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'm-toast show' + (kind === 'err' ? ' err' : '');
+  clearTimeout(notify._t);
+  notify._t = setTimeout(() => { el.className = 'm-toast'; }, kind === 'err' ? 6000 : 4000);
+}
+function ask({ text, yes = 'OK', no = 'Cancel', extra = '' }) {
+  return new Promise(resolve => {
+    const scrim = document.getElementById('ask-scrim');
+    const y = document.getElementById('ask-yes'), n = document.getElementById('ask-no');
+    document.getElementById('ask-text').textContent = text;
+    document.getElementById('ask-extra').innerHTML = extra;
+    y.textContent = yes; n.textContent = no;
+    const done = v => { scrim.classList.remove('open'); y.onclick = n.onclick = scrim.onclick = null; resolve(v); };
+    y.onclick = () => done(true);
+    n.onclick = () => done(false);
+    scrim.onclick = e => { if (e.target === scrim) done(false); };
+    scrim.classList.add('open');
+    try { y.focus(); } catch (_) {}
+  });
+}
+const askConfirm = (text, yes = 'Yes', no = 'Cancel') => ask({ text, yes, no });
+
+// Who's signing up: tap someone in your family, or type another name.
+async function pickFamilyMember(title) {
+  const people = ((ME_HOUSEHOLD && ME_HOUSEHOLD.members) || []).filter(m => m.active !== false);
+  const meId = ME_USER && ME_USER.id;
+  const rows = people.map(m => `
+    <label class="pick-row"><input type="radio" name="pick-who" value="${escapeAttr(m.name)}" ${m.id === meId ? 'checked' : ''}>
+      ${escapeHtml(m.name)}${m.id === meId ? ' <span style="color:var(--muted)">(you)</span>' : ''}</label>`).join('');
+  const extra = `<div class="pick-list">${rows}
+    <label class="pick-row"><input type="radio" name="pick-who" value="__other" ${people.length ? '' : 'checked'}> Someone else</label>
+    <input id="pick-other" placeholder="Their name" style="${people.length ? 'display:none' : ''}"></div>`;
+  const answer = ask({ text: title, yes: 'Sign up', no: 'Cancel', extra });
+  const box = document.getElementById('ask-extra');
+  box.onchange = () => {
+    const other = box.querySelector('input[name="pick-who"]:checked')?.value === '__other';
+    const inp = document.getElementById('pick-other');
+    inp.style.display = other ? '' : 'none';
+    if (other) inp.focus();
+  };
+  if (!(await answer)) return null;
+  const v = box.querySelector('input[name="pick-who"]:checked')?.value;
+  const name = v === '__other' ? document.getElementById('pick-other').value.trim() : v;
+  if (!name) { notify('Add their name to sign someone else up.', 'err'); return null; }
+  return name;
+}
 
 async function callMember(action, extra = {}, pathOverride = null) {
   const t = token();
@@ -843,7 +926,7 @@ async function submitPhoto() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Upload failed');
     closePhotoUpload();
-    alert('✓ Submitted for admin approval. You\'ll see it in the Snapshots once approved.');
+    notify('✓ Sent for approval. It shows under Photos once the board approves it.');
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
   } finally {
@@ -967,22 +1050,22 @@ async function submitParty() {
 // claim_party_paid which marks payment_status=pending_verify and creates
 // an admin task for the treasurer.
 async function claimPartyPaid(id) {
-  if (!confirm('Mark this party as paid via Venmo?\n\nThe treasurer will verify the payment landed and officially confirm your booking.')) return;
+  if (!(await askConfirm('Mark this party as paid via Venmo?\n\nThe treasurer will check the payment landed and then confirm your booking.', 'Yes, I paid'))) return;
   try {
     const data = await callMember('claim_party_paid', { id });
     if (!data.ok) throw new Error(data.error || 'Could not record');
-    alert('✓ Treasurer notified. They\'ll confirm your booking once they verify the Venmo payment.');
+    notify('✓ Treasurer notified. They\'ll confirm your booking once they see the Venmo payment.');
     await refreshParties();
-  } catch (e) { alert(e.message); }
+  } catch (e) { notify(e.message, 'err'); }
 }
 
 async function cancelParty(id) {
-  if (!confirm('Cancel this party request?')) return;
+  if (!(await askConfirm('Cancel this party request?', 'Cancel request', 'Keep it'))) return;
   try {
     const data = await callMember('cancel_my_party', { id });
     if (!data.ok) throw new Error(data.error || 'Cancel failed');
     await refreshParties();
-  } catch (e) { alert(e.message); }
+  } catch (e) { notify(e.message, 'err'); }
 }
 
 async function refreshParties() {
@@ -1117,10 +1200,11 @@ async function refreshPrograms() {
   }
 }
 async function bookProgram(programId, programName, isWaitlist) {
-  const participant_name = prompt(`Who is signing up for "${programName}"?`, ME_USER?.name || '');
+  const participant_name = await pickFamilyMember(`Who's signing up for ${programName}?`);
   if (!participant_name) return;
   const r = await callPrograms('book', { program_id: programId, participant_name });
-  if (!r.ok) { alert(r.error || 'Sign-up failed'); return; }
+  if (!r.ok) { notify(r.error || 'Sign-up failed', 'err'); return; }
+  notify(isWaitlist ? `✓ ${participant_name} is on the waitlist.` : `✓ ${participant_name} is signed up.`);
   await refreshPrograms();
 }
 async function payProgramBooking(bid) {
@@ -1133,12 +1217,12 @@ async function payProgramBooking(bid) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not start checkout');
     window.location.href = data.url;
-  } catch (e) { alert(e.message); }
+  } catch (e) { notify(e.message, 'err'); }
 }
 async function cancelProgramBooking(bid) {
-  if (!confirm('Cancel this sign-up?')) return;
+  if (!(await askConfirm('Cancel this sign-up?', 'Cancel sign-up', 'Keep it'))) return;
   const r = await callPrograms('cancel_booking', { booking_id: bid });
-  if (!r.ok) { alert(r.error || 'Cancel failed'); return; }
+  if (!r.ok) { notify(r.error || 'Cancel failed', 'err'); return; }
   await refreshPrograms();
 }
 
@@ -1213,16 +1297,17 @@ async function refreshVolunteer() {
   } catch { /* ignore */ }
 }
 async function volunteerSignup(oppId, oppTitle) {
-  const volunteer_name = prompt(`Sign up for "${oppTitle}" — what name should we list?`, ME_USER?.name || '');
+  const volunteer_name = await pickFamilyMember(`Who's volunteering for ${oppTitle}?`);
   if (!volunteer_name) return;
   const r = await callVolunteer('signup', { opportunity_id: oppId, volunteer_name });
-  if (!r.ok) { alert(r.error || 'Sign-up failed'); return; }
+  if (!r.ok) { notify(r.error || 'Sign-up failed', 'err'); return; }
+  notify(`✓ Thanks! ${volunteer_name} is signed up.`);
   await refreshVolunteer();
 }
 async function volunteerCancel(sid) {
-  if (!confirm('Cancel this volunteer slot?')) return;
+  if (!(await askConfirm('Cancel this volunteer slot?', 'Cancel slot', 'Keep it'))) return;
   const r = await callVolunteer('cancel_signup', { signup_id: sid });
-  if (!r.ok) { alert(r.error || 'Cancel failed'); return; }
+  if (!r.ok) { notify(r.error || 'Cancel failed', 'err'); return; }
   await refreshVolunteer();
 }
 
@@ -1387,7 +1472,7 @@ async function claimReward(rewardType) {
   const referralId = claimRow.dataset.referralId;
   if (!referralId) return;
   const niceLabel = rewardType === 'next_year_discount' ? 'credit toward next year' : 'a $100 refund';
-  if (!confirm(`Ask for your reward as ${niceLabel}?\n\nYou can't change which one once it's sent to the board.`)) return;
+  if (!(await askConfirm(`Ask for your reward as ${niceLabel}?\n\nYou can't change which one once it's sent to the board.`, 'Send to the board'))) return;
   try {
     const r = await callMember('claim_reward', { referral_id: referralId, reward_type: rewardType }, '/functions/v1/referrals');
     // A capped claim comes back 409 with an explanation worth reading, so show
@@ -1396,12 +1481,12 @@ async function claimReward(rewardType) {
     // Deliberately not "Done!" — nothing has happened yet, and telling a member
     // their reward is applied when a board member has not looked at it is how
     // they find out from an unchanged invoice next spring.
-    alert(rewardType === 'next_year_discount'
+    notify(rewardType === 'next_year_discount'
       ? 'Sent to your board. Once they approve it, it comes off next season\'s dues.'
       : 'Sent to your board. Once they approve it, the treasurer will be in touch about the refund.');
     openReferModal();   // reload to show updated stats
   } catch (e) {
-    alert(e.message);
+    notify(e.message, 'err');
   }
 }
 
@@ -1793,7 +1878,7 @@ async function submitFeedback() {
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'Submit failed');
     closeFeedback();
-    alert('✓ Thanks — your feedback is on the way to the board.');
+    notify('✓ Thanks. Your feedback is on the way to the board.');
   } catch (e) {
     err.textContent = e.message; err.classList.add('show');
     btn.disabled = false; btn.textContent = orig;
@@ -2300,6 +2385,14 @@ async function submitProfile() {
   }
 
   const { user, household, tenant } = me;
+  ME_HOUSEHOLD = household;
+  // "Welcome back" only once they've been here before, on this phone.
+  let firstVisit = false;
+  try {
+    const key = 'poolside_welcomed_' + user.id;
+    firstVisit = !localStorage.getItem(key);
+    localStorage.setItem(key, '1');
+  } catch (_) {}
   const venmo = publicData.public_settings?.payments?.venmo_handle;
 
   // Pool-pass FAB — only show when the tenant has 'member_pass' in their
@@ -2374,9 +2467,10 @@ async function submitProfile() {
     `).join('')
     : '<div class="empty">No members on file yet.</div>';
 
-  const events = publicData.events || [];
-  const eventsHtml = events.length
-    ? events.map(ev => `
+  // "Coming up": club events now, plus calendar-feed events once they load
+  // (see the external_calendar block below).
+  const renderComingUp = list => list.length
+    ? list.map(ev => `
       <div class="ev">
         ${eventDateBadge(ev)}
         <div class="ev-body">
@@ -2386,6 +2480,7 @@ async function submitProfile() {
       </div>
     `).join('')
     : '<div class="empty">No upcoming events.</div>';
+  const eventsHtml = renderComingUp(PoolsideUpcoming.merge(publicData.events || [], [], { limit: 5 }));
 
   // Documents feature removed 2026-05-21.
 
@@ -2426,10 +2521,28 @@ async function submitProfile() {
     ${renderSeasonClosedBanner(publicData.public_settings?.season)}
     <div class="hero-card">
       <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
-      <p class="sub">Welcome back to ${escapeHtml(tenant.display_name)}.</p>
+      <p class="sub">${firstVisit ? 'Welcome to' : 'Welcome back to'} ${escapeHtml(tenant.display_name)}.</p>
       <div class="actions">${heroActions.join('')}</div>
       ${renderMemberCountTicker(publicData.member_count, publicData.public_settings?.public)}
     </div>
+
+    <!-- Household summary card, near the top: "are we paid up, and who's
+         on our membership" is the first thing a family checks (D8).
+         Drilldown for adding/removing members,
+         editing household info, and transferring the primary role lives
+         on /m/family.html — this card is just a glance. -->
+    <a href="/m/family.html" class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:inherit">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
+          ${dueText}
+        </div>
+        <div style="font-size:12.5px;color:var(--muted)">
+          ${(household.members || []).filter(m => m.active).map(m => escapeHtml(m.name.split(' ')[0])).join(' · ') || 'No members on file'}
+        </div>
+      </div>
+      <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
+    </a>
 
     ${renderRenewalCard(me.renewal, tenant)}
 
@@ -2472,7 +2585,7 @@ async function submitProfile() {
     <!-- Coming up (next 3-5 events) — short list, scannable -->
     <div class="card">
       <h2>📅 Coming up</h2>
-      ${eventsHtml}
+      <div id="coming-up">${eventsHtml}</div>
     </div>
 
     <!-- Full calendar grid -->
@@ -2500,21 +2613,6 @@ async function submitProfile() {
 
     <!-- Documents feature removed 2026-05-21. -->
 
-    <!-- Household summary card. Drilldown for adding/removing members,
-         editing household info, and transferring the primary role lives
-         on /m/family.html — this card is just a glance. -->
-    <a href="/m/family.html" class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:inherit">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
-          <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
-          ${dueText}
-        </div>
-        <div style="font-size:12.5px;color:var(--muted)">
-          ${(household.members || []).filter(m => m.active).map(m => escapeHtml(m.name.split(' ')[0])).join(' · ') || 'No members on file'}
-        </div>
-      </div>
-      <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
-    </a>
 
     ${renderHelpCard()}
 
@@ -2568,6 +2666,8 @@ async function submitProfile() {
         });
         const d = await r.json();
         if (!d.ok || !Array.isArray(d.feeds) || !d.feeds.length) return;
+        const upcomingEl = document.getElementById('coming-up');
+        if (upcomingEl) upcomingEl.innerHTML = renderComingUp(PoolsideUpcoming.merge(publicData.events || [], d.feeds, { limit: 5 }));
         const flat = [];
         for (const f of d.feeds) {
           for (const e of (f.events || [])) {
@@ -2668,7 +2768,7 @@ async function submitProfile() {
   // If we just came back from a successful Stripe donation, give a quick
   // thank-you and clear the URL flag.
   if (new URLSearchParams(window.location.search).get('donated') === '1') {
-    setTimeout(() => alert('💚 Thank you for your donation! It may take a moment to show up on the thermometer — refresh in a few seconds.'), 250);
+    setTimeout(() => notify('💚 Thank you for your donation! It can take a moment to show on the thermometer.'), 250);
     history.replaceState(null, '', window.location.pathname);
   }
 

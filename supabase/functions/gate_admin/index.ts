@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
 
     const GA = await import('../_shared/gate_alert.ts');
     const { sendEmail, escHtml } = await import('../_shared/send_email.ts');
-    const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+    const { enqueueAdminTask, pushBoard } = await import('../_shared/enqueue_task.ts');
     const { sendSms } = await import('../_shared/send_sms.ts');
 
     const PROVIDER_EMAIL = Deno.env.get('PROVIDER_NOTIFY_EMAIL') ?? 'doug@poolsideapp.com';
@@ -253,6 +253,12 @@ Deno.serve(async (req) => {
           bridge_last_alert_at: new Date().toISOString(),
         }).eq('tenant_id', tenantId);
 
+        // The outage is over, so its dashboard task is done. They used to
+        // stay open and pile up, one per outage (D11).
+        await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId).eq('kind', 'gate.bridge_offline')
+          .is('completed_at', null).is('dismissed_at', null);
+
         // Two reasons to stay quiet: this outage was never announced (so an
         // "it's back" is describing a problem nobody knew about), or the
         // bridge is flapping and the flap alert already covers it.
@@ -279,20 +285,15 @@ Deno.serve(async (req) => {
         // just generates a confused reply.
         if (clubWasTold) {
           try {
-            await fetch(`${SUPABASE_URL}/functions/v1/push_admin`, {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                'authorization': `Bearer ${SERVICE_ROLE}`,
-                'x-poolside-internal': SERVICE_ROLE,
-              },
-              body: JSON.stringify({
-                action: 'send_scoped', tenant_id: tenantId, scopes: ['operations'],
-                title: `Gate bridge back online at ${clubName}`,
-                body: 'Phone unlock is working again. Nothing else to do.',
-                url: '/club/admin/settings.html#gate',
-                tag: `gate.recovery:${tenantId}`,
-              }),
+            // Same person the offline alert went to: whoever handles
+            // keyfob & gate help, else the president.
+            await pushBoard({
+              tenant_id: tenantId, target_scopes: [],
+              assigned_admin_id: await topicOwnerId(sb, tenantId, 'keyfob'),
+              title: `Gate bridge back online at ${clubName}`,
+              body: 'Phone unlock is working again. Nothing else to do.',
+              url: '/club/admin/settings.html#gate',
+              tag: `gate.recovery:${tenantId}`,
             });
             const { data: owners } = await sb.from('admin_users')
               .select('email').eq('tenant_id', tenantId).eq('active', true)
@@ -425,18 +426,29 @@ Deno.serve(async (req) => {
           }
 
           // Board dashboard task + push, to whoever handles keyfob & gate
-          // help (Settings → Help topics), else the president.
-          await enqueueAdminTask(sb, {
-            tenant_id: tenantId,
-            target_scopes: [],
-            assigned_admin_id: await topicOwnerId(sb, tenantId, 'keyfob'),
-            kind: 'gate.bridge_offline',
-            summary: `Gate bridge offline ${GA.humanDuration(offlineMin)} - key fobs still work, phone unlock is down`,
-            link_url: '/club/admin/settings.html#gate',
-            source_kind: 'gate_panel', source_id: tenantId,
-            push_title: `Gate bridge offline at ${clubName}`,
-            push_body: `${GA.FOBS_STILL_WORK} Check the bridge has power and the internet is up.`,
-          });
+          // help (Member help → who handles what), else the president. One
+          // task per outage: if one is still open (the bridge came back
+          // without a recovery pass, or is flapping), refresh it rather
+          // than stacking another beside it (D11).
+          const offlineSummary = `Gate bridge offline ${GA.humanDuration(offlineMin)} - key fobs still work, phone unlock is down`;
+          const { data: openOffline } = await sb.from('admin_tasks').select('id')
+            .eq('tenant_id', tenantId).eq('kind', 'gate.bridge_offline')
+            .is('completed_at', null).is('dismissed_at', null).limit(1);
+          if (openOffline && openOffline.length) {
+            await sb.from('admin_tasks').update({ summary: offlineSummary }).eq('id', openOffline[0].id);
+          } else {
+            await enqueueAdminTask(sb, {
+              tenant_id: tenantId,
+              target_scopes: [],
+              assigned_admin_id: await topicOwnerId(sb, tenantId, 'keyfob'),
+              kind: 'gate.bridge_offline',
+              summary: offlineSummary,
+              link_url: '/club/admin/settings.html#gate',
+              source_kind: 'gate_panel', source_id: tenantId,
+              push_title: `Gate bridge offline at ${clubName}`,
+              push_body: `${GA.FOBS_STILL_WORK} Check the bridge has power and the internet is up.`,
+            });
+          }
 
           // Email the owners with the same three checks as the text.
           const { data: owners } = await sb.from('admin_users')
@@ -961,7 +973,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             action: 'send_scoped',
             tenant_id: targetTenant,
-            scopes: ['operations'],
+            scopes: [],   // the president (no permission covers this)
             title: '🚪 Gate integration is live',
             body: 'Configure your panel + run a test unlock when you have a minute.',
             url: '/club/admin/settings.html#gate',

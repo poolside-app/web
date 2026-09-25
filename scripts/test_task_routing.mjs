@@ -105,7 +105,8 @@ console.log('\nEvery alert uses permissions that exist (offline)');
   for (const file of walk(fnDir)) {
     const src = readFileSync(file, 'utf8');
     const rel = file.slice(fnDir.length + 1);
-    for (const m of src.matchAll(/target_scopes:\s*\[([^\]]*)\]/g)) {
+    // Tasks (target_scopes) and direct pop-ups to push_admin (scopes).
+    for (const m of src.matchAll(/\b(?:target_)?scopes:\s*\[([^\]]*)\]/g)) {
       for (const s of m[1].matchAll(/'([^']+)'/g)) if (!all.has(s[1])) bad.push(`${rel}: '${s[1]}'`);
     }
     for (const m of src.matchAll(/from\('admin_tasks'\)\.insert\(\{/g)) {

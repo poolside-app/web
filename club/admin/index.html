@@ -118,6 +118,7 @@
 <script src="/js/admin-flags.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <script src="/js/admin-push.js" defer></script>
+<script src="/js/upcoming.js"></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
@@ -560,7 +561,7 @@ document.getElementById('signout').addEventListener('click', logout);
   try {
     const headers = { 'content-type': 'application/json', 'authorization': `Bearer ${token}` };
     const j = (url, body) => fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({ ok: false }));
-    const [appsPending, parties, payments, events, programs, campaigns] = await Promise.all([
+    const [appsPending, parties, payments, events, programs, campaigns, feeds] = await Promise.all([
       // 'needs_attention' = pending submissions + approved-but-unpaid
       // (same unified queue as the Pipeline). Single counter on the
       // dashboard matches the Members nav badge + Pipeline subtab badge.
@@ -570,6 +571,9 @@ document.getElementById('signout').addEventListener('click', logout);
       j(EVENTS_URL,    { action: 'list', range: 'upcoming' }),
       j(PROGRAMS_URL,  { action: 'list', active_only: true }),
       j(CAMPAIGNS_URL, { action: 'list' }),
+      // Imported calendars (Google etc.) count as events too.
+      fetch(`${SUPABASE_URL}/functions/v1/external_calendar`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'list_public', slug: tenant.slug }) }).then(r => r.json()).catch(() => ({ ok: false })),
     ]);
 
     const appCount   = (appsPending.applications || []).length;
@@ -582,7 +586,9 @@ document.getElementById('signout').addEventListener('click', logout);
     // pure annual dues / programs / guest passes.
     const payItems   = (payments.items || []).filter(i => i.source !== 'application');
     const overdueCount = payItems.filter(i => (i.age_days ?? 0) >= 14).length;
-    const upcomingEv = (events.events || []).filter(e => new Date(e.starts_at).getTime() >= Date.now()).slice(0, 30).length;
+    // Next 30 days, club events plus feed events (a daily "Pool Open" isn't
+    // an event; see js/upcoming.js).
+    const upcomingEv = PoolsideUpcoming.merge(events.events || [], (feeds.ok && feeds.feeds) || [], { days: 30, limit: Infinity }).length;
     const activeProg = (programs.programs || []).length;
     const liveCamp = (campaigns.campaigns || []).filter(c => {
       if (!c.active) return false;

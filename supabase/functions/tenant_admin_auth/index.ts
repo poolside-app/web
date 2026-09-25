@@ -617,19 +617,26 @@ Deno.serve(async (req) => {
     // there is no payments table to sum — dues arrive four different ways and
     // the only thing all four update is that flag. So it is what the club has
     // booked, not what has cleared a bank.
+    //
+    // Test payments (test mode) aren't money in: they're left out of both
+    // numbers and reported on their own as test_paid.
     try {
+      const { testPaidHouseholds } = await import('../_shared/test_payments.ts');
+      const testIds = await testPaidHouseholds(sb, payload.tid);
       const { data: hh } = await sb.from('households')
-        .select('tier')
+        .select('id, tier')
         .eq('tenant_id', payload.tid).eq('active', true).eq('dues_paid_for_year', true);
       const tiers = (settingsValue.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
       const priceOf = (slug: string | null | undefined) => {
         const t = tiers.find(x => x.slug === slug) ?? tiers[0];
         return Number(t?.price_cents ?? 0) || 0;
       };
-      const rows = hh ?? [];
+      const all = hh ?? [];
+      const rows = all.filter(r => !testIds.has(r.id as string));
       (usage as Record<string, unknown>).dues = {
         paid: rows.length,
         collected_cents: rows.reduce((n, r) => n + priceOf(r.tier as string), 0),
+        test_paid: all.length - rows.length,
       };
     } catch (e) {
       console.error('dues total for ticker (non-fatal):', (e as Error).message);

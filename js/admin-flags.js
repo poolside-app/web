@@ -355,6 +355,8 @@
     const paid = Math.max(0, Number(dues.paid) || 0);
     const cents = Math.max(0, Number(dues.collected_cents) || 0);
     const money = '$' + Math.round(cents / 100).toLocaleString();
+    // Test payments (test mode) aren't money in; say how many were left out.
+    const tests = Math.max(0, Number(dues.test_paid) || 0);
 
     const el = document.createElement('a');
     el.id = 'dues-ticker';
@@ -373,6 +375,7 @@
         <span style="font-size:24px; font-weight:800; line-height:1">${money}</span>
         <span style="font-size:14px; font-weight:600; opacity:.8"> collected</span>
       </span>
+      ${tests ? `<span style="font-size:12.5px; font-weight:600; opacity:.75; white-space:nowrap">🧪 ${tests} test payment${tests === 1 ? '' : 's'} not counted</span>` : ''}
     `;
     (after && after.parentNode)
       ? after.parentNode.insertBefore(el, after)

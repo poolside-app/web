@@ -64,6 +64,18 @@
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   .pill.paid     { background: #dcfce7; color: #14532d; }
   .pill.unpaid   { background: #fef3c7; color: #92400e; }
+  .pill.test     { background: #ede9fe; color: #5b21b6; }
+  /* Phones: the households table was cut off after two columns (dues and
+     fob off-screen). Each family becomes a small card instead (D12). */
+  @media (max-width: 640px) {
+    #hh-card table, #hh-card tbody, #hh-card tr, #hh-card td { display: block; width: 100%; }
+    #hh-card thead { display: none; }
+    #hh-card tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    #hh-card td { padding: 0; border: 0; font-size: 13.5px; }
+    #hh-card td::before { content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    #hh-card td[data-label="Family"] { grid-column: 1 / -1; font-size: 15px; }
+    #hh-card td[data-label="Family"]::before { display: none; }
+  }
   .pill.tier     { background: var(--blue-l); color: var(--blue); }
   .pill.pending  { background: #fef3c7; color: #92400e; }
   .pill.approved { background: #dcfce7; color: #14532d; }
@@ -544,7 +556,7 @@ const Households = (() => {
     const card = document.getElementById('hh-card');
     if (!rows.length) { card.innerHTML = `<div class="empty"><h2>No households yet</h2>Add your first household with the button above.</div>`; return; }
     const fmtPaid = (h) => h.dues_paid_for_year
-      ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>`
+      ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>${h.test_paid ? ' <span class="pill test" title="Paid with a test payment, not real money">🧪 Test</span>' : ''}`
       : `<span class="pill unpaid">Unpaid</span>`;
     card.innerHTML = `<table>
       <thead><tr><th>Family</th><th>Primary</th><th>Members</th><th>Level</th><th>Fob</th><th>Dues</th></tr></thead>
@@ -552,12 +564,12 @@ const Households = (() => {
         const p = primaryOf(h);
         const cnt = (h.members || []).filter(m => m.active).length;
         return `<tr data-id="${h.id}">
-          <td><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}</td>
-          <td>${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(formatPhone(p.phone_e164)) : ''}</span></td>
-          <td>${cnt}</td>
-          <td><span class="pill tier">${escapeHtml(h.tier || 'family')}</span></td>
-          <td>${h.fob_number ? escapeHtml(h.fob_number) : '<i style="color:var(--muted)">—</i>'}</td>
-          <td>${fmtPaid(h)}</td>
+          <td data-label="Family"><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}</td>
+          <td data-label="Primary">${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(formatPhone(p.phone_e164)) : ''}</span></td>
+          <td data-label="Members">${cnt}</td>
+          <td data-label="Level"><span class="pill tier">${escapeHtml(h.tier || 'family')}</span></td>
+          <td data-label="Fob">${h.fob_number ? escapeHtml(h.fob_number) : '<i style="color:var(--muted)">—</i>'}</td>
+          <td data-label="Dues">${fmtPaid(h)}</td>
         </tr>`;
       }).join('')}</tbody></table>`;
     card.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => openEdit(tr.dataset.id)));
