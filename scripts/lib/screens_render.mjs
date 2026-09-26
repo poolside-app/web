@@ -71,6 +71,19 @@ export async function renderChecks({ check, read, sql, jwt }) {
     await l.type('#email', 'pat@example.com');
     const emailLabel = await l.$eval('#submit', b => b.textContent.trim());
     check('D13: the button says Text me a code / Email me a link', phoneLabel === 'Text me a code' && emailLabel === 'Email me a link', `${phoneLabel} / ${emailLabel}`);
+    // A number that isn't on file (fake 555 exchange, so nothing is sent):
+    // the page must not say "open the email", and must offer the code box.
+    await l.evaluate(() => { const i = document.getElementById('email'); i.value = ''; i.dispatchEvent(new Event('input')); });
+    await l.type('#email', '(555) 010-9999');
+    await l.click('#submit');
+    await l.waitForFunction(() => document.getElementById('ok').classList.contains('show') || document.getElementById('err').classList.contains('show'), { timeout: 20000 });
+    const unknown = await l.evaluate(() => ({
+      ok: document.getElementById('ok').innerText, err: document.getElementById('err').innerText,
+      codeBox: getComputedStyle(document.getElementById('code-box')).display !== 'none',
+    }));
+    check('D6: a number not on file gets "if your number is on file", the code box and a Join link',
+      /text/i.test(unknown.ok) && !/open the email/i.test(unknown.ok) && /Not a member yet/.test(unknown.ok) && unknown.codeBox,
+      JSON.stringify(unknown).slice(0, 220));
 
     // D12: Members list fits a phone (with at least one family in it)
     const m = await makeTempMember(sql, club.id, FAMILY);

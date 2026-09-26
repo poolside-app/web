@@ -68,6 +68,11 @@ check('the wrong "we\'ll email you a payment link" note is gone', !/email you a 
 console.log('\nD6 · sign-in can be resent, and email says check spam');
 check('after sending, the button offers Send it again', /Send it again/.test(login));
 check('the email path mentions spam', /spam/i.test(login));
+{
+  const start = between(login, 'async function doStart', '// ── 6-digit code sign-in');
+  check('a phone number always gets the code box, on file or not', /idKind\(raw\) === 'phone'/.test(start) && /code-box/.test(start));
+  check('the reply offers "Not a member yet? Join"', /Not a member yet/.test(start) && /\/apply\.html/.test(start));
+}
 
 console.log('\nD7 · test payments are tagged in Members');
 check('households list marks test-paid families', /test_paid/.test(read('supabase/functions/households_admin/index.ts')) && /🧪 Test/.test(members));

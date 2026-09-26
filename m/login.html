@@ -319,10 +319,15 @@ async function doStart() {
       `;
       devEl.classList.add('show');
     } else {
-      const byCode = data.mode === 'code';
+      // A cell number always gets the code box. The server answers the same
+      // way whether or not the number is on file (so nobody can check who's
+      // a member), and that answer has no mode, which used to fall through
+      // to the email wording with no box to type a code into.
+      const byCode = data.mode === 'code' || idKind(raw) === 'phone';
+      const join = `<br><span style="font-weight:500">Not a member yet? <a href="/apply.html">Join here</a>.</span>`;
       okEl.innerHTML = byCode
-        ? `✓ ${escapeHtml(data.message || 'A sign-in code is on the way.')} Enter the 6 digits below.`
-        : `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in. Not in your inbox after a minute? Check your spam or promotions folder for an email from noreply@poolsideapp.com.`;
+        ? `✓ ${escapeHtml(data.message || 'A sign-in code is on the way.')} Enter the 6 digits below.${join}`
+        : `✓ ${escapeHtml(data.message || 'A sign-in link is on the way.')} Open the email and click the link to finish signing in. Not in your inbox after a minute? Check your spam or promotions folder for an email from noreply@poolsideapp.com.${join}`;
       okEl.classList.add('show');
       if (byCode) {
         LAST_IDENTIFIER = raw;
