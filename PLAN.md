@@ -305,6 +305,40 @@ Suggested order: before H, so H7's discount codes don't have to live alongside c
 - **I5. Guest-pass leftovers → gone.** The feature was retired 9/7, but its function, checkout path, payment-report branches and empty tables are still there.
 - **Proof:** a check that none of these is linked, called or deployed; the page-render check (every page loads with no errors); and a count of admin pages and member-home cards before and after.
 
+### J. Consolidate setup and settings (Doug, 9/26: "too many setup areas?")
+Doug chose all of these. Rule: every setting is edited in exactly one place, and every other screen links there.
+- **J1. One setup checklist, on the dashboard.**
+  - Replaces the setup wizard, the "Finish setting up" page, the setup banner on every page, and both dashboard cards.
+  - One list: logo, front-page headline, pool location and hours, membership prices, how members pay, policies and waivers, sign up your own family, invite your board, share your join link.
+  - Each item opens the real settings screen. The wizard's copies of those screens are deleted.
+  - New clubs land on the dashboard with the checklist open. A small "Setup: 5 of 9" note on other pages links back to it until it's done.
+- **J2. Status page folds into the checklist.** "What members can do right now" becomes checklist lines. Email and text provider checks move to Doug's provider admin, since a club board can't fix them anyway.
+- **J3. Phone alerts are on the dashboard only.** The duplicate card in Settings goes.
+- **J4. Each thing in one place.** The Apply form page keeps its heading and links to Policies, Emails and Season instead of repeating their editors.
+- **J5. One Season section in Settings:**
+  - Pool season dates, and signups open/closed with the closed message.
+  - New: "Next season goes on sale on ___". There's no screen for this today; it silently defaults to December, and it decides which season a payment buys (C1, and H4's plan deadlines).
+- **J6. One source for pool hours: Settings** (Doug, 9/26).
+  - Optionally a different time per day of the week.
+  - Calendar-feed events that repeat on most days (Google's daily "Pool Open") are hidden from Today and the calendar, so hours never show twice.
+  - Doug: confirm Settings has the right opening time. It says 8 AM; Google Calendar says 7 AM.
+- **J7. One Gate & check-in section in Settings.** Merges "How members get in" and "Remote keyfob access". Shows only methods that exist (the three "coming soon" ones go). The lifeguard-tablet switch lives here.
+- **J8. One Money setup page.** Sections:
+  - Membership prices (the Tiers page merges in)
+  - How members pay (Stripe, Venmo, PayPal, card-fee pass-through)
+  - Payment plans
+  - Discounts (H7's codes and H6's referral settings, instead of new pages)
+  - Late fees
+  - Test payments
+
+  Early bird leaves Members → Renewals.
+
+**Suggested order:**
+1. H1–H3 (quick signup and sign-in fixes testers will hit).
+2. I (trim).
+3. J (consolidate).
+4. H4–H7 (plans, discounts and referrals, which land in J8's Money setup page).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
