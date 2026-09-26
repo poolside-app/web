@@ -247,10 +247,11 @@ Suggested order: E1 first (both features use it), then F1–F4 (small, mostly fi
 
 ### H. From Doug's own signup test (9/26)
 Doug decided (9/26):
-- Referral reward is $100 of credit per new family.
-- The board approves each reward, as now.
-- A family can earn up to a free membership, and never cash.
-- Early bird becomes a discount code, open to everyone, new and renewing.
+- Referral reward is $100 per new family, as credit or (if the member wants) a refund. The board approves each one.
+- It's capped at a free membership.
+- A new family joining through a link saves $25, set in the board settings.
+- Early bird becomes a discount code, open to everyone.
+- One discount per membership: the bigger one applies.
 
 Found while looking:
 - An approved referral credit is saved on the family but never taken off anything, so they'd pay full price.
@@ -269,10 +270,22 @@ Steps (each: failing test first, then the fix, then proof):
   - Each signup or renewal carries a code discount and a referral credit. Card checkout, payment plans and the Venmo amount all use the reduced price.
   - If it comes to $0, "Confirm, nothing to pay" marks them paid.
   - The credit and code use are recorded only once the payment clears.
-- **H6. Referral credit only.**
-  - "Refund me $100 now" is removed.
-  - An approved credit sits on the family and comes off their next renewal, up to the full price.
-  - The member sees their credit balance in the Refer a friend panel.
+- **H6. Referral rewards: credit or refund, approved, tracked** (Doug, 9/26).
+  - **Settings** (board admin → Referral program): the member's reward (default $100) and the new family's discount (default $25).
+  - **The new family** saves $25 when they join through a member's link. Only one discount per membership: if they also have a code, the bigger one applies, and they're told so. The referring member still earns their reward.
+  - **The 30-day wait, known on all sides:**
+    - The Refer panel explains the rules up front: 30 days after the new family pays; credit or refund; the board approves; up to a free membership.
+    - The member gets a text when the new family pays ("The Johnsons joined with your link. Your $100 unlocks Oct 26") and another on unlock day.
+    - The board's approval screen shows the unlock date and can't approve before it.
+    - A nightly job (1 call a day) unlocks rewards.
+  - **The member chooses** credit toward their next dues (the default) or a $100 refund. Either way it goes to the board.
+  - **Approval:** a board member with the payments permission, never for their own family. The approval screen spells it out: "The Smiths referred the Johnsons." It shows both payments, each with the date it was verified, who verified it, and its transaction code (Stripe payment ID, or the Venmo/check reference).
+  - **Refund:**
+    - To the card the member paid their dues with, through Stripe, which sends a receipt automatically.
+    - Or by Venmo or check, with the reference required.
+    - The member is texted when it's approved and when it's sent.
+  - **Safety:** if the new family's payment is refunded or cancelled first, the reward is cancelled. Credit plus cash never adds up to more than the member's own membership.
+  - **Tracking:** a Referral rewards list under Money: who referred whom, both payments, unlock date, approved by, paid by and how, reference, and totals (credit owed, cash paid this season). Every step is also in the audit log.
 - **H7. Discount codes.**
   - The board makes codes under Money: a code, $ or % off, an expiry date, and optionally a limit on how many families can use it. The early-bird setting becomes one of these.
   - The signup form and the renewal page get "Have a code?". It's checked on the server, and the new price shows before paying.
