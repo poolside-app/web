@@ -9,7 +9,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sellingYear, renewalOpen, isPaidThrough } from './membership_year.ts';
+import { sellingYear, renewalOpen, isPaidThrough, opensMonthOf } from './membership_year.ts';
 import { resolveRules, generateSchedule, suggestedCounts } from './payment_schedule.ts';
 
 import { planFeeTotal, planFeeSchedule, feePolicyFor } from './fees.ts';
@@ -67,7 +67,7 @@ export async function quoteRenewal(
   let options: Array<{ count: number; installments: unknown[] }> = [];
   if (plansEnabled && duesCents > 0) {
     const today = poolToday(await tenantTimeZone(sb, tenantId));
-    const r = resolveRules(planCfg, year);
+    const r = resolveRules(planCfg, year, opensMonthOf(sv));
     rules = {
       milestones: r.milestones,
       max_installments: r.maxInstallments,

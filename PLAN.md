@@ -261,11 +261,12 @@ Steps (each: failing test first, then the fix, then proof):
 - **H1. ✅ Signup page 1 asks "Your name".** It fills in Adult #1 on page 2, and the family last name from it (both editable). Today page 1 only asks for the family last name, so Adult #1 starts empty.
 - **H2. ✅ Membership level defaults by headcount.** 2+ people picks Family; 1 adult picks Single. Anything the family picks themselves is left alone. Choosing Single with 2+ people shows a gentle note.
 - **H3. ✅ Member sign-in formats the number as you type** — (925) 771-9074, the same as the board sign-in.
-- **H4. Payment plan deadlines work across New Year.**
+- **H4. ✅ Payment plan deadlines work across New Year.**
   - Deadlines are ordered by season (fall → spring → summer), so a plan like "50% by Dec 1, the rest by May 1" saves.
   - The last deadline is always "the rest (100%)", with no box to fill in.
   - Today they're sorted Jan–Dec, so December counts as "last" and the save fails whatever you type.
   - The server places fall deadlines in the calendar year before the season too.
+  - Also fixed: a family joining after a deadline pays that share in their first payment instead of being refused a plan, the signup form stops offering pay-in-two once the last deadline has passed, and keyfobs aren't switched off over a fall deadline.
 - **H5. Discounts actually come off the price.**
   - Each signup or renewal carries a code discount and a referral credit. Card checkout, payment plans and the Venmo amount all use the reduced price.
   - If it comes to $0, "Confirm, nothing to pay" marks them paid.

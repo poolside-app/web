@@ -677,8 +677,12 @@ Deno.serve(async (req) => {
         const tierPrice = tierPriceCents > 0 ? '$' + (tierPriceCents / 100).toFixed(0) : '';
 
         const planCfg = (sv2?.payments as Record<string, unknown> | undefined)?.plan as Record<string, unknown> | undefined;
-        const splitPct = Math.max(1, Math.min(99, Number(planCfg?.first_installment_pct) || 50));
-        const finalDue = String(planCfg?.final_due_date || '');
+        // The same pay-in-two terms the signup form showed (H4).
+        const { twoPaymentTerms } = await import('../_shared/payment_schedule.ts');
+        const { opensMonthOf } = await import('../_shared/membership_year.ts');
+        const terms = twoPaymentTerms(planCfg, membership_year, opensMonthOf(sv2));
+        const splitPct = terms?.first_pct ?? 50;
+        const finalDue = terms?.final_due_date ?? '';
         let firstAmt = '', secondAmt = '';
         if (tierPriceCents > 0) {
           const first = Math.round(tierPriceCents * splitPct / 100);

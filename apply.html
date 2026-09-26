@@ -1427,12 +1427,15 @@ async function prefillFromClaim(token) {
           const opt = document.getElementById('pay-opt-stripe');
           if (opt) opt.style.display = '';
           // Pay-in-2 option requires (a) plan enabled in club settings,
-          // (b) we're before the signup cutoff date.
+          // (b) we're before the signup cutoff date and the last deadline.
           const plan = d.public_settings && d.public_settings.payment_plan;
           if (plan && plan.enabled && plan.final_due_date) {
             const today = PoolTime.todayKey();
             const cutoffOk = !plan.plan_signup_cutoff_date || today <= plan.plan_signup_cutoff_date;
-            if (cutoffOk) {
+            // Nothing left to spread a payment over once the last deadline
+            // has passed.
+            const windowOpen = plan.final_due_date > today;
+            if (cutoffOk && windowOpen) {
               const planOpt = document.getElementById('pay-opt-stripe-plan');
               if (planOpt) {
                 planOpt.style.display = '';

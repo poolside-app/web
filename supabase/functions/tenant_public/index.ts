@@ -13,6 +13,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { poolDayBounds, validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
+import { sellingYear, opensMonthOf } from '../_shared/membership_year.ts';
+import { twoPaymentTerms } from '../_shared/payment_schedule.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,6 +60,7 @@ Deno.serve(async (req) => {
   const { data: settings } = await sb.from('settings')
     .select('value').eq('tenant_id', tenant.id).maybeSingle();
   const v = (settings?.value ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  const planTerms = twoPaymentTerms(v.payments?.plan as Record<string, unknown> | undefined, sellingYear(v), opensMonthOf(v));
   const public_settings = {
     hero: {
       eyebrow:  v.hero?.eyebrow  ?? null,
@@ -101,11 +104,12 @@ Deno.serve(async (req) => {
     },
     // Payment plan public surface: minimal config fields needed by the apply
     // form to decide whether to show the 'Pay in 2 installments' option and
-    // how to label it (split percentage + final due date).
+    // how to label it (split percentage + final due date). Both come from
+    // the deadlines, for the season being sold (H4).
     payment_plan: {
       enabled: !!(v.payments as Record<string, unknown> | undefined)?.plan && !!((v.payments as Record<string, Record<string, unknown>>)?.plan?.enabled),
-      first_installment_pct:    Number((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.first_installment_pct ?? 50),
-      final_due_date:           ((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.final_due_date as string | null) ?? null,
+      first_installment_pct:    planTerms?.first_pct ?? 50,
+      final_due_date:           planTerms?.final_due_date ?? null,
       plan_signup_cutoff_date:  ((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.plan_signup_cutoff_date as string | null) ?? null,
     },
     features: {

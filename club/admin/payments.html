@@ -559,6 +559,11 @@ async function loadPaymentMethods() {
     document.getElementById('offline_verify_window_days').value = (p.offline_verify_window_days ?? 3);
     document.getElementById('pass_stripe_fee').checked = !!p.pass_stripe_fee;
     paintTestMode(p.test_mode === true);
+    // Plan deadlines sort by season, which starts when next season goes on sale.
+    const ms = r.settings?.membership || {};
+    OPENS_MONTH = Math.min(12, Math.max(1, Number(ms.renewal_opens_month) || 12));
+    window.__PINNED_YEAR__ = Number(ms.year) > 2000 ? Number(ms.year) : null;
+    if (MILESTONES.length) renderMilestones();
     Tiers.paint(Array.isArray(r.settings?.membership_tiers) ? r.settings.membership_tiers : null);
   } catch (e) {
     const errEl = document.getElementById('pm-err');
@@ -666,13 +671,33 @@ const Tiers = (() => {
 
 // ── Payment deadlines (milestones) ──────────────────────────────────────
 // Stored as MM-DD so a club sets "April 1" once and it applies every season.
+// Listed in season order, not January to December (H4): a club selling next
+// summer from December wants "50% by Dec 1, the rest by May 1", and December
+// comes first. A deadline on or after the month next season goes on sale
+// (Settings → Season) is in the year before the season. The last deadline is
+// always the rest (100%), so it has no % box.
 let MILESTONES = [];
+let OPENS_MONTH = 12;   // from settings.membership.renewal_opens_month
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function monthDay(raw) {
   const v = String(raw || '');
   const m = v.match(/(\d{2})-(\d{2})$/);
   return m ? `${m[1]}-${m[2]}` : '';
+}
+// Mirrors beforeSeason() in _shared/payment_schedule.ts.
+function beforeSeason(mmdd) {
+  return OPENS_MONTH >= 7 && Number(String(mmdd).slice(0, 2)) >= OPENS_MONTH;
+}
+function seasonKey(mmdd) {
+  const [mm, dd] = String(mmdd || '01-01').split('-').map(Number);
+  return (beforeSeason(mmdd) ? mm - 12 : mm) * 100 + dd;
+}
+// Season order, with the last one set to the rest (100%).
+function seasonSorted(list) {
+  const out = list.map(m => ({ ...m })).sort((a, b) => seasonKey(a.date) - seasonKey(b.date));
+  if (out.length) out[out.length - 1].min_pct = 100;
+  return out;
 }
 function legacyToMilestones(c) {
   const out = [];
@@ -688,21 +713,26 @@ function renderMilestones() {
     host.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:0 0 8px">No deadlines set yet — add one below.</p>';
     return;
   }
+  MILESTONES = seasonSorted(MILESTONES);
   host.innerHTML = MILESTONES.map((m, i) => {
     const [mm, dd] = (m.date || '--').split('-');
+    const isLast = i === MILESTONES.length - 1;
+    const pct = isLast
+      ? `<div><label>% paid by then</label><div style="padding:9px 0;font-size:13px;font-weight:600">The rest (100%)</div></div>`
+      : `<div><label>% paid by then</label><input type="number" data-ms="${i}" data-f="pct" min="1" max="99" value="${m.min_pct}"></div>`;
     return `<div class="row3" style="gap:10px;margin-bottom:8px;align-items:end">
       <div>
         <label>Deadline</label>
         <div style="display:flex;gap:6px">
-          <select data-ms="${i}" data-f="month" style="flex:2">
+          <select data-ms="${i}" data-f="month" onchange="readMilestones();renderMilestones()" style="flex:2">
             ${MONTHS.map((name, k) => `<option value="${String(k+1).padStart(2,'0')}" ${String(k+1).padStart(2,'0') === mm ? 'selected' : ''}>${name}</option>`).join('')}
           </select>
-          <input type="number" data-ms="${i}" data-f="day" min="1" max="31" value="${Number(dd) || 1}" style="flex:1">
+          <input type="number" data-ms="${i}" data-f="day" min="1" max="31" value="${Number(dd) || 1}" onchange="readMilestones();renderMilestones()" style="flex:1">
         </div>
       </div>
-      <div><label>% paid by then</label><input type="number" data-ms="${i}" data-f="pct" min="1" max="100" value="${m.min_pct}"></div>
+      ${pct}
       <div style="display:flex;gap:6px;align-items:end">
-        <div style="flex:1"><label>Label (optional)</label><input type="text" data-ms="${i}" data-f="label" value="${String(m.label || '').replace(/"/g,'&quot;')}" placeholder="Pool opens"></div>
+        <div style="flex:1"><label>Label (optional)</label><input type="text" data-ms="${i}" data-f="label" value="${String(m.label || '').replace(/"/g,'&quot;')}" placeholder="${isLast ? 'Paid in full' : 'Pool opens'}"></div>
         <button class="btn" type="button" onclick="removeMilestone(${i})" style="font-size:12px;padding:9px 11px" title="Remove">✕</button>
       </div>
     </div>`;
@@ -718,7 +748,7 @@ function readMilestones() {
       const day = String(Math.min(31, Math.max(1, Number(f === 'day' ? el.value : dd) || 1))).padStart(2, '0');
       MILESTONES[i].date = `${month}-${day}`;
     } else if (f === 'pct') {
-      MILESTONES[i].min_pct = Math.min(100, Math.max(1, Number(el.value) || 1));
+      MILESTONES[i].min_pct = Math.min(99, Math.max(1, Number(el.value) || 1));
     } else {
       MILESTONES[i].label = el.value.trim();
     }
@@ -727,11 +757,11 @@ function readMilestones() {
 function milestoneProblem() {
   if (!document.getElementById('plan-enabled').checked) return '';
   if (!MILESTONES.length) return 'Add at least one payment deadline.';
-  const sorted = [...MILESTONES].sort((a, b) => a.date < b.date ? -1 : 1);
-  if (sorted[sorted.length - 1].min_pct !== 100) {
-    return 'The last deadline has to be 100% — that is when members finish paying.';
-  }
+  const sorted = seasonSorted(MILESTONES);
   for (let i = 1; i < sorted.length; i++) {
+    if (seasonKey(sorted[i].date) === seasonKey(sorted[i - 1].date)) {
+      return 'Two deadlines are on the same day. Remove one.';
+    }
     if (sorted[i].min_pct <= sorted[i - 1].min_pct) {
       return 'Each deadline has to ask for more than the one before it.';
     }
@@ -799,17 +829,20 @@ async function savePlanConfig() {
     if (problem) throw new Error(problem);
 
     // The legacy season_open_date / final_due_date / first_installment_pct
-    // trio still drives the older apply-form path, so derive it from the
-    // milestones instead of asking a board to keep two settings in step.
-    const year = new Date().getUTCFullYear();
-    const sorted = [...MILESTONES].sort((a, b) => a.date < b.date ? -1 : 1);
+    // trio is kept in step for anything old that reads it. The server works
+    // the pay-in-two terms out from the deadlines (twoPaymentTerms), for the
+    // season being sold, so these years are only a best guess.
+    const today = PoolTime.todayKey();
+    const year = window.__PINNED_YEAR__ || (Number(today.slice(5, 7)) >= OPENS_MONTH ? Number(today.slice(0, 4)) + 1 : Number(today.slice(0, 4)));
+    const sorted = seasonSorted(MILESTONES);
     const first = sorted[0], last = sorted[sorted.length - 1];
+    const dated = m => `${beforeSeason(m.date) ? year - 1 : year}-${m.date}`;
 
     const config = {
       enabled: document.getElementById('plan-enabled').checked,
       milestones: sorted,
-      season_open_date:        first ? `${year}-${first.date}` : null,
-      final_due_date:          last  ? `${year}-${last.date}`  : null,
+      season_open_date:        first ? dated(first) : null,
+      final_due_date:          last  ? dated(last)  : null,
       first_installment_pct:   first ? first.min_pct : 50,
       plan_signup_cutoff_date: document.getElementById('plan-cutoff').value || null,
       max_installments:        Number(document.getElementById('plan-max').value) || 12,

@@ -25,6 +25,14 @@
 // A milestone date may be "MM-DD" (resolved against the membership year, so a
 // club configures "April 1" once and it works every season) or a full
 // "YYYY-MM-DD" when a board wants to pin one specific year.
+//
+// Seasons cross New Year (H4, 2026-09-26). A club that puts next summer on
+// sale in December wants deadlines like "50% by December 1, the rest by May 1".
+// So an "MM-DD" on or after the month next season goes on sale
+// (settings.membership.renewal_opens_month, default December) belongs to the
+// calendar year before the season. That only applies when the sale opens in
+// the second half of the year; an earlier month would put spring deadlines
+// in the wrong year.
 // =============================================================================
 
 export type Milestone = { date: string; min_pct: number; label?: string };
@@ -47,14 +55,18 @@ const DEFAULT_MAX_INSTALLMENTS = 12;
  * first_installment_pct / final_due_date) so clubs configured before
  * milestones existed keep working untouched.
  */
-export function resolveRules(planConfig: Record<string, unknown> | undefined, year: number): ScheduleRules {
+export function resolveRules(
+  planConfig: Record<string, unknown> | undefined,
+  year: number,
+  opensMonth = 12,
+): ScheduleRules {
   const raw = Array.isArray(planConfig?.milestones)
     ? (planConfig!.milestones as Milestone[])
     : legacyMilestones(planConfig);
 
   const milestones = raw
     .map(m => ({
-      date: absoluteDate(String(m.date ?? ''), year),
+      date: absoluteDate(String(m.date ?? ''), year, opensMonth),
       min_pct: clamp(Number(m.min_pct), 1, 100),
       label: m.label ? String(m.label) : undefined,
     }))
@@ -92,7 +104,8 @@ export function generateSchedule(args: {
   count: number;
   startDate: string;          // 'YYYY-MM-DD' — usually today
 }): { ok: true; installments: Installment[] } | { ok: false; error: string } {
-  const { totalCents, rules, startDate } = args;
+  const { totalCents, startDate } = args;
+  const rules = dueFrom(args.rules, startDate);
   if (totalCents <= 0) return { ok: false, error: 'Nothing to pay.' };
   if (!rules.milestones.length) return { ok: false, error: 'This club has not set up payment deadlines yet.' };
 
@@ -146,6 +159,37 @@ export function generateSchedule(args: {
 }
 
 /**
+ * Deadlines already behind the start date are due on it. A family joining on
+ * December 15 under "50% by December 1" pays that half in the first payment,
+ * rather than being told no plan is possible.
+ */
+export function dueFrom(rules: ScheduleRules, startDate: string): ScheduleRules {
+  return {
+    ...rules,
+    milestones: rules.milestones.map(m => (m.date < startDate ? { ...m, date: startDate } : m)),
+  };
+}
+
+/**
+ * The pay-in-two terms the signup form offers: a share now, the rest on the
+ * final deadline of the season being sold. Derived from the deadlines, so it
+ * can't go stale the way a saved "YYYY-MM-DD" did.
+ */
+export function twoPaymentTerms(
+  planConfig: Record<string, unknown> | undefined,
+  year: number,
+  opensMonth = 12,
+): { first_pct: number; final_due_date: string } | null {
+  const rules = resolveRules(planConfig, year, opensMonth);
+  if (!rules.milestones.length) return null;
+  const last = rules.milestones[rules.milestones.length - 1];
+  const first = rules.milestones.length > 1
+    ? rules.milestones[0].min_pct
+    : Number(planConfig?.first_installment_pct) || 50;
+  return { first_pct: clamp(first, 1, 99), final_due_date: last.date };
+}
+
+/**
  * Independently confirm a schedule is payable and meets the club's rules.
  * Generation is trusted; anything arriving from a browser is not.
  */
@@ -153,8 +197,10 @@ export function validateSchedule(args: {
   installments: Installment[];
   rules: ScheduleRules;
   totalCents: number;
+  startDate?: string;         // deadlines before it count as due on it
 }): { ok: true } | { ok: false; violations: string[] } {
-  const { installments, rules, totalCents } = args;
+  const { installments, totalCents } = args;
+  const rules = args.startDate ? dueFrom(args.rules, args.startDate) : args.rules;
   const violations: string[] = [];
 
   if (!installments.length) violations.push('Pick at least one payment.');
@@ -271,12 +317,20 @@ function legacyMilestones(planConfig: Record<string, unknown> | undefined): Mile
   return out;
 }
 
-/** 'MM-DD' resolves against the membership year; a full date passes through. */
-function absoluteDate(raw: string, year: number): string {
+/** 'MM-DD' resolves against the membership year (the year before, for a
+ *  fall deadline; see the header); a full date passes through. */
+function absoluteDate(raw: string, year: number, opensMonth = 12): string {
   const v = raw.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  if (/^\d{2}-\d{2}$/.test(v)) return `${year}-${v}`;
+  if (/^\d{2}-\d{2}$/.test(v)) return `${beforeSeason(v, opensMonth) ? year - 1 : year}-${v}`;
   return '';
+}
+
+/** True for an 'MM-DD' in the fall run-up to the season. */
+export function beforeSeason(mmdd: string, opensMonth = 12): boolean {
+  const month = Number(mmdd.slice(0, 2));
+  const opens = clamp(opensMonth, 1, 12);
+  return opens >= 7 && month >= opens;
 }
 
 function monthsBetween(a: string, b: string): number {
@@ -310,14 +364,18 @@ function money(cents: number): string {
 export function enforcementDate(
   planConfig: Record<string, unknown> | undefined,
   year: number,
+  opensMonth = 12,
 ): string | null {
   const explicit = planConfig?.enforce_from;
   if (typeof explicit === 'string' && explicit.trim()) {
-    const d = absoluteDate(explicit, year);
+    const d = absoluteDate(explicit, year, opensMonth);
     if (d) return d;
   }
-  const rules = resolveRules(planConfig, year);
-  return rules.milestones.length ? rules.milestones[0].date : null;
+  // The first deadline in the season's own year: a December deadline for
+  // next summer is not the pool opening.
+  const rules = resolveRules(planConfig, year, opensMonth);
+  const inSeason = rules.milestones.find(m => m.date >= `${year}-01-01`);
+  return (inSeason ?? rules.milestones[0])?.date ?? null;
 }
 
 /** True once consequences are fair to apply for this membership year. */
@@ -325,8 +383,9 @@ export function seasonUnderway(
   planConfig: Record<string, unknown> | undefined,
   year: number,
   today: string = new Date().toISOString().slice(0, 10),
+  opensMonth = 12,
 ): boolean {
-  const d = enforcementDate(planConfig, year);
+  const d = enforcementDate(planConfig, year, opensMonth);
   // No deadlines configured at all: nothing to defer to, so behave as before
   // rather than leaving a club unable to enforce anything.
   return d === null ? true : today >= d;

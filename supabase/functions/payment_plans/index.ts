@@ -96,10 +96,13 @@ type PlanConfig = typeof DEFAULT_PLAN_CONFIG;
 // getPlanConfig merges over defaults, which drops keys the defaults do not
 // know about (milestones, enforce_from). The schedule helpers need the block
 // exactly as the club saved it.
-async function rawPlanConfig(sb: SupabaseClient, tenantId: string): Promise<Record<string, unknown>> {
+/** The plan config plus the month next season goes on sale, which decides
+ *  whether a fall deadline belongs to the year before the season (H4). */
+async function rawPlanSettings(sb: SupabaseClient, tenantId: string): Promise<{ plan: Record<string, unknown>; opensMonth: number }> {
   const { data } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
   const payments = (data?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined;
-  return (payments?.plan as Record<string, unknown> | undefined) ?? {};
+  const { opensMonthOf } = await import('../_shared/membership_year.ts');
+  return { plan: (payments?.plan as Record<string, unknown> | undefined) ?? {}, opensMonth: opensMonthOf(data?.value) };
 }
 
 async function getPlanConfig(sb: SupabaseClient, tenantId: string): Promise<PlanConfig> {
@@ -366,8 +369,8 @@ async function lapsePlan(sb: SupabaseClient, plan: Record<string, unknown>, conf
   // sweep apply consequences if it is still unresolved when the pool opens.
   const { seasonUnderway } = await import('../_shared/payment_schedule.ts');
   const planYear = await planMembershipYear(sb, plan as { application_id?: string | null });
-  const rawPlanCfg = await rawPlanConfig(sb, tenantId);
-  if (seasonUnderway(rawPlanCfg, planYear)) {
+  const planSet = await rawPlanSettings(sb, tenantId);
+  if (seasonUnderway(planSet.plan, planYear, undefined, planSet.opensMonth)) {
     await enforceLapse(sb, plan, config);
   }
 
@@ -700,8 +703,8 @@ Deno.serve(async (req) => {
       .select('*').eq('status', 'lapsed').is('enforced_at', null).limit(200);
     for (const plan of (pending ?? [])) {
       const year = await planMembershipYear(sb, plan as { application_id?: string | null });
-      const raw = await rawPlanConfig(sb, plan.tenant_id as string);
-      if (!seasonUnderway(raw, year, today)) continue;
+      const raw = await rawPlanSettings(sb, plan.tenant_id as string);
+      if (!seasonUnderway(raw.plan, year, today, raw.opensMonth)) continue;
       await enforceLapse(sb, plan, await getPlanConfig(sb, plan.tenant_id as string));
       enforced++;
     }

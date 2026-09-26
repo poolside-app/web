@@ -77,6 +77,12 @@ export function isPaidThrough(
   return typeof paidUntilYear === 'number' && paidUntilYear >= year;
 }
 
+/** The month next season goes on sale (1-12, default December). Payment-plan
+ *  deadlines on or after it belong to the year before the season. */
+export function opensMonthOf(settingsValue: unknown): number {
+  return clampMonth(membershipSettings(settingsValue).renewal_opens_month, 12);
+}
+
 function clampMonth(raw: unknown, fallback: number): number {
   const n = Number(raw);
   if (!Number.isFinite(n)) return fallback;

@@ -338,7 +338,18 @@ Deno.serve(async (req) => {
     if (totalCents <= 0) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
 
     const planConfig = ((sv?.payments as Record<string, unknown> | undefined)?.plan as Record<string, unknown> | undefined);
-    if (!planConfig?.enabled || !planConfig.final_due_date) {
+    const { resolveRules, generateSchedule, validateSchedule, twoPaymentTerms } =
+      await import('../_shared/payment_schedule.ts');
+    const { opensMonthOf } = await import('../_shared/membership_year.ts');
+    const { data: appYearRow } = await sb.from('applications')
+      .select('membership_year').eq('id', id).maybeSingle();
+    const planYear = (appYearRow?.membership_year as number | null)
+      ?? new Date().getUTCFullYear();
+    // Deadlines are month-and-day; the season being bought decides the year,
+    // and a fall deadline falls in the year before it (H4).
+    const opensMonth = opensMonthOf(sv);
+    const terms = twoPaymentTerms(planConfig, planYear, opensMonth);
+    if (!planConfig?.enabled || !terms) {
       return jsonResponse({ ok: false, error: 'Payment plans not enabled for this club' }, 400);
     }
     const cutoff = planConfig.plan_signup_cutoff_date as string | null;
@@ -351,31 +362,26 @@ Deno.serve(async (req) => {
     // renewal page gets a milestone-driven schedule of that length; anyone
     // arriving from the old apply form (no count) keeps the original
     // pay-half-now behavior, so nothing that worked before changes.
-    const { resolveRules, generateSchedule, validateSchedule } =
-      await import('../_shared/payment_schedule.ts');
-    const { data: appYearRow } = await sb.from('applications')
-      .select('membership_year').eq('id', id).maybeSingle();
-    const planYear = (appYearRow?.membership_year as number | null)
-      ?? new Date().getUTCFullYear();
-
     const wantCount = Math.trunc(Number(body.installment_count) || 0);
     let schedule: Array<{ sequence: number; due_date: string; amount_cents: number }>;
 
     if (wantCount >= 2) {
-      const rules = resolveRules(planConfig, planYear);
+      const rules = resolveRules(planConfig, planYear, opensMonth);
       const gen = generateSchedule({ totalCents, rules, count: wantCount, startDate: today });
       if (!gen.ok) return jsonResponse({ ok: false, error: gen.error }, 400);
       // Re-check what we just built. Generation is ours, but the count came
       // from a browser, and money is about to be scheduled against this.
-      const check = validateSchedule({ installments: gen.installments, rules, totalCents });
+      const check = validateSchedule({ installments: gen.installments, rules, totalCents, startDate: today });
       if (!check.ok) return jsonResponse({ ok: false, error: check.violations[0] }, 400);
       schedule = gen.installments;
     } else {
-      const pct = Math.max(1, Math.min(99, Number(planConfig.first_installment_pct) || 50));
-      const firstOnly = Math.round(totalCents * pct / 100);
+      if (terms.final_due_date <= today) {
+        return jsonResponse({ ok: false, error: 'The payment window for this season has already closed.' }, 400);
+      }
+      const firstOnly = Math.round(totalCents * terms.first_pct / 100);
       schedule = [
         { sequence: 1, due_date: today, amount_cents: firstOnly },
-        { sequence: 2, due_date: String(planConfig.final_due_date), amount_cents: totalCents - firstOnly },
+        { sequence: 2, due_date: terms.final_due_date, amount_cents: totalCents - firstOnly },
       ];
     }
 
