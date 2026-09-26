@@ -133,6 +133,26 @@ console.log('\nD13 · sign-in box fits, and the button says what it will do');
   check('the board sign-in placeholder fits too', !aph || aph.length <= 24, `"${aph}"`);
 }
 
+console.log('\nG1 · no Sign in with Google anywhere (Doug, 2026-09-25)');
+{
+  const { readdirSync, statSync, existsSync } = await import('node:fs');
+  const walk = dir => readdirSync(new URL(dir, root)).flatMap(n => {
+    const rel = `${dir}${n}`;
+    if (n === 'node_modules' || n.startsWith('.')) return [];
+    return statSync(new URL(rel, root)).isDirectory() ? walk(rel + '/') : /\.html$/.test(n) ? [rel] : [];
+  });
+  const pages = walk('');
+  const hits = pages.filter(p => /Sign (in|up) with Google|google-sign(in|up)|google_oauth|prefill=google|google_sub/i.test(read(p)));
+  check('no page offers or handles Google sign-in', !hits.length, hits.join(', '));
+  check('the Google sign-in server code is gone',
+    !existsSync(new URL('supabase/functions/google_oauth', root)) && !/google_oauth/.test(read('supabase/config.toml'))
+    && !/signin\/callback/.test(read('vercel.json')) && !/google_sub/.test(read('supabase/functions/tenant_signup/index.ts')));
+  check('Drive backup keeps its own Google connection', /drive\/callback/.test(read('vercel.json'))
+    && existsSync(new URL('supabase/functions/google_drive_sync/index.ts', root)));
+  const ph = (login.match(/id="email"[^>]*placeholder="([^"]+)"/) || [])[1] || '';
+  check('member sign-in asks for a cell number first', /^Cell/.test(ph) && /<label for="email">Cell/.test(login), `"${ph}"`);
+}
+
 // ── Live ────────────────────────────────────────────────────────────────
 async function sql(query) {
   const r = await fetch(`https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query`, {
@@ -178,6 +198,14 @@ if (process.argv.includes('--live')) {
   } finally {
     await purgeTestFamilies(sql, club.id, `${FAMILY}%`);
   }
+}
+
+if (process.argv.includes('--live')) {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/google_oauth?action=status`);
+  check('G1: the Google sign-in function is no longer deployed', r.status === 404, `status ${r.status}`);
+  const [{ n }] = await sql(`select count(*)::int as n from information_schema.columns
+    where table_schema = 'public' and column_name = 'google_sub'`);
+  check('G1: no stored Google IDs left', n === 0, `${n} columns`);
 }
 
 if (process.argv.includes('--render')) {

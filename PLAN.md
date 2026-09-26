@@ -235,9 +235,19 @@ Steps (each: failing test first, then the fix, then proof):
 
 Suggested order: E1 first (both features use it), then F1–F4 (small, mostly fixes), then E2–E4.
 
+### G. Sign in with Google removed (Doug, 9/25) — ✅ done
+- Google's login for Poolside is still in Testing mode, so only people on its test list could use it. Everyone else got "Access blocked".
+- Removed:
+  - The buttons and code on the member and board sign-in pages and the start-a-club page.
+  - The join-form prefill, the club-signup Google branch and the `google_oauth` function (undeployed).
+  - Its website forwarding rule, the stored Google IDs, and the privacy-page lines.
+- Sign-in is now a cell number with a 6-digit text code (listed first), or an email link as the backup. The board also has email + password.
+- Google Drive backup is separate and kept. It still needs the Google app published (not Testing), then a Drive reconnect.
+- Proof: `scripts/test_screens.mjs --live`, G1 checks.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
 - Keep the bridge off until its polling is fixed and the test households are deleted.
-- Reconnect Google Drive (Settings → Drive backup). It has been disconnected since June.
+- Reconnect Google Drive (Settings → Drive backup). It has been disconnected since June. First publish the Google app (console.cloud.google.com → Poolside project → Google Auth Platform → Audience → Publish app), or it will drop again after 7 days.
 - Invite the other board members as admins (keyfob, parties, etc.). Only Doug and Kristin are in the app today. Each one turns on pop-ups once from the dashboard; on iPhone, the admin page has to be added to the Home Screen first.

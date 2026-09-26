@@ -111,10 +111,6 @@ verify_jwt = false
 [functions.policies]
 verify_jwt = false
 
-# Google OAuth — sign-in-with-Google for members + tenant admins
-[functions.google_oauth]
-verify_jwt = false
-
 # Stripe Connect onboarding for tenants (per-tenant Stripe account)
 [functions.stripe_connect]
 verify_jwt = false

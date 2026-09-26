@@ -86,26 +86,24 @@ onboard their own account. The button is grey until the platform key is set.
 
 ---
 
-## 4. Google OAuth
+## 4. Google (Drive backup only)
 
-**Used by:** `google_oauth` (init + callback). Adds "Sign in with Google"
-buttons to `/m/login.html` and `/club/admin/login.html`. Without keys, the
-button shows an error page when clicked.
+**Used by:** `google_drive_sync` — a club connects Google Drive in
+Settings and approved applications are archived there (folder, PDFs and a
+spreadsheet). Sign in with Google was removed on 2026-09-25: members and
+the board sign in with a text code (or an email link), and the board also
+has email + password.
 
 **You do:**
-1. Open [Google Cloud Console](https://console.cloud.google.com/), create a project (or use existing).
-2. APIs & Services → OAuth consent screen → External, fill in basics, add scopes `email` and `profile`.
-3. APIs & Services → Credentials → Create Credentials → OAuth Client ID → Web application:
-   - Authorized redirect URI: `https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/google_oauth?action=callback`
-4. Copy the Client ID + Client Secret.
+1. [Google Cloud Console](https://console.cloud.google.com/) → the Poolside project.
+2. Google Auth Platform → Audience: the app must be **In production**, not Testing. In Testing, Google drops the Drive connection after 7 days (Bishop's broke that way in May 2026).
+3. Credentials → the OAuth web client → Authorized redirect URI `https://www.poolsideapp.com/oauth/google/drive/callback`.
 
 **Set secrets:**
 ```
 GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<your-client-secret>
 ```
-
-(Optional override: `GOOGLE_REDIRECT_URI` if you change the callback path.)
 
 ---
 
@@ -124,4 +122,4 @@ After setting any secret, smoke-test the relevant flow:
 - **Resend:** apply for membership; admin approves → applicant should receive a real welcome email instead of a dev_link.
 - **Twilio:** go to `/m/login.html`, enter a phone number that matches a member → real SMS arrives.
 - **Stripe:** an admin clicks "Connect Stripe" → finishes onboarding → applies for membership with `payment_method=stripe` → checkout works end-to-end.
-- **Google OAuth:** sign in with Google → bounces through Google → back to `/m/` (or `/club/admin/`) signed in.
+- **Google Drive:** Settings → Drive backup → Connect, approve an application → its PDF and spreadsheet row appear in the club's Drive folder.

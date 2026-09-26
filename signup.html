@@ -85,10 +85,6 @@
     <h1>Start your club</h1>
     <p class="lede">Your first season is free — every feature, no household limit, no credit card to start. We'll spin up your subdomain right away and your setup wizard will be waiting on first login.</p>
 
-    <!-- Google sign-up button removed pending OAuth verification. The hash
-         handler + tenant_signup google_sub branch are intact in code, so
-         re-adding the button is the only step to restore once verification
-         completes (4–6 weeks after submission). -->
 
     <label for="club">Club name</label>
     <input id="club" type="text" placeholder="Bishop Estates Cabana Club" autocomplete="organization" required>
@@ -135,66 +131,6 @@
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const SIGNUP_URL = `${SUPABASE_URL}/functions/v1/tenant_signup`;
-
-// Stash for the Google sub when the user signs up via Google. Set by the
-// hash handler below; cleared if they bail and use email instead.
-let GOOGLE_SUB = null;
-
-// ── Sign up with Google ─────────────────────────────────────────────────
-// Probe the OAuth status endpoint on init. If Google isn't configured
-// platform-side, hide the button (clicking would lead to an error page).
-// Otherwise wire its href to start the OAuth flow.
-(async function () {
-  const btn = document.getElementById('google-signup-btn');
-  if (!btn) return;
-  btn.style.display = 'none';
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/google_oauth?action=status`);
-    const data = await r.json();
-    if (data && data.ok && data.configured) {
-      btn.href = `${SUPABASE_URL}/functions/v1/google_oauth?action=init&kind=tenant_signup`;
-      btn.style.display = 'flex';
-    }
-  } catch (_) { /* leave hidden on probe failure */ }
-})();
-
-// ── Hash handler: prefill from Google identity ──────────────────────────
-// google_oauth callback redirects to /signup.html#google_email=...&google_name=...&google_sub=...
-// Read those params, prefill the form, hide the password input (Google
-// users sign in via Google going forward).
-(function () {
-  const hash = window.location.hash.replace(/^#/, '');
-  if (!hash) return;
-  const params = new URLSearchParams(hash);
-  const email = params.get('google_email');
-  const name  = params.get('google_name');
-  const sub   = params.get('google_sub');
-  if (!email || !sub) return;
-  // Prefill identity
-  document.getElementById('email').value = email;
-  // Hide password — sign in via Google going forward. We still need a
-  // password value for the schema, so we generate a random one server-
-  // side via the google_sub branch in tenant_signup (skip-password path).
-  const pwLabel = document.querySelector('label[for="pw"]');
-  const pwInput = document.getElementById('pw');
-  const pwHelp  = pwInput?.nextElementSibling;
-  if (pwLabel) pwLabel.style.display = 'none';
-  if (pwInput) {
-    pwInput.removeAttribute('required');
-    pwInput.style.display = 'none';
-    pwInput.value = '';
-  }
-  if (pwHelp && pwHelp.classList.contains('field-help')) pwHelp.style.display = 'none';
-  // Stash the sub for submit
-  GOOGLE_SUB = sub;
-  // Banner showing they're signed in via Google
-  const banner = document.createElement('div');
-  banner.style.cssText = 'background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;margin:0 0 14px;font-size:13px;color:#14532d';
-  banner.innerHTML = `<b>✓ Continuing as ${email}</b> via Google. You'll sign in with Google going forward — no password needed.`;
-  document.querySelector('form.card').insertBefore(banner, document.getElementById('club').previousElementSibling);
-  // Strip the hash so refreshes don't re-fire this
-  history.replaceState(null, '', window.location.pathname + window.location.search);
-})();
 
 // Auto-suggest slug from club name + live URL preview. Dashes are kept so
 // multi-word club names stay readable ("Pine Grove Pool" → "pine-grove-pool"
@@ -257,9 +193,6 @@ async function fakeSubmit() {
         display_name, slug, email, password, phone_e164, plan: 'free',
         admin_name: (document.getElementById('admin_name')?.value || '').trim(),
         timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { return undefined; } })(),
-        // When Google-signup, we forward the verified sub so tenant_signup
-        // can link this admin to it (skip-password path on the server).
-        google_sub: GOOGLE_SUB || undefined,
         website: document.getElementById('hp_website').value,
       }),
     });

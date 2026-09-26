@@ -1,5 +1,7 @@
 # Google OAuth Verification — submission prep
 
+> **2026-09-25: Sign in / Sign up with Google was removed** (Doug). The Google app now only serves Drive backup. Leave the sign-in parts out of any submission: the sign-in pages, the `/oauth/google/signin/callback` redirect URI and the sign-in segment of the demo video. The simplest route is publishing the app (Audience → Publish app); Drive's `drive.file` scope is non-sensitive, so Google shouldn't need a review for that.
+
 This doc has everything you (Doug) need to complete the Google OAuth verification submission so the "this app is being tested" warning goes away for everyone connecting Drive auto-archive.
 
 **Status today:** OAuth consent screen is in **Testing** mode. Privacy + Terms pages are now live. Submission ready when you are.

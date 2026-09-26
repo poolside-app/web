@@ -96,13 +96,6 @@ Deno.serve(async (req) => {
   const password     = String(body.password ?? '');
   // What they CLICKED. Recorded, never granted — see the tenants insert.
   const desiredPlan  = String(body.plan ?? 'free').toLowerCase();
-  // When the founder signed up via "Sign up with Google", we get the
-  // verified Google sub from the OAuth callback. We link it to the new
-  // admin row so future sign-ins match by sub. Password is auto-generated
-  // (random) since they'll always sign in via Google going forward — but
-  // they can still password-reset if they want a backup.
-  const google_sub   = typeof body.google_sub === 'string' && body.google_sub.trim()
-                       ? body.google_sub.trim().slice(0, 64) : null;
   // Phone is now an alternative sign-in identifier alongside email — at
   // least one is required, both is fine. If only phone is supplied, we
   // use the E.164 string as the username so admin login still works.
@@ -140,14 +133,8 @@ Deno.serve(async (req) => {
   if (phoneRaw && !phone_e164) {
     return jsonResponse({ ok: false, error: 'Phone number looks invalid — use a 10-digit US number or leave it blank' });
   }
-  // If the founder signed up via Google, skip the password requirement.
-  // We still hash a random value into password_hash so DB constraints hold;
-  // they sign in via Google. They can set a real password later if they
-  // want a backup auth path.
-  if (!google_sub) {
-    if (!password || password.length < 10) {
-      return jsonResponse({ ok: false, error: 'Password must be at least 10 characters' });
-    }
+  if (!password || password.length < 10) {
+    return jsonResponse({ ok: false, error: 'Password must be at least 10 characters' });
   }
   if (!VALID_PLANS.includes(desiredPlan)) {
     return jsonResponse({ ok: false, error: 'Invalid plan' });
@@ -217,20 +204,9 @@ Deno.serve(async (req) => {
   }
 
   // ── Create the first admin user (the person signing up) ────────────────
-  // For Google signups, we hash a random throwaway value — they sign in
-  // via Google. The password_hash column is NOT NULL so we still need
-  // something there.
-  const passwordToHash = password || (() => {
-    const bytes = new Uint8Array(24);
-    crypto.getRandomValues(bytes);
-    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
-    return btoa(bin);
-  })();
-  const password_hash = await bcrypt.hash(passwordToHash, 10);
+  const password_hash = await bcrypt.hash(password, 10);
   // Username = email (we always have one). Phone is optional but stored
-  // for SMS-based sign-in via tenant_admin_auth.start_link. google_sub
-  // links this admin to a Google identity for instant "Sign in with Google"
-  // on subsequent visits.
+  // for SMS-based sign-in via tenant_admin_auth.start_link.
   // Admin display_name preference: their_name field > email-local-part (legacy).
   // Email-local-part was a hack — clubs that signed up via club-email-as-admin
   // ended up with display_name="bishopestatescabanaclub" which pre-fills weirdly
@@ -249,11 +225,10 @@ Deno.serve(async (req) => {
     password_hash,
     display_name: adminDisplayName,
     is_super: true,        // first admin of a fresh tenant is the org owner
-    is_default_pw: !!google_sub,  // if Google-signup, mark default-pw so we prompt to set a real one if they ever want
+    is_default_pw: false,
     active: true,
     role_template: 'owner',
     board_title: 'President',  // sensible default — admins.html lets them rename
-    google_sub,
   }).select('id').single();
 
   if (uErr || !admin) {

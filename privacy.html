@@ -79,7 +79,6 @@
       <li><b>Email and phone number</b> — for sign-in (magic links via email or SMS) and notifications.</li>
       <li><b>Display name</b> — shown on the club's admin pages so other admins know who did what.</li>
       <li><b>Hashed password</b> — if you signed up with email + password. We never store the password itself; we use bcrypt one-way hashing.</li>
-      <li><b>Google account ID</b> (a numeric string Google calls "sub") — if you signed in with Google.</li>
       <li><b>Sign-in audit log</b> — last sign-in time, browser user-agent, and a partial IP address, kept for security review.</li>
     </ul>
 
@@ -113,7 +112,7 @@
         <tr><td><b>Stripe</b></td><td>Payment data (card details, billing address)</td><td>Processes member dues + Poolside subscription. Card numbers never touch Poolside servers.</td></tr>
         <tr><td><b>Resend</b></td><td>Email recipient address + message body</td><td>Sends transactional email (sign-in links, receipts, notifications)</td></tr>
         <tr><td><b>Twilio</b></td><td>Phone number + SMS message body</td><td>Sends sign-in codes by text + renewal reminders</td></tr>
-        <tr><td><b>Google</b></td><td>Drive folder + spreadsheet contents you create through Poolside (only if you connect Drive auto-archive); your name + email if you Sign in with Google</td><td>Auto-archives applications to your club's own Drive; OAuth-based sign-in</td></tr>
+        <tr><td><b>Google</b></td><td>Drive folder + spreadsheet contents you create through Poolside (only if you connect Drive auto-archive)</td><td>Auto-archives applications to your club's own Drive</td></tr>
       </tbody>
     </table>
 
