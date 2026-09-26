@@ -378,16 +378,14 @@
       : header.parentNode.insertBefore(el, header.nextSibling);
   }
 
-  // ── Setup-status banner — persistent "Club setup is X% complete" strip
-  // shown on every admin page until all required items are checked off.
-  // Hidden on the wizard + setup checklist itself (don't nag while the
-  // user is actively fixing things). Hidden on login pages too.
+  // ── Setup reminder — one line on every admin page except the dashboard,
+  // which shows the full checklist (J1). Links to it. Gone once setup is
+  // complete, and hidden on the sign-in pages.
   async function paintSetupBanner(token) {
     if (!token) return;
     const path = window.location.pathname || '';
-    if (path.includes('/club/admin/setup.html')) return;
-    if (path.includes('/club/wizard.html'))      return;
-    if (path.includes('/login.html'))            return;
+    if (path === '/club/admin/' || path.endsWith('/club/admin/index.html')) return;
+    if (path.includes('/login.html')) return;
     if (document.getElementById('setup-banner')) return;  // already painted
 
     let data;
@@ -401,35 +399,20 @@
     } catch (_) { return; }
     if (!data || !data.ok || data.complete) return;
 
-    const pct = Math.max(0, Math.min(100, Number(data.percent) || 0));
-    const remaining = (data.total || 0) - (data.done || 0);
-    const banner = document.createElement('div');
+    const banner = document.createElement('a');
     banner.id = 'setup-banner';
+    banner.href = '/club/admin/#setup';
     banner.style.cssText = `
-      display:flex; align-items:center; gap:14px; padding:10px 18px;
-      background:linear-gradient(90deg, #fef3c7, #fde68a);
-      color:#78350f; font-size:13.5px; font-weight:600;
-      border-bottom:1px solid #fbbf24;
+      display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 18px;
+      background:#fef3c7; color:#78350f; font-size:13px; font-weight:600; text-decoration:none;
+      border-bottom:1px solid #fde68a;
     `;
-    banner.innerHTML = `
-      <span style="font-size:18px">⚠️</span>
-      <div style="flex:1; min-width:0">
-        <div>Club setup is <b>${pct}% complete</b> — ${remaining} item${remaining === 1 ? '' : 's'} left before members can apply and pay.</div>
-        <div style="height:5px; background:rgba(120,53,15,.15); border-radius:999px; overflow:hidden; margin-top:6px; max-width:340px">
-          <div style="width:${pct}%; height:100%; background:#92400e"></div>
-        </div>
-      </div>
-      <a href="/club/admin/setup.html" style="padding:8px 16px; background:#0a3b5c; color:#fff; text-decoration:none; font-weight:700; font-size:12px; letter-spacing:.04em; text-transform:uppercase; border-radius:8px; white-space:nowrap; flex-shrink:0">Finish setup →</a>
-    `;
-    // Insert above usage-ticker if present, else after header.
+    banner.innerHTML = `<span>🎯 Setup: ${Number(data.done) || 0} of ${Number(data.total) || 0} done</span><span style="white-space:nowrap">Finish on the dashboard →</span>`;
     const header = document.querySelector('header');
     if (!header) return;
     const ticker = document.getElementById('usage-ticker');
-    if (ticker) {
-      ticker.parentNode.insertBefore(banner, ticker);
-    } else {
-      header.parentNode.insertBefore(banner, header.nextSibling);
-    }
+    if (ticker) ticker.parentNode.insertBefore(banner, ticker);
+    else header.parentNode.insertBefore(banner, header.nextSibling);
   }
 
   // Sticky banner shown on every admin page when Doug is impersonating a

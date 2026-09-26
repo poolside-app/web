@@ -247,13 +247,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ── Seed initial settings (wizard stub + default membership tiers) ─────
+  // ── Seed initial settings (default membership tiers) ──────────────────
   // Default tiers mean the apply form's tier picker works on day-one signup
   // even before the admin opens Settings → Membership tiers to customize.
   await sb.from('settings').insert({
     tenant_id: tenant.id,
     value: {
-      setup_wizard_complete: false,
       membership_tiers: [
         { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members' },
         { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },

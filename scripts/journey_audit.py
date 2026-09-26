@@ -483,11 +483,6 @@ def board_journey():
         c = d.get('cap') or {}
         return f"{c.get('remaining')} of {c.get('cap')} monthly texts left, {c.get('credits',0)} purchased"
 
-    def b25_health():
-        d = post('admin_health', {'action': 'check'}, T)
-        assert d.get('ok'), f'the health screen is broken: {d}'
-        return 'health screen loads'
-
     def b26_gate():
         d = post('gate_admin', {'action': 'get_status'}, T)
         assert d.get('ok'), f'gate admin is broken: {d}'
@@ -523,7 +518,6 @@ def board_journey():
         ('Admins and roles',                   b22_admins_and_roles),
         ('Audit log',                          b23_audit_log),
         ('Text balance and history',           b24_billing_and_texts),
-        ('Health screen',                      b25_health),
         ('Gate integration',                   b26_gate),
         ('Renewal season tools',               b27_renewal_tools),
     ], 1):

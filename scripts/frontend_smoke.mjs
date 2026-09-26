@@ -123,12 +123,12 @@ const ADMIN_PAGES = ['', 'members.html', 'tiers.html', 'application.html', 'paym
   'events.html', 'parties.html', 'programs.html', 'lifeguards.html', 'my-shifts.html', 'volunteer.html',
   'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
   'audit.html', 'emails.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',
-  'change-password.html', 'health.html', 'help.html', 'setup.html',
+  'change-password.html', 'help.html',
   'import.html', 'migrate.html'];
 
 const PAGES = [
-  ...['/', '/home.html', '/pricing.html', '/signup.html', '/privacy.html', '/terms.html', '/governance.html', '/setup-service.html', '/wizard.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
-  ...['/club/', '/apply.html', '/renew.html', '/m/login.html', '/club/admin/login.html', '/club/wizard.html'].map(p => ({ url: HOST + p, auth: 'none' })),
+  ...['/', '/home.html', '/pricing.html', '/signup.html', '/privacy.html', '/terms.html', '/governance.html', '/setup-service.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
+  ...['/club/', '/apply.html', '/renew.html', '/m/login.html', '/club/admin/login.html'].map(p => ({ url: HOST + p, auth: 'none' })),
   ...['/admin/login.html'].map(p => ({ url: ROOT + p, auth: 'none' })),
   ...ADMIN_PAGES.map(p => ({ url: `${HOST}/club/admin/${p}`, auth: 'admin' })),
   ...['/m/', '/m/family.html', '/m/renew.html'].map(p => ({ url: HOST + p, auth: 'member' })),

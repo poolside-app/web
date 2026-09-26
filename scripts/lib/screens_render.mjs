@@ -12,7 +12,8 @@ const LOCAL = {
   '/': 'club/index.html', '/index.html': 'club/index.html',
   '/club/admin/': 'club/admin/index.html', '/club/admin/index.html': 'club/admin/index.html',
   '/club/admin/payments.html': 'club/admin/payments.html', '/club/admin/settings.html': 'club/admin/settings.html',
-  '/club/wizard.html': 'club/wizard.html', '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
+  '/club/admin/application.html': 'club/admin/application.html', '/js/upcoming.js': 'js/upcoming.js', '/js/today.js': 'js/today.js', '/js/calendar.js': 'js/calendar.js',
+  '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
 };
 
@@ -122,9 +123,21 @@ export async function renderChecks({ check, read, sql, jwt }) {
     // Board pages load clean for the president (every page the trim and
     // the consolidation touched).
     const tok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
-    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/wizard.html']) {
+    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/admin/application.html', '/club/admin/members.html']) {
       const pg = await open(path, { poolside_tenant_token: tok });
       await wait(2000);
+      if (path === '/club/admin/') {
+        // J1: the one checklist, with its 9 items, each linking to a real screen.
+        const setup = await pg.evaluate(() => {
+          const card = document.getElementById('setup-card');
+          if (!card) return { shown: false };
+          if (!card.querySelector('[data-setup]') && /Setup: \d+ of 9/.test(card.innerText)) return { shown: true, folded: true };
+          return { shown: true, rows: card.querySelectorAll('div[style*="border:1px solid #fde68a"]').length,
+            links: [...card.querySelectorAll('a[data-setup]')].map(a => a.getAttribute('href')) };
+        });
+        check('J1: the dashboard shows the one checklist (9 items, real screens)',
+          setup.shown && (setup.folded || (setup.rows === 9 && setup.links.every(h => !/wizard|setup\.html/.test(h)))), JSON.stringify(setup).slice(0, 220));
+      }
       const url = new URL(pg.url()).pathname;
       check(`board: ${path} loads with no errors`, pg.errs.filter(e => !/browser pop-up/.test(e)).length === 0 && !/login/.test(url),
         `${url} ${pg.errs.join(' | ').slice(0, 200)}`);

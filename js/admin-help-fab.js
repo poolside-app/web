@@ -22,7 +22,6 @@
     // Don't render on the help page itself, on login, or in the setup wizard
     if (path.endsWith('/club/admin/help.html')) return;
     if (path.endsWith('/club/admin/login.html')) return;
-    if (path.indexOf('/club/wizard') !== -1) return;
 
     if (document.getElementById('poolside-help-fab')) return;
 

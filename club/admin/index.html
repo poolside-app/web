@@ -238,54 +238,6 @@ document.getElementById('signout').addEventListener('click', logout);
   // Impersonation banner now painted globally by PoolsideFlags.apply()
   // above so it appears on every admin page, not just the dashboard.
 
-  // Founder banner: this admin signed up the club but their family isn't
-  // in the system as members yet. Show until they either fill out the
-  // apply form (linked_member_id auto-set on approval) or dismiss with
-  // "I'm just an admin." Hide for impersonators (they're not the actual
-  // user). The "Set up my membership" link opens apply.html in a new tab
-  // with prefill=admin so the form pre-fills their name + email.
-  if (!user.impersonated && !user.linked_member_id && !user.member_apply_dismissed) {
-    const founderBanner = document.createElement('div');
-    founderBanner.id = 'founder-banner';
-    founderBanner.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:18px 22px;margin:0 22px 18px;display:flex;align-items:center;gap:18px;flex-wrap:wrap';
-    founderBanner.innerHTML = `
-      <div style="flex:1;min-width:240px">
-        <div style="font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18px;color:#7c2d12;margin-bottom:4px">🏊 Are you (or your family) using the pool too?</div>
-        <div style="font-size:13.5px;color:#78350f;line-height:1.55"><b>Finish setting up your club first</b> — tiers, policies, and payments — then come back here and fill out the application as a member. Same form your members use. Skip with "I'm just an admin" if you don't swim here.</div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com/apply.html?prefill=admin" target="_blank" rel="noopener" style="padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;background:#0a3b5c;color:#fff;text-decoration:none;white-space:nowrap">Sign up my family →</a>
-        <button id="founder-dismiss" style="padding:9px 14px;border-radius:8px;font:600 13px Inter,sans-serif;background:transparent;border:1.5px solid #fde68a;color:#7c2d12;cursor:pointer;white-space:nowrap">I'm just an admin</button>
-      </div>
-    `;
-    // Insert before the main element. (After body bootstraps; before the dashboard.)
-    const main = document.getElementById('main');
-    main.parentNode.insertBefore(founderBanner, main);
-    document.getElementById('founder-dismiss').addEventListener('click', async () => {
-      try {
-        await fetch(AUTH_URL, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'dismiss_member_apply' }),
-        });
-      } catch { /* swallow — banner just won't reappear next load */ }
-      founderBanner.remove();
-    });
-  }
-
-  // First-run: kick the user into the setup wizard if they haven't finished it.
-  try {
-    const sRes = await fetch(SETTINGS_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'get' }),
-    });
-    const sData = await sRes.json();
-    if (sData.ok && !sData.settings?.setup_wizard_complete) {
-      window.location.href = '/club/wizard.html';
-      return;
-    }
-  } catch { /* dashboard is the safe fallback */ }
 
   const statusLabel = ({trial:'Free Trial', active:'Active', suspended:'Suspended', churned:'Closed'})[tenant.status] ?? tenant.status;
   const planLabel   = ({free:'Free', starter:'Starter', pro:'Pro', enterprise:'Enterprise'})[tenant.plan] ?? tenant.plan;
@@ -434,104 +386,99 @@ document.getElementById('signout').addEventListener('click', logout);
     }
   }
 
-  // ── Onboarding checklist: 5-step first-run guide. Hidden once dismissed
-  // (localStorage poolside_onboarding_dismissed=1) or once all 5 steps are
-  // complete. All five steps now come from the onboarding_status endpoint;
-  // "share your apply link" used to be localStorage-only, which made it
-  // per-browser. Provider impersonation hides
-  // the checklist entirely so Doug doesn't see his "club" checklist on
-  // every tenant he visits.
-  // Records the "shared the apply link" step against the CLUB, not the
-  // browser. It used to be localStorage-only, which meant every admin (and
-  // every device) had to copy the link themselves before the checklist
-  // would go away. Local flag is still set so the tick is instant and so
-  // clubs that already completed it this way don't regress.
+  // ── The setup checklist (J1) ────────────────────────────────────────
+  // One list, from tenant_settings.setup_status. It replaced the setup
+  // wizard, the "Finish setting up" page, a second checklist and the
+  // founder "sign up your family" card. Every item opens the real settings
+  // screen. Other admin pages show a one-line reminder linking to #setup.
+  // "Hide for now" folds it to one line; it goes away once everything is
+  // done. Hidden while Doug is impersonating a club.
   async function markApplyLinkShared() {
-    localStorage.setItem('poolside_onboarding_share_apply_link', '1');
-    if (ONBOARDING_STATE?.steps) ONBOARDING_STATE.steps.share_apply_link = true;
-    paintOnboardingChecklist();
     try {
       await fetch(AUTH_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
         body: JSON.stringify({ action: 'mark_onboarding_step', step: 'apply_link_shared' }),
       });
-    } catch { /* the local flag already ticked it; next load re-syncs */ }
+    } catch { /* next load re-syncs */ }
+    paintSetupChecklist();
   }
 
-  let ONBOARDING_STATE = null;
-  async function paintOnboardingChecklist() {
+  async function paintSetupChecklist() {
     if (user.impersonated) return;
-    if (localStorage.getItem('poolside_onboarding_dismissed') === '1') return;
-    if (!ONBOARDING_STATE) {
-      try {
-        const r = await fetch(AUTH_URL, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'onboarding_status' }),
-        });
-        const j = await r.json();
-        if (!j.ok) return;
-        ONBOARDING_STATE = j;
-      } catch { return; }
-    }
-    const s = ONBOARDING_STATE.steps || {};
-    // Server value is authoritative; the legacy local flag is honoured so
-    // clubs that ticked this before it moved server-side stay ticked.
-    const shareApplyLink = !!s.share_apply_link
-      || localStorage.getItem('poolside_onboarding_share_apply_link') === '1';
-    const steps = [
-      { key: 'tiers_set',        done: !!s.tiers_set,        label: 'Set membership levels',                href: '/club/admin/tiers.html',   cta: 'Set up' },
-      { key: 'payment_set',      done: !!s.payment_set,      label: 'Add Venmo handle (or connect Stripe)', href: '/club/admin/payments.html',         cta: 'Add' },
-      { key: 'self_signup_done', done: !!s.self_signup_done, label: 'Sign up your own family',              href: '/apply.html?prefill=admin',         cta: 'Apply' },
-      { key: 'share_apply_link', done: shareApplyLink,       label: 'Share your apply link with members',   href: '#apply-link-card',                 cta: 'Show me' },
-      { key: 'invite_board',     done: !!s.invite_board,     label: 'Invite your treasurer / secretary',    href: '/club/admin/admins.html',          cta: 'Invite' },
-    ];
-    const doneCount = steps.filter(x => x.done).length;
-    if (doneCount === steps.length) {
-      // All done — hide the card if it exists.
-      const existing = document.getElementById('onboarding-card');
-      if (existing) existing.remove();
-      return;
-    }
-    let card = document.getElementById('onboarding-card');
+    let data;
+    try {
+      const r = await fetch(SETTINGS_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'setup_status' }),
+      });
+      data = await r.json();
+    } catch { return; }
+    let card = document.getElementById('setup-card');
+    if (!data || !data.ok || data.complete) { if (card) card.remove(); return; }
     if (!card) {
       card = document.createElement('div');
-      card.id = 'onboarding-card';
-      // This card lives OUTSIDE <main> because main.innerHTML is replaced
-      // wholesale on render, which would wipe it. That means it does not
-      // inherit main's max-width:880px + 22px padding, so it has to
-      // reproduce that content box itself — otherwise it spans the full
-      // window while every card below it stops at 836px, and the page
-      // reads as a ragged left edge.
-      card.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:20px 24px;width:calc(100% - 44px);max-width:836px;margin:0 auto 18px';
+      card.id = 'setup-card';
+      // Lives outside <main> (main.innerHTML is replaced on render), so it
+      // reproduces main's content box itself.
+      card.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:18px 22px;width:calc(100% - 44px);max-width:836px;margin:0 auto 18px';
       const main = document.getElementById('main');
       main.parentNode.insertBefore(card, main);
     }
-    card.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:14px">
-        <div>
-          <h2 style="margin:0 0 4px;color:#7c2d12">🎯 Get your club running</h2>
-          <p style="margin:0;font-size:13px;color:#92400e;line-height:1.5">${doneCount} of ${steps.length} done — finish these to get ${escapeHtml(tenant.display_name)} ready for members.</p>
-        </div>
-        <button id="onboarding-dismiss" style="padding:6px 12px;border-radius:8px;font:600 12px Inter,sans-serif;background:transparent;border:0;color:#7c2d12;cursor:pointer;text-decoration:underline">Skip this checklist</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${steps.map(step => `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fff;border:1px solid #fde68a;border-radius:10px">
-            <div style="font-size:18px;width:22px;text-align:center">${step.done ? '✓' : '☐'}</div>
-            <div style="flex:1;min-width:0;${step.done ? 'color:#15803d;text-decoration:line-through' : 'color:#0f172a'}">${escapeHtml(step.label)}</div>
-            ${step.done ? '' : `<a href="${escapeHtml(step.href)}" style="padding:6px 14px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px Inter,sans-serif;white-space:nowrap">${escapeHtml(step.cta)} →</a>`}
+    let folded = false;
+    try { folded = localStorage.getItem('poolside_setup_folded') === '1' && window.location.hash !== '#setup'; } catch (_) {}
+    const head = `🎯 Setup: ${data.done} of ${data.total} done`;
+    if (folded) {
+      card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <b style="color:#7c2d12">${head}</b>
+          <button type="button" id="setup-unfold" style="padding:6px 12px;border-radius:8px;font:600 12px Inter,sans-serif;background:#0a3b5c;color:#fff;border:0;cursor:pointer">Show the list</button>
+        </div>`;
+    } else {
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <h2 style="margin:0 0 4px;color:#7c2d12">${head}</h2>
+            <p style="margin:0;font-size:13px;color:#92400e;line-height:1.5">Each one opens the screen where it's set. Finish these and ${escapeHtml(tenant.display_name)} is ready for members.</p>
           </div>
-        `).join('')}
-      </div>
-    `;
-    document.getElementById('onboarding-dismiss').addEventListener('click', () => {
-      localStorage.setItem('poolside_onboarding_dismissed', '1');
-      card.remove();
+          <button type="button" id="setup-fold" style="padding:6px 10px;border-radius:8px;font:600 12px Inter,sans-serif;background:transparent;border:0;color:#7c2d12;cursor:pointer;text-decoration:underline">Hide for now</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${data.items.map(it => `
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fff;border:1px solid #fde68a;border-radius:10px">
+              <div style="font-size:17px;width:22px;text-align:center;color:${it.done ? '#15803d' : '#92400e'}">${it.done ? '✓' : '☐'}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:14px;${it.done ? 'color:#15803d;text-decoration:line-through' : 'color:#0f172a'}">${escapeHtml(it.label)}</div>
+                ${it.done ? '' : `<div style="font-size:12px;color:#78350f;margin-top:2px;line-height:1.45">${escapeHtml(it.why || '')}</div>`}
+              </div>
+              ${it.done ? '' : `<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+                <a href="${escapeHtml(it.fix_url)}" data-setup="${escapeHtml(it.id)}" style="padding:6px 12px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px Inter,sans-serif;white-space:nowrap">${escapeHtml(it.fix_label)} →</a>
+                ${it.can_skip ? `<button type="button" data-skip="${escapeHtml(it.id)}" style="padding:6px 10px;border-radius:8px;font:600 12px Inter,sans-serif;background:transparent;border:1.5px solid #fde68a;color:#7c2d12;cursor:pointer;white-space:nowrap">I don't swim here</button>` : ''}
+              </div>`}
+            </div>`).join('')}
+        </div>`;
+    }
+    const fold = v => { try { localStorage.setItem('poolside_setup_folded', v ? '1' : '0'); } catch (_) {} };
+    card.querySelector('#setup-fold')?.addEventListener('click', () => { fold(true); paintSetupChecklist(); });
+    card.querySelector('#setup-unfold')?.addEventListener('click', () => { fold(false); paintSetupChecklist(); });
+    card.querySelector('[data-skip="self_signup"]')?.addEventListener('click', async () => {
+      try {
+        await fetch(AUTH_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'dismiss_member_apply' }),
+        });
+      } catch { /* shows again next load */ }
+      paintSetupChecklist();
     });
+    // The join-link item points at the card further down this page.
+    card.querySelector('[data-setup="share_link"]')?.addEventListener('click', e => {
+      const target = document.getElementById('apply-link-card');
+      if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+    if (window.location.hash === '#setup') card.scrollIntoView({ block: 'start' });
   }
-  paintOnboardingChecklist();
+  paintSetupChecklist();
 
   // Households + members counts
   try {

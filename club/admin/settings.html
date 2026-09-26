@@ -148,7 +148,6 @@
 <script src="/js/admin-subtabs.js"></script>
 <script src="/js/admin-flags.js"></script>
 <script src="/js/focus-highlight.js"></script>
-<script src="/js/admin-push.js" defer></script>
 <script src="/js/admin-help-fab.js" defer></script>
 
 <main>
@@ -156,7 +155,6 @@
     <h1>Settings</h1>
     <div>
       <button class="btn-ghost btn" onclick="window.location.href='/club/admin/change-password.html'">🔐 Change my password</button>
-      <button class="btn-ghost btn" onclick="window.location.href='/club/wizard.html'">Re-run wizard</button>
       <button class="btn" id="save-btn" onclick="save()">Save changes</button>
     </div>
   </div>
@@ -166,29 +164,9 @@
        memberships → 5. Pool location & hours → 6. Backup & archive →
        7. Features → 8. Pool access (not listed by  (Integrations card removed 2026-05-22;
     Drive now lives under "Backups & archive")
-       Doug; placed at end). Conditional cards stay outside that order:
-       push-card at the top (when shown — it's an attention-grabbing
-       opt-in), gate-card at the bottom (when active — paid add-on). -->
+       Doug; placed at end). The gate card stays at the bottom (paid add-on).
+       Phone alerts are turned on from the dashboard (J3). -->
 
-  <!-- Phone-alert opt-in (was on the dashboard until 2026-05-21 — moved
-       here because it's a one-time setup, not daily content). admin-push.js
-       wires the buttons + auto-hides the card when the admin has already
-       enabled or dismissed. Browsers without Web Push hide it entirely. -->
-  <details id="push-card" class="set-section" style="display:none" open>
-    <summary style="background:linear-gradient(135deg, #fff7ed, #fef3c7);border-color:#fde68a">
-      <span class="chev">▶</span> 📲 Get a buzz on your phone when something needs you
-    </summary>
-    <div class="card" style="background:linear-gradient(135deg, #fff7ed, #fef3c7);border-color:#fde68a">
-      <p style="font-size:13.5px;color:#78350f;line-height:1.5;margin:0 0 14px">Install this site on your phone (Add to Home Screen), then turn on alerts here. We'll notify the membership coordinator the moment a Venmo payment is claimed, a new application comes in, or a party is requested. <b>No alerts for routine stuff</b> — only things that need a board member to act.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button id="push-on-btn" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn on phone alerts</button>
-        <button id="push-test-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Send test notification</button>
-        <button id="push-off-btn" type="button" style="display:none;padding:10px 18px;background:transparent;color:#7f1d1d;border:1.5px solid #fecaca;border-radius:10px;font:600 13px Inter,sans-serif;cursor:pointer">Turn off</button>
-        <button id="push-dismiss-btn" type="button" style="margin-left:auto;padding:10px 14px;background:transparent;color:#92400e;border:0;font:500 13px Inter,sans-serif;cursor:pointer">Not now</button>
-      </div>
-      <p id="push-status" style="font-size:12px;color:#92400e;margin:10px 0 0;min-height:14px"></p>
-    </div>
-  </details>
 
   <!-- 1. Club info -->
   <details class="set-section">
@@ -217,7 +195,7 @@
     </div>
   </details>
 
-  <details class="set-section">
+  <details class="set-section" data-focus="hero" id="hero">
     <summary><span class="chev">▶</span> ✨ Front-page intro <span class="sub">— headline + tagline on your public home page</span></summary>
     <div class="card">
       <label>Eyebrow <span class="opt">(small uppercase line above the headline)</span></label>
@@ -375,7 +353,7 @@
     </div>
   </details>
 
-  <details class="set-section">
+  <details class="set-section" data-focus="season" id="season">
     <summary><span class="chev">▶</span> 📅 Season &amp; memberships <span class="sub">— open/closed banner, freeze applications</span></summary>
     <div class="card">
     <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Toggle the season open/closed banner and freeze new applications for the off-season. Photo uploads + member features stay available either way.</p>
@@ -410,7 +388,7 @@
   <!-- "Public page extras" card removed 2026-05-08 — clutter; defaults are fine.
        Apply-page heading still editable on Members → Apply form > General. -->
 
-  <details class="set-section">
+  <details class="set-section" data-focus="pool" id="pool">
     <summary><span class="chev">▶</span> 📍 Pool location &amp; hours <span class="sub">— map pin + open/close times</span></summary>
     <div class="card">
     <div class="row2">
@@ -1084,7 +1062,6 @@ function populate(s) {
 function collect(prevSettings) {
   return {
     ...prevSettings,                            // preserve unrelated keys
-    setup_wizard_complete: true,                // saving from settings means setup is done
     club: {
       ...(prevSettings?.club ?? {}),
       location:        val('location') || null,
@@ -1913,93 +1890,6 @@ async function retryDriveQueue() {
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }
-}
-// ── Phone alerts (web push) ────────────────────────────────────────────
-// The markup for #push-card has been on this page all along and the wiring
-// was on club/admin/index.html, which does not load /js/admin-push.js and
-// has none of these elements. So the card never un-hid itself on either
-// page and no board member was ever offered the opt-in — which is the real
-// reason there are no push subscribers. Reunited here 2026-09-09.
-//
-// State machine:
-//   unsupported, or permission denied  → stay hidden, nothing we can do
-//   dismissed before and not subscribed → stay hidden, respect the choice
-//   otherwise                           → show, with the right buttons
-async function initPushCard() {
-  try {
-    // /js/admin-push.js is deferred, so it executes AFTER this inline script
-    // during parsing and BEFORE DOMContentLoaded. Calling this immediately
-    // would find window.AdminPush undefined and bail — which is the exact
-    // failure being fixed here. Hence the readyState gate at the bottom.
-    if (!window.AdminPush) return;
-    const card = document.getElementById('push-card');
-    if (!card) return;
-
-    const stat = await window.AdminPush.status();
-    const dismissed = localStorage.getItem('poolside_push_dismissed') === '1';
-    if (!stat.supported || stat.permission === 'denied') return;
-    if (dismissed && !stat.subscribed) return;
-
-    const onBtn      = document.getElementById('push-on-btn');
-    const offBtn     = document.getElementById('push-off-btn');
-    const testBtn    = document.getElementById('push-test-btn');
-    const dismissBtn = document.getElementById('push-dismiss-btn');
-    const stEl       = document.getElementById('push-status');
-    if (!onBtn || !offBtn || !testBtn || !dismissBtn || !stEl) return;
-
-    card.style.display = 'block';
-
-    function paint(st) {
-      const on = !!st.subscribed;
-      onBtn.style.display      = on ? 'none' : 'inline-block';
-      offBtn.style.display     = on ? 'inline-block' : 'none';
-      testBtn.style.display    = on ? 'inline-block' : 'none';
-      dismissBtn.style.display = on ? 'none' : 'inline-block';
-      stEl.textContent = on ? '✓ Phone alerts are on.' : '';
-      stEl.style.color = on ? '#15803d' : '#92400e';
-    }
-    paint(stat);
-
-    onBtn.addEventListener('click', async () => {
-      stEl.textContent = 'Asking your browser for permission…';
-      stEl.style.color = '#92400e';
-      const r = await window.AdminPush.subscribe();
-      if (r.ok) { paint(await window.AdminPush.status()); }
-      else { stEl.textContent = r.error || "Couldn't turn alerts on."; stEl.style.color = '#7f1d1d'; }
-    });
-
-    offBtn.addEventListener('click', async () => {
-      await window.AdminPush.unsubscribe();
-      paint(await window.AdminPush.status());
-    });
-
-    testBtn.addEventListener('click', async () => {
-      stEl.textContent = 'Sending a test notification…';
-      stEl.style.color = '#92400e';
-      const r = await window.AdminPush.test();
-      if (r.ok && r.sent > 0) {
-        stEl.textContent = `✓ Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}. Check your phone.`;
-        stEl.style.color = '#15803d';
-      } else if (r.no_subscribers) {
-        stEl.textContent = 'No active subscriptions on file. Try Turn off, then Turn on again.';
-        stEl.style.color = '#7f1d1d';
-      } else {
-        stEl.textContent = r.error || 'Test failed.';
-        stEl.style.color = '#7f1d1d';
-      }
-    });
-
-    dismissBtn.addEventListener('click', () => {
-      localStorage.setItem('poolside_push_dismissed', '1');
-      card.style.display = 'none';
-    });
-  } catch (_) { /* an opt-in card must never break Settings */ }
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initPushCard);   // deferred scripts have run by now
-} else {
-  initPushCard();
 }
 
 </script>

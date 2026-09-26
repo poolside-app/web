@@ -25,7 +25,7 @@ export const FEATURE_DEFAULTS: Record<string, boolean> = {
  *
  * `programs` carries a legacy alias: it was called `swim_lessons` before the
  * feature was generalised, and clubs configured back then still store that
- * key. settings.html and wizard.html both still read the same fallback chain.
+ * key. settings.html reads the same fallback chain.
  */
 export async function featureEnabled(
   sb: SupabaseClient,

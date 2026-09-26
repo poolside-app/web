@@ -189,6 +189,39 @@ console.log('\nI1–I5 · trimmed features are gone');
     && !hits(/guest_pass|guest-pass|guestPass/).length, hits(/guest_pass|guest-pass|guestPass/).join(', '));
 }
 
+console.log('\nJ1–J8 · one place for each setting');
+{
+  const { existsSync } = await import('node:fs');
+  const exists = rel => existsSync(new URL(rel, root));
+  const ts = read('supabase/functions/tenant_settings/index.ts');
+  const setupBlock = between(ts, "if (action === 'setup_status')", 'return jsonResponse({');
+  const ids = [...setupBlock.matchAll(/\bid: '([a-z_]+)'/g)].map(m => m[1]);
+  check('J1: one checklist: the wizard, the setup page and the second list are gone',
+    !exists('club/wizard.html') && !exists('club/admin/setup.html') && !/onboarding_status/.test(dash)
+    && !/setup_wizard_complete/.test(dash) && !/using the pool too/.test(dash), '');
+  check('J1: the checklist has the 9 items, each opening the real screen',
+    ['logo', 'hero', 'location', 'prices', 'payment', 'policies', 'self_signup', 'invite_board', 'share_link'].every(i => ids.includes(i)) && !ids.includes('wizard'),
+    ids.join(','));
+  check('J1: the dashboard shows it; other pages just link there', /id="setup-card"|setup-card/.test(dash) && /setup_status/.test(dash)
+    && /\/club\/admin\/#setup/.test(read('js/admin-flags.js')));
+  check('J2: the Status page is gone', !exists('club/admin/health.html') && !exists('supabase/functions/admin_health'));
+  const settings = read('club/admin/settings.html');
+  check('J3: phone alerts are on the dashboard only', !/id="push-card"/.test(settings));
+  const applyPage = read('club/admin/application.html');
+  check('J4: the Apply form page links instead of repeating editors',
+    !/g-season-open|g-memberships-frozen/.test(applyPage) && !/em-subject/.test(applyPage) && !/Edit policy/.test(applyPage)
+    && /policies\.html/.test(applyPage) && /emails\.html/.test(applyPage) && /settings\.html[^"]*season/.test(applyPage));
+  check('J5: Season has "next season goes on sale"', /id="renewal_opens_month"/.test(settings) && /renewal_opens_month/.test(between(settings, 'async function save', '\n}')));
+  check('J6: hours per day in Settings, and daily calendar entries hidden', /data-day-hours|id="hours_by_day"/.test(settings)
+    && /dailyFixture|isDailyFixture/.test(read('js/upcoming.js')) && /isDailyFixture/.test(read('js/today.js')) && /isDailyFixture/.test(read('js/calendar.js') + member));
+  check('J7: one Gate & check-in section, no "coming soon" methods', /Gate &amp; check-in/.test(settings) && !/coming soon/i.test(between(settings, 'const ACCESS_METHODS', '];'))
+    && !/id="access-card"/.test(settings));
+  const money = read('club/admin/payments.html');
+  check('J8: one Money setup page: prices live on Payments; Tiers and early bird moved',
+    /id="prices-card"/.test(money) && /membership_tiers/.test(money) && !exists('club/admin/tiers.html')
+    && !/early_bird/.test(read('club/admin/members.html')) && !/tiers\.html/.test(read('js/admin-subtabs.js')));
+}
+
 // ── Live ────────────────────────────────────────────────────────────────
 async function sql(query) {
   const r = await fetch(`https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query`, {

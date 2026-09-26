@@ -16,13 +16,9 @@
 //     • timezone: IANA name (e.g. America/Chicago); updates tenants.timezone
 //     → { ok }
 //
-//   { action: 'mark_wizard_complete' }
-//     → { ok }   // shorthand for save with setup_wizard_complete=true
-//
-//   { action: 'setup_status' }
-//     → { ok, percent, done, total, items: [{ id, label, done, fix_url, fix_label, optional }] }
-//     Checklist for the persistent "Club not fully set up" banner +
-//     the /club/admin/setup.html step-by-step page.
+//   { action: 'setup_status' }   // the one setup checklist (dashboard)
+//     → { ok, percent, done, total, items: [{ id, label, done, fix_url, fix_label, why, can_skip? }] }
+//     Shown on the dashboard; other admin pages show a one-line reminder.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -177,26 +173,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
-  // ── mark_wizard_complete ───────────────────────────────────────────────
-  if (action === 'mark_wizard_complete') {
-    const { data: existing } = await sb.from('settings')
-      .select('value').eq('tenant_id', payload.tid).maybeSingle();
-    const value = { ...(existing?.value ?? {}), setup_wizard_complete: true };
-    if (existing) {
-      await sb.from('settings').update({ value }).eq('tenant_id', payload.tid);
-    } else {
-      await sb.from('settings').insert({ tenant_id: payload.tid, value });
-    }
-    return jsonResponse({ ok: true });
-  }
-
   // ── setup_status ───────────────────────────────────────────────────────
-  // Returns the onboarding checklist for the banner + setup page. Read-only
-  // so any tenant_admin can fetch (no requireOwner gate). Items are the
-  // bare minimum to launch — not the exhaustive ops health (admin_health
-  // covers that).
+  // THE setup checklist (J1, 2026-09-26). It replaced the setup wizard, the
+  // "Finish setting up" page, a second dashboard checklist and the "are you
+  // using the pool too?" card, which each kept a different list. The
+  // dashboard shows it; other admin pages show a one-line reminder linking
+  // to it. Every item opens the real settings screen, so there is exactly
+  // one place to change each thing. Read-only, so any board member can see
+  // it; "sign up your own family" is about the caller.
   if (action === 'setup_status') {
-    const [tenantRes, settingsRes, policyRes, ownerRes, gateRes] = await Promise.all([
+    const [tenantRes, settingsRes, policyRes, adminsRes, meRes] = await Promise.all([
       sb.from('tenants').select('display_name, slug, stripe_account_id, stripe_charges_enabled')
         .eq('id', payload.tid).maybeSingle(),
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
@@ -204,7 +190,8 @@ Deno.serve(async (req) => {
         .eq('tenant_id', payload.tid).eq('active', true),
       sb.from('admin_users').select('id', { count: 'exact', head: true })
         .eq('tenant_id', payload.tid).eq('active', true),
-      sb.from('gate_panels').select('status').eq('tenant_id', payload.tid).maybeSingle(),
+      sb.from('admin_users').select('linked_member_id, member_apply_dismissed')
+        .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle(),
     ]);
 
     const tenant = (tenantRes.data || {}) as Record<string, unknown>;
@@ -214,146 +201,57 @@ Deno.serve(async (req) => {
     const pool = (sv.pool as Record<string, unknown> | undefined) ?? {};
     const club = (sv.club as Record<string, unknown> | undefined) ?? {};
     const payments = (sv.payments as Record<string, unknown> | undefined) ?? {};
+    const onboarding = (sv.onboarding as Record<string, unknown> | undefined) ?? {};
     const tiers = (sv.membership_tiers as Array<unknown> | undefined) ?? [];
-    const policyCount = policyRes.count ?? 0;
-    const adminCount = ownerRes.count ?? 0;
+    const me = (meRes.data ?? {}) as Record<string, unknown>;
 
-    const stripeConnected = !!(tenant.stripe_account_id && tenant.stripe_charges_enabled);
+    const stripeLinked = !!tenant.stripe_account_id;
+    const stripeReady = stripeLinked && !!tenant.stripe_charges_enabled;
     const venmoSet = !!(payments.venmo_handle && String(payments.venmo_handle).trim());
-    const gateStatus = (gateRes.data as { status?: string } | null)?.status ?? null;
-    const gateActive = gateStatus === 'active';
-    const gateRequested = !!gateStatus && gateStatus !== 'active';
 
-    // Each fix_url ends with `?focus=<id>` so the destination page can
-    // scroll-to + pulse the matching field via /js/focus-highlight.js.
-    // Pages annotate target nodes with data-focus="<id>" or supply a
-    // FOCUS_FALLBACKS map.
+    // fix_url ends with ?focus=<id> where it can, so /js/focus-highlight.js
+    // scrolls to and pulses the right section.
     const items = [
-      {
-        id: 'wizard',
-        label: 'Run the setup wizard',
-        done: !!sv.setup_wizard_complete,
-        fix_url: '/club/wizard.html',
-        fix_label: 'Open wizard',
-        why: 'Sets your club name, hero text, hours, and basic features in one shot.',
-      },
-      {
-        id: 'logo',
-        label: 'Upload your club logo',
-        done: !!(branding.logo_url || branding.logo),
-        fix_url: '/club/admin/settings.html?focus=logo',
-        fix_label: 'Upload logo',
-        why: 'Replaces the placeholder dot in your header and emails.',
-      },
-      {
-        id: 'hero',
-        label: 'Write your home-page headline',
-        done: !!(hero.headline && String(hero.headline).trim()),
-        fix_url: '/club/wizard.html',
-        fix_label: 'Edit headline',
-        why: 'The big line at the top of your public site.',
-      },
-      {
-        id: 'location',
-        label: 'Set your pool location and hours',
+      { id: 'logo', label: 'Upload your club logo', done: !!(branding.logo_url || branding.logo),
+        fix_url: '/club/admin/settings.html?focus=logo', fix_label: 'Upload logo',
+        why: 'Shows in your header, the member app and emails.' },
+      { id: 'hero', label: 'Write your front-page headline', done: !!(hero.headline && String(hero.headline).trim()),
+        fix_url: '/club/admin/settings.html?focus=hero', fix_label: 'Write it',
+        why: 'The big line at the top of your public page.' },
+      { id: 'location', label: 'Set your pool location and hours',
         done: !!((club.location || (pool.lat && pool.lng)) && pool.opens_at && pool.closes_at),
-        fix_url: '/club/wizard.html',
-        fix_label: 'Set location',
-        why: 'Powers the weather ticker and stops gate unlocks outside hours.',
-      },
-      {
-        id: 'tiers',
-        label: 'Set up at least one membership tier',
-        done: tiers.length > 0,
-        fix_url: '/club/admin/members.html?focus=tiers#tiers',
-        fix_label: 'Add a tier',
-        why: 'Without tiers, your apply form is broken.',
-      },
-      {
-        id: 'policies',
-        label: 'Add policies (waiver, rules)',
-        done: policyCount > 0,
-        fix_url: '/club/admin/policies.html?focus=policies',
-        fix_label: 'Edit policies',
-        why: 'Liability protection — applicants must agree before submitting.',
-      },
-      // REQUIRED: at least one payment method. Done if either Stripe or
-      // Venmo is fully set up. Stripe-specific status lives below as a
-      // separate optional item so the user sees the truth: "Venmo is set"
-      // is NOT the same as "Stripe is connected."
-      {
-        id: 'payment',
-        label: (stripeConnected || venmoSet)
-          ? 'Payment method set up'
-          : 'Set up a way for members to pay',
-        done: stripeConnected || venmoSet,
-        fix_url: '/club/admin/payments.html?focus=venmo',
-        fix_label: (stripeConnected || venmoSet) ? 'Manage payments' : 'Set up payments',
-        why: stripeConnected && venmoSet
-          ? 'Both Stripe (cards) and Venmo are configured — members can pick either.'
-          : stripeConnected
-            ? 'Stripe is connected. Adding Venmo too is optional but most clubs offer both.'
-            : venmoSet
-              ? 'Venmo is set. Stripe (cards) is below — optional but recommended.'
-              : 'Pick at least one — Stripe (cards, ~3% fee) or Venmo (free, manual).',
-      },
-      // OPTIONAL: Stripe-specific. Distinct from the payment item above so
-      // a club with only Venmo doesn't see "Stripe connected." If the
-      // tenants table says charges_enabled but the account isn't actually
-      // ready (Stripe sometimes lags by a webhook tick), the payments page
-      // will surface that on next visit.
-      {
-        id: 'stripe',
-        label: stripeConnected
-          ? 'Stripe connected — cards work'
-          : 'Connect Stripe (accept credit cards)',
-        done: stripeConnected,
-        fix_url: '/club/admin/payments.html?focus=stripe',
-        fix_label: stripeConnected ? 'Stripe dashboard' : 'Connect Stripe',
-        why: stripeConnected
-          ? 'Members can pay dues, programs, and donations with their card.'
-          : 'Cards = auto-pay, payment plans, no chasing members. ~3% fee. About 5 minutes to onboard via Stripe.',
-        optional: true,
-      },
-      {
-        id: 'admins',
-        label: 'Invite a backup admin',
-        done: adminCount >= 2,
-        fix_url: '/club/admin/admins.html?focus=invite',
-        fix_label: 'Invite admin',
-        why: 'If you lose access, no one else can manage the club.',
-        optional: true,
-      },
-      {
-        id: 'gate',
-        label: gateActive
-          ? 'Keyfob/gate integration is active'
-          : (gateRequested
-              ? 'Keyfob/gate request in progress — we\'ll be in touch'
-              : 'Want gate access from members\' phones?'),
-        done: gateActive || gateRequested,
-        fix_url: '/club/admin/settings.html?focus=gate#gate',
-        fix_label: gateActive ? 'Configure panel' : (gateRequested ? 'View status' : 'Request keyfob integration'),
-        why: gateActive
-          ? 'Members with paid dues see the "Unlock gate" button on their home.'
-          : (gateRequested
-              ? 'Once we\'ve coordinated hardware + verified payment, we activate this for your club.'
-              : 'Paid add-on ($1,500 + $75/mo). We coordinate manually — request it and we\'ll reach out.'),
-        optional: true,
-      },
+        fix_url: '/club/admin/settings.html?focus=pool', fix_label: 'Set them',
+        why: 'Shows on the public page and member app, and keeps phone unlocks to open hours.' },
+      { id: 'prices', label: 'Set your membership prices', done: tiers.length > 0,
+        fix_url: '/club/admin/payments.html?focus=prices', fix_label: 'Set prices',
+        why: 'The signup form needs at least one membership level to work.' },
+      { id: 'payment', label: 'Choose how members pay', done: venmoSet || stripeReady,
+        fix_url: '/club/admin/payments.html?focus=venmo', fix_label: 'Set up',
+        why: stripeLinked && !stripeReady
+          ? 'Stripe is connected but not finished, so cards don\'t work yet. Finish it on the Payments page, or add Venmo.'
+          : 'Venmo (free, checked by hand) or cards through Stripe (paid automatically).' },
+      { id: 'policies', label: 'Add your policies and waiver', done: (policyRes.count ?? 0) > 0,
+        fix_url: '/club/admin/policies.html?focus=policies', fix_label: 'Add them',
+        why: 'Families agree to these when they sign up.' },
+      { id: 'self_signup', label: 'Sign up your own family', done: !!me.linked_member_id || !!me.member_apply_dismissed,
+        fix_url: '/apply.html?prefill=admin', fix_label: 'Sign up',
+        why: 'Same form your members use, so you see it the way they do. Not a swimmer? Mark it done.',
+        can_skip: !me.linked_member_id && !me.member_apply_dismissed },
+      { id: 'invite_board', label: 'Invite the rest of your board', done: (adminsRes.count ?? 0) > 1,
+        fix_url: '/club/admin/admins.html', fix_label: 'Invite',
+        why: 'So the treasurer, keyfob person and others can handle their part.' },
+      { id: 'share_link', label: 'Share your join link with members', done: !!onboarding.apply_link_shared,
+        fix_url: '/club/admin/#apply-link-card', fix_label: 'Show me',
+        why: `Families join at ${tenant.slug ? `${tenant.slug}.poolsideapp.com/apply.html` : 'your apply page'}.` },
     ];
 
-    const required = items.filter(i => !i.optional);
-    const doneCount = required.filter(i => i.done).length;
-    const total = required.length;
-    const percent = Math.round((doneCount / total) * 100);
-
+    const done = items.filter(i => i.done).length;
     return jsonResponse({
       ok: true,
-      percent,
-      done: doneCount,
-      total,
-      complete: doneCount === total,
+      done,
+      total: items.length,
+      percent: Math.round((done / items.length) * 100),
+      complete: done === items.length,
       items,
     });
   }

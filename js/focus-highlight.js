@@ -2,7 +2,7 @@
  * focus-highlight.js — pulse + scroll-into-view a target field when arriving
  *                       from the setup checklist
  * =============================================================================
- * Pages link from /club/admin/setup.html with `?focus=<name>`. The target
+ * The dashboard's setup checklist links with `?focus=<name>`. The target
  * page declares which DOM nodes correspond to which focus name via a
  * `data-focus="<name>"` attribute. This script reads ?focus, finds matching
  * nodes, scrolls them into view, and adds a pulsing highlight ring.

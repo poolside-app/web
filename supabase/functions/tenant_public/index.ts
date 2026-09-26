@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
   const dayEnd = typeof body.day_end === 'string' ? body.day_end : poolDay.endIso;
 
   // Pull a SANITIZED slice of settings.value for public landing pages.
-  // Internal flags (e.g. setup_wizard_complete) are deliberately excluded.
+  // Internal flags are deliberately excluded.
   const { data: settings } = await sb.from('settings')
     .select('value').eq('tenant_id', tenant.id).maybeSingle();
   const v = (settings?.value ?? {}) as Record<string, Record<string, unknown> | undefined>;

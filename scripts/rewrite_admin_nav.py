@@ -76,7 +76,6 @@ PAGE_TO_TAB = {
     "member-help.html":    "content",
     # Insights
     "audit.html":          "insights",
-    "health.html":         "insights",
     # Settings — configuration and the club's account with Poolside
     "settings.html":       "settings",
     "admins.html":         "settings",
@@ -85,7 +84,6 @@ PAGE_TO_TAB = {
     # emailed link rather than from the nav.
     "checkin.html":        None,
     "help.html":           None,
-    "setup.html":          None,
     "change-password.html": None,
     "activate.html":       None,
 }
