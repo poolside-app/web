@@ -245,6 +245,39 @@ Suggested order: E1 first (both features use it), then F1–F4 (small, mostly fi
 - Google Drive backup is separate and kept. It still needs the Google app published (not Testing), then a Drive reconnect.
 - Proof: `scripts/test_screens.mjs --live`, G1 checks.
 
+### H. From Doug's own signup test (9/26)
+Doug decided (9/26):
+- Referral reward is $100 of credit per new family.
+- The board approves each reward, as now.
+- A family can earn up to a free membership, and never cash.
+- Early bird becomes a discount code, open to everyone, new and renewing.
+
+Found while looking:
+- An approved referral credit is saved on the family but never taken off anything, so they'd pay full price.
+- The early-bird setting only shows a banner. Checkout never applies the discount.
+
+Steps (each: failing test first, then the fix, then proof):
+- **H1. Signup page 1 asks "Your name".** It fills in Adult #1 on page 2, and the family last name from it (both editable). Today page 1 only asks for the family last name, so Adult #1 starts empty.
+- **H2. Membership level defaults by headcount.** 2+ people picks Family; 1 adult picks Single. Anything the family picks themselves is left alone. Choosing Single with 2+ people shows a gentle note.
+- **H3. Member sign-in formats the number as you type** — (925) 771-9074, the same as the board sign-in.
+- **H4. Payment plan deadlines work across New Year.**
+  - Deadlines are ordered by season (fall → spring → summer), so a plan like "50% by Dec 1, the rest by May 1" saves.
+  - The last deadline is always "the rest (100%)", with no box to fill in.
+  - Today they're sorted Jan–Dec, so December counts as "last" and the save fails whatever you type.
+  - The server places fall deadlines in the calendar year before the season too.
+- **H5. Discounts actually come off the price.**
+  - Each signup or renewal carries a code discount and a referral credit. Card checkout, payment plans and the Venmo amount all use the reduced price.
+  - If it comes to $0, "Confirm, nothing to pay" marks them paid.
+  - The credit and code use are recorded only once the payment clears.
+- **H6. Referral credit only.**
+  - "Refund me $100 now" is removed.
+  - An approved credit sits on the family and comes off their next renewal, up to the full price.
+  - The member sees their credit balance in the Refer a friend panel.
+- **H7. Discount codes.**
+  - The board makes codes under Money: a code, $ or % off, an expiry date, and optionally a limit on how many families can use it. The early-bird setting becomes one of these.
+  - The signup form and the renewal page get "Have a code?". It's checked on the server, and the new price shows before paying.
+  - A code can be marked "show on the member home" to replace the early-bird banner, so no campaign is needed.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
