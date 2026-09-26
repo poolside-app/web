@@ -258,9 +258,9 @@ Found while looking:
 - The early-bird setting only shows a banner. Checkout never applies the discount.
 
 Steps (each: failing test first, then the fix, then proof):
-- **H1. Signup page 1 asks "Your name".** It fills in Adult #1 on page 2, and the family last name from it (both editable). Today page 1 only asks for the family last name, so Adult #1 starts empty.
-- **H2. Membership level defaults by headcount.** 2+ people picks Family; 1 adult picks Single. Anything the family picks themselves is left alone. Choosing Single with 2+ people shows a gentle note.
-- **H3. Member sign-in formats the number as you type** — (925) 771-9074, the same as the board sign-in.
+- **H1. ✅ Signup page 1 asks "Your name".** It fills in Adult #1 on page 2, and the family last name from it (both editable). Today page 1 only asks for the family last name, so Adult #1 starts empty.
+- **H2. ✅ Membership level defaults by headcount.** 2+ people picks Family; 1 adult picks Single. Anything the family picks themselves is left alone. Choosing Single with 2+ people shows a gentle note.
+- **H3. ✅ Member sign-in formats the number as you type** — (925) 771-9074, the same as the board sign-in.
 - **H4. Payment plan deadlines work across New Year.**
   - Deadlines are ordered by season (fall → spring → summer), so a plan like "50% by Dec 1, the rest by May 1" saves.
   - The last deadline is always "the rest (100%)", with no box to fill in.

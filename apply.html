@@ -169,8 +169,11 @@
         </label>
       </div>
 
-      <label style="margin-top:0">Family last name *</label>
-      <input id="family_name" placeholder="Smith">
+      <label style="margin-top:0">Your name *</label>
+      <input id="your_name" placeholder="Jane Smith" autocomplete="name" oninput="syncFamilyName()">
+
+      <label>Family last name *</label>
+      <input id="family_name" placeholder="Smith" oninput="this.dataset.touched = '1'">
 
       <label>Street address *</label>
       <input id="address" placeholder="123 Maple St">
@@ -552,11 +555,10 @@ function validateDob(el) {
 // just entered on step 1. Copy them across, but only into blank fields, so a
 // deliberate edit on step 2 is never overwritten.
 function prefillPrimaryAdult() {
-  // Only phone and email exist on step 1. There is no #primary_name input —
-  // step 1 asks for the FAMILY name, and the primary contact's own name is
-  // adult #1 itself, which is what this function fills. Asking for a
-  // primary_name here silently produced '' and the name never prefilled.
+  // Step 1's "Your name" is the primary contact, who is adult #1 (H1,
+  // Doug 9/26: "main name needs to be prefilled … where it says adults").
   const src = {
+    name:  (document.getElementById('your_name') || {}).value || '',
     phone: (document.getElementById('primary_phone') || {}).value || '',
     email: (document.getElementById('primary_email') || {}).value || '',
   };
@@ -566,6 +568,48 @@ function prefillPrimaryAdult() {
     if (el && !el.value.trim()) el.value = val;
   }
 }
+
+// The family last name follows "Your name" until they type their own.
+function syncFamilyName() {
+  const fam = document.getElementById('family_name');
+  if (!fam || fam.dataset.touched === '1') return;
+  const parts = (document.getElementById('your_name').value || '').trim().split(/\s+/).filter(Boolean);
+  fam.value = parts.length > 1 ? parts[parts.length - 1].replace(/^family$/i, '') : '';
+}
+
+// Membership level by headcount (H2): 2+ people start on the family level,
+// one person on the single level. Once they pick a level themselves, it's
+// theirs. Levels are matched by name, since each club names its own.
+let TIER_TOUCHED = false;
+document.addEventListener('change', e => {
+  if (e.isTrusted && e.target && e.target.name === 'tier_slug') TIER_TOUCHED = true;
+});
+function applyTierDefault() {
+  const radios = [...document.querySelectorAll('input[name="tier_slug"]')];
+  if (!radios.length) return;
+  const people = (parseInt(document.getElementById('acount').value, 10) || 1)
+    + (parseInt(document.getElementById('ccount').value, 10) || 0);
+  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  const find = re => tiers.find(t => re.test(`${t.slug || ''} ${t.label || ''}`));
+  const want = people >= 2 ? find(/family|household/i) : find(/single|individual|one adult/i);
+  if (!TIER_TOUCHED && want) {
+    const r = radios.find(x => x.value === want.slug);
+    if (r) { r.checked = true; paintPlanLabel(); paintPaymentChoices(); }
+  }
+  // A gentle nudge if they chose a one-person level for a bigger family.
+  const chosen = tiers.find(t => t.slug === (document.querySelector('input[name="tier_slug"]:checked') || {}).value);
+  let note = document.getElementById('tier-note');
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'tier-note';
+    note.style.cssText = 'font-size:12.5px;color:#92400e;margin-top:8px';
+    document.getElementById('tiers-box').insertAdjacentElement('afterend', note);
+  }
+  note.textContent = people >= 2 && chosen && /single|individual|one adult/i.test(`${chosen.slug} ${chosen.label}`)
+    ? `${chosen.label || 'This level'} covers one person. You listed ${people} people.`
+    : '';
+}
+document.addEventListener('change', e => { if (e.target && e.target.name === 'tier_slug') applyTierDefault(); });
 
 // Step 2 — dynamic adult/child rows
 function rebuildPeople() {
@@ -770,6 +814,7 @@ function showStep(n) {
   // Landing on the people step: pick up anything typed (or corrected) on
   // step 1 since the rows were last built.
   if (n === 2) prefillPrimaryAdult();
+  if (n === 4) applyTierDefault();
   document.querySelectorAll('.step').forEach(el => {
     el.style.display = (parseInt(el.dataset.step) === n) ? 'block' : 'none';
   });
@@ -808,9 +853,11 @@ function _goNext() {
     const email   = document.getElementById('primary_email');
     const emergN  = document.getElementById('emergency_name');
     const emergP  = document.getElementById('emergency_phone');
-    if (!fam || !addr || !phone || !email || !emergN || !emergP) {
+    const you     = document.getElementById('your_name');
+    if (!fam || !addr || !phone || !email || !emergN || !emergP || !you) {
       return show('Form missing fields — try refreshing the page (cache may be stale).');
     }
+    if (!you.value.trim())    return showField(you,    'Your name is required');
     if (!fam.value.trim())    return showField(fam,    'Family last name is required');
     if (!addr.value.trim())   return showField(addr,   'Address is required');
     if (!phone.value.trim())  return showField(phone,  'Primary phone is required');
@@ -1263,7 +1310,8 @@ async function prefillFromClaim(token) {
   const a = d.application || {};
   const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
   const fnEl = document.getElementById('family_name');
-  if (fnEl && a.family_name) fnEl.value = String(a.family_name).replace(/\s+Family$/i, '');
+  if (fnEl && a.family_name) { fnEl.value = String(a.family_name).replace(/\s+Family$/i, ''); fnEl.dataset.touched = '1'; }
+  setVal('your_name', a.primary_name);
   setVal('address', a.address); setVal('city', a.city); setVal('zip', a.zip);
   setVal('primary_email', a.primary_email); setVal('primary_phone', a.primary_phone);
 
@@ -1517,6 +1565,8 @@ async function prefillFromClaim(token) {
           if (looksLikeRealName) {
             const parts = dn.split(/\s+/);
             const lastName = parts[parts.length - 1];
+            const yn = document.getElementById('your_name');
+            if (yn && !yn.value) yn.value = dn;
             const fn = document.getElementById('family_name');
             if (fn && !fn.value) fn.value = lastName;
             const a0 = document.querySelector('[data-adult="0"][data-field="name"]');

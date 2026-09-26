@@ -268,6 +268,21 @@ function paintSubmit() {
   btn.textContent = k === 'email' ? 'Email me a link' : k === 'phone' ? 'Text me a code' : 'Continue';
 }
 document.getElementById('email').addEventListener('input', paintSubmit);
+
+// Show a typed number as (925) 771-9074, like the board sign-in (H3). Only
+// when it starts like a phone number; anything with a letter or @ is an
+// email and is left alone.
+function formatLoginPhone(inp) {
+  const v = inp.value.replace(/^\s+/, '');
+  if (!v || v.includes('@') || !/^[\d+(]/.test(v) || /[a-z]/i.test(v)) return;
+  const digits = v.replace(/\D/g, '').slice(0, 11);
+  const ten = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  const out = ten.length <= 3 ? ten
+    : ten.length <= 6 ? `(${ten.slice(0, 3)}) ${ten.slice(3)}`
+    : `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6, 10)}`;
+  if (inp.value !== out) inp.value = out;
+}
+document.getElementById('email').addEventListener('input', e => { formatLoginPhone(e.target); paintSubmit(); });
 function startResendTimer(value) {
   SENT_TO = value;
   const btn = document.getElementById('submit');

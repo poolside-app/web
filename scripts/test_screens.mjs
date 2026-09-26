@@ -158,6 +158,14 @@ console.log('\nG1 · no Sign in with Google anywhere (Doug, 2026-09-25)');
   check('member sign-in asks for a cell number first', /^Cell/.test(ph) && /<label for="email">Cell/.test(login), `"${ph}"`);
 }
 
+console.log('\nH1–H3 · signup name, level by headcount, sign-in phone format');
+check('H1: page 1 asks "Your name" and it fills Adult #1', /id="your_name"/.test(apply)
+  && /your_name/.test(between(apply, 'function prefillPrimaryAdult', '\n}')));
+check('H1: "Your name" is required on page 1', /getElementById\('your_name'\)/.test(between(apply, 'function _goNext', 'function show(')) && /showField\(you,/.test(apply));
+check('H2: the level is picked by headcount unless they chose one', /function applyTierDefault/.test(apply) && /TIER_TOUCHED/.test(apply)
+  && /applyTierDefault\(\)/.test(between(apply, 'function showStep', '\n}')));
+check('H3: member sign-in formats the phone number as you type', /function formatLoginPhone|looksLikePhoneStart/.test(login));
+
 // ── Live ────────────────────────────────────────────────────────────────
 async function sql(query) {
   const r = await fetch(`https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query`, {

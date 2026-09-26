@@ -12,8 +12,12 @@ const LOCAL = {
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
 };
 
+// RENDER_ONLY=apply,login,members,home limits the run to those pages.
+const ONLY = (process.env.RENDER_ONLY || '').split(',').map(x => x.trim()).filter(Boolean);
+const want = page => !ONLY.length || ONLY.includes(page);
+
 export async function renderChecks({ check, read, sql, jwt }) {
-  console.log('\nRendered at phone size');
+  console.log('\nRendered at phone size' + (ONLY.length ? ` (${ONLY.join(', ')})` : ''));
   const browser = await puppeteer.launch({
     executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'],
   });
@@ -44,16 +48,36 @@ export async function renderChecks({ check, read, sql, jwt }) {
   const wait = ms => new Promise(r => setTimeout(r, ms));
 
   try {
+    if (want('apply')) {
     // D1: one error, under the field
     const a = await open('/apply.html');
     await a.evaluate(() => { const b = document.getElementById('next-btn'); b && b.click(); });
     await wait(300);
     const errs = await a.evaluate(() => [...document.querySelectorAll('body *')]
-      .filter(el => el.children.length === 0 && /Family last name is required/.test(el.textContent) && el.offsetParent).length);
-    const under = await a.evaluate(() => document.getElementById('family_name')?.nextElementSibling?.className === 'field-err');
+      .filter(el => el.children.length === 0 && /Your name is required/.test(el.textContent) && el.offsetParent).length);
+    const under = await a.evaluate(() => document.getElementById('your_name')?.nextElementSibling?.className === 'field-err');
     check('D1: an empty signup step shows its error once, under the field', errs === 1 && under, `shown ${errs} times, under field: ${under}`);
     check('D1: no page errors', a.errs.length === 0, a.errs.join(' | '));
 
+    // H1: name once on page 1 → last name and Adult #1
+    await a.type('#your_name', 'Jamie Rivera');
+    const fam = await a.$eval('#family_name', el => el.value);
+    await a.evaluate(() => { for (const [id, v] of [['address', '1 Main St'], ['primary_phone', '(925) 555-0100'], ['primary_email', 'jamie@example.com'], ['emergency_name', 'Pat Rivera'], ['emergency_phone', '(925) 555-0101']]) document.getElementById(id).value = v; });
+    await a.evaluate(() => document.getElementById('next-btn').click());
+    await wait(300);
+    const adult1 = await a.evaluate(() => document.querySelector('[data-adult="0"][data-field="name"]')?.value);
+    check('H1: "Your name" fills the last name and Adult #1', fam === 'Rivera' && adult1 === 'Jamie Rivera', `last "${fam}", adult #1 "${adult1}"`);
+    // H2: headcount picks the level (unless they chose one). The levels
+    // render after the policies load.
+    await a.waitForSelector('input[name="tier_slug"]', { timeout: 20000 });
+    const pick = await a.evaluate(() => {
+      const set = (ad, ch) => { document.getElementById('acount').value = String(ad); document.getElementById('ccount').value = String(ch); applyTierDefault(); return document.querySelector('input[name="tier_slug"]:checked')?.value; };
+      return { one: set(1, 0), three: set(2, 1) };
+    });
+    check('H2: 1 adult → Single, 3 people → Family', pick.one === 'single' && pick.three === 'family', JSON.stringify(pick));
+    }
+
+    if (want('login')) {
     // D6/D13: login button and placeholder
     const l = await open('/m/login.html');
     const fits = await l.evaluate(() => {
@@ -71,6 +95,10 @@ export async function renderChecks({ check, read, sql, jwt }) {
     await l.type('#email', 'pat@example.com');
     const emailLabel = await l.$eval('#submit', b => b.textContent.trim());
     check('D13: the button says Text me a code / Email me a link', phoneLabel === 'Text me a code' && emailLabel === 'Email me a link', `${phoneLabel} / ${emailLabel}`);
+    await l.evaluate(() => { const i = document.getElementById('email'); i.value = ''; i.dispatchEvent(new Event('input')); });
+    await l.type('#email', '9257719074');
+    const formatted = await l.$eval('#email', el => el.value);
+    check('H3: a typed number shows as (925) 771-9074', formatted === '(925) 771-9074', formatted);
     // A number that isn't on file (fake 555 exchange, so nothing is sent):
     // the page must not say "open the email", and must offer the code box.
     await l.evaluate(() => { const i = document.getElementById('email'); i.value = ''; i.dispatchEvent(new Event('input')); });
@@ -84,9 +112,11 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('D6: a number not on file gets "if your number is on file", the code box and a Join link',
       /text/i.test(unknown.ok) && !/open the email/i.test(unknown.ok) && /Not a member yet/.test(unknown.ok) && unknown.codeBox,
       JSON.stringify(unknown).slice(0, 220));
+    }
 
-    // D12: Members list fits a phone (with at least one family in it)
     const m = await makeTempMember(sql, club.id, FAMILY);
+    if (want('members')) {
+    // D12: Members list fits a phone (with at least one family in it)
     const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const mem = await open('/club/admin/members.html#households', { poolside_tenant_token: ownerTok });
     await mem.waitForSelector('#hh-card table, #hh-card .empty', { timeout: 20000 });
@@ -99,7 +129,9 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('D12: the households list fits the screen as cards', fit.overflow <= 1 && fit.cards === 'grid', JSON.stringify(fit));
     check('D12: room under the list for the Help button', fit.pad === '76px', fit.pad);
     await mem.screenshot({ path: '/tmp/poolside-members-phone.png' });
+    }
 
+    if (want('home')) {
     // D3/D8/D9/D4: member home
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
     const h = await open('/m/', { poolside_member_token: memTok });
@@ -133,6 +165,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
     const again = await h.$eval('.hero-card .sub', el => el.textContent.trim());
     check('D3: the next visit says "Welcome back"', /^Welcome back to /.test(again), again);
     check('member home: no page errors or browser pop-ups', h.errs.length === 0, h.errs.join(' | '));
+    }
   } finally {
     await purgeTestFamilies(sql, club.id, `${FAMILY}%`);
     await browser.close();
