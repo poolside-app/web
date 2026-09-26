@@ -272,7 +272,8 @@ Steps (each: failing test first, then the fix, then proof):
   - The credit and code use are recorded only once the payment clears.
 - **H6. Referral rewards: credit or refund, approved, tracked** (Doug, 9/26).
   - **Settings** (board admin → Referral program): the member's reward (default $100) and the new family's discount (default $25).
-  - **The new family** saves $25 when they join through a member's link. Only one discount per membership: if they also have a code, the bigger one applies, and they're told so. The referring member still earns their reward.
+  - **The new family** saves $25 when they join through a member's link. Only one discount per membership: if they also have a code, the bigger one applies, and they're told so.
+  - **The referring member always earns their full reward**, even when the new family ends up using an early-bird code instead of the referral discount (Doug, 9/26).
   - **The 30-day wait, known on all sides:**
     - The Refer panel explains the rules up front: 30 days after the new family pays; credit or refund; the board approves; up to a free membership.
     - The member gets a text when the new family pays ("The Johnsons joined with your link. Your $100 unlocks Oct 26") and another on unlock day.
@@ -290,6 +291,19 @@ Steps (each: failing test first, then the fix, then proof):
   - The board makes codes under Money: a code, $ or % off, an expiry date, and optionally a limit on how many families can use it. The early-bird setting becomes one of these.
   - The signup form and the renewal page get "Have a code?". It's checked on the server, and the new price shows before paying.
   - A code can be marked "show on the member home" to replace the early-bird banner, so no campaign is needed.
+
+### I. Trim the app (Doug, 9/26: "too many features… too convoluted")
+Doug chose to delete the duplicates and fluff only. Sponsors, donations, Google Drive backup, auto-renew, email templates, photos, programs, volunteer and lifeguards all stay.
+Suggested order: before H, so H7's discount codes don't have to live alongside campaigns.
+- **I1. Anonymous feedback → gone.** Ask the board covers it (topic "Pool problem", with a photo).
+  - Removed: the feedback card and form on the member home and public page, the board's Feedback page, and the `feedback` function.
+  - The one stored message is shown to Doug before its table is dropped.
+- **I2. Campaign pop-ups → gone.** News posts cover announcements, and H7's discount codes cover early bird.
+  - Removed: Money → Campaigns, the `campaigns` function, and the pop-up code on the member home and public page.
+- **I3. The Impact page → gone** (Insights → Impact, "Where the time went"). The `impact` permission leaves the role templates and permission list.
+- **I4. The member-count line in the member home greeting → gone.** The public page keeps its "X families" line, which can be switched off in Settings.
+- **I5. Guest-pass leftovers → gone.** The feature was retired 9/7, but its function, checkout path, payment-report branches and empty tables are still there.
+- **Proof:** a check that none of these is linked, called or deployed; the page-render check (every page loads with no errors); and a count of admin pages and member-home cards before and after.
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
