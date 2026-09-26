@@ -278,22 +278,13 @@
             <div class="fsub">One-shot slots for snack-bar shifts, swim-meet timers, party helpers.</div>
           </div>
         </label>
-        <label class="feature">
-          <input type="checkbox" id="f-feat_campaigns" checked>
-          <div>
-            <div class="ftitle">📣 Pop-up campaigns</div>
-            <div class="fsub">In-app modals for fundraisers, RSVPs, time-sensitive announcements.</div>
-          </div>
-        </label>
-        <label class="feature">
+                <label class="feature">
           <input type="checkbox" id="f-feat_lifeguard_scheduling">
           <div>
             <div class="ftitle">🏊 Lifeguard scheduling</div>
             <div class="fsub">Build the weekly schedule. Lifeguards claim open shifts on their own login. No payroll — just scheduling.</div>
           </div>
         </label>
-        <!-- Guest passes feature removed 2026-05-08. -->
-        <input type="hidden" id="f-feat_guest_passes" value="">  <!-- preserves backward-compat for collect() -->
 
         <!-- Keyfob check-in used to be a self-serve checkbox here, but it's
              really a sub-feature of the paid gate integration — clubs without
@@ -448,9 +439,7 @@ function collect() {
       programs:             !!document.getElementById('f-feat_programs').checked,
       parties:              !!document.getElementById('f-feat_parties').checked,
       volunteer:            !!document.getElementById('f-feat_volunteer').checked,
-      campaigns:            !!document.getElementById('f-feat_campaigns').checked,
       lifeguard_scheduling: !!document.getElementById('f-feat_lifeguard_scheduling').checked,
-      guest_passes: false,  // feature removed 2026-05-08
       // Preserve provider-flipped values so wizard re-runs don't clobber
       // an already-active integration. Both keyfobs and gate go true when
       // gate_admin.super_set_status flips status='active'.
@@ -500,9 +489,7 @@ function populate(s) {
   setChk('f-feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
   setChk('f-feat_parties',      s.features?.parties      ?? true);
   setChk('f-feat_volunteer',    s.features?.volunteer    ?? true);
-  setChk('f-feat_campaigns',    s.features?.campaigns    ?? true);
   setChk('f-feat_lifeguard_scheduling', s.features?.lifeguard_scheduling ?? false);
-  // guest_passes removed 2026-05-08
   // keyfobs + gate are NOT user-toggleable from the wizard. They're
   // flipped to true by the provider when they activate the keyfob/gate
   // add-on (gate_admin.super_set_status). Stash existing values so
@@ -593,7 +580,7 @@ const BOARD_TITLES = [
   { title: 'Secretary',         role: 'secretary',      help: 'Board meeting minutes + bylaws' },
   { title: 'Membership Chair',  role: 'membership',     help: 'Approves applications, manages households' },
   { title: 'Volunteer Coord.',  role: 'events',         help: 'Parties, programs, volunteer signups' },
-  { title: 'Communications',    role: 'communications', help: 'Announcements, campaigns, photo gallery' },
+  { title: 'Communications',    role: 'communications', help: 'Announcements and photo gallery' },
   { title: 'Member-at-large',   role: 'membership',     help: 'General board member — limited admin access' },
 ];
 

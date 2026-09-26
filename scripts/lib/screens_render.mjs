@@ -9,6 +9,10 @@ const LOCAL = {
   '/apply.html': 'apply.html',
   '/m/': 'm/index.html', '/m/index.html': 'm/index.html', '/m/login.html': 'm/login.html',
   '/club/admin/members.html': 'club/admin/members.html',
+  '/': 'club/index.html', '/index.html': 'club/index.html',
+  '/club/admin/': 'club/admin/index.html', '/club/admin/index.html': 'club/admin/index.html',
+  '/club/admin/payments.html': 'club/admin/payments.html', '/club/admin/settings.html': 'club/admin/settings.html',
+  '/club/wizard.html': 'club/wizard.html', '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
 };
 
@@ -114,6 +118,29 @@ export async function renderChecks({ check, read, sql, jwt }) {
       JSON.stringify(unknown).slice(0, 220));
     }
 
+    if (want('board')) {
+    // Board pages load clean for the president (every page the trim and
+    // the consolidation touched).
+    const tok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/wizard.html']) {
+      const pg = await open(path, { poolside_tenant_token: tok });
+      await wait(2000);
+      const url = new URL(pg.url()).pathname;
+      check(`board: ${path} loads with no errors`, pg.errs.filter(e => !/browser pop-up/.test(e)).length === 0 && !/login/.test(url),
+        `${url} ${pg.errs.join(' | ').slice(0, 200)}`);
+    }
+    }
+
+    if (want('public')) {
+    // The public club page after the trim (I1, I2): loads clean, no
+    // anonymous feedback and no campaign pop-up.
+    const pub = await open('/');
+    await pub.waitForSelector('#root', { timeout: 20000 });
+    await wait(1500);
+    const txt = await pub.evaluate(() => document.body.innerText);
+    check('public page: loads with no errors, no anonymous feedback', pub.errs.length === 0 && !/anonymous feedback/i.test(txt), pub.errs.join(' | '));
+    }
+
     const m = await makeTempMember(sql, club.id, FAMILY);
     if (want('members')) {
     // D12: Members list fits a phone (with at least one family in it)
@@ -145,6 +172,12 @@ export async function renderChecks({ check, read, sql, jwt }) {
     const coming = await h.$eval('#coming-up', el => el.innerText.replace(/\s+/g, ' '));
     check('D3: a first visit says "Welcome to"', /^Welcome to /.test(first), first);
     check('D8: the family and dues card is above Today', order === true, String(order));
+    const trimmed = await h.evaluate(() => ({
+      feedback: /anonymous feedback/i.test(document.body.innerText),
+      popup: !!document.querySelector('.campaign-popup-host'),
+      count: /\d+ households? · \d+ members?/.test(document.querySelector('.hero-card')?.innerText || ''),
+    }));
+    check('I: member home has no feedback card, pop-up or member-count line', !trimmed.feedback && !trimmed.popup && !trimmed.count, JSON.stringify(trimmed));
     check('D9: "Coming up" doesn\'t list the daily Pool Open', !/Pool Open/.test(coming), coming.slice(0, 160));
     const picking = h.evaluate(() => pickFamilyMember('Who\'s signing up for Swim lessons?'));
     await wait(300);

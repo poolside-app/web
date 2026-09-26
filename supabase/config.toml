@@ -64,10 +64,6 @@ verify_jwt = false
 [functions.events_import]
 verify_jwt = false
 
-# Aggregated time-saved / dollar-value metrics for the Impact admin page
-[functions.tenant_metrics]
-verify_jwt = false
-
 # documents_admin removed 2026-05-21 — Documents feature deleted entirely.
 
 # Membership applications: public submit + admin review
@@ -87,19 +83,9 @@ verify_jwt = false
 [functions.programs]
 verify_jwt = false
 
-# In-app pop-up campaigns: announcements / events / fundraisers shown as
-# a modal on app open. Public list + tenant_admin CRUD.
-[functions.campaigns]
-verify_jwt = false
-
 # Volunteer opportunities — one-shot signup slots (snack-bar shifts, party
 # helpers, swim-meet timers). Public list + member signup + admin manage.
 [functions.volunteer]
-verify_jwt = false
-
-# Guest pass packs (punch-card model) + redemption log. Atomic decrement
-# via optimistic UPDATE … WHERE used_count = X to prevent over-redemption.
-[functions.guest_passes]
 verify_jwt = false
 
 # Unified "who owes what" rollup across applications, programs, passes, dues.
@@ -190,12 +176,6 @@ verify_jwt = false
 # forward the slug. See supabase/functions/tenant_icon/index.ts for why iOS
 # needs the root-level path (it doesn't wait for JS to set the link href).
 [functions.tenant_icon]
-verify_jwt = false
-
-# Anonymous feedback box. submit is public (no auth — anyone can report a
-# pool issue without identifying themselves); list/update_status verify a
-# tenant_admin token inside the function.
-[functions.feedback]
 verify_jwt = false
 
 # Tenant-admin sponsor CRUD. List for the public surface goes through

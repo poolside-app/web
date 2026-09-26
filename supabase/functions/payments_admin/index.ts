@@ -9,7 +9,7 @@
 //   { action: 'list' }
 //     → { ok, items: [{ kind, id, household_id, family_name, label, amount_cents, age_days, source, source_id }, ...] }
 //
-//   { action: 'mark_paid', source: 'application'|'program'|'guest_pass'|'dues',
+//   { action: 'mark_paid', source: 'application'|'program'|'dues',
 //     source_id: <uuid>, household_id?: <uuid for 'dues'> }
 //     → { ok }
 // =============================================================================
@@ -82,7 +82,6 @@ Deno.serve(async (req) => {
       { data: dueHouseholds },
       { data: apps },
       { data: progBookings },
-      { data: passPacks },
     ] = await Promise.all([
       sb.from('households')
         .select('id, family_name, paid_until_year, decided_at:created_at')
@@ -94,16 +93,12 @@ Deno.serve(async (req) => {
       sb.from('program_bookings')
         .select('id, household_id, participant_name, program_id, created_at')
         .eq('tenant_id', TID).eq('paid', false).neq('status', 'cancelled'),
-      sb.from('guest_pass_packs')
-        .select('id, household_id, label, total_count, price_cents, created_at')
-        .eq('tenant_id', TID).eq('paid', false).eq('active', true),
     ]);
 
     // Resolve household + program names in batches
     const hids = new Set<string>();
     (apps ?? []).forEach(a => a.household_id && hids.add(a.household_id));
     (progBookings ?? []).forEach(b => b.household_id && hids.add(b.household_id));
-    (passPacks ?? []).forEach(p => hids.add(p.household_id));
     (dueHouseholds ?? []).forEach(h => hids.add(h.id));
     const { data: households } = hids.size
       ? await sb.from('households').select('id, family_name').in('id', [...hids])
@@ -168,19 +163,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    for (const p of (passPacks ?? [])) {
-      items.push({
-        source: 'guest_pass',
-        source_id: p.id,
-        household_id: p.household_id,
-        family_name: familyByHid.get(p.household_id) ?? null,
-        kind: 'Guest passes',
-        label: `${p.label} (${p.total_count})`,
-        amount_cents: p.price_cents,
-        age_days: ageDays(p.created_at),
-      });
-    }
-
     // Newest oldest first so the chase-list orders by who's been waiting longest
     items.sort((a, b) => ((b.age_days ?? -1) as number) - ((a.age_days ?? -1) as number));
 
@@ -238,14 +220,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: true });
     }
 
-    if (source === 'guest_pass') {
-      const { error } = await sb.from('guest_pass_packs')
-        .update({ paid: true, updated_at: new Date().toISOString() })
-        .eq('id', source_id).eq('tenant_id', TID);
-      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-      return jsonResponse({ ok: true });
-    }
-
     return jsonResponse({ ok: false, error: `Unknown source: ${source}` }, 400);
   }
 
@@ -277,10 +251,6 @@ Deno.serve(async (req) => {
           }
         } else if (it.source === 'program') {
           const { error } = await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString() })
-            .eq('id', it.source_id).eq('tenant_id', TID);
-          if (error) throw new Error(error.message);
-        } else if (it.source === 'guest_pass') {
-          const { error } = await sb.from('guest_pass_packs').update({ paid: true, updated_at: new Date().toISOString() })
             .eq('id', it.source_id).eq('tenant_id', TID);
           if (error) throw new Error(error.message);
         } else if (it.source === 'party') {

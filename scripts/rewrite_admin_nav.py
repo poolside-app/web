@@ -42,7 +42,7 @@ CANONICAL_TABS = [
     ("money",     "/club/admin/payments.html",      "Money"),
     ("calendar",  "/club/admin/events.html",        "Calendar"),
     ("content",   "/club/admin/announcements.html", "Content"),
-    ("insights",  "/club/admin/impact.html",        "Insights"),
+    ("insights",  "/club/admin/audit.html",         "Insights"),
     ("settings",  "/club/admin/settings.html",      "Settings"),
 ]
 
@@ -60,7 +60,6 @@ PAGE_TO_TAB = {
     # Money
     "payments.html":       "money",
     "tiers.html":          "money",
-    "campaigns.html":      "money",
     "donations.html":      "money",
     "sponsors.html":       "money",
     # Calendar — things that happen at the pool on a date
@@ -74,10 +73,8 @@ PAGE_TO_TAB = {
     "announcements.html":  "content",
     "photos.html":         "content",
     "board-meetings.html": "content",
-    "feedback.html":       "content",
     "member-help.html":    "content",
     # Insights
-    "impact.html":         "insights",
     "audit.html":          "insights",
     "health.html":         "insights",
     # Settings — configuration and the club's account with Poolside

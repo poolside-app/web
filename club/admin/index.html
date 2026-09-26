@@ -110,7 +110,7 @@
   <a href="/club/admin/payments.html">Money</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
-  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/audit.html">Insights</a>
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <div id="admin-subtabs"></div>
@@ -135,7 +135,6 @@ const PAY_URL = `${SUPABASE_URL}/functions/v1/payments_admin`;
 const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
 const PROGRAMS_URL = `${SUPABASE_URL}/functions/v1/programs`;
 const VOLUNTEER_URL = `${SUPABASE_URL}/functions/v1/volunteer`;
-const CAMPAIGNS_URL = `${SUPABASE_URL}/functions/v1/campaigns`;
 const TASKS_URL = `${SUPABASE_URL}/functions/v1/admin_tasks`;
 const GATE_URL = `${SUPABASE_URL}/functions/v1/gate_admin`;
 
@@ -362,7 +361,6 @@ document.getElementById('signout').addEventListener('click', logout);
         <div class="stat"><div class="lbl">Open payments</div><div class="val" id="pay-count">…</div></div>
         <div class="stat"><div class="lbl">Upcoming events</div><div class="val" id="ev-count">…</div></div>
         <div class="stat"><div class="lbl">Active programs</div><div class="val" id="prog-count">…</div></div>
-        <div class="stat"><div class="lbl">Live campaigns</div><div class="val" id="camp-count">…</div></div>
       </div>
     </div>
 
@@ -561,7 +559,7 @@ document.getElementById('signout').addEventListener('click', logout);
   try {
     const headers = { 'content-type': 'application/json', 'authorization': `Bearer ${token}` };
     const j = (url, body) => fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({ ok: false }));
-    const [appsPending, parties, payments, events, programs, campaigns, feeds] = await Promise.all([
+    const [appsPending, parties, payments, events, programs, feeds] = await Promise.all([
       // 'needs_attention' = pending submissions + approved-but-unpaid
       // (same unified queue as the Pipeline). Single counter on the
       // dashboard matches the Members nav badge + Pipeline subtab badge.
@@ -570,7 +568,6 @@ document.getElementById('signout').addEventListener('click', logout);
       j(PAY_URL,       { action: 'list' }),
       j(EVENTS_URL,    { action: 'list', range: 'upcoming' }),
       j(PROGRAMS_URL,  { action: 'list', active_only: true }),
-      j(CAMPAIGNS_URL, { action: 'list' }),
       // Imported calendars (Google etc.) count as events too.
       fetch(`${SUPABASE_URL}/functions/v1/external_calendar`, { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'list_public', slug: tenant.slug }) }).then(r => r.json()).catch(() => ({ ok: false })),
@@ -583,25 +580,17 @@ document.getElementById('signout').addEventListener('click', logout);
     // "new applications" via the Pipeline. Counting them again as "open
     // payments" double-counts the same household (Doug 2026-05-23).
     // Filter to payment items NOT tied to an application — typically
-    // pure annual dues / programs / guest passes.
+    // pure annual dues / programs.
     const payItems   = (payments.items || []).filter(i => i.source !== 'application');
     const overdueCount = payItems.filter(i => (i.age_days ?? 0) >= 14).length;
     // Next 30 days, club events plus feed events (a daily "Pool Open" isn't
     // an event; see js/upcoming.js).
     const upcomingEv = PoolsideUpcoming.merge(events.events || [], (feeds.ok && feeds.feeds) || [], { days: 30, limit: Infinity }).length;
     const activeProg = (programs.programs || []).length;
-    const liveCamp = (campaigns.campaigns || []).filter(c => {
-      if (!c.active) return false;
-      const now = Date.now();
-      if (new Date(c.starts_at).getTime() > now) return false;
-      if (c.ends_at && new Date(c.ends_at).getTime() < now) return false;
-      return true;
-    }).length;
 
     document.getElementById('pay-count').textContent  = payItems.length;
     document.getElementById('ev-count').textContent   = upcomingEv;
     document.getElementById('prog-count').textContent = activeProg;
-    document.getElementById('camp-count').textContent = liveCamp;
 
     const items = [];
     if (appCount > 0) {
@@ -650,7 +639,7 @@ document.getElementById('signout').addEventListener('click', logout);
     }
   } catch {
     document.getElementById('activity-card').innerHTML = `<h2>What needs your attention</h2><div class="placeholder">Couldn't load activity feed.</div>`;
-    ['pay-count','ev-count','prog-count','camp-count'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '–'; });
+    ['pay-count','ev-count','prog-count'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '–'; });
   }
 
   // Quick-unlock card — visible only when this tenant has the gate

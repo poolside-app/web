@@ -59,7 +59,6 @@
     const inline = Array.from(document.querySelectorAll('[id$="-scrim"]'));
     for (const el of inline) {
       if (el.id === 'sponsor-scrim') continue;             // ourselves
-      if (el.classList.contains('campaign-popup-host')) continue;  // sibling auto-popup
       if (getComputedStyle(el).display !== 'none') return true;
     }
     return false;

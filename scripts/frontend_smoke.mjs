@@ -121,9 +121,9 @@ const LS = {
 // re-testing members.html three times under different names.
 const ADMIN_PAGES = ['', 'members.html', 'tiers.html', 'application.html', 'payments.html', 'billing.html',
   'events.html', 'parties.html', 'programs.html', 'lifeguards.html', 'my-shifts.html', 'volunteer.html',
-  'campaigns.html', 'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
-  'audit.html', 'emails.html', 'feedback.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',
-  'change-password.html', 'health.html', 'help.html', 'impact.html', 'setup.html',
+  'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
+  'audit.html', 'emails.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',
+  'change-password.html', 'health.html', 'help.html', 'setup.html',
   'import.html', 'migrate.html'];
 
 const PAGES = [

@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
     }
 
     // ── platform fee waiver ──
-    // Take nothing from this club: dues, programs, parties, guest passes, and
+    // Take nothing from this club: dues, programs, parties, and
     // the plan fee its MEMBERS would otherwise pay. Deliberately separate from
     // the subscription, which `plan` / `status` / plan_label_override handle.
     //
@@ -560,7 +560,6 @@ Deno.serve(async (req) => {
       photos:            await safeCount('photos'),
       events:            await safeCount('events'),
       posts:             await safeCount('posts'),
-      feedback:          await safeCount('feedback_submissions'),
       admin_users:       await safeCount('admin_users'),
     };
 

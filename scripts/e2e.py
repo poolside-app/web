@@ -195,7 +195,7 @@ print(f'  tenant A: {SLUG_A} ({TENANT_A_ID[:8]}…)')
 print(f'  tenant B: {SLUG_B} ({TENANT_B_ID[:8]}…)  [throwaway]')
 
 # Track resources for cleanup
-RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'campaigns': [], 'volunteer_opps': [], 'guest_pass_packs': []}
+RESOURCES = {'households': [], 'events': [], 'posts': [], 'photos': [], 'documents': [], 'applications': [], 'programs': [], 'volunteer_opps': []}
 def track(kind, id):  RESOURCES[kind].append(id)
 
 # ── 1. Cross-tenant isolation (THE most important) ───────────────────────
@@ -425,17 +425,6 @@ def settings_round_trip():
     }, TOKEN_A)
 
 step('settings save preserves unrelated keys', settings_round_trip)
-
-# ── 7. tenant_metrics shape ─────────────────────────────────────────────
-section('Metrics endpoints')
-
-def tenant_metrics_shape():
-    r = post(f'{SUPABASE_URL}/functions/v1/tenant_metrics', {'action': 'get'}, TOKEN_A)
-    assert r.get('ok'), f'tenant_metrics: {r}'
-    assert 'totals' in r and 'categories' in r, f'missing keys: {r.keys()}'
-    assert isinstance(r['totals'].get('hours'), (int, float)), 'totals.hours not numeric'
-
-step('tenant_metrics returns expected shape', tenant_metrics_shape)
 
 if PROVIDER_ID:
     PROVIDER_TOKEN = provider_jwt(PROVIDER_ID)
@@ -827,74 +816,6 @@ step('member cancels their own booking',      prog_member_cancels_own_booking)
 step('cross-tenant isolation on programs',    prog_isolation)
 step('anon rejected for admin action',        prog_anon_blocked_for_admin_action)
 
-# ── 14. Campaigns (in-app pop-ups) ───────────────────────────────────────
-section('Campaigns (pop-ups)')
-
-CAMP_ID = None
-
-def camp_admin_create():
-    global CAMP_ID
-    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
-        'action': 'create',
-        'title':  f'E2E Fund Drive {STAMP}',
-        'body':   'Help keep the snack bar open this season.',
-        'kind':   'fundraiser',
-        'audience': 'both',
-        'cta_label': 'Donate',
-        'cta_url':   'https://example.com/donate',
-        'starts_at': '2020-01-01T00:00:00Z',  # already started
-    }, TOKEN_A)
-    assert r.get('ok'), f'create: {r}'
-    CAMP_ID = r['campaign']['id']
-    track('campaigns', CAMP_ID)
-
-def camp_public_list_active():
-    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
-        'action': 'list_active', 'slug': SLUG_A, 'audience': 'public',
-    })
-    assert r.get('ok'), f'list_active: {r}'
-    found = next((c for c in r.get('campaigns', []) if c['id'] == CAMP_ID), None)
-    assert found, 'public list_active missing newly-created campaign (audience=both should match)'
-
-def camp_audience_filter_works():
-    # Create a members-only campaign; list_active(public) should NOT include it.
-    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
-        'action': 'create',
-        'title': f'E2E Members Only {STAMP}',
-        'audience': 'members',
-        'starts_at': '2020-01-01T00:00:00Z',
-    }, TOKEN_A)
-    assert r.get('ok'), f'create members-only: {r}'
-    track('campaigns', r['campaign']['id'])
-
-    pub = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
-        'action': 'list_active', 'slug': SLUG_A, 'audience': 'public',
-    })
-    assert pub.get('ok')
-    leak = next((c for c in pub.get('campaigns', []) if c['id'] == r['campaign']['id']), None)
-    assert not leak, 'members-only campaign leaked to public surface'
-
-def camp_isolation():
-    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', { 'action': 'list' }, TOKEN_B)
-    assert r.get('ok')
-    leak = any(c['id'] == CAMP_ID for c in r.get('campaigns', []))
-    assert not leak, 'tenant B sees tenant A campaign (ISOLATION FAIL)'
-
-def camp_archive_hides_from_public():
-    r = post(f'{SUPABASE_URL}/functions/v1/campaigns', { 'action': 'delete', 'id': CAMP_ID }, TOKEN_A)
-    assert r.get('ok'), f'delete: {r}'
-    pub = post(f'{SUPABASE_URL}/functions/v1/campaigns', {
-        'action': 'list_active', 'slug': SLUG_A, 'audience': 'public',
-    })
-    leak = any(c['id'] == CAMP_ID for c in pub.get('campaigns', []))
-    assert not leak, 'archived campaign still visible publicly'
-
-step('admin creates campaign',                  camp_admin_create)
-step('public list_active surfaces it',          camp_public_list_active)
-step('audience=members hidden from public',     camp_audience_filter_works)
-step('cross-tenant isolation on campaigns',     camp_isolation)
-step('archive hides from public list',          camp_archive_hides_from_public)
-
 # ── 15. Member directory (opt-in) ────────────────────────────────────────
 section('Member directory')
 
@@ -1026,91 +947,6 @@ step('admin roster includes signup',        vol_admin_roster_sees_signup)
 step('member cancels their signup',         vol_member_cancel)
 step('cross-tenant isolation on volunteer', vol_isolation)
 
-# ── 17. Guest passes (punch cards) ───────────────────────────────────────
-section('Guest passes')
-
-GP_PACK_ID = None
-
-def gp_admin_issue_unpaid():
-    global GP_PACK_ID
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'issue', 'household_id': A_HOUSEHOLD_ID,
-        'total_count': 3, 'price_cents': 1500,
-        'label': f'E2E 3-pack {STAMP}',
-    }, TOKEN_A)
-    assert r.get('ok'), f'issue: {r}'
-    GP_PACK_ID = r['pack']['id']
-    track('guest_pass_packs', GP_PACK_ID)
-    assert r['pack']['paid'] is False
-    assert r['pack']['remaining'] == 3
-
-def gp_member_redeem_blocked_unpaid():
-    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'redeem', 'pack_id': GP_PACK_ID,
-        'guest_name': f'Guest A {STAMP}',
-    }, tok)
-    assert not r.get('ok'), 'should refuse to redeem an unpaid pack'
-
-def gp_admin_marks_paid():
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'mark_paid', 'pack_id': GP_PACK_ID, 'paid': True,
-    }, TOKEN_A)
-    assert r.get('ok') and r['pack']['paid'] is True, f'mark_paid: {r}'
-
-def gp_member_redeems_one():
-    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'redeem', 'pack_id': GP_PACK_ID,
-        'guest_name': f'Guest A {STAMP}',
-    }, tok)
-    assert r.get('ok'), f'redeem: {r}'
-    assert r['pack']['used_count'] == 1, f'used_count not incremented: {r}'
-    assert r['pack']['remaining'] == 2
-
-def gp_member_my_packs_lists_it():
-    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', { 'action': 'my_packs' }, tok)
-    assert r.get('ok'), f'my_packs: {r}'
-    found = next((p for p in r.get('packs', []) if p['id'] == GP_PACK_ID), None)
-    assert found, 'pack missing from my_packs'
-    assert found['remaining'] == 2
-
-def gp_overuse_blocked():
-    # Burn the remaining 2, then a third redeem should fail.
-    tok = member_jwt(M_PRIMARY_ID, M_TID, M_SLUG, M_HID)
-    r1 = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'redeem', 'pack_id': GP_PACK_ID, 'guest_name': 'g2',
-    }, tok)
-    r2 = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'redeem', 'pack_id': GP_PACK_ID, 'guest_name': 'g3',
-    }, tok)
-    assert r1.get('ok') and r2.get('ok'), 'middle redemptions failed'
-    r3 = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'redeem', 'pack_id': GP_PACK_ID, 'guest_name': 'g4',
-    }, tok)
-    assert not r3.get('ok'), 'pack should refuse over-redemption'
-
-def gp_admin_usage_log_complete():
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', { 'action': 'usage', 'pack_id': GP_PACK_ID }, TOKEN_A)
-    assert r.get('ok'), f'usage: {r}'
-    assert len(r.get('uses', [])) == 3, f'expected 3 uses, got {len(r.get("uses", []))}'
-
-def gp_isolation():
-    r = post(f'{SUPABASE_URL}/functions/v1/guest_passes', { 'action': 'list' }, TOKEN_B)
-    assert r.get('ok')
-    leak = any(p['id'] == GP_PACK_ID for p in r.get('packs', []))
-    assert not leak, 'tenant B sees tenant A pack (ISOLATION FAIL)'
-
-step('admin issues unpaid pack',           gp_admin_issue_unpaid)
-step('redeem refused while unpaid',        gp_member_redeem_blocked_unpaid)
-step('admin marks pack paid',              gp_admin_marks_paid)
-step('member redeems one (decrements)',    gp_member_redeems_one)
-step('my_packs reflects remaining',        gp_member_my_packs_lists_it)
-step('over-redemption blocked',            gp_overuse_blocked)
-step('admin usage log shows all redeems',  gp_admin_usage_log_complete)
-step('cross-tenant isolation on packs',    gp_isolation)
-
 # ── 18. Payments rollup ──────────────────────────────────────────────────
 section('Payments rollup')
 
@@ -1129,33 +965,31 @@ def pay_seed_unpaid_pack():
     PAY_HID = r['household_id']
     track('households', PAY_HID)
 
-    p = post(f'{SUPABASE_URL}/functions/v1/guest_passes', {
-        'action': 'issue', 'household_id': PAY_HID,
-        'total_count': 5, 'price_cents': 2500, 'label': f'Pay Test pack {STAMP}',
-    }, TOKEN_A)
-    assert p.get('ok'), f'seed pack: {p}'
-    PAY_PACK_ID = p['pack']['id']
-    track('guest_pass_packs', PAY_PACK_ID)
+    # An approved signup that hasn't paid yet is what the rollup chases.
+    rows = mgmt_query(f"""insert into public.applications (tenant_id, family_name, primary_name, status, payment_status,
+        payment_method, household_id) values ('{TENANT_A_ID}', 'Pay Test {STAMP}', 'Pay Tester {STAMP}', 'approved', 'unpaid',
+        'venmo', '{PAY_HID}') returning id;""")
+    PAY_PACK_ID = rows[0]['id']
+    track('applications', PAY_PACK_ID)
 
 def pay_list_includes_pack():
     r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', { 'action': 'list' }, TOKEN_A)
     assert r.get('ok'), f'list: {r}'
-    found = next((i for i in r.get('items', []) if i['source'] == 'guest_pass' and i['source_id'] == PAY_PACK_ID), None)
-    assert found, 'unpaid pack missing from rollup'
-    assert found['amount_cents'] == 2500
+    found = next((i for i in r.get('items', []) if i['source'] == 'application' and i['source_id'] == PAY_PACK_ID), None)
+    assert found, 'unpaid signup missing from rollup'
 
 def pay_mark_paid_flips_source():
     r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', {
-        'action': 'mark_paid', 'source': 'guest_pass', 'source_id': PAY_PACK_ID,
+        'action': 'mark_paid', 'source': 'application', 'source_id': PAY_PACK_ID,
     }, TOKEN_A)
     assert r.get('ok'), f'mark_paid: {r}'
-    rows = mgmt_query(f"select paid from public.guest_pass_packs where id = '{PAY_PACK_ID}';")
-    assert rows and rows[0]['paid'] is True, 'mark_paid did not flip the pack'
+    rows = mgmt_query(f"select payment_status from public.applications where id = '{PAY_PACK_ID}';")
+    assert rows and rows[0]['payment_status'] == 'paid', 'mark_paid did not mark the signup paid'
 
 def pay_list_excludes_paid():
     r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', { 'action': 'list' }, TOKEN_A)
     found = next((i for i in r.get('items', []) if i['source_id'] == PAY_PACK_ID), None)
-    assert not found, 'paid pack still in rollup'
+    assert not found, 'paid signup still in rollup'
 
 def pay_isolation():
     r = post(f'{SUPABASE_URL}/functions/v1/payments_admin', { 'action': 'list' }, TOKEN_B)
@@ -1163,8 +997,8 @@ def pay_isolation():
     leak = any(i['source_id'] == PAY_PACK_ID for i in r.get('items', []))
     assert not leak, 'tenant B sees tenant A unpaid items (ISOLATION FAIL)'
 
-step('seed unpaid guest-pass pack',     pay_seed_unpaid_pack)
-step('rollup list includes the pack',   pay_list_includes_pack)
+step('seed an approved, unpaid signup', pay_seed_unpaid_pack)
+step('rollup list includes it',         pay_list_includes_pack)
 step('mark_paid flips source row',      pay_mark_paid_flips_source)
 step('paid items drop off the rollup',  pay_list_excludes_paid)
 step('cross-tenant isolation on rollup', pay_isolation)
@@ -2066,12 +1900,8 @@ def cleanup_all():
         mgmt_query(f"delete from public.documents where id = '{d}';")
     for pid in RESOURCES['programs']:
         mgmt_query(f"delete from public.programs where id = '{pid}';")
-    for cid in RESOURCES['campaigns']:
-        mgmt_query(f"delete from public.campaigns where id = '{cid}';")
     for vid in RESOURCES['volunteer_opps']:
         mgmt_query(f"delete from public.volunteer_opportunities where id = '{vid}';")
-    for gid in RESOURCES['guest_pass_packs']:
-        mgmt_query(f"delete from public.guest_pass_packs where id = '{gid}';")
     # Test-created admins (deactivated above, hard-delete here)
     mgmt_query(f"delete from public.admin_users where username like 'coadmin-e2e-%@example.com';")
     mgmt_query(f"delete from public.admin_users where username like 'roletest-e2e-%@example.com';")

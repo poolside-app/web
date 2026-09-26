@@ -195,27 +195,27 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
   treasurer: {
     label: 'Treasurer',
     description: 'Money and payments. Can mark paid, send reminders, refund.',
-    scopes: ['payments', 'applications', 'tiers', 'renewals', 'audit', 'impact'],
+    scopes: ['payments', 'applications', 'tiers', 'renewals', 'audit'],
   },
   membership: {
     label: 'Membership chair',
     description: 'Applications and households. Approves new members.',
-    scopes: ['applications', 'households', 'tiers', 'renewals', 'directory', 'impact'],
+    scopes: ['applications', 'households', 'tiers', 'renewals', 'directory'],
   },
   events: {
     label: 'Volunteer coordinator',
     description: 'Events and signups. Schedules parties, programs, and volunteer slots.',
-    scopes: ['events', 'parties', 'programs', 'volunteer', 'passes', 'impact'],
+    scopes: ['events', 'parties', 'programs', 'volunteer'],
   },
   communications: {
     label: 'Communications',
-    description: 'Announcements, campaigns, and photo gallery.',
-    scopes: ['announcements', 'campaigns', 'photos', 'policies', 'impact'],
+    description: 'Announcements and photo gallery.',
+    scopes: ['announcements', 'photos', 'policies'],
   },
   secretary: {
     label: 'Secretary',
     description: 'Takes board meeting minutes.',
-    scopes: ['meetings', 'impact'],
+    scopes: ['meetings'],
   },
   gate_attendant: {
     label: 'Gate attendant / lifeguard',
@@ -231,8 +231,8 @@ const ROLE_TEMPLATES: Record<string, { label: string; description: string; scope
 
 const ALL_SCOPES = [
   'applications', 'households', 'payments', 'tiers', 'renewals', 'events', 'programs', 'parties',
-  'announcements', 'campaigns', 'volunteer', 'passes', 'photos',
-  'policies', 'directory', 'impact', 'audit',
+  'announcements', 'volunteer', 'photos',
+  'policies', 'directory', 'audit',
   'meetings',
   'check_in',
   'shifts',

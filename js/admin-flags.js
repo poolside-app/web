@@ -179,9 +179,7 @@
     parties:               { selector: 'a[href="/club/admin/parties.html"]',    defaultOn: true  },
     programs:              { selector: 'a[href="/club/admin/programs.html"]',   defaultOn: true  },
     volunteer:             { selector: 'a[href="/club/admin/volunteer.html"]',  defaultOn: true  },
-    campaigns:             { selector: 'a[href="/club/admin/campaigns.html"]',  defaultOn: true  },
     lifeguard_scheduling:  { selector: 'a[href="/club/admin/lifeguards.html"]', defaultOn: false },
-    // guest_passes removed 2026-05-08
   };
 
   // Scope → nav selector (per-admin role assignments).
@@ -203,12 +201,10 @@
     programs:      'a[href="/club/admin/programs.html"]',
     parties:       'a[href="/club/admin/parties.html"]',
     announcements: 'a[href="/club/admin/announcements.html"]',
-    campaigns:     'a[href="/club/admin/campaigns.html"]',
     volunteer:     'a[href="/club/admin/volunteer.html"]',
     // passes scope removed 2026-05-08
     policies:      'a[href="/club/admin/policies.html"]',
     photos:        'a[href="/club/admin/photos.html"]',
-    impact:        'a[href="/club/admin/impact.html"]',
     audit:         'a[href="/club/admin/audit.html"]',
     settings:      'a[href="/club/admin/settings.html"]',
     // meetings: no entry — every board member can start a meeting and read
@@ -500,7 +496,7 @@
           }
         }
         // Members hub — visible if user has ANY members-section scope.
-        const MEMBERS_SCOPES = ['households','applications','tiers','renewals','payments','programs','parties','volunteer','passes','meetings'];
+        const MEMBERS_SCOPES = ['households','applications','tiers','renewals','payments','programs','parties','volunteer','meetings'];
         const hasAnyMembers = MEMBERS_SCOPES.some(s => scopes.has(s));
         if (!hasAnyMembers) {
           document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });

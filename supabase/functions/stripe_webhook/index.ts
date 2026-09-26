@@ -403,11 +403,6 @@ Deno.serve(async (req) => {
         .eq('id', md.booking_id).eq('tenant_id', tenantId);
     }
 
-    if (kind === 'guest_pass_pack' && md.pack_id) {
-      await sb.from('guest_pass_packs').update({ paid: true, updated_at: new Date().toISOString() })
-        .eq('id', md.pack_id).eq('tenant_id', tenantId);
-    }
-
     // Party booking — Stripe path. Marks paid + materializes calendar event,
     // mirrors what parties_admin.verify_payment does for the Venmo path.
     // Race-safe: the partial unique index on (tenant_id, starts_at::date)

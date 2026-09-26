@@ -314,24 +314,6 @@
   </div>
 </div>
 
-<!-- Anonymous feedback modal — public visitors and members both. -->
-<div id="feedback-scrim" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:flex-start;justify-content:center;overflow-y:auto;padding:32px 16px;z-index:220" onclick="if (event.target === this) closeFeedback()">
-  <div style="background:#fff;border-radius:18px;max-width:520px;width:100%;padding:26px;box-shadow:0 30px 60px -10px rgba(15,23,42,.35)">
-    <h2 style="margin:0;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:22px">💬 Anonymous feedback</h2>
-    <p style="color:var(--muted);font-size:13.5px;margin:6px 0 14px;line-height:1.55">Tell the board about a pool issue or share a comment. We don't track who sent it.</p>
-    <label style="display:block;font:600 11px Inter;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px">Add a photo (optional)</label>
-    <input type="file" id="fb-photo" accept="image/jpeg,image/png,image/webp,image/gif">
-    <img id="fb-photo-preview" src="" style="display:none;margin-top:8px;max-width:100%;border-radius:10px;border:1px solid var(--border)">
-    <label style="display:block;font:600 11px Inter;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px">Your comment *</label>
-    <textarea id="fb-comment" rows="5" maxlength="2000" placeholder="What happened, what should the board know?" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px/1.5 Inter;resize:vertical"></textarea>
-    <p style="font-size:11px;color:var(--muted);margin:6px 0 0">🔒 Anonymous — your name and email are not collected.</p>
-    <div id="fb-err" style="display:none;margin-top:10px;padding:10px 12px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
-      <button onclick="closeFeedback()" style="background:transparent;color:var(--blue);border:1.5px solid var(--border);padding:9px 18px;border-radius:10px;cursor:pointer;font:600 13px Inter">Cancel</button>
-      <button id="fb-submit" onclick="submitFeedback()" style="background:var(--blue);color:#fff;border:0;padding:10px 20px;border-radius:10px;cursor:pointer;font:600 13px Inter">Send</button>
-    </div>
-  </div>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="/js/sponsor-popup.js" defer></script>
@@ -475,64 +457,6 @@ async function startDonateStripe() {
   }
 }
 
-// ── Anonymous feedback modal ──────────────────────────────────────────
-function openFeedback() {
-  document.getElementById('fb-comment').value = '';
-  document.getElementById('fb-photo').value = '';
-  document.getElementById('fb-photo-preview').style.display = 'none';
-  document.getElementById('fb-err').style.display = 'none';
-  document.getElementById('feedback-scrim').style.display = 'flex';
-}
-function closeFeedback() { document.getElementById('feedback-scrim').style.display = 'none'; }
-document.addEventListener('change', (e) => {
-  if (e.target && e.target.id === 'fb-photo') {
-    const file = e.target.files && e.target.files[0];
-    const img = document.getElementById('fb-photo-preview');
-    if (file) {
-      const r = new FileReader();
-      r.onload = () => { img.src = r.result; img.style.display = 'block'; };
-      r.readAsDataURL(file);
-    } else { img.style.display = 'none'; }
-  }
-});
-async function submitFeedback() {
-  const errEl = document.getElementById('fb-err'); errEl.style.display = 'none';
-  const comment = document.getElementById('fb-comment').value.trim();
-  if (!comment) { errEl.textContent = 'Please add a comment.'; errEl.style.display = 'block'; return; }
-  const slug = (() => {
-    const m = window.location.hostname.match(/^([a-z0-9][a-z0-9-]*)\.poolsideapp\.com$/i);
-    return m && m[1] && m[1] !== 'www' ? m[1].toLowerCase() : null;
-  })();
-  if (!slug) { errEl.textContent = 'Cannot submit from this URL.'; errEl.style.display = 'block'; return; }
-  const file = document.getElementById('fb-photo').files[0] || null;
-  let photo_content_type = null; let photo_base64 = null;
-  if (file) {
-    if (file.size > 8 * 1024 * 1024) { errEl.textContent = 'Photo too large (max 8 MB).'; errEl.style.display = 'block'; return; }
-    photo_content_type = file.type;
-    photo_base64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result).split(',')[1] || '');
-      r.onerror = () => rej(new Error('Could not read photo'));
-      r.readAsDataURL(file);
-    });
-  }
-  const btn = document.getElementById('fb-submit'); btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/feedback`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'submit', slug, comment, photo_content_type, photo_base64 }),
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || 'Submit failed');
-    closeFeedback();
-    alert('✓ Thanks — your feedback is on the way to the board.');
-  } catch (e) {
-    errEl.textContent = e.message; errEl.style.display = 'block';
-  } finally {
-    btn.disabled = false; btn.textContent = orig;
-  }
-}
-
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -644,7 +568,7 @@ function fmtHourLabel(hhmm) {
 }
 
 function renderTenant(t, ps, posts, events, photos, documents, programs, sponsors, memberCount) {
-  // Stash for donate modal + feedback submit so they can read public_settings
+  // Stash for the donate modal so it can read public_settings
   // without re-fetching.
   window.PUBLIC_DATA = { tenant: t, public_settings: ps, sponsors: sponsors || [], member_count: memberCount || null };
 
@@ -792,19 +716,6 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
     </section>`;
   })() : '';
 
-  const feedbackSection = `
-    <section style="padding:18px 22px 0;max-width:1120px;margin:0 auto">
-      <div role="button" tabindex="0" class="card" style="padding:16px 20px;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);cursor:pointer;display:flex;align-items:center;gap:14px;transition:border-color .15s"
-           onclick="openFeedback()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openFeedback();}"
-           onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
-        <div style="flex:1;min-width:0">
-          <div style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--blue)">💬 Send anonymous feedback</div>
-          <div style="font-size:13.5px;color:var(--muted);margin-top:4px;line-height:1.5">Broken tile? Dirty bathroom? A suggestion? Add a photo and a note — we don't track who sent it.</div>
-        </div>
-        <span style="color:var(--blue);font-weight:700;flex-shrink:0;font-size:20px;line-height:1">→</span>
-      </div>
-    </section>`;
-
   document.getElementById('root').innerHTML = `
     ${seasonBanner}
     ${sponsorStripHtml}
@@ -925,7 +836,6 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
         `).join('')}
       </section>
     ` : ''}
-    ${feedbackSection}
   `;
 
   // "Today at the pool" — hours + today's events (recurrence-expanded, smart

@@ -50,7 +50,6 @@
   .pill.dues       { background: #fef3c7; color: #92400e; }
   .pill.application { background: #ddd6fe; color: #5b21b6; }
   .pill.program    { background: #dbeafe; color: #1e3a8a; }
-  .pill.guest_pass { background: #cffafe; color: #155e75; }
   .pill.aged       { background: #fee2e2; color: #7f1d1d; }
   .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
 
@@ -94,7 +93,7 @@
   <a href="/club/admin/payments.html" class="on">Money</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
-  <a href="/club/admin/impact.html">Insights</a>
+  <a href="/club/admin/audit.html">Insights</a>
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <div id="admin-subtabs"></div>
@@ -130,7 +129,6 @@
           <button data-filter="dues">Dues</button>
           <button data-filter="application">Memberships</button>
           <button data-filter="program">Programs</button>
-          <button data-filter="guest_pass">Passes</button>
         </div>
       </div>
       <div id="summary" class="summary"></div>
@@ -155,7 +153,7 @@
 
       <div class="card" data-owner-only data-focus="stripe">
         <h2>Card payments (Stripe)</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, applications, programs, and guest passes. Charges land directly in your bank. Poolside takes a 0.5% platform fee on dues; 1.5% on programs/passes.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Connect your club's own Stripe account to accept card payments for dues, applications, programs and parties. Charges land directly in your bank. Poolside takes a 1% platform fee on dues; 1.5% on programs and parties.</p>
         <div id="stripe-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
         <button class="btn btn-primary" id="stripe-connect-btn" type="button" onclick="connectStripe()" style="display:none;background:var(--blue)">Connect Stripe</button>
         <button class="btn btn-ghost" id="stripe-resume-btn" type="button" onclick="connectStripe()" style="display:none">Resume onboarding</button>
@@ -395,7 +393,7 @@ document.querySelectorAll('#filter button').forEach(b => {
 
 function fmtMoney(c) { if (c === null || c === undefined) return '—'; return '$' + (c / 100).toFixed(2); }
 function sourceLabel(s) {
-  return ({ dues: 'Dues', application: 'Membership', program: 'Program', guest_pass: 'Passes' })[s] || s;
+  return ({ dues: 'Dues', application: 'Membership', program: 'Program' })[s] || s;
 }
 
 function render() {
@@ -404,7 +402,7 @@ function render() {
 
   // Summary stats — counts + sum of known amounts (dues amount unknown so excluded)
   const summary = document.getElementById('summary');
-  const byKind = { dues: 0, application: 0, program: 0, guest_pass: 0 };
+  const byKind = { dues: 0, application: 0, program: 0 };
   let knownTotal = 0;
   for (const i of CACHE) {
     byKind[i.source] = (byKind[i.source] || 0) + 1;
@@ -414,7 +412,7 @@ function render() {
     <div class="stat"><div class="lbl">Open items</div><div class="val">${CACHE.length}</div></div>
     <div class="stat"><div class="lbl">Dues</div><div class="val">${byKind.dues || 0}</div></div>
     <div class="stat"><div class="lbl">Memberships</div><div class="val">${byKind.application || 0}</div></div>
-    <div class="stat"><div class="lbl">Programs + passes</div><div class="val">${(byKind.program || 0) + (byKind.guest_pass || 0)}</div></div>
+    <div class="stat"><div class="lbl">Programs</div><div class="val">${(byKind.program || 0)}</div></div>
     <div class="stat"><div class="lbl">Known $ owed</div><div class="val">${fmtMoney(knownTotal)}</div></div>
   `;
 

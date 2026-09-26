@@ -543,24 +543,6 @@
   .d-preset:hover { border-color:var(--blue); }
 </style>
 
-<!-- Anonymous feedback modal — opened from the feedback card on the home. -->
-<div class="scrim" id="feedback-scrim" onclick="if (event.target === this) closeFeedback()">
-  <div class="pmodal">
-    <h2 style="margin:0;font-family:'Fraunces',Georgia,serif;color:var(--blue)">💬 Anonymous feedback</h2>
-    <p style="color:var(--muted);font-size:13px;margin:6px 0 14px;line-height:1.55">Tell the board about a pool issue or share a comment. We don't track who sent it.</p>
-    <label>Add a photo (optional)</label>
-    <input type="file" id="fb-photo" accept="image/jpeg,image/png,image/webp,image/gif">
-    <img id="fb-photo-preview" src="" style="display:none;margin-top:8px;max-width:100%;border-radius:10px;border:1px solid var(--border)">
-    <label style="margin-top:12px">Your comment *</label>
-    <textarea id="fb-comment" rows="5" maxlength="2000" placeholder="What happened, what should the board know?" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px/1.5 'Inter';resize:vertical"></textarea>
-    <p style="font-size:11px;color:var(--muted);margin:6px 0 0">🔒 Anonymous — your name and email are not collected.</p>
-    <div class="perr" id="fb-err"></div>
-    <div class="pmodal-foot">
-      <button class="btn btn-ghost" onclick="closeFeedback()">Cancel</button>
-      <button class="btn" id="fb-submit" onclick="submitFeedback()" style="background:var(--blue);color:#fff">Send</button>
-    </div>
-  </div>
-</div>
 
 <!-- In-page stand-ins for the browser's alert, confirm and prompt boxes. -->
 <div class="m-toast" id="m-toast" role="status" aria-live="polite"></div>
@@ -1311,13 +1293,6 @@ async function volunteerCancel(sid) {
   await refreshVolunteer();
 }
 
-// Guest passes were retired 2026-09-07. The admin nav entry and the
-// settings toggle went on 2026-05-08 ("not on the roadmap"), but this
-// member-side block was left behind and still called the guest_passes
-// function — so the feature was half-live: no way to administer it,
-// but members would have seen the card the moment a pack existed.
-// Zero packs and zero uses were ever recorded.
-
 // (Member directory removed 2026-05-05 — even an opt-in roster exposes
 //  member names to anyone with a tenant sign-in. For small private clubs
 //  with kids that's privacy theater; admins can still see contacts via
@@ -1634,20 +1609,6 @@ function renderSeasonClosedBanner(season) {
     </div>`;
 }
 
-function renderMemberCountTicker(count, pubCfg) {
-  if (!count) return '';
-  if (pubCfg && pubCfg.show_member_count === false) return '';
-  if (!count.households && !count.members) return '';
-  // This ticker renders inside .hero-card, which is a dark navy gradient.
-  // It previously used --muted for the label and --blue for the numbers —
-  // and --blue IS the hero's own navy, so the counts were invisible against
-  // their own background. Light-on-dark, and don't say "1 households".
-  const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? '' : 's'}`;
-  return `<div style="font-size:12.5px;color:rgba(255,255,255,.75);margin-top:10px;letter-spacing:.02em">
-    <b style="color:#fff">${plural(count.households, 'household')}</b> · <b style="color:#fff">${plural(count.members, 'member')}</b>
-  </div>`;
-}
-
 function renderFundraiserCard(fund, payments, tenant) {
   if (!fund || !fund.enabled) return '';
   const goal = Math.max(0, fund.goal_cents || 0);
@@ -1723,21 +1684,6 @@ async function loadDonationsLeaderboard() {
   } catch { /* leaderboard is best-effort */ }
 }
 
-function renderFeedbackCard() {
-  // Single-tap card. Was a <details> expand-then-button two-step which read
-  // misleadingly as "Tap to send" — tapping just expanded it, didn't send
-  // anything. Now the whole card is the button: tap → modal → fill → send.
-  return `
-    <div role="button" tabindex="0" class="card" style="padding:16px;margin-top:14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .15s"
-         onclick="openFeedback()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openFeedback();}"
-         onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="flex:1;min-width:0">
-        <div style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:var(--blue)">💬 Send anonymous feedback</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5">Broken tile? Dirty bathroom? A suggestion? Add a photo and a note — we don't track who sent it.</div>
-      </div>
-      <span style="color:var(--blue);font-weight:700;flex-shrink:0;font-size:18px;line-height:1">→</span>
-    </div>`;
-}
 
 // ── Donate modal (Stripe + Venmo QR) ─────────────────────────────────
 let DONATE_AMOUNT = 5000;  // cents — defaults to $50
@@ -1831,61 +1777,6 @@ async function startDonateStripe() {
   }
 }
 
-// ── Anonymous feedback modal ─────────────────────────────────────────────
-function openFeedback() {
-  document.getElementById('fb-comment').value = '';
-  document.getElementById('fb-photo').value = '';
-  document.getElementById('fb-photo-preview').style.display = 'none';
-  document.getElementById('fb-err').classList.remove('show');
-  document.getElementById('feedback-scrim').classList.add('open');
-}
-function closeFeedback() { document.getElementById('feedback-scrim').classList.remove('open'); }
-document.addEventListener('change', (e) => {
-  if (e.target && e.target.id === 'fb-photo') {
-    const file = e.target.files && e.target.files[0];
-    const img = document.getElementById('fb-photo-preview');
-    if (file) {
-      const r = new FileReader();
-      r.onload = () => { img.src = r.result; img.style.display = 'block'; };
-      r.readAsDataURL(file);
-    } else { img.style.display = 'none'; }
-  }
-});
-async function submitFeedback() {
-  const err = document.getElementById('fb-err'); err.classList.remove('show');
-  const comment = document.getElementById('fb-comment').value.trim();
-  if (!comment) { err.textContent = 'Please add a comment.'; err.classList.add('show'); return; }
-  const slug = getSlug();
-  const file = document.getElementById('fb-photo').files[0] || null;
-  let photo_content_type = null; let photo_base64 = null;
-  if (file) {
-    if (file.size > 8 * 1024 * 1024) { err.textContent = 'Photo too large (max 8 MB).'; err.classList.add('show'); return; }
-    photo_content_type = file.type;
-    photo_base64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result).split(',')[1] || '');
-      r.onerror = () => rej(new Error('Could not read photo'));
-      r.readAsDataURL(file);
-    });
-  }
-  const btn = document.getElementById('fb-submit'); btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/feedback`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'submit', slug, comment, photo_content_type, photo_base64 }),
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || 'Submit failed');
-    closeFeedback();
-    notify('✓ Thanks. Your feedback is on the way to the board.');
-  } catch (e) {
-    err.textContent = e.message; err.classList.add('show');
-    btn.disabled = false; btn.textContent = orig;
-    return;
-  }
-  btn.disabled = false; btn.textContent = orig;
-}
 
 // ── Ask the board (help requests) ───────────────────────────────────────
 // A member's question goes to the board member who handles its topic, or
@@ -2198,58 +2089,6 @@ function resetUnlockBtn() {
   if (btn) { btn.disabled = false; btn.textContent = '🚪  Unlock the gate'; btn.style.cursor = 'pointer'; btn.style.background = '#f59e0b'; btn.style.color = '#0a3b5c'; }
 }
 
-// Returns true if any user-initiated modal scrim is currently open. Used by
-// auto-popups (campaign, sponsor) to defer rather than land on top of a
-// modal the user opened intentionally — root cause of the "modal goes away"
-// bug we hit in Bishop Estates and again here.
-function isUserModalOpen() {
-  if (document.querySelector('.scrim.open')) return true;
-  // Inline-style scrims (donate, feedback on club/index.html — but mirrored
-  // here for safety): treat any fixed-position scrim with display:flex as open.
-  const inlineOpen = Array.from(document.querySelectorAll('[id$="-scrim"]'))
-    .some(el => getComputedStyle(el).display !== 'none' && !el.classList.contains('campaign-popup-host'));
-  return inlineOpen;
-}
-
-// ── Campaign pop-up ─────────────────────────────────────────────────────
-async function showCampaignPopup() {
-  try {
-    const slug = getSlug(); if (!slug) return;
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/campaigns`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'list_active', slug, audience: 'members' }),
-    });
-    const data = await res.json();
-    if (!data.ok || !data.campaigns?.length) return;
-    // Find first not-yet-dismissed campaign
-    const dismissed = JSON.parse(localStorage.getItem('poolside_campaigns_dismissed') || '{}');
-    const c = data.campaigns.find(x => !dismissed[x.id]);
-    if (!c) return;
-    // Defer if a user modal is already open — show next time around.
-    if (isUserModalOpen()) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'scrim open campaign-popup-host';
-    wrap.style.zIndex = '180';
-    wrap.innerHTML = `
-      <div class="pmodal" style="max-width:440px;text-align:center;background:linear-gradient(135deg,var(--blue),var(--blue-2));color:#fff;padding:32px 26px">
-        <div style="font-size:48px;line-height:1">${escapeHtml(c.emoji || '📣')}</div>
-        <h2 style="font-family:'Fraunces',serif;font-size:22px;margin:14px 0 8px;color:#fff">${escapeHtml(c.title)}</h2>
-        ${c.body ? `<p style="opacity:.92;margin:0 0 18px;font-size:14px;line-height:1.55">${escapeHtml(c.body)}</p>` : ''}
-        ${c.cta_label && c.cta_url ? `<a href="${escapeAttr(c.cta_url)}" target="_blank" rel="noopener" style="display:inline-block;background:#fff;color:var(--blue);padding:11px 22px;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none">${escapeHtml(c.cta_label)} →</a>` : ''}
-        <div style="margin-top:18px"><button id="camp-close" style="background:transparent;border:1.5px solid rgba(255,255,255,.4);color:#fff;padding:8px 18px;border-radius:10px;font:600 12px 'Inter';cursor:pointer">Dismiss</button></div>
-      </div>`;
-    document.body.appendChild(wrap);
-    const close = () => {
-      dismissed[c.id] = Date.now();
-      localStorage.setItem('poolside_campaigns_dismissed', JSON.stringify(dismissed));
-      wrap.remove();
-    };
-    wrap.querySelector('#camp-close').addEventListener('click', close);
-    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
-  } catch { /* non-critical */ }
-}
-
 // ── Profile flow ───────────────────────────────────────────────────────
 function openProfileModal() {
   if (!ME_USER) return;
@@ -2340,7 +2179,7 @@ async function submitProfile() {
     } catch { /* keep empties */ }
   }
   // Expose Stripe-availability to refresh functions so they can render
-  // "Pay with card" buttons on unpaid programs / guest-pass packs.
+  // "Pay with card" buttons on unpaid programs.
   window.STRIPE_ENABLED = !!(publicData.tenant && publicData.tenant.stripe_charges_enabled);
 
   // If branding has a logo, swap the dot for the actual image.
@@ -2523,7 +2362,6 @@ async function submitProfile() {
       <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
       <p class="sub">${firstVisit ? 'Welcome to' : 'Welcome back to'} ${escapeHtml(tenant.display_name)}.</p>
       <div class="actions">${heroActions.join('')}</div>
-      ${renderMemberCountTicker(publicData.member_count, publicData.public_settings?.public)}
     </div>
 
     <!-- Household summary card, near the top: "are we paid up, and who's
@@ -2616,7 +2454,6 @@ async function submitProfile() {
 
     ${renderHelpCard()}
 
-    ${renderFeedbackCard()}
   `;
   loadHelpList();
   // Opened from the link in a reply text (possibly before signing in).
@@ -2760,7 +2597,6 @@ async function submitProfile() {
   refreshPrograms();
   refreshVolunteer();
   loadGateCard();
-  showCampaignPopup();
   loadDonationsLeaderboard();
   // Populate the "Add to Home Screen" instruction card now that its host
   // div exists in the DOM (it lives inside the main innerHTML block above).

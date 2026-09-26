@@ -17,7 +17,6 @@ export const FEATURE_DEFAULTS: Record<string, boolean> = {
   parties:              true,
   programs:             true,
   volunteer:            true,
-  campaigns:            true,
   lifeguard_scheduling: false,
 };
 

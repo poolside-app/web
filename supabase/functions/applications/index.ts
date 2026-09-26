@@ -234,7 +234,6 @@ Deno.serve(async (req) => {
       { kind: 'party_booking',    table: 'party_bookings' },
       { kind: 'photo',            table: 'photos' },
       { kind: 'payment_plan',     table: 'payment_plans' },
-      { kind: 'feedback',         table: 'feedback_submissions' },
       { kind: 'referral',         table: 'referrals' },
     ];
     for (const { kind, table } of ORPHAN_KINDS) {

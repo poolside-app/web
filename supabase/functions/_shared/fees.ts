@@ -19,7 +19,7 @@ export const FEE_BPS = {
    *  Raised 0.5% -> 1% on 2026-09-08, before club #2 — raising a rate on
    *  clubs that already signed is far harder than setting it now. */
   dues: 100,
-  /** Programs, swim lessons, parties, guest passes. Smaller, more
+  /** Programs, swim lessons, parties. Smaller, more
    *  discretionary amounts, so they carry a higher rate. */
   programs: 150,
   /** Donations take nothing. Skimming a donation to a club looks bad and

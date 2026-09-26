@@ -276,22 +276,11 @@ def member_journey():
         assert d.get('ok'), f'programs will not list: {d}'
         return f"{len(d.get('programs') or [])} program(s) offered"
 
-    def s18_guest_passes():
-        d = post('guest_passes', {'action': 'my_packs'}, S['mtok'])
-        assert d.get('ok'), f'guest passes are broken for members: {d}'
-        return 'guest-pass balance loads'
-
     def s19_policies_readable():
         d = post('policies', {'action': 'list_public', 'slug': SLUG})
         assert d.get('ok'), f'club policies will not load: {d}'
         assert len(d.get('policies') or []) > 0, 'no policies published — members sign nothing'
         return f"{len(d['policies'])} policies published"
-
-    def s20_submit_feedback():
-        d = post('feedback', {'action': 'submit', 'slug': SLUG,
-                              'comment': f'Journey audit {STAMP} — please ignore.'})
-        assert d.get('ok'), f'nobody can report a problem: {d}'
-        return 'anyone can report a problem, no login needed'
 
     def s21_renewal_offer():
         d = post('member_auth', {'action': 'renewal_options'}, S['mtok'])
@@ -324,9 +313,7 @@ def member_journey():
         ('They can request a party',               s15_request_a_party),
         ('They can see their bookings',            s16_see_their_parties),
         ('They can browse programs',               s17_programs_are_browsable),
-        ('Guest passes load',                      s18_guest_passes),
         ('Club policies are readable',             s19_policies_readable),
-        ('Anyone can report a problem',            s20_submit_feedback),
         ('Renewal is offered next season',         s21_renewal_offer),
         ('Add-to-home-screen guide is live',       s22_install_guide_available),
     ], 1):
@@ -347,14 +334,12 @@ def board_journey():
 
     def b02_dashboard_numbers():
         # The dashboard's own counters come from tenant_admin_auth.me + the
-        # task queue; tenant_metrics powers the separate Impact page.
+        # task queue.
         d = post('tenant_admin_auth', {'action': 'me'}, T)
         assert d.get('ok') and d.get('usage') is not None, f'dashboard counters missing: {d}'
         t = post('admin_tasks', {'action': 'count'}, T)
         assert t.get('ok'), f'the task queue is broken: {t}'
-        i = post('tenant_metrics', {'action': 'get'}, T)
-        assert i.get('ok'), f'the Impact page is broken: {i}'
-        return f"dashboard, task queue and Impact page all load"
+        return f"dashboard and task queue load"
 
     def b02b_task_queue_is_clean():
         # Ghost tasks pointing at deleted rows are what made this dashboard
@@ -455,11 +440,6 @@ def board_journey():
         assert d.get('ok'), f'pool check-in is broken: {d}'
         return 'check-in screen loads'
 
-    def b17_guest_passes_admin():
-        d = post('guest_passes', {'action': 'list'}, T)
-        assert d.get('ok'), f'guest pass admin is broken: {d}'
-        return 'guest passes load'
-
     def b18_programs_admin():
         d = post('programs', {'action': 'list'}, T)
         assert d.get('ok'), f'programs admin is broken: {d}'
@@ -536,7 +516,6 @@ def board_journey():
         ('Volunteer shifts',                   b14_volunteer),
         ('Lifeguard scheduling',               b15_lifeguards),
         ('Pool check-in',                      b16_checkin),
-        ('Guest passes',                       b17_guest_passes_admin),
         ('Programs',                           b18_programs_admin),
         ('Donations and sponsors',             b19_donations_and_sponsors),
         ('Migration tracker',                  b20_import_and_migrate),
@@ -562,7 +541,6 @@ def cleanup():
             sql(f"delete from households where id = '{S['hid']}'")
         sql(f"delete from applications where family_name like '%Audit Family {STAMP}%'")
         sql(f"delete from applications where is_renewal and household_id is null and payment_status <> 'paid'")
-        sql(f"delete from feedback_submissions where comment like '%Journey audit {STAMP}%'")
         sql(f"delete from admin_tasks where summary like '%{STAMP}%'")
         left = sql(f"select count(*) as n from households where family_name like '%Audit%{STAMP}%'")[0]['n']
         assert left == 0, f'{left} audit household(s) left behind'

@@ -39,7 +39,6 @@
     money: [
       { key: 'payments',  label: 'Payments',  href: '/club/admin/payments.html',  scope: 'payments'      },
       { key: 'tiers',     label: 'Tiers',     href: '/club/admin/tiers.html',     scope: 'payments'      },
-      { key: 'campaigns', label: 'Campaigns', href: '/club/admin/campaigns.html', scope: 'campaigns'     },
       { key: 'donations', label: 'Donations', href: '/club/admin/donations.html', scope: 'payments'      },
       { key: 'sponsors',  label: 'Sponsors',  href: '/club/admin/sponsors.html',  scope: 'announcements' },
     ],
@@ -59,11 +58,9 @@
       { key: 'announcements', label: 'Announcements', href: '/club/admin/announcements.html',  scope: 'announcements' },
       { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
       { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: ''              },  // every board member
-      { key: 'feedback',      label: 'Feedback',      href: '/club/admin/feedback.html',       scope: 'announcements' },
       { key: 'memberhelp',    label: 'Member help',   href: '/club/admin/member-help.html',    scope: ''              },  // every board member
     ],
     insights: [
-      { key: 'impact', label: 'Impact',    href: '/club/admin/impact.html', scope: 'impact'   },
       { key: 'audit',  label: 'Audit log', href: '/club/admin/audit.html',  scope: 'audit'    },
       { key: 'health', label: 'Status',    href: '/club/admin/health.html', scope: 'settings' },
     ],
@@ -84,13 +81,13 @@
   const PAGE_SECTION = {
     'members.html': 'members', 'policies.html': 'members', 'application.html': 'members',
     'import.html': 'members', 'migrate.html': 'members', 'emails.html': 'members',
-    'payments.html': 'money', 'tiers.html': 'money', 'campaigns.html': 'money',
+    'payments.html': 'money', 'tiers.html': 'money',
     'donations.html': 'money', 'sponsors.html': 'money',
     'events.html': 'calendar', 'programs.html': 'calendar', 'parties.html': 'calendar',
     'volunteer.html': 'calendar', 'lifeguards.html': 'calendar', 'my-shifts.html': 'calendar',
     'announcements.html': 'content', 'photos.html': 'content',
-    'board-meetings.html': 'content', 'feedback.html': 'content', 'member-help.html': 'content',
-    'impact.html': 'insights', 'audit.html': 'insights', 'health.html': 'insights',
+    'board-meetings.html': 'content', 'member-help.html': 'content',
+    'audit.html': 'insights', 'health.html': 'insights',
     'settings.html': 'settings', 'admins.html': 'settings', 'billing.html': 'settings',
   };
 

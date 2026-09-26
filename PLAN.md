@@ -295,15 +295,20 @@ Steps (each: failing test first, then the fix, then proof):
 ### I. Trim the app (Doug, 9/26: "too many features… too convoluted")
 Doug chose to delete the duplicates and fluff only. Sponsors, donations, Google Drive backup, auto-renew, email templates, photos, programs, volunteer and lifeguards all stay.
 Suggested order: before H, so H7's discount codes don't have to live alongside campaigns.
-- **I1. Anonymous feedback → gone.** Ask the board covers it (topic "Pool problem", with a photo).
+- **✅ I1. Anonymous feedback → gone.** Ask the board covers it (topic "Pool problem", with a photo).
   - Removed: the feedback card and form on the member home and public page, the board's Feedback page, and the `feedback` function.
   - The one stored message is shown to Doug before its table is dropped.
-- **I2. Campaign pop-ups → gone.** News posts cover announcements, and H7's discount codes cover early bird.
+- **✅ I2. Campaign pop-ups → gone.** News posts cover announcements, and H7's discount codes cover early bird.
   - Removed: Money → Campaigns, the `campaigns` function, and the pop-up code on the member home and public page.
-- **I3. The Impact page → gone** (Insights → Impact, "Where the time went"). The `impact` permission leaves the role templates and permission list.
-- **I4. The member-count line in the member home greeting → gone.** The public page keeps its "X families" line, which can be switched off in Settings.
-- **I5. Guest-pass leftovers → gone.** The feature was retired 9/7, but its function, checkout path, payment-report branches and empty tables are still there.
-- **Proof:** a check that none of these is linked, called or deployed; the page-render check (every page loads with no errors); and a count of admin pages and member-home cards before and after.
+- **✅ I3. The Impact page → gone** (Insights → Impact, "Where the time went"). The `impact` permission leaves the role templates and permission list.
+- **✅ I4. The member-count line in the member home greeting → gone.** The public page keeps its "X families" line, which can be switched off in Settings.
+- **✅ I5. Guest-pass leftovers → gone.** The feature was retired 9/7, but its function, checkout path, payment-report branches and empty tables are still there.
+- **Proof:** `scripts/test_screens.mjs` I checks.
+  - Nothing links to or calls any of these.
+  - The functions are undeployed and the empty tables dropped.
+  - The public page, member home, Members and board pages load clean.
+  - `test_payments.mjs` still passes 24/24 after the payment functions changed.
+  - Board pages went from 38 to 35, and server functions from 54 to 50.
 
 ### J. Consolidate setup and settings (Doug, 9/26: "too many setup areas?")
 Doug chose all of these. Rule: every setting is edited in exactly one place, and every other screen links there.

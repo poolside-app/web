@@ -166,6 +166,29 @@ check('H2: the level is picked by headcount unless they chose one', /function ap
   && /applyTierDefault\(\)/.test(between(apply, 'function showStep', '\n}')));
 check('H3: member sign-in formats the phone number as you type', /function formatLoginPhone|looksLikePhoneStart/.test(login));
 
+console.log('\nI1–I5 · trimmed features are gone');
+{
+  const { readdirSync, statSync, existsSync } = await import('node:fs');
+  const walk = (dir, ext) => readdirSync(new URL(dir, root)).flatMap(n => {
+    const rel = `${dir}${n}`;
+    if (['node_modules', 'migrations', 'club-demo', 'Poolside design'].includes(n) || n.startsWith('.')) return [];
+    return statSync(new URL(rel, root)).isDirectory() ? walk(rel + '/', ext) : ext.test(n) ? [rel] : [];
+  });
+  const files = [...walk('', /\.(html|js|ts)$/)].filter(f => !f.startsWith('scripts/'));
+  const hits = re => files.filter(f => re.test(read(f)));
+  const gone = dir => !existsSync(new URL(`supabase/functions/${dir}`, root)) && !new RegExp(`functions\\.${dir}\\]`).test(read('supabase/config.toml'));
+  check('I1: no anonymous feedback anywhere', gone('feedback') && !existsSync(new URL('club/admin/feedback.html', root))
+    && !hits(/openFeedback|functions\/v1\/feedback|feedback\.html|feedback\.submitted/).length, hits(/openFeedback|functions\/v1\/feedback|feedback\.html|feedback\.submitted/).join(', '));
+  check('I2: no campaign pop-ups anywhere', gone('campaigns') && !existsSync(new URL('club/admin/campaigns.html', root))
+    && !hits(/functions\/v1\/campaigns|campaigns\.html|feat_campaigns|camp-count/).length, hits(/functions\/v1\/campaigns|campaigns\.html|feat_campaigns|camp-count/).join(', '));
+  const auth = read('supabase/functions/tenant_admin_auth/index.ts');
+  check('I3: no Impact page or permission', !existsSync(new URL('club/admin/impact.html', root)) && !hits(/impact\.html/).length
+    && !/'impact'/.test(auth) && !/\bimpact:/.test(read('js/admin-flags.js')), hits(/impact\.html/).join(', '));
+  check('I4: the member home greeting has no member-count line', !/renderMemberCountTicker/.test(member));
+  check('I5: no guest-pass leftovers', gone('guest_passes') && !existsSync(new URL('club/admin/guest-passes.html', root))
+    && !hits(/guest_pass|guest-pass|guestPass/).length, hits(/guest_pass|guest-pass|guestPass/).join(', '));
+}
+
 // ── Live ────────────────────────────────────────────────────────────────
 async function sql(query) {
   const r = await fetch(`https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query`, {
@@ -219,6 +242,12 @@ if (process.argv.includes('--live')) {
   const [{ n }] = await sql(`select count(*)::int as n from information_schema.columns
     where table_schema = 'public' and column_name = 'google_sub'`);
   check('G1: no stored Google IDs left', n === 0, `${n} columns`);
+  const deployed = await Promise.all(['feedback', 'campaigns', 'guest_passes'].map(async f =>
+    [f, (await fetch(`${SUPABASE_URL}/functions/v1/${f}`, { method: 'POST', body: '{}' })).status]));
+  check('I: the removed functions are no longer deployed', deployed.every(([, st]) => st === 404), JSON.stringify(deployed));
+  const [{ t }] = await sql(`select count(*)::int as t from information_schema.tables where table_schema = 'public'
+    and table_name in ('feedback_submissions', 'campaigns', 'guest_pass_packs', 'guest_pass_uses')`);
+  check('I: their empty tables are dropped', t === 0, `${t} left`);
 }
 
 if (process.argv.includes('--render')) {

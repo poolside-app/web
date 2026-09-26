@@ -1,6 +1,6 @@
 // =============================================================================
 // stripe_checkout — create a Checkout session for an application / program /
-// guest pass / party. Charges land on the tenant's connected Stripe account
+// party. Charges land on the tenant's connected Stripe account
 // (Standard Connect); Poolside takes a platform application_fee_amount.
 // =============================================================================
 // Public actions (no auth — application checkout):
@@ -9,8 +9,6 @@
 //
 // Member actions (member JWT):
 //   { action: 'program_booking', booking_id }
-//     → { ok, url }
-//   { action: 'guest_pass_pack', pack_id }
 //     → { ok, url }
 //
 // Admin actions (tenant_admin JWT):
@@ -586,29 +584,6 @@ Deno.serve(async (req) => {
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
     await sb.from('party_bookings').update({ stripe_session_id: session.session_id }).eq('id', party.id);
-    return jsonResponse({ ok: true, url: session.url });
-  }
-
-  if (action === 'guest_pass_pack') {
-    const id = String(body.pack_id ?? '');
-    const { data: pack } = await sb.from('guest_pass_packs')
-      .select('id, tenant_id, paid, label, price_cents').eq('id', id).maybeSingle();
-    if (!pack || pack.tenant_id !== TID) return jsonResponse({ ok: false, error: 'Pack not found' }, 404);
-    if (pack.paid) return jsonResponse({ ok: false, error: 'Already paid' }, 409);
-    if ((pack.price_cents as number) <= 0) return jsonResponse({ ok: false, error: 'Pack is free or unpriced' }, 400);
-    const session = await stripeCheckout({
-      tenantStripeAccount: tenant.stripe_account_id,
-      amountCents: pack.price_cents as number,
-      productName: `Guest passes — ${pack.label}`,
-      successUrl: `${clubUrl}/m/?paid=1`,
-      cancelUrl: `${clubUrl}/m/?paid=0`,
-      metadata: { kind: 'guest_pass_pack', pack_id: pack.id, tenant_id: TID },
-      feeBps: FEE_BPS_PROGRAMS,
-      policy: feePolicyFromTenant(tenant),
-      simulate: testMode,
-    });
-    if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
-    await sb.from('guest_pass_packs').update({ stripe_session_id: session.session_id }).eq('id', pack.id);
     return jsonResponse({ ok: true, url: session.url });
   }
 

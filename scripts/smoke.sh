@@ -150,11 +150,6 @@ check_post "member_auth me rejects anon" \
   '{"action":"me"}' \
   'Not authenticated'
 
-check_post "tenant_metrics rejects anon" \
-  "${SUPA}/functions/v1/tenant_metrics" \
-  '{"action":"get"}' \
-  'Not authenticated'
-
 check_post "provider_metrics rejects anon" \
   "${SUPA}/functions/v1/provider_metrics" \
   '{}' \
@@ -191,19 +186,6 @@ check_post "programs.list_public returns ok" \
 check_status "admin /club/admin/programs" "${HOST}/club/admin/programs.html" "200"
 check       "admin programs page wires the API" "${HOST}/club/admin/programs.html" "/functions/v1/programs"
 
-check_post "campaigns.list rejects anon" \
-  "${SUPA}/functions/v1/campaigns" \
-  '{"action":"list"}' \
-  'Not authenticated'
-
-check_post "campaigns.list_active returns ok" \
-  "${SUPA}/functions/v1/campaigns" \
-  "{\"action\":\"list_active\",\"slug\":\"${SLUG}\"}" \
-  '"ok":true'
-
-check_status "admin /club/admin/campaigns" "${HOST}/club/admin/campaigns.html" "200"
-check       "admin campaigns page wires the API" "${HOST}/club/admin/campaigns.html" "/functions/v1/campaigns"
-
 check_post "volunteer.list rejects anon" \
   "${SUPA}/functions/v1/volunteer" \
   '{"action":"list"}' \
@@ -216,14 +198,6 @@ check_post "volunteer.list_public returns ok" \
 
 check_status "admin /club/admin/volunteer" "${HOST}/club/admin/volunteer.html" "200"
 check       "admin volunteer page wires the API" "${HOST}/club/admin/volunteer.html" "/functions/v1/volunteer"
-
-# Guest passes was retired 2026-09-07 (settings had said "not on the roadmap"
-# since May; the admin page and the member-side calls were finally removed).
-# guest-passes.html is now a redirect stub, so it cannot "wire the API" — the
-# check below asserts it redirects instead of 404ing, since board members may
-# still have it bookmarked.
-check_status "retired /club/admin/guest-passes still resolves" "${HOST}/club/admin/guest-passes.html" "200"
-check       "retired guest-passes redirects to payments" "${HOST}/club/admin/guest-passes.html" "/club/admin/payments.html"
 
 check_post "payments_admin.list rejects anon" \
   "${SUPA}/functions/v1/payments_admin" \
@@ -258,8 +232,6 @@ check       "admin apps page wires the API"       "${HOST}/club/admin/applicatio
 check_status "admin /club/admin/members"         "${HOST}/club/admin/members.html"   "200"
 check       "admin members page wires both APIs"  "${HOST}/club/admin/members.html"   "households_admin"
 
-check_status "admin /club/admin/impact.html"     "${HOST}/club/admin/impact.html"     "200"
-check       "impact page wires the API"           "${HOST}/club/admin/impact.html"     "tenant_metrics"
 check_status "provider /admin/profile.html"       "${ROOT}/admin/profile.html"          "200"
 check       "profile page wires admin_auth"       "${ROOT}/admin/profile.html"          "change_password"
 

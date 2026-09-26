@@ -204,10 +204,10 @@ async function loadRevenue() {
   const money = c => '$' + (Number(c || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const LABELS = {
     dues: 'Dues (1%)', plan_fees: 'Payment plans', programs: 'Programs (1.5%)',
-    parties: 'Parties (1.5%)', guest_passes: 'Guest passes (1.5%)',
+    parties: 'Parties (1.5%)',
     donations: 'Donations (0%)', uncategorized: 'Uncategorized',
   };
-  const order = ['dues', 'plan_fees', 'programs', 'parties', 'guest_passes', 'donations', 'uncategorized'];
+  const order = ['dues', 'plan_fees', 'programs', 'parties', 'donations', 'uncategorized'];
   const n = d.network;
 
   const cell = (v, warn) => `<td style="text-align:right;font-variant-numeric:tabular-nums${warn ? ';color:var(--red)' : ''}">${money(v)}</td>`;

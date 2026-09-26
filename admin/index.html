@@ -315,7 +315,7 @@
           <span>
             <span style="font-weight:600;font-size:13px">Waive all platform transaction fees</span>
             <span style="display:block;font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px">
-              Takes nothing on dues, programs, parties or guest passes — and stops charging
+              Takes nothing on dues, programs or parties — and stops charging
               <b>members</b> the $4-per-payment plan fee. Does not change their subscription;
               use the plan and status fields above for that.
             </span>
@@ -720,7 +720,7 @@
     const wasWaived = !!(EDIT_TENANT_BEFORE && EDIT_TENANT_BEFORE.platform_fees_waived);
     if (platform_fees_waived !== wasWaived) {
       const msg = platform_fees_waived
-        ? `Take NO platform fees from ${display_name}?\n\nNo cut of dues, programs, parties or guest passes, and its members stop paying the payment-plan fee.`
+        ? `Take NO platform fees from ${display_name}?\n\nNo cut of dues, programs or parties, and its members stop paying the payment-plan fee.`
         : `Start charging ${display_name} platform fees again?\n\nDues 1%, programs and parties 1.5%, and members will be charged the payment-plan fee.`;
       if (!confirm(msg)) return;
     }

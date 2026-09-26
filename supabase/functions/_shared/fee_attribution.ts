@@ -9,7 +9,7 @@
 
 /** Buckets shown on the provider revenue table, in display order. */
 export const FEE_BUCKETS = [
-  'dues', 'plan_fees', 'programs', 'parties', 'guest_passes', 'donations', 'uncategorized',
+  'dues', 'plan_fees', 'programs', 'parties', 'donations', 'uncategorized',
 ] as const;
 export type FeeBucket = typeof FEE_BUCKETS[number];
 
@@ -25,12 +25,11 @@ export const KIND_BUCKET: Record<string, FeeBucket> = {
   payment_plan_reactivation: 'dues',
   program_booking:           'programs',
   party_booking:             'parties',
-  guest_pass_pack:           'guest_passes',
   donation:                  'donations',
 };
 
 export function emptyBuckets(): Record<FeeBucket, number> {
-  return { dues: 0, plan_fees: 0, programs: 0, parties: 0, guest_passes: 0, donations: 0, uncategorized: 0 };
+  return { dues: 0, plan_fees: 0, programs: 0, parties: 0, donations: 0, uncategorized: 0 };
 }
 
 export type StripeApplicationFee = {
