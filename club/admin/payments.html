@@ -108,12 +108,12 @@
        screen readers announced no title for it. -->
   <h1>Payments</h1>
 
-  <!-- 2026-05-21: Payments tab order (Doug's call):
-       1. Pending payments list (top, collapsible-open — primary use)
-       2. Payment options setup (collapsible)
-       3. Membership tiers (collapsible)
-       4. Renew season (collapsible)
-       Access methods + Drive backup moved to /club/admin/settings.html. -->
+  <!-- Page order:
+       1. Pending payments (open; what the treasurer uses day to day)
+       2. Money setup (J8, 2026-09-26): every money setting in one place —
+          prices, card and Venmo/PayPal, payment plans, late fees, test payments
+       3. Renew season (link to Members → Renewals)
+       Access methods and Drive backup live in Settings. -->
 
   <details id="pending-section" open style="margin-bottom:18px">
     <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
@@ -138,17 +138,20 @@
 
   <details id="setup-section" style="margin-bottom:18px">
     <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
-      <span class="chev">▶</span> 💸 Payment options setup <span style="font-weight:400;color:var(--muted);font-size:12.5px">— Venmo, PayPal, Stripe, payment plans</span>
+      <span class="chev">▶</span> 💸 Money setup <span style="font-weight:400;color:var(--muted);font-size:12.5px">— prices, how members pay, payment plans, late fees, test payments</span>
     </summary>
     <div style="margin-top:12px">
-      <div class="card" data-owner-only data-focus="test-mode" id="test-mode-card">
-        <h2>🧪 Test payments</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">While on, card checkout opens a fake payment page instead of Stripe, and Venmo applicants get a "Simulate Venmo payment" button. Simulated payments run every automation a real one does — approval, household dues, welcome emails and texts, task closing — but no money moves. Works without Stripe connected. Simulated card payments have a session id starting with <code>sim_</code>.</p>
-        <label class="checkbox-row" style="margin:0;display:flex;gap:8px;align-items:center;cursor:pointer">
-          <input type="checkbox" id="test_mode" onchange="saveTestMode(this)">
-          <span><b>Simulate all payments</b> — turn off before real members start paying</span>
-        </label>
-        <div class="err" id="tm-err"></div>
+      <!-- J8 (2026-09-26): membership prices live here. They had their own
+           Tiers page, reached from a link in a section of this page. -->
+      <div class="card" id="prices-card" data-focus="prices">
+        <h2>💳 Membership prices</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">The levels families pick from when they sign up. The first one is the default. Leave the price blank if you bill each family yourself.</p>
+        <div id="tiers-list"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
+        <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn" type="button" onclick="Tiers.add()" style="font-size:12px;padding:6px 12px">+ Add a level</button>
+          <button class="btn btn-primary" id="tiers-save" type="button" onclick="Tiers.save()" style="background:var(--blue)">Save prices</button>
+        </div>
+        <div class="err" id="tiers-err"></div>
       </div>
 
       <div class="card" data-owner-only data-focus="stripe">
@@ -164,6 +167,45 @@
           <ul>
             <li><a href="/club/admin/emails.html#tpl=application_received_stripe">Application received — Stripe path</a> <span class="ec-when">when an applicant chose card payment</span></li>
             <li><a href="/club/admin/emails.html#tpl=application_approved_stripe_paid">Welcome — Stripe paid</a> <span class="ec-when">when their card payment clears</span></li>
+          </ul>
+          <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
+        </div>
+      </div>
+
+      <div class="card" data-focus="venmo">
+        <h2>Venmo &amp; PayPal</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Member-facing payment links. Venmo handle paints a QR on the apply form and member home; PayPal link drops a 'Pay with PayPal' button.</p>
+        <label>Venmo handle <span class="opt">(without @)</span></label>
+        <input type="text" id="venmo_handle" placeholder="yourclub">
+        <label>PayPal link</label>
+        <input type="text" id="paypal_link" placeholder="https://paypal.me/yourclub">
+
+        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Offline-payment verification</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">How long the apply form tells members it takes for you to verify their Venmo / check / cash payment.</p>
+        <label>Verify offline payments within <span class="opt">(business days)</span></label>
+        <input type="number" id="offline_verify_window_days" min="1" max="30" step="1" placeholder="3" style="width:120px">
+
+        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Card-processing surcharge</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">When on, members who pay by card see a slightly higher total that covers Stripe's processing fee (~2.9% + 30¢). Venmo / check / cash pricing stays exactly the base price. Disclosure is shown to the member at checkout so the choice is explicit.</p>
+        <label class="checkbox-row" style="margin:0 0 6px;display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="pass_stripe_fee">
+          <span>Pass the Stripe processing fee to members who pay by card</span>
+        </label>
+        <p style="font-size:11.5px;color:var(--muted);margin:0">On a $600 dues bill, members would see <b>$618.23</b> for card vs <b>$600.00</b> for Venmo. The exact pass-through is computed from the rates Stripe charges your club.</p>
+
+        <div style="margin-top:14px;display:flex;align-items:center">
+          <button class="btn btn-primary" id="pm-save" type="button" onclick="savePaymentMethods()" style="background:var(--blue)">Save</button>
+          <span class="saved" id="pm-saved" style="display:none">✓ Saved</span>
+        </div>
+        <div class="err" id="pm-err"></div>
+
+        <div class="email-callout">
+          <div class="ec-title">📧 Emails members get from this setup</div>
+          <ul>
+            <li><a href="/club/admin/emails.html#tpl=application_received_venmo">Application received — Venmo path</a> <span class="ec-when">when an applicant chose Venmo</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_unpaid_venmo">Approved — final step is Venmo payment</a> <span class="ec-when">if you approve before they've paid</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_venmo_verified">Welcome — Venmo verified at approval</a> <span class="ec-when">if you approve and verify in one step</span></li>
+            <li><a href="/club/admin/emails.html#tpl=payment_verified_venmo">Venmo payment verified</a> <span class="ec-when">when you click "Verify Venmo" later</span></li>
           </ul>
           <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
         </div>
@@ -214,59 +256,55 @@
         </div>
       </div>
 
-      <!-- Drive card moved outside the collapsed setup section (2026-05-09)
-           — see below the </details>. Kept here as a comment so the next
-           dev finds it. -->
+      <div id="late-fee-card" class="card" data-owner-only data-focus="late-fees">
+        <h2>⏰ Late fees</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6">
+          Charge households that still haven't paid after your own deadline. Off unless you switch it on,
+          assessed <b>once per household per season</b>, and you can waive any of them in one click with no
+          questions asked. Poolside takes 5% of a late fee that actually gets collected.
+        </p>
 
+        <label class="checkbox-row" style="margin:0 0 12px"><input type="checkbox" id="lf-enabled"><span>Charge late fees</span></label>
 
-      <div class="card" data-focus="venmo">
-        <h2>Venmo &amp; PayPal</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Member-facing payment links. Venmo handle paints a QR on the apply form and member home; PayPal link drops a 'Pay with PayPal' button.</p>
-        <label>Venmo handle <span class="opt">(without @)</span></label>
-        <input type="text" id="venmo_handle" placeholder="yourclub">
-        <label>PayPal link</label>
-        <input type="text" id="paypal_link" placeholder="https://paypal.me/yourclub">
-
-        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Offline-payment verification</h3>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">How long the apply form tells members it takes for you to verify their Venmo / check / cash payment.</p>
-        <label>Verify offline payments within <span class="opt">(business days)</span></label>
-        <input type="number" id="offline_verify_window_days" min="1" max="30" step="1" placeholder="3" style="width:120px">
-
-        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Card-processing surcharge</h3>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">When on, members who pay by card see a slightly higher total that covers Stripe's processing fee (~2.9% + 30¢). Venmo / check / cash pricing stays exactly the base price. Disclosure is shown to the member at checkout so the choice is explicit.</p>
-        <label class="checkbox-row" style="margin:0 0 6px;display:flex;gap:8px;align-items:center;cursor:pointer">
-          <input type="checkbox" id="pass_stripe_fee">
-          <span>Pass the Stripe processing fee to members who pay by card</span>
-        </label>
-        <p style="font-size:11.5px;color:var(--muted);margin:0">On a $600 dues bill, members would see <b>$618.23</b> for card vs <b>$600.00</b> for Venmo. The exact pass-through is computed from the rates Stripe charges your club.</p>
-
-        <div style="margin-top:14px;display:flex;align-items:center">
-          <button class="btn btn-primary" id="pm-save" type="button" onclick="savePaymentMethods()" style="background:var(--blue)">Save</button>
-          <span class="saved" id="pm-saved" style="display:none">✓ Saved</span>
+        <div class="row3" style="gap:10px">
+          <div>
+            <label>Dues are due by</label>
+            <input type="date" id="lf-due-date">
+            <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">The date for this season. Nothing can be late without it.</p>
+          </div>
+          <div>
+            <label>Grace period (days)</label>
+            <input type="number" id="lf-grace" min="0" max="180" step="1" placeholder="14">
+            <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Nothing is charged until this many days after the date.</p>
+          </div>
+          <div>
+            <label>Late fee amount</label>
+            <input type="number" id="lf-amount" min="0" max="200" step="1" placeholder="25">
+            <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Dollars. Most clubs land between $15 and $35.</p>
+          </div>
         </div>
-        <div class="err" id="pm-err"></div>
 
-        <div class="email-callout">
-          <div class="ec-title">📧 Emails members get from this setup</div>
-          <ul>
-            <li><a href="/club/admin/emails.html#tpl=application_received_venmo">Application received — Venmo path</a> <span class="ec-when">when an applicant chose Venmo</span></li>
-            <li><a href="/club/admin/emails.html#tpl=application_approved_unpaid_venmo">Approved — final step is Venmo payment</a> <span class="ec-when">if you approve before they've paid</span></li>
-            <li><a href="/club/admin/emails.html#tpl=application_approved_venmo_verified">Welcome — Venmo verified at approval</a> <span class="ec-when">if you approve and verify in one step</span></li>
-            <li><a href="/club/admin/emails.html#tpl=payment_verified_venmo">Venmo payment verified</a> <span class="ec-when">when you click "Verify Venmo" later</span></li>
-          </ul>
-          <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+          <button class="btn btn-primary" type="button" onclick="saveLateFeeConfig()">Save late fee settings</button>
+          <span id="lf-saved" style="color:var(--green);font-size:13px;font-weight:600;display:none">✓ Saved</span>
+        </div>
+        <div class="err" id="lf-err" style="margin-top:8px"></div>
+
+        <div id="lf-list-wrap" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+          <h3 style="font:600 14px 'Inter';margin:0 0 10px">Fees charged this season</h3>
+          <div id="lf-list" style="font-size:13px;color:var(--muted)">Loading…</div>
         </div>
       </div>
-    </div>
-  </details>
 
-  <details style="margin-bottom:14px">
-    <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
-      <span class="chev">▶</span> 💳 Membership tiers <span style="font-weight:400;color:var(--muted);font-size:12.5px">— levels applicants pick from at signup (Family / Single / Senior / etc.)</span>
-    </summary>
-    <div class="card" style="margin-top:8px">
-      <p style="font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px">Define the membership levels your apply form offers (with prices, if any). Set "Family — $600/yr" and "Senior — $300/yr" — applicants pick one when applying.</p>
-      <a class="btn btn-primary" href="/club/admin/tiers.html" style="background:var(--blue)">Open Tiers →</a>
+      <div class="card" data-owner-only data-focus="test-mode" id="test-mode-card">
+        <h2>🧪 Test payments</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">While on, card checkout opens a fake payment page instead of Stripe, and Venmo applicants get a "Simulate Venmo payment" button. Simulated payments run every automation a real one does — approval, household dues, welcome emails and texts, task closing — but no money moves. Works without Stripe connected. Simulated card payments have a session id starting with <code>sim_</code>.</p>
+        <label class="checkbox-row" style="margin:0;display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="test_mode" onchange="saveTestMode(this)">
+          <span><b>Simulate all payments</b> — turn off before real members start paying</span>
+        </label>
+        <div class="err" id="tm-err"></div>
+      </div>
     </div>
   </details>
 
@@ -275,52 +313,11 @@
       <span class="chev">▶</span> 📅 Renew season <span style="font-weight:400;color:var(--muted);font-size:12.5px">— blast past members when the pool opens for a new year</span>
     </summary>
     <div class="card" style="margin-top:8px">
-      <p style="font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px">When your pool opens for a new season, send your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues. Configure an early-bird discount and pick which group gets the blast.</p>
+      <p style="font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px">When your pool opens for a new season, send your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues. Pick which group gets it.</p>
       <a class="btn btn-primary" href="/club/admin/members.html#renewals" style="background:var(--blue)">Open Renew season →</a>
     </div>
   </details>
 
-  <!-- Pending referral refunds — populated by loadRefundQueue() on page load.
-       Hidden when there's nothing to do. -->
-  <div id="late-fee-card" class="card" data-owner-only style="margin-top:24px">
-    <h2>⏰ Late fees</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6">
-      Charge households that still haven't paid after your own deadline. Off unless you switch it on,
-      assessed <b>once per household per season</b>, and you can waive any of them in one click with no
-      questions asked. Poolside takes 5% of a late fee that actually gets collected.
-    </p>
-
-    <label class="checkbox-row" style="margin:0 0 12px"><input type="checkbox" id="lf-enabled"><span>Charge late fees</span></label>
-
-    <div class="row3" style="gap:10px">
-      <div>
-        <label>Dues are due by</label>
-        <input type="date" id="lf-due-date">
-        <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">The date for this season. Nothing can be late without it.</p>
-      </div>
-      <div>
-        <label>Grace period (days)</label>
-        <input type="number" id="lf-grace" min="0" max="180" step="1" placeholder="14">
-        <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Nothing is charged until this many days after the date.</p>
-      </div>
-      <div>
-        <label>Late fee amount</label>
-        <input type="number" id="lf-amount" min="0" max="200" step="1" placeholder="25">
-        <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Dollars. Most clubs land between $15 and $35.</p>
-      </div>
-    </div>
-
-    <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
-      <button class="btn btn-primary" type="button" onclick="saveLateFeeConfig()">Save late fee settings</button>
-      <span id="lf-saved" style="color:var(--green);font-size:13px;font-weight:600;display:none">✓ Saved</span>
-    </div>
-    <div class="err" id="lf-err" style="margin-top:8px"></div>
-
-    <div id="lf-list-wrap" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-      <h3 style="font:600 14px 'Inter';margin:0 0 10px">Fees charged this season</h3>
-      <div id="lf-list" style="font-size:13px;color:var(--muted)">Loading…</div>
-    </div>
-  </div>
 
   <div id="refunds-card" class="card" style="display:none;margin-top:24px">
     <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -562,6 +559,7 @@ async function loadPaymentMethods() {
     document.getElementById('offline_verify_window_days').value = (p.offline_verify_window_days ?? 3);
     document.getElementById('pass_stripe_fee').checked = !!p.pass_stripe_fee;
     paintTestMode(p.test_mode === true);
+    Tiers.paint(Array.isArray(r.settings?.membership_tiers) ? r.settings.membership_tiers : null);
   } catch (e) {
     const errEl = document.getElementById('pm-err');
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -590,7 +588,81 @@ async function saveTestMode(cb) {
     cb.disabled = false;
   }
 }
-// Access methods (was here, moved to /club/admin/settings.html 2026-05-21).
+
+// ── Membership prices (J8) ─────────────────────────────────────────────
+// Moved here from the Tiers page on 2026-09-26. Painted from the settings
+// loadPaymentMethods already fetched. Save sends only membership_tiers,
+// and fields this screen doesn't edit ride along untouched.
+const Tiers = (() => {
+  const TIER_DEFAULTS = [
+    { slug: 'family', label: 'Family', price_cents: 60000, description: 'All household members' },
+    { slug: 'single', label: 'Single', price_cents: 35000, description: 'One adult' },
+    { slug: 'senior', label: 'Senior', price_cents: 25000, description: '65+' },
+  ];
+  const box = 'width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px \'Inter\'';
+  const lab = 'font-size:11px;font-weight:600;margin:0 0 4px;display:block';
+  let EXTRA = [];   // per row: the fields this screen doesn't show
+  function paint(tiers) {
+    const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
+    EXTRA = rows.map(t => { const { slug, label, price_cents, description, ...rest } = t || {}; return rest; });
+    document.getElementById('tiers-list').innerHTML = rows.map((t, i) => `
+      <div class="tier-row" data-i="${i}" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <div><label style="${lab}">Name families see</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="${box}"></div>
+        <div><label style="${lab}">Price per season ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}" style="${box}"></div>
+        <button type="button" onclick="this.parentElement.remove()" title="Remove this level" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">×</button>
+        <div style="grid-column:1/-1"><label style="${lab}">Description <span class="opt">(optional)</span></label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="Who this level covers" style="${box}"></div>
+        <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
+      </div>`).join('');
+  }
+  function collect() {
+    const out = [];
+    document.querySelectorAll('#tiers-list .tier-row').forEach(row => {
+      const get = f => (row.querySelector(`[data-field="${f}"]`) || {}).value || '';
+      const label = get('label').trim();
+      if (!label) return;
+      const slug = (get('slug').trim() || label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const price = parseFloat(get('price'));
+      out.push({
+        ...(EXTRA[Number(row.dataset.i)] || {}),
+        slug, label,
+        price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0,
+        description: get('description').trim() || null,
+      });
+    });
+    return out;
+  }
+  function add() {
+    const tiers = collect();
+    tiers.push({ slug: '', label: '', price_cents: 0, description: '' });
+    paint(tiers);
+  }
+  async function save() {
+    const btn = document.getElementById('tiers-save');
+    const errEl = document.getElementById('tiers-err');
+    errEl.classList.remove('show');
+    const tiers = collect();
+    const slugs = tiers.map(t => t.slug);
+    if (new Set(slugs).size !== slugs.length) {
+      errEl.textContent = 'Two levels have the same name. Give each one its own name.';
+      errEl.classList.add('show');
+      return;
+    }
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Saving…';
+    try {
+      const r = await api(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+      paint(tiers);
+      btn.textContent = '✓ Saved';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+    } catch (e) {
+      errEl.textContent = e.message; errEl.classList.add('show');
+      btn.disabled = false; btn.textContent = orig;
+    }
+  }
+  return { paint, add, save };
+})();
 
 // ── Payment deadlines (milestones) ──────────────────────────────────────
 // Stored as MM-DD so a club sets "April 1" once and it applies every season.

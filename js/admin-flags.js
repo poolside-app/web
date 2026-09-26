@@ -192,7 +192,6 @@
     households:    'a[href="/club/admin/members.html#households"]',
     applications: ['a[href="/club/admin/members.html#applications"]'],
     payments:      'a[href="/club/admin/payments.html"]',
-    tiers:         'a[href="/club/admin/tiers.html"]',
     // 'members' is the merged hub — visible if the user has EITHER
     // households OR applications scope. Handled separately below since
     // it needs OR-logic, not the per-scope hide loop.

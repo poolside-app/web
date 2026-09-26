@@ -2,7 +2,9 @@
 // today.js — shared "Today at the pool" block for the public + member homepages
 // =============================================================================
 // One engine so both pages decipher events vs hours identically:
-//   • HOURS come from settings (pool.opens_at/closes_at) — never a calendar row.
+//   • HOURS come from settings (pool.opens_at/closes_at, or that weekday's
+//     pool.hours_by_day) — never a calendar row. Imported entries that repeat
+//     daily, like "Pool Open", are dropped for that reason.
 //   • EVENTS come from the events table, filtered smart-by-type:
 //       - shown: swim_meet, social, lesson, closure, holiday, generic event,
 //                + external iCal-feed events (kind 'event')
@@ -113,7 +115,11 @@
 
   function buildItems(events, programs, todayKey) {
     var items = [];
+    // Imported entries that repeat daily ("Pool Open") are the hours again;
+    // the hours line above already says them (J6).
+    var PU = window.PoolsideUpcoming;
     (events || []).forEach(function (ev) {
+      if (PU && PU.isDailyFixture && PU.isDailyFixture(ev, events)) return;
       if (!SHOW_KINDS[ev.kind] && !ev.external) return;     // meeting + unknowns hidden
       var occ = occursToday(ev, todayKey);
       if (!occ) return;
@@ -153,8 +159,14 @@
       open = false; hoursIcon = '🚫';
       hoursText = 'Closed today' + (closureToday.label ? ' — ' + closureToday.label : '');
     } else {
-      var o = fmtHour(ps.pool && ps.pool.opens_at), c = fmtHour(ps.pool && ps.pool.closes_at);
-      if (o && c) { hoursIcon = '🏊'; hoursText = 'Open today · ' + o + ' – ' + c; }
+      // Settings' hours for today's weekday (J6); a day marked closed says so.
+      var h = PT.hoursFor ? PT.hoursFor(ps.pool, todayKey)
+        : (ps.pool && ps.pool.opens_at && ps.pool.closes_at ? { opens: ps.pool.opens_at, closes: ps.pool.closes_at } : null);
+      var byDay = (ps.pool && ps.pool.hours_by_day) || {};
+      var closedDay = byDay[String(PT.weekdayOfKey(todayKey))] && byDay[String(PT.weekdayOfKey(todayKey))].closed;
+      var o = h && fmtHour(h.opens), c = h && fmtHour(h.closes);
+      if (closedDay) { open = false; hoursIcon = '🚫'; hoursText = 'Closed today'; }
+      else if (o && c) { hoursIcon = '🏊'; hoursText = 'Open today · ' + o + ' – ' + c; }
       else { hoursIcon = '🗓️'; hoursText = "Today's schedule"; }
     }
 

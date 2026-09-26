@@ -59,7 +59,6 @@ PAGE_TO_TAB = {
     "emails.html":         "members",
     # Money
     "payments.html":       "money",
-    "tiers.html":          "money",
     "donations.html":      "money",
     "sponsors.html":       "money",
     # Calendar — things that happen at the pool on a date

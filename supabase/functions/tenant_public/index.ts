@@ -81,6 +81,7 @@ Deno.serve(async (req) => {
     pool: {
       opens_at:  v.pool?.opens_at  ?? null,
       closes_at: v.pool?.closes_at ?? null,
+      hours_by_day: v.pool?.hours_by_day ?? null,   // per-weekday hours (J6)
     },
     payments: {
       venmo_handle: v.payments?.venmo_handle ?? null,
@@ -117,8 +118,7 @@ Deno.serve(async (req) => {
     // How members get into the pool. Drives:
     //  - Whether the member app shows a "Show pool pass" button on /m/
     //  - Whether the admin nav has a Check-in tab
-    //  - The onboarding checklist surface
-    //  Set during the setup wizard. Multiple methods can be active at once.
+    //  Set in Settings → Gate & check-in. Multiple methods can be active at once.
     access: {
       methods:                Array.isArray((v as Record<string, unknown>).access_methods)
                                 ? (v as Record<string, unknown>).access_methods

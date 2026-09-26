@@ -119,7 +119,7 @@ const LS = {
 // applications.html / households.html / guest-passes.html retired to
 // redirect stubs 2026-09-07 — dropped here so the smoke run isn't just
 // re-testing members.html three times under different names.
-const ADMIN_PAGES = ['', 'members.html', 'tiers.html', 'application.html', 'payments.html', 'billing.html',
+const ADMIN_PAGES = ['', 'members.html', 'application.html', 'payments.html', 'billing.html',
   'events.html', 'parties.html', 'programs.html', 'lifeguards.html', 'my-shifts.html', 'volunteer.html',
   'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
   'audit.html', 'emails.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',

@@ -319,16 +319,16 @@ Doug chose all of these. Rule: every setting is edited in exactly one place, and
   - New clubs land on the dashboard with the checklist open. A small "Setup: 5 of 9" note on other pages links back to it until it's done.
 - **✅ J2. Status page folds into the checklist.** "What members can do right now" becomes checklist lines. Email and text provider checks move to Doug's provider admin, since a club board can't fix them anyway.
 - **✅ J3. Phone alerts are on the dashboard only.** The duplicate card in Settings goes.
-- **J4. Each thing in one place.** The Apply form page keeps its heading and links to Policies, Emails and Season instead of repeating their editors.
-- **J5. One Season section in Settings:**
+- **✅ J4. Each thing in one place.** The Apply form page keeps its heading and links to Policies, Emails and Season instead of repeating their editors.
+- **✅ J5. One Season section in Settings:**
   - Pool season dates, and signups open/closed with the closed message.
   - New: "Next season goes on sale on ___". There's no screen for this today; it silently defaults to December, and it decides which season a payment buys (C1, and H4's plan deadlines).
-- **J6. One source for pool hours: Settings** (Doug, 9/26).
+- **✅ J6. One source for pool hours: Settings** (Doug, 9/26).
   - Optionally a different time per day of the week.
   - Calendar-feed events that repeat on most days (Google's daily "Pool Open") are hidden from Today and the calendar, so hours never show twice.
   - Doug: confirm Settings has the right opening time. It says 8 AM; Google Calendar says 7 AM.
-- **J7. One Gate & check-in section in Settings.** Merges "How members get in" and "Remote keyfob access". Shows only methods that exist (the three "coming soon" ones go). The lifeguard-tablet switch lives here.
-- **J8. One Money setup page.** Sections:
+- **✅ J7. One Gate & check-in section in Settings.** Merges "How members get in" and "Remote keyfob access". Shows only methods that exist (the three "coming soon" ones go). The lifeguard-tablet switch lives here.
+- **✅ J8. One Money setup page.** Sections:
   - Membership prices (the Tiers page merges in)
   - How members pay (Stripe, Venmo, PayPal, card-fee pass-through)
   - Payment plans

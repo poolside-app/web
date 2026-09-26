@@ -8,7 +8,7 @@
  *   PoolsideCalendar.render({
  *     rootEl,           // DOM element to render into
  *     events,           // [{ id, title, kind, starts_at, ends_at, all_day, location, body }]
- *     openHoursLabel,   // optional "10A–8P" string shown in each non-other-month cell
+ *     openHoursLabel,   // optional "10A–8P", or (dayKey) => label for per-day hours
  *   });
  *
  * The widget owns its own modal — clicks on an event chip open a detail
@@ -92,6 +92,10 @@
 
   function render({ rootEl, events, openHoursLabel, onDayClick, onChipClick }) {
     if (!rootEl) return;
+    // Hours come from Settings, so an imported entry that repeats daily
+    // ("Pool Open") would only say them twice (J6).
+    const PU = (typeof window !== 'undefined' ? window : globalThis).PoolsideUpcoming;
+    if (PU && PU.isDailyFixture) events = (events || []).filter(e => !PU.isDailyFixture(e, events));
 
     const todayKey = PT.todayKey();
     let cursor = todayKey.slice(0, 8) + '01';   // first of the month on show, 'YYYY-MM-01'
@@ -166,8 +170,11 @@
         const dayEvents  = byDay.get(k) || [];
         const visible    = dayEvents.slice(0, 3);
         const overflow   = dayEvents.length - visible.length;
-        const hours = (!otherMonth && openHoursLabel)
-          ? `<div class="pcal-hours">${escapeHtml(openHoursLabel)}</div>` : '';
+        // openHoursLabel: one label for every day, or (dayKey) => label so
+        // days with their own hours (or closed) show them.
+        const hoursText = otherMonth ? null
+          : (typeof openHoursLabel === 'function' ? openHoursLabel(k) : openHoursLabel);
+        const hours = hoursText ? `<div class="pcal-hours">${escapeHtml(hoursText)}</div>` : '';
         html += `
           <div class="pcal-day ${otherMonth ? 'pcal-other' : ''} ${isToday ? 'pcal-today-cell' : ''}"
                data-day="${k}">

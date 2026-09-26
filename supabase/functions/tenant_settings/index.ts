@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
       { id: 'location', label: 'Set your pool location and hours',
         done: !!((club.location || (pool.lat && pool.lng)) && pool.opens_at && pool.closes_at),
         fix_url: '/club/admin/settings.html?focus=pool', fix_label: 'Set them',
-        why: 'Shows on the public page and member app, and keeps phone unlocks to open hours.' },
+        why: 'Shows on your public page, the member app and the calendar.' },
       { id: 'prices', label: 'Set your membership prices', done: tiers.length > 0,
         fix_url: '/club/admin/payments.html?focus=prices', fix_label: 'Set prices',
         why: 'The signup form needs at least one membership level to work.' },

@@ -25,7 +25,7 @@ The new admin gets an email with a temporary password and a sign-in link. Once t
 - **Treasurer** — payments, dues, and member rosters.
 - **Membership Chair** — applications, households, and renewals.
 - **Events / Programs** — calendar, swim lessons, parties.
-- **Communications / Marketing** — announcements, campaigns, photos.
+- **Communications / Marketing** — announcements, emails, photos.
 
 Only Owners can invite, remove, or change another admin's role.
 

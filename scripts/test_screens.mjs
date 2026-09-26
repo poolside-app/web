@@ -211,11 +211,56 @@ console.log('\nJ1–J8 · one place for each setting');
   check('J4: the Apply form page links instead of repeating editors',
     !/g-season-open|g-memberships-frozen/.test(applyPage) && !/em-subject/.test(applyPage) && !/Edit policy/.test(applyPage)
     && /policies\.html/.test(applyPage) && /emails\.html/.test(applyPage) && /settings\.html[^"]*season/.test(applyPage));
-  check('J5: Season has "next season goes on sale"', /id="renewal_opens_month"/.test(settings) && /renewal_opens_month/.test(between(settings, 'async function save', '\n}')));
+  check('J5: Season has "next season goes on sale"', /id="renewal_opens_month"/.test(settings) && /renewal_opens_month/.test(between(settings, 'function collect', '\n}')));
+  {
+    const box = { console };
+    box.globalThis = box; box.window = box;
+    vm.runInNewContext(read('js/pooltime.js'), box);
+    vm.runInNewContext(read('js/upcoming.js'), box);
+    const PT = box.PoolTime, PU = box.PoolsideUpcoming;
+    PT.setZone('America/Los_Angeles');
+    const pool = { opens_at: '08:00', closes_at: '20:00', hours_by_day: { '0': { opens: '10:00', closes: '18:00' }, '1': { closed: true } } };
+    const sat = PT.hoursFor(pool, '2027-06-05'), sun = PT.hoursFor(pool, '2027-06-06'), mon = PT.hoursFor(pool, '2027-06-07');
+    check('J6: a day uses its own hours, the usual ones, or none if closed',
+      sat?.opens === '08:00' && sun?.opens === '10:00' && sun?.closes === '18:00' && mon === null, JSON.stringify({ sat, sun, mon }));
+    const ext = (title, iso) => ({ external: true, source_label: 'Google', title, starts_at: iso });
+    const feed = [0, 1, 2, 3, 4].map(d => ext('Pool Open', `2027-06-0${d + 1}T14:00:00Z`))
+      .concat([ext('Swim practice', '2027-06-02T16:00:00Z'), ext('Swim practice', '2027-06-09T16:00:00Z')]);
+    const club = { title: 'Board meeting', starts_at: '2027-06-03T02:00:00Z' };
+    check('J6: a daily "Pool Open" is hidden; weekly and club events stay',
+      PU.isDailyFixture(feed[2], feed) && !PU.isDailyFixture(feed[5], feed) && !PU.isDailyFixture(club, feed.concat([club])));
+  }
   check('J6: hours per day in Settings, and daily calendar entries hidden', /data-day-hours|id="hours_by_day"/.test(settings)
     && /dailyFixture|isDailyFixture/.test(read('js/upcoming.js')) && /isDailyFixture/.test(read('js/today.js')) && /isDailyFixture/.test(read('js/calendar.js') + member));
   check('J7: one Gate & check-in section, no "coming soon" methods', /Gate &amp; check-in/.test(settings) && !/coming soon/i.test(between(settings, 'const ACCESS_METHODS', '];'))
     && !/id="access-card"/.test(settings));
+  {
+    // Settings saves merge into what's stored (tenant_settings deepMerge), so a
+    // day set back to the usual hours, or unticked "Closed", has to be sent
+    // as a clear, not left out. Run the page's collectDayHours on fake rows.
+    const src = between(settings, 'function collectDayHours()', '\n}\n');
+    const rows = [
+      { d: '1', closed: false, opens: '', closes: '' },          // back to usual
+      { d: '2', closed: false, opens: '10:00', closes: '18:00' }, // was closed
+      { d: '0', closed: true, opens: '', closes: '' },
+    ].map(r => ({ dataset: { dayHours: r.d }, querySelector: q => {
+      const f = q.match(/data-f="(\w+)"/)[1];
+      return f === 'closed' ? { checked: r.closed } : { value: r[f] };
+    } }));
+    const ctx = { document: { querySelectorAll: () => rows } };
+    vm.runInNewContext(`${src}\n}\nresult = collectDayHours();`, ctx);
+    const merge = (b, p) => { const o = { ...b }; for (const [k, v] of Object.entries(p)) o[k] = v && typeof v === 'object' && !Array.isArray(v) && b[k] && typeof b[k] === 'object' ? merge(b[k], v) : v; return o; };
+    const saved = { '1': { opens: '06:00', closes: '12:00' }, '2': { closed: true }, '0': { opens: '09:00', closes: '17:00' } };
+    const after = merge(saved, JSON.parse(JSON.stringify(ctx.result)));
+    const box = { console }; box.globalThis = box; box.window = box;
+    vm.runInNewContext(read('js/pooltime.js'), box);
+    const PT = box.PoolTime; PT.setZone('America/Los_Angeles');
+    const pool = { opens_at: '08:00', closes_at: '20:00', hours_by_day: after };
+    // 2026-09-21 is a Monday, 09-22 a Tuesday, 09-27 a Sunday.
+    const mon = PT.hoursFor(pool, '2026-09-21'), tue = PT.hoursFor(pool, '2026-09-22'), sun = PT.hoursFor(pool, '2026-09-27');
+    check('J6: clearing a day\'s own hours or "Closed" sticks after saving',
+      mon && mon.opens === '08:00' && tue && tue.opens === '10:00' && sun === null, JSON.stringify({ after, mon, tue, sun }));
+  }
   const money = read('club/admin/payments.html');
   check('J8: one Money setup page: prices live on Payments; Tiers and early bird moved',
     /id="prices-card"/.test(money) && /membership_tiers/.test(money) && !exists('club/admin/tiers.html')

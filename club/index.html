@@ -240,6 +240,7 @@
 <div id="root"></div>
 
 <script src="/js/calendar.js"></script>
+<script src="/js/upcoming.js"></script>
 <script src="/js/today.js" defer></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
@@ -853,9 +854,15 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
   // Fetches external iCal feeds (Google Calendar, Swimtopia, etc. that the
   // admin connected) and merges them into the native event list with per-feed
   // color. Re-renders once external data lands so the page doesn't block on it.
-  const calOpens  = fmtHourLabel(ps?.pool?.opens_at);
-  const calCloses = fmtHourLabel(ps?.pool?.closes_at);
-  const openHoursLabel = (calOpens && calCloses) ? `${calOpens}–${calCloses}` : null;
+  const openHoursLabel = (k => {
+    // Each day's hours from Settings: that weekday's own, or the usual (J6).
+    const pool = ps?.pool;
+    const day = pool && pool.hours_by_day && pool.hours_by_day[String(PoolTime.weekdayOfKey(k))];
+    if (day && day.closed) return 'Closed';
+    const h = PoolTime.hoursFor(pool, k);
+    const o = h && fmtHourLabel(h.opens), c = h && fmtHourLabel(h.closes);
+    return o && c ? `${o}–${c}` : null;
+  });
   if (window.PoolsideCalendar) {
     const calRoot = document.getElementById('public-calendar');
     // First-pass render with native events only — instant.

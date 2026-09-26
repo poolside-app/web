@@ -208,36 +208,7 @@
     <div class="toolbar">
       <h1>Renew season</h1>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;max-width:680px">When your pool opens for a new season, blast your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues. Configure an early-bird discount below if you want to reward early payers.</p>
-
-    <div class="card" style="padding:18px;margin-bottom:14px">
-      <h2 style="margin-bottom:6px">Early-bird discount</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Shown on every member home and mentioned in the renewal email/SMS. Honor system for Venmo; Stripe checkout applies the math automatically.</p>
-      <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="eb-enabled"><span>Enable early-bird discount</span></label>
-      <div class="row3" style="gap:10px">
-        <div>
-          <label>Discount type</label>
-          <select id="eb-type" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
-            <option value="amount">Flat $ off</option>
-            <option value="percent">Percent off</option>
-          </select>
-        </div>
-        <div>
-          <label><span id="eb-value-label">Discount ($)</span></label>
-          <input id="eb-value" type="number" min="0" step="0.01" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
-        </div>
-        <div>
-          <label>Pay-by deadline</label>
-          <input id="eb-deadline" type="date" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
-        </div>
-      </div>
-      <label style="margin-top:8px">Optional message <span style="color:var(--muted);font-weight:500">(shown to members)</span></label>
-      <input id="eb-message" placeholder="e.g. Save $50 if you renew before May 15!" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'">
-      <div style="margin-top:14px">
-        <button class="btn" type="button" id="eb-save" onclick="Renewals.saveEarlyBird()">Save discount config</button>
-      </div>
-      <div class="err" id="eb-err" style="margin-top:10px"></div>
-    </div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;max-width:680px">When your pool opens for a new season, blast your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues.</p>
 
     <div class="card" style="padding:18px;margin-bottom:14px">
       <h2 style="margin-bottom:6px">Who gets this</h2>
@@ -535,10 +506,9 @@ function showTab(name) {
 window.addEventListener('hashchange', () => {
   const hash = (window.location.hash || '').replace(/^#/, '');
   if      (hash === 'applications')  showTab('applications');
-  // #tiers moved to its own page under Money on 2026-09-07. Redirect
-  // rather than silently showing Households, so old bookmarks and any
-  // ?focus=tiers deep links still land somewhere correct.
-  else if (hash === 'tiers')         { window.location.replace('/club/admin/tiers.html'); return; }
+  // Prices moved to Money on 2026-09-07, and into the Payments page's
+  // Money setup on 2026-09-26 (J8). Old #tiers links land there.
+  else if (hash === 'tiers')         { window.location.replace('/club/admin/payments.html?focus=prices'); return; }
   else if (hash === 'renewals')      showTab('renewals');
   else                               showTab('households');
 });
@@ -1309,8 +1279,9 @@ const App = (() => {
 
 
 // ── Renewals namespace ────────────────────────────────────────────────
-// Season-open dues blast: configures early-bird discount, picks audience,
-// previews count, fires email/SMS via the renewals edge function.
+// Season-open dues blast: picks audience, previews count, fires email/SMS
+// via the renewals edge function. The early-bird editor left on 2026-09-26
+// (J8); early bird is a discount code now (H7).
 const Renewals = (() => {
   const RENEWALS_URL = `${SUPABASE_URL}/functions/v1/renewals`;
   // 'pay' sends a no-login link straight to a pre-filled renewal; 'signin'
@@ -1323,62 +1294,6 @@ const Renewals = (() => {
   };
   let HOUSEHOLDS = [];
   let CURRENT_AUDIENCE = 'lapsed';
-
-  function eb_typeChange() {
-    const t = document.getElementById('eb-type').value;
-    document.getElementById('eb-value-label').textContent = t === 'percent' ? 'Discount (%)' : 'Discount ($)';
-  }
-  document.addEventListener('change', (e) => {
-    if (e.target && e.target.id === 'eb-type') eb_typeChange();
-  });
-
-  async function loadEarlyBird() {
-    const data = await call(SETTINGS_URL, 'get');
-    if (!data.ok) throw new Error(data.error || 'Settings load failed');
-    const eb = data.settings?.renewals?.early_bird || {};
-    document.getElementById('eb-enabled').checked = !!eb.enabled;
-    if (typeof eb.discount_percent === 'number' && eb.discount_percent > 0) {
-      document.getElementById('eb-type').value = 'percent';
-      document.getElementById('eb-value').value = eb.discount_percent;
-    } else {
-      document.getElementById('eb-type').value = 'amount';
-      document.getElementById('eb-value').value = (typeof eb.discount_cents === 'number' && eb.discount_cents > 0)
-        ? (eb.discount_cents / 100).toFixed(2) : '';
-    }
-    document.getElementById('eb-deadline').value = eb.deadline || '';
-    document.getElementById('eb-message').value = eb.message || '';
-    eb_typeChange();
-  }
-  async function saveEarlyBird() {
-    const btn = document.getElementById('eb-save');
-    const errEl = document.getElementById('eb-err');
-    errEl.classList.remove('show');
-    btn.disabled = true;
-    const orig = btn.textContent;
-    btn.textContent = 'Saving…';
-    try {
-      const enabled = document.getElementById('eb-enabled').checked;
-      const type = document.getElementById('eb-type').value;
-      const raw = parseFloat(document.getElementById('eb-value').value);
-      const deadline = document.getElementById('eb-deadline').value || null;
-      const message = document.getElementById('eb-message').value.trim() || null;
-      const eb = {
-        enabled,
-        discount_cents:   type === 'amount'  && Number.isFinite(raw) ? Math.round(raw * 100) : 0,
-        discount_percent: type === 'percent' && Number.isFinite(raw) ? raw : 0,
-        deadline, message,
-      };
-      const data = await call(SETTINGS_URL, 'save', { value: { renewals: { early_bird: eb } } });
-      if (!data.ok) throw new Error(data.error || 'Save failed');
-      btn.textContent = '✓ Saved';
-      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
-      // Refresh summary so the discount line shows up immediately
-      paintSummary();
-    } catch (e) {
-      errEl.textContent = e.message; errEl.classList.add('show');
-      btn.disabled = false; btn.textContent = orig;
-    }
-  }
 
   async function loadHouseholds() {
     const data = await call(HH_URL, 'list');
@@ -1443,7 +1358,6 @@ const Renewals = (() => {
     document.getElementById('ren-err').classList.remove('show');
     document.getElementById('ren-dev-links').innerHTML = '';
     try {
-      await loadEarlyBird();
       await loadHouseholds();
       bindAudience();
       paintSummary();
@@ -1584,7 +1498,7 @@ const Renewals = (() => {
     }
   }
 
-  return { refresh, saveEarlyBird, send };
+  return { refresh, send };
 })();
 
 // ── Boot ───────────────────────────────────────────────────────────────
@@ -1613,9 +1527,9 @@ const Renewals = (() => {
   const startTab = window.location.hash.replace(/^#/, '');
   if      (startTab === 'applications')  showTab('applications');
   // Same redirect as the hashchange handler — a cold load of
-  // members.html#tiers has to go to the new page too, not just a
+  // members.html#tiers has to go to the prices too, not just a
   // hash change while already here.
-  else if (startTab === 'tiers')         { window.location.replace('/club/admin/tiers.html'); return; }
+  else if (startTab === 'tiers')         { window.location.replace('/club/admin/payments.html?focus=prices'); return; }
   else if (startTab === 'renewals')      showTab('renewals');
   else { await Households.refresh(); App.refresh(); }
 })();

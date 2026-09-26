@@ -61,5 +61,23 @@
     return limit === Infinity ? out : out.slice(0, limit);
   }
 
-  root.PoolsideUpcoming = { merge };
+  /** An imported calendar entry that happens on 3+ days in the week around
+   *  it, like Bishop's daily "Pool Open". Hours come from Settings (J6), so
+   *  these are hidden from Today and the calendars. `all` is the list it came
+   *  from; entries are grouped by feed and title. Club events never count. */
+  function isDailyFixture(ev, all) {
+    if (!ev || !ev.external) return false;
+    const key = `${ev.source_label || ''}|${ev.title || ev.summary || ''}`;
+    const t = Date.parse(ev.starts_at);
+    const days = new Set();
+    for (const o of all || []) {
+      if (!o.external || `${o.source_label || ''}|${o.title || o.summary || ''}` !== key) continue;
+      const ot = Date.parse(o.starts_at);
+      if (Math.abs(ot - t) <= 3.5 * DAY) days.add(dayKey(o.starts_at));
+      if (days.size >= 3) return true;
+    }
+    return false;
+  }
+
+  root.PoolsideUpcoming = { merge, isDailyFixture };
 })(typeof window !== 'undefined' ? window : globalThis);

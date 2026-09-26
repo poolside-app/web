@@ -133,6 +133,18 @@
     return fromWall(+m[1], +m[2], +m[3], +m[4], +m[5], 0).toISOString();
   }
   /** Format a date-only 'YYYY-MM-DD' without ever shifting its day. */
+  /** The pool's hours on a day ('YYYY-MM-DD'): { opens, closes } as 'HH:MM',
+   *  or null when it's closed that day. Settings holds the usual hours and,
+   *  optionally, hours for particular weekdays (pool.hours_by_day, keyed
+   *  0 = Sunday … 6 = Saturday; { closed: true } for a closed day). J6. */
+  function hoursFor(pool, key) {
+    pool = pool || {};
+    var byDay = pool.hours_by_day || {};
+    var d = byDay[String(weekdayOfKey(key))];
+    if (d && d.closed) return null;
+    var opens = (d && d.opens) || pool.opens_at, closes = (d && d.closes) || pool.closes_at;
+    return opens && closes ? { opens: opens, closes: closes } : null;
+  }
   function fmtDay(key, opts) {
     if (!key) return '';
     var m = String(key).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -155,6 +167,6 @@
     parts: parts, dayKey: dayKey, todayKey: todayKey,
     addDays: addDays, addMonths: addMonths, weekdayOfKey: weekdayOfKey,
     fromWall: fromWall, atTime: atTime, startOfDay: startOfDay, endOfDay: endOfDay,
-    toInput: toInput, fromInput: fromInput, fmtDay: fmtDay,
+    toInput: toInput, fromInput: fromInput, fmtDay: fmtDay, hoursFor: hoursFor,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

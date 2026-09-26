@@ -31,14 +31,14 @@
       { key: 'households',   label: 'Households', href: '/club/admin/members.html#households',   scope: 'households'   },
       { key: 'renewals',     label: 'Renewals',   href: '/club/admin/members.html#renewals',     scope: 'households'   },
       { key: 'policies',     label: 'Policies',   href: '/club/admin/policies.html',             scope: 'policies'     },
-      { key: 'applyform',    label: 'Apply form', href: '/club/admin/application.html',          scope: 'applications' },
+      { key: 'applyform',    label: 'Signup form', href: '/club/admin/application.html',         scope: 'applications' },
+      { key: 'emails',       label: 'Emails',     href: '/club/admin/emails.html',               scope: 'announcements' },
     ],
     // Money. Previously spread across four top tabs: dues under Members,
     // donations/sponsors/campaigns under Content, and billing nowhere at
     // all. A treasurer had to learn three tabs and one secret URL.
     money: [
       { key: 'payments',  label: 'Payments',  href: '/club/admin/payments.html',  scope: 'payments'      },
-      { key: 'tiers',     label: 'Tiers',     href: '/club/admin/tiers.html',     scope: 'payments'      },
       { key: 'donations', label: 'Donations', href: '/club/admin/donations.html', scope: 'payments'      },
       { key: 'sponsors',  label: 'Sponsors',  href: '/club/admin/sponsors.html',  scope: 'announcements' },
     ],
@@ -80,7 +80,7 @@
   const PAGE_SECTION = {
     'members.html': 'members', 'policies.html': 'members', 'application.html': 'members',
     'import.html': 'members', 'migrate.html': 'members', 'emails.html': 'members',
-    'payments.html': 'money', 'tiers.html': 'money',
+    'payments.html': 'money',
     'donations.html': 'money', 'sponsors.html': 'money',
     'events.html': 'calendar', 'programs.html': 'calendar', 'parties.html': 'calendar',
     'volunteer.html': 'calendar', 'lifeguards.html': 'calendar', 'my-shifts.html': 'calendar',

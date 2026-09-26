@@ -19,7 +19,6 @@ The buttons at the top of Payments narrow the list:
 - **Dues** — just the season membership dues
 - **Memberships** — application fees from new families
 - **Programs** — swim lessons, camps, etc.
-- **Passes** — guest pass packs
 
 The "**aged**" red pill on a row means it's been more than 14 days unpaid — those are the families to call personally.
 
@@ -35,7 +34,7 @@ That charge instantly moves to paid, and the family stops getting renewal remind
 
 ### Need a list of who DID pay?
 
-Right now, the Payments page only shows open balances. If you connect Google Drive (under **Payments → Payment options setup**), every approved member is automatically archived in your Drive — including a master roster spreadsheet you can open in Google Sheets and filter however you want.
+Right now, the Payments page only shows open balances. If you connect Google Drive (under **Settings → Backups & archive**), every approved member is automatically archived in your Drive — including a master roster spreadsheet you can open in Google Sheets and filter however you want.
 
 If you're not using Drive, ask the support team — we can email you a CSV export of paid households on request.
 

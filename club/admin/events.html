@@ -417,6 +417,7 @@
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script src="/js/calendar.js"></script>
+<script src="/js/upcoming.js"></script>
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
@@ -647,9 +648,15 @@ function applySearch() {
     // For the month view, re-render the grid with a filtered events array
     const filtered = searchFilter(CACHE_ALL);
     if (window.PoolsideCalendar) {
-      const opens  = fmtHourLabel(SETTINGS?.pool?.opens_at);
-      const closes = fmtHourLabel(SETTINGS?.pool?.closes_at);
-      const openHoursLabel = (opens && closes) ? `${opens}–${closes}` : null;
+      const openHoursLabel = (k => {
+    // Each day's hours from Settings: that weekday's own, or the usual (J6).
+    const pool = SETTINGS?.pool;
+    const day = pool && pool.hours_by_day && pool.hours_by_day[String(PoolTime.weekdayOfKey(k))];
+    if (day && day.closed) return 'Closed';
+    const h = PoolTime.hoursFor(pool, k);
+    const o = h && fmtHourLabel(h.opens), c = h && fmtHourLabel(h.closes);
+    return o && c ? `${o}–${c}` : null;
+  });
       PoolsideCalendar.render({
         rootEl: document.getElementById('month-view'),
         events: filtered,
@@ -687,9 +694,15 @@ document.querySelectorAll('#view-toggle button').forEach(b => {
 // ── Month-grid view (uses /js/calendar.js shared widget) ──────────────
 function renderMonth() {
   const root = document.getElementById('month-view');
-  const opens  = fmtHourLabel(SETTINGS?.pool?.opens_at);
-  const closes = fmtHourLabel(SETTINGS?.pool?.closes_at);
-  const openHoursLabel = (opens && closes) ? `${opens}–${closes}` : null;
+  const openHoursLabel = (k => {
+    // Each day's hours from Settings: that weekday's own, or the usual (J6).
+    const pool = SETTINGS?.pool;
+    const day = pool && pool.hours_by_day && pool.hours_by_day[String(PoolTime.weekdayOfKey(k))];
+    if (day && day.closed) return 'Closed';
+    const h = PoolTime.hoursFor(pool, k);
+    const o = h && fmtHourLabel(h.opens), c = h && fmtHourLabel(h.closes);
+    return o && c ? `${o}–${c}` : null;
+  });
   if (!window.PoolsideCalendar) {
     root.innerHTML = '<div class="empty">Calendar widget failed to load.</div>';
     return;

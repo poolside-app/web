@@ -19,8 +19,8 @@ Stripe will ask for some paperwork. Have these ready before you start, or you'll
 
 ### Connecting Stripe — step by step
 
-1. Click **Payments** in the top nav (it's a sub-tab under **Members** in the strip).
-2. At the top of the Payments page, click the **Payment options setup** drop-down to open it.
+1. Click **Money** in the top nav.
+2. On the Payments page, click **Money setup** to open it.
 3. Find the **Card payments (Stripe)** section.
 4. Click **Connect Stripe**.
 5. You'll be sent over to Stripe to enter the info you gathered above. It usually takes a few minutes. Sometimes Stripe needs a day to review.

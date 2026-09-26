@@ -15,6 +15,7 @@ const LOCAL = {
   '/club/admin/application.html': 'club/admin/application.html', '/js/upcoming.js': 'js/upcoming.js', '/js/today.js': 'js/today.js', '/js/calendar.js': 'js/calendar.js',
   '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
+  '/js/pooltime.js': 'js/pooltime.js', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
 };
 
 // RENDER_ONLY=apply,login,members,home limits the run to those pages.
@@ -137,6 +138,32 @@ export async function renderChecks({ check, read, sql, jwt }) {
         });
         check('J1: the dashboard shows the one checklist (9 items, real screens)',
           setup.shown && (setup.folded || (setup.rows === 9 && setup.links.every(h => !/wizard|setup\.html/.test(h)))), JSON.stringify(setup).slice(0, 220));
+      }
+      if (path === '/club/admin/payments.html') {
+        // J8: prices are on this page, inside Money setup with the rest.
+        const money = await pg.evaluate(() => {
+          const setup = document.getElementById('setup-section');
+          return {
+            tiers: [...document.querySelectorAll('#tiers-list .tier-row [data-field="label"]')].map(i => i.value),
+            inSetup: ['prices-card', 'plans-card', 'late-fee-card', 'test-mode-card'].every(id => setup && setup.contains(document.getElementById(id))),
+            tiersLink: !!document.querySelector('a[href*="tiers.html"]'),
+          };
+        });
+        check('J8: Money setup holds prices, plans, late fees and test payments',
+          money.tiers.length >= 1 && money.tiers.includes('Family') && money.inSetup && !money.tiersLink, JSON.stringify(money));
+      }
+      if (path === '/club/admin/settings.html') {
+        // J5–J7: Season has the on-sale month, hours per day, one gate section.
+        const set = await pg.evaluate(() => ({
+          onSale: document.getElementById('renewal_opens_month')?.value,
+          note: document.getElementById('selling-note')?.textContent || '',
+          days: document.querySelectorAll('[data-day-hours]').length,
+          gate: document.getElementById('gate-card')?.innerText.slice(0, 40) || '',
+          methods: document.querySelectorAll('#access-methods input[type="checkbox"]').length,
+          remote: getComputedStyle(document.getElementById('gate-remote')).display,
+        }));
+        check('J5–J7: Settings shows the on-sale month, 7 day rows and one Gate & check-in section',
+          set.onSale && /season/.test(set.note) && set.days === 7 && /Gate & check-in/.test(set.gate) && set.methods >= 1 && set.remote !== 'none', JSON.stringify(set));
       }
       const url = new URL(pg.url()).pathname;
       check(`board: ${path} loads with no errors`, pg.errs.filter(e => !/browser pop-up/.test(e)).length === 0 && !/login/.test(url),

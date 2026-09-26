@@ -20,12 +20,10 @@ To get them a working sign-in link after the fix, send them to your member sign-
 
 ### 3. Email isn't fully set up for your club yet
 
-Click **Status** in the top nav. If you see a yellow or red item under "What your members can do right now" next to "Get emails," that's your culprit.
-
-Usually this means the email address your club sends from isn't fully verified yet. This is a one-time step that proves to Gmail and other providers that the emails really are from you. The Status page tells you exactly what to fix. Click **Send to me** next to the email check to test it once you're done.
+Sometimes the address Poolside sends from isn't fully verified yet. That's a one-time step on our side that proves to Gmail and other providers the emails really are from your club. You can't fix it from your board screens, so click **Email support** below and we'll check it.
 
 ### Still stuck?
 
-If the member's email looks right, isn't in spam, and Status says everything's green, click the **Email support** button at the bottom of this page. We'll check the delivery log and tell you exactly what happened.
+If the member's email looks right and isn't in spam, click the **Email support** button at the bottom of this page. We'll check the delivery log and tell you exactly what happened.
 
 > **Tip:** If a member is using an old `aol.com` or `comcast.net` address, those providers are stricter about new senders. Suggest they whitelist your club's email address.
