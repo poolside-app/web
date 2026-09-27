@@ -267,10 +267,11 @@ Steps (each: failing test first, then the fix, then proof):
   - Today they're sorted Jan–Dec, so December counts as "last" and the save fails whatever you type.
   - The server places fall deadlines in the calendar year before the season too.
   - Also fixed: a family joining after a deadline pays that share in their first payment instead of being refused a plan, the signup form stops offering pay-in-two once the last deadline has passed, and keyfobs aren't switched off over a fall deadline.
-- **H5. Discounts actually come off the price.**
+- **H5. ✅ Discounts actually come off the price.**
   - Each signup or renewal carries a code discount and a referral credit. Card checkout, payment plans and the Venmo amount all use the reduced price.
   - If it comes to $0, "Confirm, nothing to pay" marks them paid.
   - The credit and code use are recorded only once the payment clears.
+  - Also fixed: one-click Approve in the Pipeline was making every family a Family household whatever level they picked, which sets their renewal price. The Venmo check now shows the amount after discount.
 - **H6. Referral rewards: credit or refund, approved, tracked** (Doug, 9/26).
   - **Settings** (board admin → Referral program): the member's reward (default $100) and the new family's discount (default $25).
   - **The new family** saves $25 when they join through a member's link. Only one discount per membership: if they also have a code, the bigger one applies, and they're told so.

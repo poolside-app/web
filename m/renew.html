@@ -96,6 +96,7 @@ const AUTH_URL     = `${SUPABASE_URL}/functions/v1/member_auth`;
 const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/stripe_checkout`;
 
 let OPTS = null;        // renewal_options response
+let CODE = '';          // "Have a code?" (H5, H7)
 let choice = 'full';    // 'full' | 'plan'
 let planCount = null;   // selected installment count
 
@@ -150,7 +151,10 @@ function render() {
     </div>`);
     return;
   }
-  if (!o.dues_cents) {
+  const price = o.price || { base_cents: o.dues_cents, amount_due_cents: o.dues_cents, discount_cents: 0, credit_cents: 0 };
+  // A discount or their referral credit can cover the whole season (H5).
+  const free = price.base_cents > 0 && price.amount_due_cents === 0;
+  if (!price.base_cents) {
     shell(`<div class="card">
       <h1>Renewals aren't quite ready</h1>
       <p style="color:var(--muted);font-size:14px;margin:10px 0 0">
@@ -159,20 +163,23 @@ function render() {
     return;
   }
 
-  const plansOn = o.plans_enabled && (o.options || []).length > 0;
+  const plansOn = !free && o.plans_enabled && (o.options || []).length > 0;
   if (!plansOn) choice = 'full';
+  const goLabel = free ? 'Confirm, nothing to pay' : choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(o.dues_cents);
 
   shell(`
     <div class="card">
       <h1>Renew for ${o.year}</h1>
       <p style="color:var(--muted);font-size:14px;margin:8px 0 18px">
         ${esc(o.family_name || 'Your household')} · ${esc(o.tier_label)}</p>
-      <div class="amount">${money(o.dues_cents)}</div>
-      <div class="amount-sub">${o.pass_fee ? 'Includes the card processing fee.' : 'Total for the season.'}</div>
+      <div class="amount">${money(free ? 0 : o.dues_cents)}</div>
+      <div class="amount-sub">${free ? 'Nothing to pay this season.' : o.pass_fee ? 'Includes the card processing fee.' : 'Total for the season.'}</div>
+      ${priceLinesHtml(price)}
+      ${codeHtml(price)}
       ${plansOn && o.rules ? rulesHtml(o.rules) : ''}
     </div>
 
-    <div class="card">
+    ${free ? '' : `<div class="card">
       <h2>How would you like to pay?</h2>
       <label class="opt ${choice === 'full' ? 'sel' : ''}" id="opt-full">
         <input type="radio" name="how" value="full" ${choice === 'full' ? 'checked' : ''}>
@@ -190,9 +197,9 @@ function render() {
         </span>
       </label>` : ''}
       <div id="plan-area">${choice === 'plan' ? planHtml() : ''}</div>
-    </div>
+    </div>`}
 
-    <div class="card">
+    ${free ? '' : `<div class="card">
       <label class="toggle">
         <input type="checkbox" id="auto-renew" ${o.auto_renew ? 'checked' : ''}>
         <span>
@@ -200,11 +207,11 @@ function render() {
           <span class="opt-sub">Once a year, when ${o.year + 1} dues open, we'll charge this card for whatever your membership costs that season — your board sets it and it can change. We'll email you 14 days before, with the amount. It continues until you turn it off, which you can do any time under My family. Ticking this authorizes those charges.</span>
         </span>
       </label>
-    </div>
+    </div>`}
 
     <div id="err"></div>
-    <button class="btn" id="go">${choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(o.dues_cents)}</button>
-    <p class="ok-note">Payments are handled by Stripe. Your card details never touch your club or Poolside.</p>
+    <button class="btn" id="go">${goLabel}</button>
+    ${free ? '' : '<p class="ok-note">Payments are handled by Stripe. Your card details never touch your club or Poolside.</p>'}
   `);
 
   document.querySelectorAll('input[name=how]').forEach(r => {
@@ -222,6 +229,49 @@ function render() {
     c.addEventListener('click', () => { planCount = Number(c.dataset.count); render(); });
   });
   document.getElementById('go').addEventListener('click', submit);
+  const codeBtn = document.getElementById('code-apply');
+  if (codeBtn) codeBtn.addEventListener('click', applyCode);
+  const codeIn = document.getElementById('code-in');
+  if (codeIn) codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } });
+  const codeToggle = document.getElementById('code-toggle');
+  if (codeToggle) codeToggle.addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('code-box').style.display = '';
+    document.getElementById('code-in').focus();
+  });
+}
+
+// The breakdown under the amount: the level's price, any code, their
+// referral credit (H5).
+function priceLinesHtml(p) {
+  if (!p || !(p.discount_cents || p.credit_cents)) return '';
+  const row = (label, cents, green) => `<div style="display:flex;justify-content:space-between;${green ? 'color:#15803d' : ''}"><span>${label}</span><span>${cents < 0 ? '−' : ''}${money(Math.abs(cents))}</span></div>`;
+  return `<div style="margin-top:14px;font-size:13.5px;line-height:1.7;border-top:1px solid var(--border);padding-top:10px">
+    ${row(esc(OPTS.tier_label || 'Membership'), p.base_cents)}
+    ${p.discount_cents ? row(`Code ${esc(p.code || '')}${p.code_label ? ' (' + esc(p.code_label) + ')' : ''}`, -p.discount_cents, true) : ''}
+    ${p.credit_cents ? row('Your referral credit', -p.credit_cents, true) : ''}
+  </div>`;
+}
+function codeHtml(p) {
+  const msg = CODE && p ? (p.code_problem
+    ? `<div style="color:var(--red);font-size:12.5px;margin-top:6px">${esc(p.code_problem)}</div>`
+    : p.code ? `<div style="color:#15803d;font-size:12.5px;margin-top:6px">Code ${esc(p.code)} applied.</div>` : '') : '';
+  return `<div style="margin-top:12px">
+    <a href="#" id="code-toggle" style="font-size:13px;font-weight:600;${CODE ? 'display:none' : ''}">Have a code?</a>
+    <div id="code-box" style="${CODE ? '' : 'display:none'}">
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <input id="code-in" value="${esc(CODE)}" placeholder="Code" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:15px 'Inter';text-transform:uppercase">
+        <button type="button" id="code-apply" style="padding:9px 15px;border:1.5px solid var(--border);border-radius:999px;background:#fff;font:600 13px 'Inter';color:var(--text);cursor:pointer">Apply</button>
+      </div>
+      ${msg}
+    </div>
+  </div>`;
+}
+async function applyCode() {
+  CODE = document.getElementById('code-in').value.trim();
+  const next = await callMember('renewal_options', { discount_code: CODE });
+  if (next.ok) OPTS = next;
+  render();
 }
 
 function rulesHtml(rules) {
@@ -288,9 +338,20 @@ async function submit() {
   btn.disabled = true;
   btn.textContent = 'Setting up…';
   try {
-    const autoRenew = document.getElementById('auto-renew').checked;
-    const started = await callMember('renew_start', { auto_renew: autoRenew });
+    const ar = document.getElementById('auto-renew');
+    const started = await callMember('renew_start', ar ? { auto_renew: ar.checked, discount_code: CODE } : { discount_code: CODE });
     if (!started.ok) throw new Error(started.error || 'Could not start your renewal');
+
+    // Covered in full by a code or their referral credit (H5).
+    if (started.amount_due_cents === 0) {
+      const fr = await fetch(CHECKOUT_URL, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm_free', application_id: started.application_id }),
+      }).then(r => r.json());
+      if (!fr.ok) throw new Error(fr.error || 'Could not confirm');
+      window.location.href = fr.redirect;
+      return;
+    }
 
     const payload = choice === 'plan'
       ? { action: 'application_plan', application_id: started.application_id, installment_count: planCount }

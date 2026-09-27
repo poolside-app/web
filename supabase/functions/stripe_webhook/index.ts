@@ -187,12 +187,29 @@ Deno.serve(async (req) => {
 
     if (kind === 'application' && md.application_id) {
       const now = new Date().toISOString();
-      await sb.from('applications').update({
-        payment_status: 'paid', payment_method: 'stripe',
+      // md.free: a discount or credit covered the whole price, confirmed by
+      // stripe_checkout.confirm_free (H5). No card, no Stripe session.
+      const free = md.free === '1';
+      const { error: paidErr } = await sb.from('applications').update({
+        payment_status: 'paid', payment_method: free ? 'free' : 'stripe',
         paid_at: now, verified_at: now,
-        stripe_session_id: String(session.id || ''),
+        stripe_session_id: free ? null : String(session.id || ''),
         stripe_payment_intent_id: (session.payment_intent as string) || null,
+        ...(free ? { payment_reference: 'Nothing to pay: covered by discount or credit' } : {}),
       }).eq('id', md.application_id).eq('tenant_id', tenantId);
+      if (paidErr) {
+        // Never approve a family whose payment didn't get recorded. Forget
+        // the event so Stripe's retry (or a second tap) runs it again.
+        console.error('marking application paid failed:', paidErr.message);
+        if (eventId) await sb.from('stripe_processed_events').delete().eq('id', eventId);
+        return new Response(`Could not record payment: ${paidErr.message}`, { status: 500 });
+      }
+
+      // Count the code use and spend the credit, now the payment has cleared.
+      try {
+        const { recordDiscountUse } = await import('../_shared/membership_price.ts');
+        await recordDiscountUse(sb, md.application_id);
+      } catch (e) { console.error('discount record failed:', (e as Error).message); }
 
       // Auto-approve: applicant paid via Stripe = they're a member, no manual
       // review needed. Idempotent — applications.approve checks status first
@@ -294,6 +311,12 @@ Deno.serve(async (req) => {
           }
         } catch { /* fallback: leave null, second charge will fail visibly */ }
       }
+
+      // The first payment cleared: the code use and credit count from now.
+      try {
+        const { recordDiscountUse } = await import('../_shared/membership_price.ts');
+        await recordDiscountUse(sb, md.application_id);
+      } catch (e) { console.error('discount record failed:', (e as Error).message); }
 
       // Mark installment 1 paid
       await sb.from('payment_plan_installments').update({

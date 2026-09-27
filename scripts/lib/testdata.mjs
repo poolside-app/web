@@ -37,6 +37,7 @@ export async function purgeTestFamilies(sql, tenantId, familyLike) {
     delete from drive_sync_queue where application_id in (select id from x_apps);
     delete from referrals where application_id in (select id from x_apps);
     delete from stripe_processed_events where id in (select 'evt_' || stripe_session_id from x_apps where stripe_session_id like 'sim_%');
+    delete from stripe_processed_events where id in (select 'evt_free_' || id from x_apps);
     delete from sms_log where tenant_id = ${T} and to_phone like '+1555%'
       and to_phone in (select phone_e164 from x_members union select primary_phone from applications where id in (select id from x_apps));
     delete from email_log where to_email ilike 'doug.frevele+simtest%'

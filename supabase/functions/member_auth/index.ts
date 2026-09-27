@@ -588,8 +588,22 @@ Deno.serve(async (req) => {
     if (!household) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
 
     const state = await renewalStateFor(sb, payload.tid as string, household);
+    // Their price, with a code they typed and their referral credit (H5).
+    // With a renewal already started, the price is stored on it.
+    const code = body.discount_code !== undefined ? String(body.discount_code ?? '') : undefined;
+    let priced: import('../_shared/membership_price.ts').PriceResult | null = null;
+    if (state.application_id) {
+      const { priceApplication } = await import('../_shared/membership_price.ts');
+      priced = await priceApplication(sb, state.application_id as string, code !== undefined ? { code } : {});
+    } else if (code) {
+      const { priceFor } = await import('../_shared/membership_price.ts');
+      const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+      priced = await priceFor(sb, payload.tid as string, settingsRow?.value, {
+        tierSlug: household.tier as string | null, householdId: household.id as string, isRenewal: true, code,
+      });
+    }
     const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
-    const quote = await quoteRenewal(sb, payload.tid as string, household);
+    const quote = await quoteRenewal(sb, payload.tid as string, household, priced);
 
     return jsonResponse({
       ok: true,
@@ -714,8 +728,13 @@ Deno.serve(async (req) => {
     // Idempotent: tapping twice, or coming back after abandoning checkout,
     // returns the same row rather than littering the admin queue with
     // duplicates. The partial unique index backstops this at the DB level.
+    const { priceApplication } = await import('../_shared/membership_price.ts');
+    const code = body.discount_code !== undefined && String(body.discount_code ?? '').trim()
+      ? { code: String(body.discount_code) } : {};
     if (state.application_id) {
-      return jsonResponse({ ok: true, application_id: state.application_id, membership_year: state.year, reused: true });
+      const priced = await priceApplication(sb, state.application_id as string, code);
+      return jsonResponse({ ok: true, application_id: state.application_id, membership_year: state.year, reused: true,
+        amount_due_cents: priced?.amount_due_cents ?? null });
     }
 
     const { data: members } = await sb.from('household_members')
@@ -754,7 +773,9 @@ Deno.serve(async (req) => {
       }).eq('id', household.id).eq('tenant_id', payload.tid as string);
     }
 
-    return jsonResponse({ ok: true, application_id: created.id, membership_year: state.year, reused: false });
+    const priced = await priceApplication(sb, created.id as string, code);
+    return jsonResponse({ ok: true, application_id: created.id, membership_year: state.year, reused: false,
+      amount_due_cents: priced?.amount_due_cents ?? null });
   }
 
   // ── list_my_parties ────────────────────────────────────────────────────

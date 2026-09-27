@@ -101,6 +101,35 @@ async function verifySimToken(token: string): Promise<SimCheckout | null> {
   } catch { return null; }
 }
 
+/**
+ * A $0 membership: run it through stripe_webhook as a completed payment, the
+ * same way test payments do, so approval, the household, emails, the referral
+ * check and the discount record all happen exactly as for a card. The webhook
+ * records it as payment_method 'free', with no card and no Stripe session.
+ */
+async function confirmFree(
+  app: Record<string, unknown>, tenant: Record<string, unknown>,
+): Promise<{ ok: true; redirect: string } | { ok: false; error: string }> {
+  const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+  const redirect = app.is_renewal ? `${clubUrl}/m/?renewed=1` : `${clubUrl}/apply.html?paid=1&app_id=${app.id}`;
+  const sid = `free_${app.id}`;
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/stripe_webhook`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+    body: JSON.stringify({
+      id: `evt_${sid}`,   // one per application, so a double tap does nothing twice
+      type: 'checkout.session.completed',
+      data: { object: {
+        id: sid, object: 'checkout.session', status: 'complete', payment_status: 'paid',
+        amount_total: 0, currency: 'usd', payment_intent: null, customer: null,
+        metadata: { kind: 'application', application_id: String(app.id), tenant_id: String(app.tenant_id), free: '1' },
+      } },
+    }),
+  });
+  if (!r.ok) return { ok: false, error: `Could not confirm (${r.status})` };
+  return { ok: true, redirect };
+}
+
 async function stripeCheckout(params: {
   tenantStripeAccount: string;
   amountCents: number;
@@ -220,6 +249,27 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, redirect: sim.ok });
   }
 
+  // ── confirm_free: public — "Confirm, nothing to pay" (H5). A discount or
+  // credit covered the whole price. The price is worked out again here, so
+  // this only ever confirms a membership that really is $0.
+  if (action === 'confirm_free') {
+    const id = String(body.application_id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'application_id required' }, 400);
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, payment_status, is_renewal').eq('id', id).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    const { data: tenant } = await sb.from('tenants').select('slug').eq('id', app.tenant_id).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const { priceApplication } = await import('../_shared/membership_price.ts');
+    const priced = await priceApplication(sb, id);
+    if (!priced || priced.amount_due_cents > 0) {
+      return jsonResponse({ ok: false, error: `There's $${((priced?.amount_due_cents ?? 0) / 100).toFixed(2)} to pay.` }, 409);
+    }
+    const free = await confirmFree(app as Record<string, unknown>, tenant as Record<string, unknown>);
+    return jsonResponse(free, free.ok ? 200 : 400);
+  }
+
   // ── application: public action — anyone with the application id can pay
   if (action === 'application') {
     const id = String(body.application_id ?? '');
@@ -238,13 +288,21 @@ Deno.serve(async (req) => {
     }
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
 
-    // Resolve tier price from settings
+    // The price after any discount and credit (H5), worked out again here so
+    // what the card is charged always matches the rules.
     const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
     const sv = (settings?.value as Record<string, unknown> | undefined);
     const tiers = (sv?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
     const tier = tiers.find(t => t.slug === app.tier_slug) || tiers[0];
-    const baseCents = (tier?.price_cents as number) || 0;
-    if (baseCents <= 0) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+    if (!(Number(tier?.price_cents) > 0)) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+    const { priceApplication } = await import('../_shared/membership_price.ts');
+    const priced = await priceApplication(sb, app.id as string);
+    const baseCents = priced?.amount_due_cents ?? 0;
+    if (baseCents <= 0) {
+      // Nothing to pay: confirm it like a payment, without a card.
+      const free = await confirmFree(app as Record<string, unknown>, tenant as Record<string, unknown>);
+      return jsonResponse(free.ok ? { ok: true, url: free.redirect, free: true } : free, free.ok ? 200 : 400);
+    }
 
     // Surcharge: if the club has opted to pass the Stripe processing fee to
     // the member, gross up so they net the base price. Net-up formula:
@@ -277,7 +335,8 @@ Deno.serve(async (req) => {
     const session = await stripeCheckout({
       tenantStripeAccount: tenant.stripe_account_id,
       amountCents,
-      productName: `${tenant.display_name} — Annual membership (${(tier?.label as string) || 'family'})${passFee ? ' + processing fee' : ''}`,
+      productName: `${tenant.display_name} — Annual membership (${(tier?.label as string) || 'family'})${
+        priced && priced.discount_cents + priced.credit_cents > 0 ? ', after discount' : ''}${passFee ? ' + processing fee' : ''}`,
       description: `Application from ${app.family_name} (${app.primary_name})`,
       // app_id in the success URL lets the success page issue a fresh
       // magic-link sign-in token immediately (instead of "watch for email").
@@ -334,8 +393,11 @@ Deno.serve(async (req) => {
     const sv = settings?.value as Record<string, unknown> | undefined;
     const tiers = (sv?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
     const tier = tiers.find(t => t.slug === app.tier_slug) || tiers[0];
-    const totalCents = (tier?.price_cents as number) || 0;
-    if (totalCents <= 0) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+    if (!(Number(tier?.price_cents) > 0)) return jsonResponse({ ok: false, error: 'Membership fee not configured for this tier' }, 400);
+    // Spread what they actually owe after any discount and credit (H5).
+    const { priceApplication } = await import('../_shared/membership_price.ts');
+    const totalCents = (await priceApplication(sb, app.id as string))?.amount_due_cents ?? 0;
+    if (totalCents <= 0) return jsonResponse({ ok: false, error: 'There is nothing left to pay, so there is no plan to set up.', free: true }, 400);
 
     const planConfig = ((sv?.payments as Record<string, unknown> | undefined)?.plan as Record<string, unknown> | undefined);
     const { resolveRules, generateSchedule, validateSchedule, twoPaymentTerms } =

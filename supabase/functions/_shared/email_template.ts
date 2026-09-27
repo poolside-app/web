@@ -115,6 +115,25 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
     `),
   },
   {
+    key: 'application_approved_free',
+    label: 'Welcome — nothing to pay',
+    description: 'Sent when a discount or referral credit covered the whole price, so the family confirmed with nothing to pay.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
+    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application. Your discount covered the whole price, so there was nothing to pay. Your membership is active.</p>
+      <p style="margin:24px 0">
+        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
+      </p>
+      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the verbatim text of every policy you accepted plus your signature. Please keep it for your records.
+      </div>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, request a fresh one at <a href="{{club_url}}/m/login.html">your member login page</a>.</p>
+    `),
+  },
+  {
     key: 'application_approved_venmo_verified',
     label: 'Welcome — Venmo verified at approval',
     description: 'Sent when admin approves AND verifies Venmo payment in the same step (rare path).',
@@ -197,6 +216,22 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
     default_body_html: withShell(`
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
       <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your payment cleared. Your family's on the roster. See you at the pool!</p>
+      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
+        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
+      </div>
+      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
+    `),
+  },
+  {
+    key: 'application_approved_free_no_app',
+    label: 'Welcome (no app) — nothing to pay',
+    description: 'Sent to guest-checkout applicants whose discount or credit covered the whole price.',
+    audience: 'applicant',
+    variables: ['tenant_name', 'primary_name', 'club_url'],
+    default_subject: 'Welcome to {{tenant_name}}!',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application. Your discount covered the whole price, so there was nothing to pay. Your family's on the roster. See you at the pool!</p>
       <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
         <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
       </div>

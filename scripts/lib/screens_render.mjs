@@ -15,7 +15,7 @@ const LOCAL = {
   '/club/admin/application.html': 'club/admin/application.html', '/js/upcoming.js': 'js/upcoming.js', '/js/today.js': 'js/today.js', '/js/calendar.js': 'js/calendar.js',
   '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
-  '/js/pooltime.js': 'js/pooltime.js', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
+  '/js/pooltime.js': 'js/pooltime.js', '/m/renew.html': 'm/renew.html', '/renew.html': 'renew.html', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
 };
 
 // RENDER_ONLY=apply,login,members,home limits the run to those pages.
@@ -31,7 +31,9 @@ export async function renderChecks({ check, read, sql, jwt }) {
   const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
   const FAMILY = `SimTest render ${String(Date.now()).slice(-6)}`;
 
-  async function open(path, store = {}) {
+  // `rewrite(action, json)` edits an Edge Function's real answer before the
+  // page sees it (used to show the renewal page outside the renewal window).
+  async function open(path, store = {}, rewrite = null) {
     const ctx = await browser.createBrowserContext();
     const p = await ctx.newPage();
     await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
@@ -42,6 +44,17 @@ export async function renderChecks({ check, read, sql, jwt }) {
       const u = new URL(r.url());
       if (u.origin === HOST && LOCAL[u.pathname]) {
         return r.respond({ status: 200, contentType: u.pathname.endsWith('.js') ? 'application/javascript' : 'text/html', body: read(LOCAL[u.pathname]) });
+      }
+      if (rewrite && /\/functions\/v1\//.test(u.pathname) && r.method() === 'POST') {
+        return (async () => {
+          const res = await fetch(r.url(), { method: 'POST', headers: r.headers(), body: r.postData() });
+          let json = await res.json().catch(() => null);
+          try { json = rewrite(JSON.parse(r.postData() || '{}').action, json) ?? json; } catch { /* leave it */ }
+          r.respond({ status: res.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(json) });
+        })();
+      }
+      if (r.method() === 'OPTIONS' && rewrite && /\/functions\/v1\//.test(u.pathname)) {
+        return r.respond({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' }, body: 'ok' });
       }
       r.continue();
     });
@@ -81,6 +94,13 @@ export async function renderChecks({ check, read, sql, jwt }) {
       return { one: set(1, 0), three: set(2, 1) };
     });
     check('H2: 1 adult → Single, 3 people → Family', pick.one === 'single' && pick.three === 'family', JSON.stringify(pick));
+
+    // H5: "Have a code?" checks the code with the server and says why not.
+    await a.evaluate(async () => { APPLIED_CODE = 'NOSUCHCODE'; await refreshQuote(); });
+    const codeMsg = await a.$eval('#code-msg', el => el.textContent.trim());
+    const venmoPrice = await a.$eval('#venmo-price', el => el.textContent.trim());
+    check('H5: a wrong code is refused on the signup form, and the price stays', /isn't valid/.test(codeMsg) && /\$\d/.test(venmoPrice), `${codeMsg} | ${venmoPrice}`);
+    check('H5: signup form has no page errors', a.errs.length === 0, a.errs.join(' | '));
     }
 
     if (want('login')) {
@@ -182,6 +202,24 @@ export async function renderChecks({ check, read, sql, jwt }) {
     }
 
     const m = await makeTempMember(sql, club.id, FAMILY);
+    if (want('renew')) {
+    // H5: the signed-in renewal page takes their referral credit off. Outside
+    // the renewal window the page says renewals aren't open, so the answer's
+    // open/paid flags are set for the render; the price is the server's.
+    await sql(`update households set referral_credits_cents = 10000, paid_until_year = extract(year from now())::int - 1 where id = '${m.household_id}'`);
+    const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
+    const rp = await open('/m/renew.html', { poolside_member_token: memTok },
+      (action, json) => action === 'renewal_options' && json ? { ...json, open: true, already_paid: false } : json);
+    await rp.waitForSelector('.amount', { timeout: 20000 });
+    const shown = await rp.evaluate(() => document.getElementById('root').innerText.replace(/\s+/g, ' '));
+    check('H5: the renewal page shows their $100 referral credit off', /Your referral credit/.test(shown) && /−\$100\.00/.test(shown) && /Have a code\?/.test(shown), shown.slice(0, 200));
+    await rp.evaluate(() => { document.getElementById('code-toggle').click(); document.getElementById('code-in').value = 'NOSUCHCODE'; document.getElementById('code-apply').click(); });
+    await rp.waitForFunction(() => /isn't valid/.test(document.getElementById('root').innerText), { timeout: 15000 }).catch(() => {});
+    const after = await rp.evaluate(() => document.getElementById('root').innerText.replace(/\s+/g, ' '));
+    check('H5: a wrong code on the renewal page says why, and the credit stays', /isn't valid/.test(after) && /Your referral credit/.test(after), after.slice(0, 200));
+    check('H5: renewal page has no page errors', rp.errs.length === 0, rp.errs.join(' | '));
+    await rp.screenshot({ path: '/tmp/poolside-renew-credit.png' });
+    }
     if (want('members')) {
     // D12: Members list fits a phone (with at least one family in it)
     const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });

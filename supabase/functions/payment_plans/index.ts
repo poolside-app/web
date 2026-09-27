@@ -434,12 +434,12 @@ Deno.serve(async (req) => {
       const passFee = !!pay.pass_stripe_fee;
       const pct = Number(pay.stripe_pct ?? 2.9) / 100;
       const fixed = Number(pay.stripe_fixed_cents ?? 30);
-      const priceFor = (tierSlug: string | null): number => {
-        const tier = tiers.find(t => t.slug === tierSlug) || tiers[0];
-        const base = Number(tier?.price_cents) || 0;
-        if (base <= 0) return 0;
-        return passFee ? Math.ceil((base + fixed) / (1 - pct)) : base;
-      };
+      const grossUp = (cents: number): number =>
+        cents > 0 && passFee ? Math.ceil((cents + fixed) / (1 - pct)) : cents;
+      // A family's referral credit comes off first (H5), so the notice and
+      // the charge both quote what they actually owe.
+      const { priceFor: memberPrice, priceApplication, recordDiscountUse } = await import('../_shared/membership_price.ts');
+      const hasPrice = tiers.some(t => Number(t.price_cents) > 0);
 
       const { data: households } = await sb.from('households')
         .select('id, family_name, tier, paid_until_year, auto_renew_customer_id, auto_renew_pm_id, auto_renew_notice_year, auto_renew_notice_sent_at')
@@ -448,8 +448,10 @@ Deno.serve(async (req) => {
         .limit(500);
 
       for (const hh of (households ?? [])) {
-        const amountCents = priceFor(hh.tier as string | null);
-        if (amountCents <= 0) { skipped++; continue; }
+        if (!hasPrice) { skipped++; continue; }
+        let amountCents = grossUp((await memberPrice(sb, tenant.id as string, sv, {
+          tierSlug: hh.tier as string | null, householdId: hh.id as string, isRenewal: true,
+        })).amount_due_cents);
 
         // Pass 1 — the heads-up.
         if (hh.auto_renew_notice_year !== year) {
@@ -519,6 +521,31 @@ Deno.serve(async (req) => {
         }
         if (!appId) { failed++; continue; }
 
+        // The price stored on the renewal is what gets charged.
+        const priced = await priceApplication(sb, appId);
+        amountCents = grossUp(priced?.amount_due_cents ?? 0);
+        if (amountCents <= 0) {
+          // Their credit covers the whole season: nothing to charge.
+          const nowFree = new Date().toISOString();
+          await sb.from('applications').update({
+            payment_status: 'paid', payment_method: 'free', paid_at: nowFree, verified_at: nowFree,
+            status: 'approved', decided_at: nowFree,
+          }).eq('id', appId);
+          await recordDiscountUse(sb, appId);
+          await sb.from('households').update({
+            paid_until_year: Math.max(Number(hh.paid_until_year ?? 0), year),
+            dues_paid_for_year: true, auto_renew_last_attempt_at: nowFree, auto_renew_last_error: null,
+          }).eq('id', hh.id);
+          await sb.from('audit_log').insert({
+            tenant_id: tenant.id, kind: 'renewal.auto_charged',
+            entity_type: 'application', entity_id: appId,
+            summary: `${hh.family_name} renewed through ${year}; their referral credit covered it`,
+            actor_kind: 'system', actor_label: 'cron',
+          });
+          charged++;
+          continue;
+        }
+
         const charge = await stripe<{ id: string; status: string }>('/payment_intents', {
           amount: amountCents,
           currency: 'usd',
@@ -537,7 +564,9 @@ Deno.serve(async (req) => {
           await sb.from('applications').update({
             payment_status: 'paid', payment_method: 'stripe',
             paid_at: now2, verified_at: now2, status: 'approved', decided_at: now2,
+            stripe_payment_intent_id: charge.data?.id ?? null,
           }).eq('id', appId);
+          await recordDiscountUse(sb, appId);
           await sb.from('households').update({
             paid_until_year: Math.max(Number(hh.paid_until_year ?? 0), year),
             dues_paid_for_year: true,

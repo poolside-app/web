@@ -14,6 +14,7 @@ import { resolveRules, generateSchedule, suggestedCounts } from './payment_sched
 
 import { planFeeTotal, planFeeSchedule, feePolicyFor } from './fees.ts';
 import { poolToday, tenantTimeZone } from './pool_time.ts';
+import { priceFor, type PriceResult } from './membership_price.ts';
 
 export type RenewalQuote = {
   year: number;
@@ -25,12 +26,20 @@ export type RenewalQuote = {
   plans_enabled: boolean;
   rules: unknown | null;
   options: Array<{ count: number; installments: unknown[]; plan_fee_cents?: number; plan_fee_per_payment_cents?: number }>;
+  /** Before the card fee: the level's price, any code, their referral
+   *  credit, and what's left (H5). What Venmo asks for. */
+  price: {
+    base_cents: number; discount_cents: number; credit_cents: number; amount_due_cents: number;
+    code: string | null; code_label: string | null; code_problem: string | null; note: string | null;
+  };
 };
 
 export async function quoteRenewal(
   sb: SupabaseClient,
   tenantId: string,
-  household: { tier?: string | null; paid_until_year?: number | null },
+  household: { id?: string | null; tier?: string | null; paid_until_year?: number | null },
+  /** The renewal application's price, when there is one (priceApplication). */
+  priced?: PriceResult | null,
 ): Promise<RenewalQuote> {
   const { data: settings } = await sb.from('settings')
     .select('value').eq('tenant_id', tenantId).maybeSingle();
@@ -46,9 +55,13 @@ export async function quoteRenewal(
 
   // Dues come from the household's tier — the same source the apply form uses,
   // so a renewal never quietly quotes a different number than joining would.
+  // Any code and their referral credit come off first (H5).
   const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
   const tier = tiers.find(t => t.slug === household.tier) || tiers[0];
-  const baseCents = Number(tier?.price_cents) || 0;
+  const price = priced ?? await priceFor(sb, tenantId, sv, {
+    tierSlug: household.tier ?? null, householdId: household.id ?? null, isRenewal: true,
+  });
+  const baseCents = price.amount_due_cents;
 
   // If the club passes card fees to members, quote the grossed-up figure. The
   // page must never show one number and the checkout another.
@@ -98,5 +111,10 @@ export async function quoteRenewal(
     plans_enabled: plansEnabled,
     rules,
     options,
+    price: {
+      base_cents: price.base_cents, discount_cents: price.discount_cents,
+      credit_cents: price.credit_cents, amount_due_cents: price.amount_due_cents,
+      code: price.code, code_label: price.code_label, code_problem: price.code_problem, note: price.note,
+    },
   };
 }

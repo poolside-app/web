@@ -883,19 +883,26 @@ const App = (() => {
   // Inline action helpers (Doug 2026-05-23). Hit the same APPS_URL endpoints
   // the modal uses; defaults are sensible (family tier, no fob, current year).
   // Modal stays available via the "Edit details →" button for non-defaults.
+  // What the family owes after any discount (H5), for the Venmo check.
+  function owedText(row) {
+    return typeof row.amount_due_cents === 'number' ? ` for $${(row.amount_due_cents / 100).toFixed(2)}` : '';
+  }
   async function inlineApprove(btn, row) {
     const isVenmo = row.payment_method === 'venmo';
     const confirmMsg = isVenmo
-      ? `Confirm: the Venmo payment from ${row.family_name} has landed in your account?\n\nThis approves the application AND marks dues paid — one shot.`
+      ? `Confirm: the Venmo payment${owedText(row)} from ${row.family_name} has landed in your account?\n\nThis approves the application AND marks dues paid — one shot.`
       : `Approve ${row.family_name} as a new household?`;
     if (!confirm(confirmMsg)) return;
     const orig = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Approving…';
     try {
+      // No tier override: the level the family picked stands. Sending
+      // 'family' here made every one-click approval a Family household,
+      // which sets what they're charged at every renewal.
       const data = await call(APPS_URL, 'approve', {
         id: row.id,
-        override: { tier: 'family', fob_number: null, paid_until_year: null },
+        override: { fob_number: null, paid_until_year: null },
         verify_venmo_payment: isVenmo,
       });
       if (!data.ok) throw new Error(data.error || 'Approve failed');
@@ -918,7 +925,7 @@ const App = (() => {
   async function inlineVerifyPayment(btn, row) {
     const isVenmo = row.payment_method === 'venmo';
     const confirmMsg = isVenmo
-      ? `Confirm: the Venmo payment from ${row.family_name} has landed in your account?\n\nThis marks dues paid and clears the verify task.`
+      ? `Confirm: the Venmo payment${owedText(row)} from ${row.family_name} has landed in your account?\n\nThis marks dues paid and clears the verify task.`
       : `Mark payment from ${row.family_name} as received?`;
     if (!confirm(confirmMsg)) return;
     const orig = btn.textContent;
@@ -1099,12 +1106,16 @@ const App = (() => {
       helper.style.display = 'block';
       // The applicant's full name (more useful than family for matching in Venmo)
       document.getElementById('am-venmo-from').textContent = a.primary_name || a.family_name;
-      // Tier price for the amount cue. Look up the tier in TENANT_TIERS if loaded.
+      // The amount to look for: what they owe after any discount (H5),
+      // else the level's price.
       let priceLabel = 'their tier amount';
       try {
-        const tier = (window.__APP_TIERS__ || []).find(t => t.slug === a.tier_slug);
-        if (tier && tier.price_cents) {
-          priceLabel = '$' + (Number(tier.price_cents) / 100).toFixed(0);
+        if (typeof a.amount_due_cents === 'number') {
+          priceLabel = '$' + (a.amount_due_cents / 100).toFixed(a.amount_due_cents % 100 ? 2 : 0)
+            + (a.discount_cents ? ` (after a $${(a.discount_cents / 100).toFixed(0)} ${a.discount_kind === 'code' ? 'code' : 'referral'} discount)` : '');
+        } else {
+          const tier = (window.__APP_TIERS__ || []).find(t => t.slug === a.tier_slug);
+          if (tier && tier.price_cents) priceLabel = '$' + (Number(tier.price_cents) / 100).toFixed(0);
         }
       } catch (_) { /* fall back to generic copy */ }
       document.getElementById('am-venmo-amount').textContent = priceLabel;

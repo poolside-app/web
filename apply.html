@@ -255,8 +255,25 @@
       <p class="lede" style="margin-top:0">Pick the level that fits your household. Admin can adjust on approval.</p>
       <div id="tiers-box"><div style="color:var(--muted);font-size:13px">Loading membership levels…</div></div>
 
+      <!-- H5: the price after any discount, worked out by the server with the
+           same rules checkout uses. One discount per membership. -->
+      <div id="price-box" style="display:none;margin-top:14px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fff;font-size:13.5px;line-height:1.6"></div>
+      <div id="code-row" style="margin-top:10px">
+        <a href="#" id="code-toggle" onclick="toggleCode(event)" style="font-size:13px;font-weight:600">Have a code?</a>
+        <div id="code-box" style="display:none;margin-top:6px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="discount_code" placeholder="Code" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1;text-transform:uppercase" onkeydown="if (event.key === 'Enter') { event.preventDefault(); applyCode(); }">
+            <button type="button" class="btn btn-ghost" onclick="applyCode()" style="padding:10px 16px">Apply</button>
+          </div>
+          <div id="code-msg" style="font-size:12.5px;margin-top:6px"></div>
+        </div>
+      </div>
+
       <h2 style="margin-top:24px">Payment</h2>
-      <p class="lede" style="margin-top:0">How would you like to pay annual dues?</p>
+      <p class="lede" style="margin-top:0" id="pay-lede">How would you like to pay annual dues?</p>
+      <div id="free-box" style="display:none;padding:14px 16px;border:1.5px solid #86efac;border-radius:12px;background:#f0fdf4;font-size:13.5px;line-height:1.55">
+        <b>Nothing to pay.</b> Your discount covers the whole price. Submit to confirm your membership.
+      </div>
       <label class="pay-opt">
         <input type="radio" name="payment_method" value="venmo" checked onchange="paintVenmoQR()">
         💸 <b>Venmo</b> <span id="venmo-price" style="color:var(--muted);font-weight:500"></span>
@@ -343,10 +360,7 @@ function paintPlanLabel() {
   if (!plan) return;
   const labelEl = document.getElementById('plan-label');
   if (!labelEl) return;
-  const checkedTier = document.querySelector('input[name="tier_slug"]:checked')?.value;
-  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
-  const tier = tiers.find(t => t.slug === checkedTier) || tiers[0];
-  const totalCents = (tier && typeof tier.price_cents === 'number' && tier.price_cents > 0) ? tier.price_cents : 0;
+  const totalCents = dueCents();   // after any discount (H5)
   if (totalCents > 0) {
     const pct = Math.max(1, Math.min(99, Number(plan.first_installment_pct) || 50));
     const first = Math.round(totalCents * pct / 100);
@@ -363,18 +377,91 @@ function paintPlanLabel() {
 }
 // Re-paint when tier choice changes
 document.addEventListener('change', (e) => {
-  if (e.target && e.target.name === 'tier_slug') { paintPlanLabel(); paintPaymentChoices(); }
+  if (e.target && e.target.name === 'tier_slug') { paintPlanLabel(); paintPaymentChoices(); refreshQuote(); }
 });
+
+// ── Price after discounts (H5) ────────────────────────────────────────
+// The server works it out (applications.quote) with the rules submit and
+// checkout use: a code or the referral discount, whichever saves more.
+let PRICE = null;          // { base_cents, discount_cents, discount_kind, amount_due_cents, code, code_problem, note, referral_family }
+let APPLIED_CODE = '';
+let QUOTE_SEQ = 0;
+function tierListCents() {
+  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  const checked = document.querySelector('input[name="tier_slug"]:checked')?.value;
+  const tier = tiers.find(t => t.slug === checked) || tiers[0];
+  return (tier && typeof tier.price_cents === 'number' && tier.price_cents > 0) ? tier.price_cents : 0;
+}
+function dueCents() { return PRICE ? PRICE.amount_due_cents : tierListCents(); }
+function isFree() { return !!PRICE && PRICE.base_cents > 0 && PRICE.amount_due_cents === 0; }
+async function refreshQuote() {
+  const slug = getSlug();
+  if (!slug) return;
+  const seq = ++QUOTE_SEQ;
+  const primary = collectAdults()[0] || {};
+  try {
+    const r = await fetch(APPLY_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'quote', slug,
+        tier_slug: document.querySelector('input[name="tier_slug"]:checked')?.value || null,
+        code: APPLIED_CODE || null,
+        referral_code: window.__POOLSIDE_REF_CODE__ || null,
+        email: primary.email || document.getElementById('primary_email').value.trim() || null,
+        phone: primary.phone || document.getElementById('primary_phone').value.trim() || null,
+      }),
+    }).then(x => x.json());
+    if (seq !== QUOTE_SEQ) return;       // a newer quote is on its way
+    if (r.ok) PRICE = r.price;
+  } catch { /* keep the list price; submit and checkout price it anyway */ }
+  paintPrice(); paintPaymentChoices(); paintPlanLabel(); paintVenmoQR();
+}
+function paintPrice() {
+  const box = document.getElementById('price-box');
+  const msg = document.getElementById('code-msg');
+  const fmt = c => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
+  if (!PRICE) { box.style.display = 'none'; return; }
+  if (APPLIED_CODE) {
+    msg.style.color = PRICE.code_problem ? 'var(--red, #dc2626)' : '#15803d';
+    msg.textContent = PRICE.code_problem || (PRICE.code ? `Code ${PRICE.code} applied.` : '');
+  } else { msg.textContent = ''; }
+  if (!PRICE.discount_cents) { box.style.display = 'none'; return; }
+  const why = PRICE.discount_kind === 'code'
+    ? `Code ${escapeHtml(PRICE.code || '')}${PRICE.code_label ? ' (' + escapeHtml(PRICE.code_label) + ')' : ''}`
+    : `Referral discount${PRICE.referral_family ? ' — invited by the ' + escapeHtml(PRICE.referral_family) : ''}`;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between"><span>${escapeHtml(PRICE.tier_label || 'Membership')}</span><span>${fmt(PRICE.base_cents)}</span></div>
+    <div style="display:flex;justify-content:space-between;color:#15803d"><span>${why}</span><span>−${fmt(PRICE.discount_cents)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>You pay</span><span>${fmt(PRICE.amount_due_cents)}</span></div>
+    ${PRICE.note ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${escapeHtml(PRICE.note)}</div>` : ''}`;
+  box.style.display = '';
+}
+function toggleCode(e) {
+  e.preventDefault();
+  const b = document.getElementById('code-box');
+  b.style.display = b.style.display === 'none' ? '' : 'none';
+  if (b.style.display === '') document.getElementById('discount_code').focus();
+}
+function applyCode() {
+  APPLIED_CODE = document.getElementById('discount_code').value.trim();
+  refreshQuote();
+}
 
 // Per-tier price display on each payment option, with optional Stripe
 // surcharge (when admin enabled pass_stripe_fee in settings). Venmo/check/
 // cash always show the base price. "Verifies in N business days" copy
 // pulled from tenant settings (default 3).
 function paintPaymentChoices() {
-  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
-  const checked = document.querySelector('input[name="tier_slug"]:checked')?.value;
-  const tier = tiers.find(t => t.slug === checked) || tiers[0];
-  const baseCents = (tier && typeof tier.price_cents === 'number' && tier.price_cents > 0) ? tier.price_cents : 0;
+  // What they owe after any discount (H5), before the card fee.
+  const baseCents = dueCents();
+  const free = isFree();
+  document.getElementById('free-box').style.display = free ? '' : 'none';
+  document.getElementById('pay-lede').style.display = free ? 'none' : '';
+  document.querySelectorAll('[data-step="4"] .pay-opt').forEach(el => {
+    if (el.id === 'auto-renew-opt') return;
+    if (free) { el.dataset.wasShown = el.style.display === 'none' ? '' : '1'; el.style.display = 'none'; }
+    else if (el.dataset.wasShown === '1') { el.style.display = ''; delete el.dataset.wasShown; }
+  });
   const pay = TENANT_PUBLIC?.public_settings?.payments || {};
   const passFee = !!pay.pass_stripe_fee;
   const pct   = Number(pay.stripe_pct ?? 2.9) / 100;
@@ -455,7 +542,8 @@ function paintVenmoQR() {
   // Modern Venmo deep link: handle goes in path, params as query. Universal
   // link: opens the Venmo app on mobile if installed, falls through to the
   // profile page on web. The legacy `?recipients=` format silently fails.
-  const url = `https://venmo.com/${encodeURIComponent(h)}?txn=pay&note=${encodeURIComponent(noteRaw)}`;
+  const due = dueCents();
+  const url = `https://venmo.com/${encodeURIComponent(h)}?txn=pay&note=${encodeURIComponent(noteRaw)}${due > 0 ? '&amount=' + (due / 100).toFixed(2) : ''}`;
   const linkEl = document.getElementById('venmo-link');
   linkEl.href = url;
   document.getElementById('venmo-handle-line').textContent = `@${h}`;
@@ -814,7 +902,7 @@ function showStep(n) {
   // Landing on the people step: pick up anything typed (or corrected) on
   // step 1 since the rows were last built.
   if (n === 2) prefillPrimaryAdult();
-  if (n === 4) applyTierDefault();
+  if (n === 4) { applyTierDefault(); refreshQuote(); }
   document.querySelectorAll('.step').forEach(el => {
     el.style.display = (parseInt(el.dataset.step) === n) ? 'block' : 'none';
   });
@@ -984,7 +1072,8 @@ async function submitApplication() {
     zip:     get('zip') || null,
     num_adults: adults.length,
     num_kids:   children.length,
-    payment_method: (document.querySelector('input[name="payment_method"]:checked')?.value || '') || null,
+    // Nothing to pay means no payment method (H5).
+    payment_method: isFree() ? null : ((document.querySelector('input[name="payment_method"]:checked')?.value || '') || null),
     tier_slug: (document.querySelector('input[name="tier_slug"]:checked')?.value || '') || null,
 
     alt_email:        get('alt_email') || null,
@@ -998,6 +1087,7 @@ async function submitApplication() {
     signature_primary:  (adults[0] && adults[0].signature_url) || null,
     signature_guardian: SIG_GUARDIAN && !SIG_GUARDIAN.isEmpty() ? SIG_GUARDIAN.toDataURL('image/png') : null,
     referral_code: window.__POOLSIDE_REF_CODE__ || null,
+    discount_code: APPLIED_CODE || null,
     // CSV-import claim: present when the member arrived via apply.html?claim=…
     // The backend UPDATEs their pre-filled application instead of inserting.
     claim_token: window.__POOLSIDE_CLAIM_TOKEN__ || null,
@@ -1092,6 +1182,25 @@ async function submitApplication() {
       return;
     }
 
+    // A discount covered the whole price (H5): confirm it, and land on the
+    // same "you're in" page a card payment does.
+    if (data.price && data.price.base_cents > 0 && data.price.amount_due_cents === 0) {
+      btn.textContent = 'Confirming…';
+      try {
+        const cr = await fetch(`${SUPABASE_URL}/functions/v1/stripe_checkout`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'confirm_free', application_id: appId }),
+        }).then(r => r.json());
+        if (!cr.ok) throw new Error(cr.error || 'Could not confirm');
+        window.location.href = cr.redirect;
+        return;
+      } catch (e) {
+        document.getElementById('form').className = 'card ok';
+        document.getElementById('form').innerHTML = `<h1>🎉 Got it!</h1><p class="lede">Your application is in. We couldn't confirm it just now (${escapeHtml(e.message)}), so the board will follow up.</p>`;
+        return;
+      }
+    }
+
     // Stripe paths: auto-redirect to Checkout immediately. The applicant
     // shouldn't be able to "submit and walk away unpaid" — submit is a
     // commitment to pay, so we route them straight to the card form.
@@ -1144,7 +1253,7 @@ async function submitApplication() {
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. ${isVenmo
-        ? `Once you Venmo your dues${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot, usually within <b>${within}</b>.${isNoApp
+        ? `Once you Venmo your dues${data.price && data.price.amount_due_cents > 0 ? ' (<b>$' + (data.price.amount_due_cents / 100).toFixed(2) + '</b>)' : ''}${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot, usually within <b>${within}</b>.${isNoApp
             ? ` You'll get a welcome email from the board once you're in.`
             : ` You'll get a welcome email with a magic-link sign-in when you're in.`}`
         : `The board will review it and reach out, usually within ${within}.`}</p>

@@ -3,16 +3,20 @@
 // Offline checks cost nothing. The live part runs against Bishop in test
 // mode with a temporary family it removes afterward.
 //
-// Usage: node scripts/test_money.mjs [--offline]
+// Usage: node scripts/test_money.mjs [--offline]   (ONLY=H5 limits the live part)
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import vm from 'node:vm';
 import { importTs } from './lib/importts.mjs';
+import { makeTempMember, purgeTestFamilies } from './lib/testdata.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = rel => readFileSync(new URL(rel, root), 'utf8');
 const between = (src, from, to) => { const i = src.indexOf(from); return i < 0 ? '' : src.slice(i, to ? src.indexOf(to, i + from.length) : undefined); };
 const OFFLINE = process.argv.includes('--offline');
+// ONLY=H5 (or H4,H5) runs just those live parts.
+const ONLY = (process.env.ONLY || '').split(',').map(x => x.trim()).filter(Boolean);
+const live = step => !OFFLINE && (!ONLY.length || ONLY.includes(step));
 
 let passed = 0, failed = 0;
 function check(label, ok, detail = '') {
@@ -103,8 +107,62 @@ console.log('H4 · payment plan deadlines (offline)');
     /plan\.final_due_date > today/.test(apply), 'no final_due_date check');
 }
 
+// ── H5: the price after discounts (offline) ─────────────────────────────
+console.log('\nH5 · discounts come off the price (offline)');
+{
+  let pr = null;
+  try { pr = await importTs(new URL('supabase/functions/_shared/pricing.ts', root)); }
+  catch (e) { check('H5: the pricing rules exist', false, e.message); }
+  if (pr) {
+    const early = { id: 'c1', code: 'EARLYBIRD', amount_cents: 5000, percent_off: null, active: true, expires_on: '2027-03-01', max_uses: null };
+    const ten = { id: 'c2', code: 'TEN', amount_cents: null, percent_off: 10, active: true };
+    const small = { id: 'c3', code: 'SMALL', amount_cents: 1000, active: true };
+
+    const a = pr.priceMembership({ baseCents: 60000, code: early });
+    check('H5: a $50 code takes $50 off', a.amount_due_cents === 55000 && a.discount_kind === 'code' && a.discount_code_id === 'c1', short(a));
+    const b = pr.priceMembership({ baseCents: 60000, code: ten });
+    check('H5: a 10% code takes 10% off', b.amount_due_cents === 54000 && b.discount_cents === 6000, short(b));
+
+    const c = pr.priceMembership({ baseCents: 60000, code: early, referralOffCents: 2500 });
+    check('H5: code vs referral: the bigger one applies, and they\'re told',
+      c.discount_kind === 'code' && c.amount_due_cents === 55000 && /one discount/i.test(c.note || ''), short(c));
+    const d = pr.priceMembership({ baseCents: 60000, code: small, referralOffCents: 2500 });
+    check('H5: a smaller code loses to the referral discount',
+      d.discount_kind === 'referral' && d.amount_due_cents === 57500 && d.discount_code_id === null && /one discount/i.test(d.note || ''), short(d));
+
+    const e = pr.priceMembership({ baseCents: 60000, code: early, creditCents: 10000 });
+    check('H5: referral credit comes off too, after the discount', e.credit_cents === 10000 && e.amount_due_cents === 45000, short(e));
+    const f = pr.priceMembership({ baseCents: 60000, creditCents: 70000 });
+    check('H5: credit never takes the price below $0', f.credit_cents === 60000 && f.amount_due_cents === 0, short(f));
+    const g = pr.priceMembership({ baseCents: 60000, code: { id: 'c4', code: 'FREE', percent_off: 100, active: true } });
+    check('H5: a 100% code makes it $0', g.amount_due_cents === 0, short(g));
+
+    check('H5: an expired or used-up code is refused with a reason',
+      /ended|expired/i.test(pr.codeProblem(early, '2027-03-02', 0) || '') && pr.codeProblem(early, '2027-03-01', 0) === null
+        && /used up/i.test(pr.codeProblem({ ...small, max_uses: 3 }, '2027-01-01', 3) || '') && /isn't active|not active/i.test(pr.codeProblem({ ...small, active: false }, '2027-01-01', 0) || ''),
+      short([pr.codeProblem(early, '2027-03-02', 0), pr.codeProblem({ ...small, max_uses: 3 }, '2027-01-01', 3)]));
+    const rs = pr.referralSettings({});
+    check('H5: referral settings default to $100 reward, $25 off, 30 days',
+      rs.reward_cents === 10000 && rs.new_family_cents === 2500 && rs.wait_days === 30, short(rs));
+    check('H5: codes are matched without case or spaces', pr.normalizeCode(' early bird ') === 'EARLYBIRD', pr.normalizeCode(' early bird '));
+  }
+}
+
+// ── H5: the board sees what the family owes (offline) ──────────────────
+{
+  const mem = read('club/admin/members.html');
+  const inline = between(mem, 'async function inlineApprove', '\n  }\n');
+  check('H5: one-click Approve keeps the level the family picked (it sets next year\'s price)',
+    inline && !/tier:\s*'family'/.test(inline), 'inlineApprove sends tier: family');
+  check('H5: the Venmo check shows the amount after discount',
+    /amount_due_cents/.test(between(mem, "const helper = document.getElementById('am-venmo-helper')", 'am-venmo-link')), 'modal uses the list price');
+  const apps = read('supabase/functions/applications/index.ts');
+  check('H5: the board\'s application list includes the price fields',
+    /const FIELDS = '[^']*amount_due_cents[^']*payment_reference/.test(apps), 'FIELDS lacks amount_due_cents');
+}
+
 // ── Live ─────────────────────────────────────────────────────────────────
-if (!OFFLINE) {
+if (live('H4')) {
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
   const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
   const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
@@ -129,6 +187,93 @@ if (!OFFLINE) {
       : `update settings set value = jsonb_set(value, '{payments,plan}', '${JSON.stringify(savedPlan).replace(/'/g, "''")}'::jsonb) where tenant_id = '${club.id}'`);
     const [{ plan }] = await sql(`select value->'payments'->'plan' as plan from settings where tenant_id = '${club.id}'`);
     check('H4: Bishop\'s plan settings are back as they were', JSON.stringify(plan) === JSON.stringify(savedPlan), short(plan));
+  }
+}
+
+// ── H5 live ──────────────────────────────────────────────────────────────
+if (live('H5')) {
+  const STAMP = String(Date.now()).slice(-6);
+  const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
+  const q = v => `'${String(v).replace(/'/g, "''")}'`;
+  const [{ v: sv }] = await sql(`select value as v from settings where tenant_id = ${q(club.id)}`);
+  const family = (sv.membership_tiers || []).find(t => t.slug === 'family');
+  const base = Number(family?.price_cents) || 0;
+  const pay = sv.payments || {};
+  const gross = c => pay.pass_stripe_fee ? Math.ceil((c + Number(pay.stripe_fixed_cents ?? 30)) / (1 - Number(pay.stripe_pct ?? 2.9) / 100)) : c;
+  const OFF = `SIMOFF${STAMP}`, FREE = `SIMFREE${STAMP}`;
+  console.log(`\nH5 · live on Bishop in test mode (about 15 calls; run ${STAMP}, removed afterward)`);
+  const app = (n, extra) => ({
+    slug: 'bishopestates',
+    family_name: `SimMoney ${n} ${STAMP}`, primary_name: `Sim Money ${n}`,
+    primary_email: `doug.frevele+simtest-money${n}-${STAMP}@gmail.com`, primary_phone: `555${STAMP}${n}`,
+    adults: [{ name: `Sim Money ${n}`, email: `doug.frevele+simtest-money${n}-${STAMP}@gmail.com`, phone: `555${STAMP}${n}` }],
+    children: [], waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
+    tier_slug: 'family', ...extra,
+  });
+  const decodeSim = url => {
+    const t = /#t=([^&\s]+)/.exec(url || '')?.[1];
+    try { return t ? { token: t, ...JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString()) } : null; } catch { return null; }
+  };
+  try {
+    await sql(`insert into discount_codes (tenant_id, code, label, amount_cents) values (${q(club.id)}, ${q(OFF)}, 'Sim test $50', 5000)`);
+    await sql(`insert into discount_codes (tenant_id, code, label, percent_off, max_uses) values (${q(club.id)}, ${q(FREE)}, 'Sim test free', 100, 1)`);
+
+    const quote = await fn('applications', 'quote', null, { slug: 'bishopestates', tier_slug: 'family', code: OFF.toLowerCase() });
+    check('H5: the signup form\'s price takes the code off', quote.ok && quote.price?.amount_due_cents === base - 5000 && quote.price?.code === OFF, short(quote));
+    const bad = await fn('applications', 'quote', null, { slug: 'bishopestates', tier_slug: 'family', code: 'NOSUCHCODE' });
+    check('H5: a code that doesn\'t exist says so, and the price stays', bad.ok && /isn't valid/.test(bad.price?.code_problem || '') && bad.price?.amount_due_cents === base, short(bad));
+
+    // Card with a code: checkout charges the reduced price (plus the card fee
+    // the club passes on), and the use is recorded once it clears.
+    const card = await fn('applications', 'submit', null, app(1, { payment_method: 'stripe', discount_code: OFF }));
+    check('H5: submit stores the reduced price', card.ok && card.price?.amount_due_cents === base - 5000, short(card));
+    const co = await fn('stripe_checkout', 'application', null, { application_id: card.application_id });
+    const sim = decodeSim(co.url);
+    check(`H5: card checkout charges ${gross(base - 5000)} cents, not ${gross(base)}`, sim && sim.amt === gross(base - 5000), short({ co: co.error, amt: sim?.amt }));
+    const [before] = await sql(`select discount_recorded_at from applications where id = ${q(card.application_id)}`);
+    check('H5: nothing is recorded before the payment clears', before && !before.discount_recorded_at, short(before));
+    if (sim) await fn('stripe_checkout', 'simulate_complete', null, { token: sim.token });
+    const [after] = await sql(`select payment_status, discount_recorded_at, discount_cents, amount_due_cents from applications where id = ${q(card.application_id)}`);
+    check('H5: once paid, the code use is recorded', after?.payment_status === 'paid' && !!after?.discount_recorded_at && after?.discount_cents === 5000, short(after));
+
+    // $0: a 100% code. "Confirm, nothing to pay" makes them a member.
+    const free = await fn('applications', 'submit', null, app(2, { payment_method: null, discount_code: FREE }));
+    check('H5: a 100% code makes it $0', free.ok && free.price?.amount_due_cents === 0, short(free.price ?? free));
+    const conf = await fn('stripe_checkout', 'confirm_free', null, { application_id: free.application_id });
+    check('H5: "Confirm, nothing to pay" goes to the you\'re-in page', conf.ok && /apply\.html\?paid=1/.test(conf.redirect || ''), short(conf));
+    let fs = null;
+    for (let i = 0; i < 20 && !(fs && fs.status === 'approved' && fs.household_id); i++) {
+      [fs] = await sql(`select status, payment_status, payment_method, household_id, discount_recorded_at from applications where id = ${q(free.application_id)}`);
+      if (!(fs && fs.status === 'approved' && fs.household_id)) await new Promise(r => setTimeout(r, 1000));
+    }
+    check('H5: they\'re approved, marked paid as "free", with a household', fs?.status === 'approved' && fs?.payment_status === 'paid'
+      && fs?.payment_method === 'free' && !!fs?.household_id && !!fs?.discount_recorded_at, short(fs));
+    const [welcome] = await sql(`select body from application_actions where application_id = ${q(free.application_id)} and kind = 'welcome_sent'`);
+    check('H5: they get a welcome email', !!welcome, short(welcome));
+    const again = await fn('stripe_checkout', 'confirm_free', null, { application_id: free.application_id });
+    check('H5: confirming twice does nothing twice', !again.ok && /Already paid/.test(again.error || ''), short(again));
+    const usedUp = await fn('applications', 'quote', null, { slug: 'bishopestates', tier_slug: 'family', code: FREE });
+    check('H5: a one-family code is used up after one family pays', /used up/.test(usedUp.price?.code_problem || ''), short(usedUp.price));
+
+    // Renewal with referral credit: comes off, and is spent once paid.
+    const m = await makeTempMember(sql, club.id, `SimMoney Renew ${STAMP}`);
+    await sql(`update households set referral_credits_cents = 10000, paid_until_year = extract(year from now())::int - 1 where id = ${q(m.household_id)}`);
+    const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
+    const ro = await fn('member_auth', 'renewal_options', memTok);
+    check('H5: the renewal page takes their $100 credit off', ro.ok && ro.price?.credit_cents === 10000 && ro.price?.amount_due_cents === base - 10000
+      && ro.dues_cents === gross(base - 10000), short({ price: ro.price, dues: ro.dues_cents, err: ro.error }));
+    const [ren] = await sql(`insert into applications (tenant_id, household_id, is_renewal, is_new_member, membership_year, status, payment_status,
+        family_name, primary_name, tier_slug) values (${q(club.id)}, ${q(m.household_id)}, true, false, extract(year from now())::int + 1,
+        'pending', 'unpaid', ${q(`SimMoney Renew ${STAMP}`)}, 'Sim Renew', 'family') returning id`);
+    const rco = await fn('stripe_checkout', 'application', null, { application_id: ren.id });
+    const rsim = decodeSim(rco.url);
+    check('H5: renewal checkout charges after the credit', rsim && rsim.amt === gross(base - 10000), short({ err: rco.error, amt: rsim?.amt }));
+    if (rsim) await fn('stripe_checkout', 'simulate_complete', null, { token: rsim.token });
+    const [hh] = await sql(`select referral_credits_cents from households where id = ${q(m.household_id)}`);
+    check('H5: once paid, the credit is spent', hh?.referral_credits_cents === 0, short(hh));
+  } finally {
+    await purgeTestFamilies(sql, club.id, `SimMoney % ${STAMP}`);
+    await sql(`delete from discount_codes where tenant_id = ${q(club.id)} and code in (${q(OFF)}, ${q(FREE)})`);
   }
 }
 

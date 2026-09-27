@@ -103,11 +103,21 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
 
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'stripe_plan', 'venmo']);
+
+/** The price fields a family's screen needs (H5). */
+function publicPrice(p: import('../_shared/membership_price.ts').PriceResult) {
+  return {
+    base_cents: p.base_cents, discount_cents: p.discount_cents, discount_kind: p.discount_kind,
+    credit_cents: p.credit_cents, amount_due_cents: p.amount_due_cents,
+    code: p.code, code_label: p.code_label, code_problem: p.code_problem,
+    referral_family: p.referral_family, note: p.note, tier_label: p.tier_label,
+  };
+}
 
 // Claim tokens (CSV-import → claimable application flow) reuse randomToken /
 // sha256Hex declared above — same generate-then-store-the-hash pattern the
@@ -554,6 +564,12 @@ Deno.serve(async (req) => {
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
       `Application submitted: ${family_name} (${primary_name}, ${adults_json.length} adults / ${children_json.length} kids)`);
 
+    // The price after any code or referral discount (H5). Card checkout,
+    // payment plans and the Venmo amount all read it from the application.
+    const { priceApplication } = await import('../_shared/membership_price.ts');
+    const priced = await priceApplication(sb, data.id,
+      body.discount_code != null && String(body.discount_code).trim() ? { code: String(body.discount_code) } : {});
+
     // ── Application routing (2026-05-22 redesign — Doug's ONE-CLICK ask) ─
     //   Stripe / stripe_plan : the webhook auto-approves on payment.
     //                          NO admin_task here — the application is
@@ -673,8 +689,10 @@ Deno.serve(async (req) => {
         const tiers = (sv2?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
         const tier  = tiers.find(t => t.slug === body.tier_slug) || tiers[0];
         const tierLabel = (tier?.label as string) || (body.tier_slug as string) || 'Family';
-        const tierPriceCents = (typeof tier?.price_cents === 'number') ? tier.price_cents as number : 0;
-        const tierPrice = tierPriceCents > 0 ? '$' + (tierPriceCents / 100).toFixed(0) : '';
+        // What they owe after any discount (H5), not the level's list price.
+        const tierPriceCents = priced ? priced.amount_due_cents
+          : (typeof tier?.price_cents === 'number') ? tier.price_cents as number : 0;
+        const tierPrice = tierPriceCents > 0 ? '$' + (tierPriceCents / 100).toFixed(tierPriceCents % 100 ? 2 : 0) : '';
 
         const planCfg = (sv2?.payments as Record<string, unknown> | undefined)?.plan as Record<string, unknown> | undefined;
         // The same pay-in-two terms the signup form showed (H4).
@@ -745,7 +763,43 @@ Deno.serve(async (req) => {
       // to Checkout) and the legacy admin-self-signup celebration.
       tenant_slug: tenant.slug,
       tenant_display_name: tenant.display_name,
+      // What to ask for (H5). amount_due_cents 0 means "Confirm, nothing to pay".
+      price: priced ? publicPrice(priced) : null,
     });
+  }
+
+  // ── quote — public: the signup form's price before submitting (H5) ────
+  // The same rules submit and checkout use, so the family sees the price
+  // they'll pay, with a code and the referral discount compared.
+  if (action === 'quote') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const { data: tenant } = await sb.from('tenants').select('id').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', tenant.id).maybeSingle();
+    const { priceFor } = await import('../_shared/membership_price.ts');
+    const rawPhone = String(body.phone ?? '').trim();
+    const q = await priceFor(sb, tenant.id as string, settingsRow?.value, {
+      tierSlug: strOrNull(body.tier_slug),
+      referralCode: strOrNull(body.referral_code),
+      email: strOrNull(body.email)?.toLowerCase() ?? null,
+      phone: rawPhone ? normalizePhoneE164(rawPhone) : null,
+      code: body.code != null ? String(body.code) : null,
+    });
+    return jsonResponse({ ok: true, price: publicPrice(q) });
+  }
+
+  // ── set_code — public: "Have a code?" on a renewal (H5, H7) ───────────
+  // Anyone with the application's id can pay it, and a valid code only
+  // lowers the price, so the id is enough here too. '' removes the code.
+  if (action === 'set_code') {
+    const id = String(body.application_id ?? '');
+    if (!id) return jsonResponse({ ok: false, error: 'application_id required' }, 400);
+    const { data: app } = await sb.from('applications').select('id, payment_status').eq('id', id).maybeSingle();
+    if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
+    if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    const { priceApplication: reprice } = await import('../_shared/membership_price.ts');
+    const p = await reprice(sb, id, { code: String(body.code ?? '') });
+    return jsonResponse({ ok: true, price: p ? publicPrice(p) : null });
   }
 
   // ── post_payment_signin — public, time-bounded ───────────────────────
@@ -898,8 +952,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'This membership is no longer active. Please contact the club.' }, 409);
     }
 
+    // Their price, with any code they typed ("Have a code?") and their
+    // referral credit (H5). Stored on the renewal, which checkout reads.
+    const { priceApplication } = await import('../_shared/membership_price.ts');
+    const priced = await priceApplication(sb, app.id as string,
+      body.discount_code !== undefined ? { code: String(body.discount_code ?? '') } : {});
     const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
-    const quote = await quoteRenewal(sb, tenant.id as string, household);
+    const quote = await quoteRenewal(sb, tenant.id as string, { ...household, id: app.household_id as string }, priced);
 
     // Stamp first use so a board can see who has opened their link — the
     // difference between "they are ignoring us" and "it never arrived".
@@ -1204,7 +1263,10 @@ Deno.serve(async (req) => {
         paid_at: now,
         verified_at: now,
         verified_by: verified_by_pre,
+        ...(strOrNull(body.reference) ? { payment_reference: strOrNull(body.reference)!.slice(0, 120) } : {}),
       }).eq('id', id).eq('tenant_id', TID);
+      const { recordDiscountUse } = await import('../_shared/membership_price.ts');
+      await recordDiscountUse(sb, id);
       // Per-application audit
       await sb.from('application_actions').insert({
         application_id: id, tenant_id: TID,
@@ -1449,6 +1511,7 @@ Deno.serve(async (req) => {
         if      (app.payment_method === 'stripe')      templateKey = 'application_approved_stripe_paid';
         else if (app.payment_method === 'venmo')       templateKey = 'application_approved_venmo_verified';
         else if (app.payment_method === 'stripe_plan') templateKey = 'application_approved_plan_first';
+        else if (app.payment_method === 'free')        templateKey = 'application_approved_free';
       } else if (app.payment_method === 'venmo' && venmo) {
         templateKey = 'application_approved_unpaid_venmo';
       }
@@ -1598,8 +1661,14 @@ Deno.serve(async (req) => {
       verified_at: now,
       verified_by,
       updated_at: now,
+      // The Venmo transaction or check number, shown on referral approvals.
+      ...(strOrNull(body.reference) ? { payment_reference: strOrNull(body.reference)!.slice(0, 120) } : {}),
     }).eq('id', id).eq('tenant_id', TID);
     if (updErr) return jsonResponse({ ok: false, error: updErr.message }, 500);
+    {
+      const { recordDiscountUse } = await import('../_shared/membership_price.ts');
+      await recordDiscountUse(sb, id);
+    }
 
     // Flip the household's dues flag for the season this application bought.
     if (app.household_id) {
