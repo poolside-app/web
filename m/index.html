@@ -2482,9 +2482,15 @@ async function submitProfile() {
     if (h === 0) h = 12; else if (h > 12) h -= 12;
     return m[1] === '00' ? `${h}${ap}` : `${h}:${m[1]}${ap}`;
   };
-  const calOpens  = fmtHr(publicData.public_settings?.pool?.opens_at);
-  const calCloses = fmtHr(publicData.public_settings?.pool?.closes_at);
-  const calLabel  = (calOpens && calCloses) ? `${calOpens}–${calCloses}` : null;
+  const calLabel = (k => {
+    // Each day's hours from Settings: that weekday's own, or the usual (J6).
+    const pool = publicData.public_settings?.pool;
+    const day = pool && pool.hours_by_day && pool.hours_by_day[String(PoolTime.weekdayOfKey(k))];
+    if (day && day.closed) return 'Closed';
+    const h = PoolTime.hoursFor(pool, k);
+    const o = h && fmtHr(h.opens), c = h && fmtHr(h.closes);
+    return o && c ? `${o}–${c}` : null;
+  });
   if (window.PoolsideCalendar) {
     const calRoot = document.getElementById('member-calendar');
     // First render: native events only — instant.
