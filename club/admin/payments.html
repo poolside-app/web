@@ -284,6 +284,18 @@
           <button class="btn" id="code-cancel" type="button" onclick="Codes.reset()" style="display:none;font-size:12px;padding:6px 12px">Cancel</button>
         </div>
         <div class="err" id="code-err"></div>
+
+        <h3 style="margin:22px 0 4px;font-size:14px">Referral program</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 8px">When a family joins with a member's link and pays, the family saves this much, and the member earns a reward 30 days later (up to the price of their own membership).</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label>The member earns ($)</label><input id="ref-reward" type="number" min="0" step="1" placeholder="100" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+          <div><label>The new family saves ($)</label><input id="ref-newfam" type="number" min="0" step="1" placeholder="25" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" id="ref-save" type="button" onclick="saveReferralSettings()" style="background:var(--blue)">Save referral amounts</button>
+          <span class="saved" id="ref-saved" style="display:none">✓ Saved</span>
+        </div>
+        <div class="err" id="ref-err"></div>
       </div>
 
       <div id="late-fee-card" class="card" data-owner-only data-focus="late-fees">
@@ -349,15 +361,21 @@
   </details>
 
 
-  <div id="refunds-card" class="card" style="display:none;margin-top:24px">
+  <!-- H6 (2026-09-26): every referral reward, from "waiting on their
+       payment" to "refund sent". A board member with the payments permission
+       approves each one, never for their own family, and not before the
+       30 days are up. -->
+  <a id="referrals" name="referrals"></a>
+  <div id="referrals-card" class="card" style="margin-top:24px" data-focus="referrals">
     <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      💌 Pending referral refunds
-      <span id="refunds-count" style="font-size:12px;color:var(--muted);font-weight:500"></span>
+      💌 Referral rewards
+      <span id="ref-count" style="font-size:12px;color:var(--muted);font-weight:500"></span>
     </h2>
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px;line-height:1.5">
-      Members who chose "refund me $100 now" instead of next-year credit. Confirm both memberships look legitimate, then issue the refund through the right channel.
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;line-height:1.5">
+      A member earns a reward when a family joins with their link and pays. It unlocks 30 days after that payment, then a board member with the payments permission approves it (never for their own family). The member chooses credit toward their next dues or a refund.
     </p>
-    <div id="refunds-list"></div>
+    <div id="ref-totals" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px"></div>
+    <div id="ref-list"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
   </div>
 </main>
 
@@ -595,6 +613,9 @@ async function loadPaymentMethods() {
     window.__PINNED_YEAR__ = Number(ms.year) > 2000 ? Number(ms.year) : null;
     if (MILESTONES.length) renderMilestones();
     Tiers.paint(Array.isArray(r.settings?.membership_tiers) ? r.settings.membership_tiers : null);
+    const refs = r.settings?.referrals || {};
+    document.getElementById('ref-reward').value = ((refs.reward_cents ?? 10000) / 100);
+    document.getElementById('ref-newfam').value = ((refs.new_family_cents ?? 2500) / 100);
   } catch (e) {
     const errEl = document.getElementById('pm-err');
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -1098,171 +1119,158 @@ async function savePaymentMethods() {
 // ── Referral refunds queue ─────────────────────────────────────────────
 const REFERRALS_URL = `${SUPABASE_URL}/functions/v1/referrals`;
 
-async function loadRefundQueue() {
+// ── Referral rewards (H6) ──────────────────────────────────────────────
+async function saveReferralSettings() {
+  const errEl = document.getElementById('ref-err'); errEl.classList.remove('show');
+  const reward = Math.round(Number(document.getElementById('ref-reward').value) * 100);
+  const newFam = Math.round(Number(document.getElementById('ref-newfam').value) * 100);
+  if (!(reward >= 0) || !(newFam >= 0)) { errEl.textContent = 'Enter dollar amounts (0 or more).'; errEl.classList.add('show'); return; }
   try {
-    const r = await api(REFERRALS_URL, 'list');
-    if (!r.ok) return;
-    // Two queues, both needing a person. `awaiting_board` is a member asking
-    // for a reward and nothing having happened yet — that now includes credits
-    // against next season, which used to apply themselves silently.
-    // `is_pending_refund` is one already approved, where a treasurer still has
-    // to record the money actually going out.
-    const awaiting = (r.referrals || []).filter(x => x.awaiting_board);
-    const pending  = (r.referrals || []).filter(x => x.is_pending_refund);
-    const card = document.getElementById('refunds-card');
-    const list = document.getElementById('refunds-list');
-    const count = document.getElementById('refunds-count');
-    if (!awaiting.length && !pending.length) { card.style.display = 'none'; return; }
-    card.style.display = 'block';
-    const total = awaiting.length + pending.length;
-    count.textContent = `${total} pending`;
-    list.innerHTML =
-      (awaiting.length ? `<div style="font:600 13px 'Inter';color:#7c2d12;margin:0 0 8px">Waiting for board approval</div>`
-        + awaiting.map(ref => renderApprovalRow(ref)).join('') : '')
-      + (pending.length ? `<div style="font:600 13px 'Inter';color:#7c2d12;margin:${awaiting.length ? '16px' : '0'} 0 8px">Approved — money still to send</div>`
-        + pending.map(ref => renderRefundRow(ref)).join('') : '');
-  } catch { /* ignore */ }
+    const r = await api(SETTINGS_URL, 'save', { value: { referrals: { reward_cents: reward, new_family_cents: newFam } } });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    const ok = document.getElementById('ref-saved'); ok.style.display = 'inline';
+    setTimeout(() => { ok.style.display = 'none'; }, 1800);
+  } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
 }
 
-function refundFact(label, ok, detail) {
-  const icon = ok ? '✅' : '⚠️';
-  const color = ok ? 'var(--green)' : 'var(--yellow)';
-  return `<div style="font-size:13px;line-height:1.55;padding:3px 0">
-    <span style="color:${color}">${icon}</span>
-    <b>${escapeHtml(label)}</b>
-    ${detail ? `<span style="color:var(--muted)"> — ${escapeHtml(detail)}</span>` : ''}
+const refMoney = c => '$' + (Number(c || 0) / 100).toFixed(Number(c || 0) % 100 ? 2 : 0);
+const refDay = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+const METHOD_NAMES = { stripe: 'card', venmo: 'Venmo', check: 'check', cash: 'cash', free: 'nothing to pay', stripe_plan: 'card (plan)' };
+// One line per payment: amount, how, the date it was verified, who verified
+// it, and its transaction code.
+function paymentLine(who, p) {
+  if (!p) return `<div style="font-size:12.5px;color:#b45309">⚠️ ${escapeHtml(who)}: no paid membership payment found</div>`;
+  const ok = p.status === 'paid';
+  return `<div style="font-size:12.5px;line-height:1.55;padding:2px 0">
+    ${ok ? '✅' : '⚠️'} <b>${escapeHtml(who)}</b> paid ${p.amount_cents != null ? refMoney(p.amount_cents) + ' ' : ''}by ${escapeHtml(METHOD_NAMES[p.method] || p.method || 'unknown')}${p.season ? ' for ' + p.season : ''}${ok ? '' : ` <b>(now ${escapeHtml(p.status)})</b>`}
+    <span style="color:var(--muted)">· verified ${escapeHtml(refDay(p.verified_at))} by ${escapeHtml(p.verified_by || '—')}
+    · transaction: <code style="font-size:11.5px">${escapeHtml(p.transaction || 'none recorded')}</code></span>
   </div>`;
 }
-
-// A member has asked for a reward and nothing has happened yet. Nothing will
-// until somebody here decides — that is the whole point of this row.
-function renderApprovalRow(ref) {
-  const money = c => '$' + Math.round(Number(c || 0) / 100);
-  const isRefund = ref.reward_type === 'current_year_refund';
-  // The list nests these — referrer.name / referee.family — same as
-  // renderRefundRow reads them below.
-  const who = escapeHtml((ref.referrer && ref.referrer.name) || 'A member');
-  const brought = escapeHtml((ref.referee && (ref.referee.family || ref.referee.name)) || 'a new household');
-  return `
-    <div style="border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:13px 15px;margin-bottom:8px">
-      <div style="font-size:14px;color:#78350f;line-height:1.6">
-        <b>${who}</b> brought in <b>${brought}</b> and is asking for
-        <b>${money(ref.reward_amount_cents)}</b> —
-        ${isRefund ? 'refunded to them this season' : 'credited against next season'}.
-      </div>
-      <div style="font-size:12px;color:#92400e;margin-top:4px">
-        ${isRefund
-          ? 'Approving does not send money. You record that separately once it is actually sent.'
-          : 'Approving reduces what this household owes next season by this amount.'}
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        <button class="btn btn-primary" onclick="approveReward('${escapeHtml(ref.id)}')">Approve</button>
-        <button class="btn btn-danger" onclick="declineReward('${escapeHtml(ref.id)}')" style="margin-left:auto">Decline</button>
-      </div>
+function rewardRow(ref, kind) {
+  const choice = ref.reward_type === 'current_year_refund' ? 'a refund' : 'credit toward their next dues';
+  const facts = `<div style="background:var(--bg-2);border-radius:8px;padding:8px 10px;margin:8px 0">
+      ${paymentLine((ref.referee && ref.referee.family) || 'The new family', ref.referee && ref.referee.payment)}
+      ${paymentLine(ref.referrer.family || ref.referrer.name, ref.referrer.payment)}
     </div>`;
+  let status = '', buttons = '';
+  if (kind === 'approve') {
+    status = `Unlocked ${escapeHtml(refDay(ref.unlocks_at))}. They'd like ${choice}.`;
+    buttons = ref.own_family
+      ? `<div style="font-size:12.5px;color:#92400e">This is your family, so another board member with the payments permission approves it.</div>`
+      : `<button class="btn btn-primary" onclick="approveReward('${escapeHtml(ref.id)}')">Approve ${refMoney(ref.reward_amount_cents)}</button>
+         <button class="btn btn-danger" onclick="declineReward('${escapeHtml(ref.id)}')" style="margin-left:auto">Decline</button>`;
+  } else if (kind === 'send') {
+    status = `Approved by ${escapeHtml(ref.approved_by || 'a board member')} on ${escapeHtml(refDay(ref.approved_at))}. The refund still has to be sent.`;
+    buttons = ref.own_family
+      ? `<div style="font-size:12.5px;color:#92400e">This is your family, so another board member sends it.</div>`
+      : `${ref.refund_channel_hint === 'stripe' ? `<button class="btn btn-primary" onclick="issueRefund('${ref.id}','stripe')" style="background:#635bff;border-color:#635bff">💳 Refund ${refMoney(ref.reward_amount_cents)} to their card</button>` : ''}
+         <button class="btn" onclick="markManualRefund('${ref.id}','venmo')" style="background:#3D95CE;color:#fff;border-color:#3D95CE">Sent by Venmo</button>
+         <button class="btn" onclick="markManualRefund('${ref.id}','check')">Sent by check</button>
+         <button class="btn btn-danger" onclick="declineRefund('${ref.id}')" style="margin-left:auto">Don't send</button>`;
+  } else if (kind === 'waiting') {
+    status = `In the 30 days: unlocks ${escapeHtml(refDay(ref.unlocks_at))}. They'd like ${choice}.`;
+  } else {
+    status = ref.status === 'rewarded'
+      ? (ref.reward_type === 'current_year_refund'
+          ? (ref.refund_method === 'declined' ? `Refund not sent: ${escapeHtml(ref.refund_decline_reason || '')}`
+             : `Refund sent by ${escapeHtml(METHOD_NAMES[ref.refund_method] || ref.refund_method || '')} on ${escapeHtml(refDay(ref.refund_at))} by ${escapeHtml(ref.refund_by || '—')} · reference <code style="font-size:11.5px">${escapeHtml(ref.refund_id || '')}</code>`)
+          : `Credit toward their next dues, approved by ${escapeHtml(ref.approved_by || 'a board member')} on ${escapeHtml(refDay(ref.approved_at))}`)
+      : ref.status === 'declined' ? `Declined by ${escapeHtml(ref.declined_by || 'a board member')}: ${escapeHtml(ref.decline_reason || '')}`
+      : ref.status === 'void' ? `Void: ${escapeHtml(ref.void_reason || '')}`
+      : ref.status === 'rejected' ? `Not a new family: ${escapeHtml(ref.rejection_reason || '')}`
+      : 'Waiting for the new family to pay';
+  }
+  const highlight = kind === 'approve' || kind === 'send';
+  return `<div style="border:1px solid ${highlight ? '#fcd34d' : 'var(--border)'};background:${highlight ? '#fffbeb' : '#fff'};border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
+      <b style="font-family:'Fraunces',serif;font-size:16px;color:var(--blue)">${escapeHtml(ref.headline)}</b>
+      <span style="font-size:13px;font-weight:600">${refMoney(ref.reward_amount_cents)}</span>
+    </div>
+    ${kind === 'history' && ref.status === 'applied' ? '' : facts}
+    <div style="font-size:12.5px;color:var(--muted)">${status}</div>
+    ${buttons ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${buttons}</div>` : ''}
+  </div>`;
+}
+async function loadReferrals() {
+  const list = document.getElementById('ref-list');
+  try {
+    const r = await api(REFERRALS_URL, 'list');
+    if (!r.ok) throw new Error(r.error || 'Could not load referral rewards');
+    const all = r.referrals || [], t = r.totals || {};
+    const tile = (label, value) => `<div style="padding:10px;background:var(--bg-2);border-radius:10px"><div style="font:700 18px 'Fraunces',serif;color:var(--blue)">${value}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${label}</div></div>`;
+    document.getElementById('ref-totals').innerHTML =
+      tile('Credit owed', refMoney(t.credit_owed_cents)) + tile(`Cash paid in ${t.year || ''}`, refMoney(t.cash_paid_cents))
+      + tile('Waiting for approval', t.waiting_for_approval || 0) + tile('In the 30 days', t.in_waiting_period || 0);
+    const approve = all.filter(x => x.awaiting_board);
+    const send = all.filter(x => x.is_pending_refund);
+    const waiting = all.filter(x => x.status === 'verified');
+    const history = all.filter(x => !x.awaiting_board && !x.is_pending_refund && x.status !== 'verified').slice(0, 25);
+    document.getElementById('ref-count').textContent = approve.length + send.length ? `${approve.length + send.length} to do` : '';
+    const section = (title, rows, kind) => rows.length
+      ? `<div style="font:600 13px 'Inter';color:var(--text);margin:12px 0 8px">${title}</div>` + rows.map(x => rewardRow(x, kind)).join('') : '';
+    list.innerHTML = all.length
+      ? section('Waiting for approval', approve, 'approve') + section('Approved: refund to send', send, 'send')
+        + section('In the 30 days', waiting, 'waiting') + section('History', history, 'history')
+      : '<p style="font-size:12.5px;color:var(--muted);margin:0">No referrals yet. Members find their link under Refer a friend in the app.</p>';
+  } catch (e) {
+    list.innerHTML = `<div class="err show">${escapeHtml(e.message)}</div>`;
+  }
 }
 
 async function approveReward(referralId) {
-  if (!confirm('Approve this referral reward?')) return;
+  if (!confirm('Approve this referral reward? The member is texted.')) return;
   try {
     const r = await api(REFERRALS_URL, 'approve_reward', { referral_id: referralId });
     if (!r.ok) throw new Error(r.error || 'Failed');
   } catch (e) { alert(e.message); }
-  loadRefundQueue();
+  loadReferrals();
 }
 
 async function declineReward(referralId) {
   // Required, not optional: "declined" with no explanation is the version of
   // this that ends in an argument at a board meeting.
-  const reason = prompt('Why are you declining it? The member will be told.');
+  const reason = prompt('Why are you declining it? The member is texted this reason.');
   if (reason === null) return;
   if (!reason.trim()) { alert('A reason is required.'); return; }
   try {
     const r = await api(REFERRALS_URL, 'decline_reward', { referral_id: referralId, reason });
     if (!r.ok) throw new Error(r.error || 'Failed');
   } catch (e) { alert(e.message); }
-  loadRefundQueue();
-}
-
-function renderRefundRow(ref) {
-  const amt = `$${Math.round((ref.reward_amount_cents || 10000) / 100)}`;
-  const referrerName = ref.referrer.name + (ref.referrer.family ? ` · ${ref.referrer.family} family` : '');
-  const referrerOK = ref.referrer.active && ref.referrer.household_active && ref.referrer.dues_paid;
-  const referrerDetail = (() => {
-    if (!ref.referrer.active)               return 'Member is no longer active';
-    if (!ref.referrer.household_active)     return 'Household is inactive';
-    if (!ref.referrer.dues_paid)            return 'Dues unpaid for current year';
-    const py = ref.referrer.paid_until_year ? `paid through ${ref.referrer.paid_until_year}` : 'paid';
-    const pm = ref.referrer.payment_method || 'unknown method';
-    return `Active member, ${py}, ${pm}`;
-  })();
-
-  const refereeOK = ref.referee && ref.referee.payment_status === 'paid' && ref.referee.status === 'approved';
-  const refereeDetail = (() => {
-    if (!ref.referee)                                       return 'Application missing — was it deleted?';
-    if (ref.referee.payment_status !== 'paid')              return `Payment status: ${ref.referee.payment_status}`;
-    if (ref.referee.status !== 'approved')                  return `Application status: ${ref.referee.status}`;
-    return `Joined as new member, ${ref.referee.payment_method || 'unknown method'}, paid ${ref.referee.paid_at ? new Date(ref.referee.paid_at).toLocaleDateString() : ''}`;
-  })();
-
-  const stripeAvailable = ref.refund_channel_hint === 'stripe';
-  const buttons = [];
-  if (stripeAvailable) {
-    buttons.push(`<button class="btn btn-primary" onclick="issueRefund('${ref.id}','stripe')" style="background:#635bff;color:#fff;border-color:#635bff">💳 Issue ${amt} Stripe refund (auto)</button>`);
-  }
-  buttons.push(`<button class="btn" onclick="markManualRefund('${ref.id}','venmo')" style="background:#3D95CE;color:#fff;border-color:#3D95CE">📱 I sent ${amt} via Venmo</button>`);
-  buttons.push(`<button class="btn" onclick="markManualRefund('${ref.id}','check')">📝 I sent a check</button>`);
-  buttons.push(`<button class="btn btn-danger" onclick="declineRefund('${ref.id}')" style="margin-left:auto">❌ Decline</button>`);
-
-  return `
-    <div style="border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;background:#fff">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-        <b style="font-family:'Fraunces',serif;font-size:17px;color:var(--blue)">${escapeHtml(referrerName)} wants ${amt} refund</b>
-        <span style="font-size:11.5px;color:var(--muted)">claimed ${ref.reward_chosen_at ? new Date(ref.reward_chosen_at).toLocaleString() : 'recently'}</span>
-      </div>
-      <div style="background:var(--bg-2);border-radius:8px;padding:10px 12px;margin-bottom:12px">
-        ${refundFact(`Referrer (${ref.referrer.name})`, referrerOK, referrerDetail)}
-        ${refundFact(`Referee (${ref.referee?.family || ref.referee?.name || 'unknown'})`, refereeOK, refereeDetail)}
-      </div>
-      ${!stripeAvailable
-        ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-style:italic">Stripe auto-refund not available — referrer paid via ${ref.referrer.payment_method || 'a non-Stripe method'}, so issue manually below.</div>`
-        : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${buttons.join('')}</div>
-    </div>
-  `;
+  loadReferrals();
 }
 
 async function issueRefund(referralId, method) {
-  if (!confirm(`Issue $100 ${method.toUpperCase()} refund?\n\nFor Stripe: this immediately calls the Stripe API and the money goes back to the member's card.\nFor Venmo/check: this just records that you've sent it manually.`)) return;
+  if (!confirm('Refund this reward to the card they paid their dues with? Stripe sends them a receipt, and they are texted.')) return;
   try {
     const r = await api(REFERRALS_URL, 'issue_refund', { referral_id: referralId, method });
     if (!r.ok) throw new Error(r.error || 'Refund failed');
-    alert(`✓ Refund recorded. ${method === 'stripe' ? 'Stripe will email a receipt to the member; the refund lands on their card in 5-10 business days.' : 'Recorded.'}`);
-    loadRefundQueue();
-  } catch (e) {
-    alert('Refund failed: ' + e.message);
-  }
+    alert('✓ Refund sent. It lands on their card in 5 to 10 business days.');
+  } catch (e) { alert('Refund failed: ' + e.message); }
+  loadReferrals();
 }
 
 async function markManualRefund(referralId, method) {
-  const note = prompt(`How did you send the ${method === 'venmo' ? 'Venmo' : 'check'}?\n(Optional note for the audit log — e.g. "Venmo to @margaret-k" or "check #1234")`, '') ;
-  // null means user clicked Cancel — bail
-  if (note === null) return;
+  const ref = prompt(method === 'venmo'
+    ? 'The Venmo transaction ID (required). It is shown to the member and kept in the audit log.'
+    : 'The check number (required). It is shown to the member and kept in the audit log.', '');
+  if (ref === null) return;
+  if (ref.trim().length < 3) { alert('The reference is required.'); return; }
   try {
-    const r = await api(REFERRALS_URL, 'issue_refund', { referral_id: referralId, method, note });
+    const r = await api(REFERRALS_URL, 'issue_refund', { referral_id: referralId, method, note: ref.trim() });
     if (!r.ok) throw new Error(r.error || 'Failed');
-    loadRefundQueue();
   } catch (e) { alert(e.message); }
+  loadReferrals();
 }
 
 async function declineRefund(referralId) {
-  const reason = prompt('Why are you declining this refund?\n(Required — gets logged + visible to the team)');
+  const reason = prompt('Why is this refund not being sent?\n(Required — kept in the audit log)');
   if (!reason || !reason.trim()) return;
   try {
     const r = await api(REFERRALS_URL, 'decline_refund', { referral_id: referralId, reason: reason.trim() });
     if (!r.ok) throw new Error(r.error || 'Failed');
-    loadRefundQueue();
   } catch (e) { alert(e.message); }
+  loadReferrals();
 }
 
 (async () => {
@@ -1380,7 +1388,7 @@ async function waiveLateFee(id) {
 
   loadPlanConfig();
   loadPlansList();
-  loadRefundQueue();
+  loadReferrals();
   loadLateFees();
   Codes.load();
 })();

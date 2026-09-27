@@ -176,6 +176,13 @@ export async function renderChecks({ check, read, sql, jwt }) {
           list: document.getElementById('codes-list')?.textContent.trim().slice(0, 60),
         }));
         check('H7: Money setup has Discounts, and the code list loads', codes.inSetup && codes.list && !/Loading|error/i.test(codes.list), JSON.stringify(codes));
+        const refs = await pg.evaluate(() => ({
+          list: document.getElementById('ref-list')?.textContent.trim().slice(0, 80),
+          totals: document.getElementById('ref-totals')?.textContent.replace(/\s+/g, ' ').trim(),
+          reward: document.getElementById('ref-reward')?.value, newFam: document.getElementById('ref-newfam')?.value,
+        }));
+        check('H6: Money shows Referral rewards with totals, and the referral amounts', refs.list && !/Loading|Could not/.test(refs.list)
+          && /Credit owed/.test(refs.totals) && Number(refs.reward) > 0 && refs.newFam !== '', JSON.stringify(refs));
       }
       if (path === '/club/admin/settings.html') {
         // J5–J7: Season has the on-sale month, hours per day, one gate section.
@@ -269,6 +276,15 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('D9: "Coming up" doesn\'t list the daily Pool Open', !/Pool Open/.test(coming), coming.slice(0, 160));
     const banner = await h.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').match(/Early bird: [^.]*?EARLYBIRD[^.]*?2099|Early bird: \$50 off with code EARLYBIRD through [A-Z][a-z]{2} 1/)?.[0] || '');
     check('H7: the member home shows the early-bird code', /\$50 off with code EARLYBIRD through Mar 1/.test(banner), banner || 'no banner');
+    // H6: the Refer panel spells out the rules before anything else.
+    await h.evaluate(() => openReferModal());
+    await h.waitForFunction(() => /30 days/.test(document.getElementById('refer-rules')?.textContent || ''), { timeout: 15000 }).catch(() => {});
+    const rules = await h.evaluate(() => ({ title: document.getElementById('refer-title')?.textContent, rules: document.getElementById('refer-rules')?.innerText.replace(/\s+/g, ' ') }));
+    check('H6: the Refer panel shows the rules: save, 30 days, choice, board, free membership',
+      /earn \$\d/.test(rules.title || '') && /saves \$\d/.test(rules.rules) && /30 days/.test(rules.rules) && /credit toward your next dues, or a refund/.test(rules.rules)
+        && /board approves/.test(rules.rules) && /free membership/.test(rules.rules), JSON.stringify(rules).slice(0, 300));
+    await h.screenshot({ path: '/tmp/poolside-refer-rules.png' });
+    await h.evaluate(() => closeReferModal());
     const picking = h.evaluate(() => pickFamilyMember('Who\'s signing up for Swim lessons?'));
     await wait(300);
     const pick = await h.$eval('#ask-scrim', el => ({ open: el.classList.contains('open'), text: el.innerText.replace(/\s+/g, ' ') }));

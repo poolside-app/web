@@ -272,7 +272,7 @@ Steps (each: failing test first, then the fix, then proof):
   - If it comes to $0, "Confirm, nothing to pay" marks them paid.
   - The credit and code use are recorded only once the payment clears.
   - Also fixed: one-click Approve in the Pipeline was making every family a Family household whatever level they picked, which sets their renewal price. The Venmo check now shows the amount after discount.
-- **H6. Referral rewards: credit or refund, approved, tracked** (Doug, 9/26).
+- **H6. ✅ Referral rewards: credit or refund, approved, tracked** (Doug, 9/26).
   - **Settings** (board admin → Referral program): the member's reward (default $100) and the new family's discount (default $25).
   - **The new family** saves $25 when they join through a member's link. Only one discount per membership: if they also have a code, the bigger one applies, and they're told so.
   - **The referring member always earns their full reward**, even when the new family ends up using an early-bird code instead of the referral discount (Doug, 9/26).
@@ -289,6 +289,7 @@ Steps (each: failing test first, then the fix, then proof):
     - The member is texted when it's approved and when it's sent.
   - **Safety:** if the new family's payment is refunded or cancelled first, the reward is cancelled. Credit plus cash never adds up to more than the member's own membership.
   - **Tracking:** a Referral rewards list under Money: who referred whom, both payments, unlock date, approved by, paid by and how, reference, and totals (credit owed, cash paid this season). Every step is also in the audit log.
+  - Also fixed: the "new to the club" check ran after the new family's own household existed, so every referral would have been rejected. "Approve & verify Venmo" never started the referral at all. Refunded and disputed card payments couldn't be recorded (the database refused the status), so a refund couldn't void anything.
 - **H7. ✅ Discount codes.**
   - The board makes codes under Money: a code, $ or % off, an expiry date, and optionally a limit on how many families can use it. The early-bird setting becomes one of these.
   - The signup form and the renewal page get "Have a code?". It's checked on the server, and the new price shows before paying.

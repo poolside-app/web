@@ -178,6 +178,49 @@ console.log('\nH7 · discount codes (offline)');
   check('H7: the renewal blast mentions a home code instead of early bird', /show_on_home/.test(ren) && !/early_bird/.test(ren), 'renewals still reads early_bird');
 }
 
+// ── H6: referral rewards (offline) ──────────────────────────────────────
+console.log('\nH6 · referral rewards (offline)');
+{
+  let rr = null;
+  try { rr = await importTs(new URL('supabase/functions/_shared/referral_rewards.ts', root)); }
+  catch (e) { check('H6: the reward rules exist', false, e.message); }
+  if (rr) {
+    check('H6: a reward unlocks 30 days after the new family pays',
+      rr.unlockAt('2026-09-26T17:00:00Z') === '2026-10-26T17:00:00.000Z', rr.unlockAt('2026-09-26T17:00:00Z'));
+    check('H6: "The Smiths referred the Johnsons" reads right',
+      rr.theFamily('Smith Family') === 'the Smiths' && rr.theFamily('Johnson') === 'the Johnsons' && rr.theFamily('Rivas') === 'the Rivas' && rr.theFamily('Birch') === 'the Birches',
+      [rr.theFamily('Smith Family'), rr.theFamily('Rivas'), rr.theFamily('Birch')].join(', '));
+    const base = { status: 'claimed', unlocksAt: '2026-10-26T17:00:00Z', now: new Date('2026-10-27T00:00:00Z'), ownFamily: false, refereePaid: true };
+    check('H6: approval: allowed once unlocked', rr.approvalProblem(base) === null, rr.approvalProblem(base));
+    check('H6: approval: not before the unlock date', /unlocks/.test(rr.approvalProblem({ ...base, now: new Date('2026-10-20T00:00:00Z') }) || ''), '');
+    check('H6: approval: never for your own family', /own family/.test(rr.approvalProblem({ ...base, ownFamily: true }) || ''), '');
+    check('H6: approval: void if the new family\'s payment was undone', /void/.test(rr.approvalProblem({ ...base, refereePaid: false }) || ''), '');
+    const t = rr.paidText('Bishop Estates', 'Johnson Family', 10000, 'Oct 26');
+    check('H6: the member is texted the unlock date when the family pays', /The Johnsons joined with your link/.test(t) && /\$100/.test(t) && /Oct 26/.test(t), t);
+    check('H6: texts on unlock, approval and refund say what happens next',
+      /unlocked/.test(rr.unlockedText('C', 'Johnson', 10000, null)) && /comes off your next dues/.test(rr.approvedText('C', 'Johnson', 10000, 'next_year_discount'))
+        && /by Venmo \(ref 123\)/.test(rr.sentText('C', 10000, 'venmo', 'ref 123')), '');
+  }
+  const ref = read('supabase/functions/referrals/index.ts');
+  check('H6: "new to the club" doesn\'t count the new family\'s own household', /exceptHousehold|neq\('household_id'/.test(between(ref, 'async function isEligibleNewMember', '\n}\n')), 'eligibility would reject every referral');
+  check('H6: verifying starts the 30 days and texts the member', /unlocks_at/.test(between(ref, "action === 'verify_referral'", "// ── Below this point")) && /paidText/.test(ref), 'no unlock date on verify');
+  check('H6: approve and refund refuse your own family and early approvals', /approvalProblem/.test(between(ref, "action === 'approve_reward'", "action === 'decline_reward'")) && /isOwnFamily/.test(between(ref, "action === 'issue_refund'", "action === 'decline_refund'")), '');
+  check('H6: a Venmo or check refund needs its reference', /reference is required|needs the (Venmo|reference)/i.test(between(ref, "action === 'issue_refund'", "action === 'decline_refund'")), 'reference optional');
+  check('H6: the nightly job unlocks rewards', /unlockDueRewards/.test(read('supabase/functions/payment_plans/index.ts')), '');
+  check('H6: refunds and cancelled applications void the reward',
+    /voidRewardsForApplication/.test(between(read('supabase/functions/stripe_webhook/index.ts'), "type === 'charge.refunded'", 'charge.dispute.created'))
+      && (read('supabase/functions/applications/index.ts').match(/voidRewardsForApplication/g) || []).length >= 2, '');
+  const money = read('club/admin/payments.html');
+  check('H6: Money has a Referral rewards list with both payments and the unlock date',
+    /id="referrals-card"/.test(money) && /ref\.headline/.test(money) && /referred \$\{theFamily/.test(ref) && /unlocks/.test(money)
+      && /transaction/i.test(money) && /Credit owed/.test(money), '');
+  check('H6: the referral amounts are settings in Money setup', /id="ref-reward"/.test(money) && /id="ref-newfam"/.test(money), '');
+  const home = read('m/index.html');
+  check('H6: the Refer panel spells out the rules', /30 days/.test(home) && /board approves/i.test(home) && /free membership|price of your (own )?membership/i.test(home), '');
+  check('H6: refund statuses are allowed so a refund can void the reward',
+    /'refunded'/.test(read('supabase/migrations/20260927000100_referral_rewards.sql') ), 'no migration');
+}
+
 // ── Live ─────────────────────────────────────────────────────────────────
 if (live('H4')) {
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
@@ -327,6 +370,133 @@ if (live('H7')) {
   } finally {
     await sql(`delete from audit_log where tenant_id = '${club.id}' and entity_id in (select id from discount_codes where tenant_id = '${club.id}' and code = '${CODE}')`);
     await sql(`delete from discount_codes where tenant_id = '${club.id}' and code = '${CODE}'`);
+  }
+}
+
+// ── H6 live ──────────────────────────────────────────────────────────────
+if (live('H6')) {
+  const STAMP = String(Date.now()).slice(-6);
+  const q = v => `'${String(v).replace(/'/g, "''")}'`;
+  const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
+  const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
+  const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+  const { makeTempAdmin, purgeTempAdmins } = await import('./lib/testdata.mjs');
+  const [{ v: sv }] = await sql(`select value as v from settings where tenant_id = ${q(club.id)}`);
+  const base = Number((sv.membership_tiers || []).find(t => t.slug === 'family')?.price_cents) || 0;
+  const reward = Number(sv.referrals?.reward_cents ?? 10000), newFam = Number(sv.referrals?.new_family_cents ?? 2500);
+  const decodeSim = url => {
+    const t = /#t=([^&\s]+)/.exec(url || '')?.[1];
+    try { return t ? { token: t, ...JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString()) } : null; } catch { return null; }
+  };
+  const referrerPhone = `+1555${STAMP}9`;
+  console.log(`\nH6 · live on Bishop in test mode (about 25 calls; run ${STAMP}, removed afterward)`);
+  let refIds = [];
+  try {
+    // The referring member and their link.
+    const m = await makeTempMember(sql, club.id, `SimRef Smith ${STAMP}`);
+    await sql(`update household_members set phone_e164 = ${q(referrerPhone)} where id = ${q(m.id)}`);
+    const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
+    const mine = await fn('referrals', 'get_my_code', memTok);
+    check('H6: the Refer panel gets the link and the rules', mine.ok && !!mine.code && mine.rules?.reward_cents === reward && mine.rules?.wait_days === 30, short(mine.rules ?? mine));
+    const valid = await fn('referrals', 'validate_code', null, { code: mine.code, slug: 'bishopestates' });
+    check('H6: the invited family is told they save the referral amount', valid.ok && valid.new_family_cents === newFam, short(valid));
+
+    // A new family joins with the link, by card.
+    const join = async (n) => {
+      const email = `doug.frevele+simtest-ref${n}-${STAMP}@gmail.com`, phone = `555${STAMP}${n}`;
+      const sub = await fn('applications', 'submit', null, {
+        slug: 'bishopestates', family_name: `SimRef Johnson${n} ${STAMP}`, primary_name: `Sim Ref ${n}`,
+        primary_email: email, primary_phone: phone, adults: [{ name: `Sim Ref ${n}`, email, phone }], children: [],
+        waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
+        tier_slug: 'family', payment_method: 'stripe', referral_code: mine.code,
+      });
+      const co = await fn('stripe_checkout', 'application', null, { application_id: sub.application_id });
+      const sim = decodeSim(co.url);
+      if (sim) await fn('stripe_checkout', 'simulate_complete', null, { token: sim.token });
+      return sub;
+    };
+    const j1 = await join(1);
+    check('H6: the new family pays the price less the referral discount', j1.ok && j1.price?.discount_kind === 'referral' && j1.price?.amount_due_cents === base - newFam, short(j1.price ?? j1));
+    let ref1 = null;
+    for (let i = 0; i < 15 && !(ref1 && ref1.status !== 'applied'); i++) {
+      [ref1] = await sql(`select id, status, rejection_reason, unlocks_at, referee_paid_at, reward_amount_cents, reward_type from referrals where application_id = ${q(j1.application_id)}`);
+      if (!(ref1 && ref1.status !== 'applied')) await new Promise(r => setTimeout(r, 1000));
+    }
+    if (ref1) refIds.push(ref1.id);
+    const days = ref1?.unlocks_at && ref1?.referee_paid_at ? Math.round((Date.parse(ref1.unlocks_at) - Date.parse(ref1.referee_paid_at)) / 86400000) : null;
+    check('H6: once they pay, the reward starts its 30 days (not rejected as "already a member")',
+      ref1?.status === 'verified' && days === 30 && ref1?.reward_amount_cents === reward && ref1?.reward_type === 'next_year_discount', short(ref1));
+    const [paidText] = await sql(`select source from sms_log where to_phone = ${q(referrerPhone)} and source = 'referrals.verified' limit 1`);
+    check('H6: the member is texted (the unlock date is in the text)', !!paidText, 'no text attempted');
+
+    const choose = await fn('referrals', 'choose_reward', memTok, { referral_id: ref1?.id, reward_type: 'current_year_refund' });
+    check('H6: the member can choose a refund before it unlocks', choose.ok, short(choose));
+    const early = await fn('referrals', 'approve_reward', ownerTok, { referral_id: ref1?.id });
+    check('H6: the board can\'t approve it before it unlocks', !early.ok && /unlocks/.test(early.error || ''), short(early));
+
+    // Thirty days pass.
+    await sql(`update referrals set unlocks_at = now() - interval '1 minute' where id = ${q(ref1?.id)}`);
+    const sweep = await fetch(`${SUPABASE_URL}/functions/v1/referrals`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-cron-secret': env.CRON_SECRET },
+      body: JSON.stringify({ action: 'unlock_due' }),
+    }).then(r => r.json());
+    const [after] = await sql(`select status, reward_type from referrals where id = ${q(ref1?.id)}`);
+    const [task] = await sql(`select summary from admin_tasks where source_kind = 'referral' and source_id = ${q(ref1?.id)} and completed_at is null`);
+    const [unlockText] = await sql(`select source from sms_log where to_phone = ${q(referrerPhone)} and source = 'referrals.unlocked' limit 1`);
+    check('H6: on unlock day it goes to the board, and the member is texted',
+      sweep.ok && sweep.unlocked >= 1 && after?.status === 'claimed' && after?.reward_type === 'current_year_refund' && /referred/.test(task?.summary || '') && !!unlockText,
+      short({ sweep, after, task: task?.summary, texted: !!unlockText }));
+
+    // A board member from the referrer's own family can't approve it.
+    const famAdmin = await makeTempAdmin(sql, club.id, 'Ref Family', ['payments']);
+    await sql(`update admin_users set phone_e164 = ${q(referrerPhone)} where id = ${q(famAdmin)}`);
+    const famTok = jwt({ sub: famAdmin, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates', scopes: ['payments'] });
+    const own = await fn('referrals', 'approve_reward', famTok, { referral_id: ref1?.id });
+    check('H6: never approved by the referrer\'s own family', !own.ok && /own family/.test(own.error || ''), short(own));
+
+    const ok = await fn('referrals', 'approve_reward', ownerTok, { referral_id: ref1?.id });
+    const [approvedText] = await sql(`select source from sms_log where to_phone = ${q(referrerPhone)} and source = 'referrals.approved' limit 1`);
+    check('H6: another payments board member approves it; the member is texted', ok.ok && ok.needs_refund_issue === true && !!approvedText, short({ ok, texted: !!approvedText }));
+
+    const list = await fn('referrals', 'list', ownerTok);
+    const row = (list.referrals || []).find(x => x.id === ref1?.id);
+    check('H6: the approval screen says who referred whom, with the payment, date, verifier and transaction',
+      row && /^The SimRef Smith .*referred the SimRef Johnson1 /.test(row.headline) && row.referee?.payment?.verified_by === 'Stripe (card)'
+        && /^sim_cs_/.test(row.referee?.payment?.transaction || '') && !!row.referee?.payment?.verified_at && !!row.unlocks_at,
+      short({ headline: row?.headline, pay: row?.referee?.payment }));
+
+    const noRef = await fn('referrals', 'issue_refund', ownerTok, { referral_id: ref1?.id, method: 'venmo', note: '' });
+    check('H6: a Venmo refund needs its reference', !noRef.ok && /reference is required/.test(noRef.error || ''), short(noRef));
+    const sent = await fn('referrals', 'issue_refund', ownerTok, { referral_id: ref1?.id, method: 'venmo', note: 'VENMO-TEST-123' });
+    const [sentText] = await sql(`select source from sms_log where to_phone = ${q(referrerPhone)} and source = 'referrals.refund_sent' limit 1`);
+    const [rec] = await sql(`select refund_method, refund_id, refund_by from referrals where id = ${q(ref1?.id)}`);
+    const list2 = await fn('referrals', 'list', ownerTok);
+    check('H6: the refund is recorded with its reference and who sent it, the member is texted, and it counts as cash paid',
+      sent.ok && rec?.refund_method === 'venmo' && rec?.refund_id === 'VENMO-TEST-123' && rec?.refund_by === owner.id && !!sentText
+        && (list2.totals?.cash_paid_cents ?? 0) >= reward, short({ sent, rec, texted: !!sentText, cash: list2.totals }));
+
+    // A second family whose payment is then refunded: the reward is void.
+    const j2 = await join(2);
+    let ref2 = null;
+    for (let i = 0; i < 15 && !(ref2 && ref2.status !== 'applied'); i++) {
+      [ref2] = await sql(`select id, status from referrals where application_id = ${q(j2.application_id)}`);
+      if (!(ref2 && ref2.status !== 'applied')) await new Promise(r => setTimeout(r, 1000));
+    }
+    if (ref2) refIds.push(ref2.id);
+    await sql(`update referrals set unlocks_at = now() - interval '1 minute', status = 'claimed' where id = ${q(ref2?.id)}`);
+    await sql(`update applications set payment_status = 'refunded' where id = ${q(j2.application_id)}`);
+    const voidTry = await fn('referrals', 'approve_reward', ownerTok, { referral_id: ref2?.id });
+    const [v2] = await sql(`select status, void_reason from referrals where id = ${q(ref2?.id)}`);
+    check('H6: if the new family\'s payment is refunded first, the reward is void', !voidTry.ok && v2?.status === 'void', short({ voidTry, v2 }));
+  } finally {
+    if (refIds.length) {
+      const ids = refIds.map(q).join(',');
+      await sql(`delete from admin_tasks where source_kind = 'referral' and source_id in (${ids})`);
+      await sql(`delete from audit_log where entity_type = 'referral' and entity_id in (${ids})`);
+    }
+    await sql(`delete from sms_log where to_phone = ${q(referrerPhone)}`);
+    await purgeTestFamilies(sql, club.id, `SimRef % ${STAMP}`);
+    await purgeTempAdmins(sql, club.id);
   }
 }
 

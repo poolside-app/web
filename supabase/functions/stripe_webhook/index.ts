@@ -707,6 +707,12 @@ Deno.serve(async (req) => {
           payment_status: fullRefund ? 'refunded' : 'partial_refund',
           refunded_at: new Date().toISOString(),
         }).eq('id', app.id);
+        // A referral reward for bringing this family in is void once their
+        // payment is refunded, even partly (H6).
+        {
+          const { voidRewardsForApplication } = await import('../_shared/referral_rewards.ts');
+          await voidRewardsForApplication(sb, app.id as string, fullRefund ? 'Their payment was refunded' : 'Their payment was partly refunded');
+        }
         {
           const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
           await enqueueAdminTask(sb, {
@@ -758,6 +764,10 @@ Deno.serve(async (req) => {
           payment_status: 'disputed',
           disputed_at: new Date().toISOString(),
         }).eq('id', app.id);
+        {
+          const { voidRewardsForApplication } = await import('../_shared/referral_rewards.ts');
+          await voidRewardsForApplication(sb, app.id as string, 'Their card payment was disputed');
+        }
         {
           const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
           await enqueueAdminTask(sb, {

@@ -383,8 +383,8 @@
   <div class="pmodal" style="max-width:520px">
     <div style="text-align:center;padding:6px 0 12px">
       <div style="font-size:42px;line-height:1">💌</div>
-      <h2 style="margin:8px 0 4px;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:24px">Get $100 off your dues</h2>
-      <p style="color:var(--muted);font-size:13.5px;margin:0;line-height:1.5">Share your link. When a new family joins and pays, the $100 is yours — pick how you want it.</p>
+      <h2 style="margin:8px 0 4px;font-family:'Fraunces',Georgia,serif;color:var(--blue);font-size:24px" id="refer-title">Refer a friend</h2>
+      <p style="color:var(--muted);font-size:13.5px;margin:0;line-height:1.5">Share your link with a family who isn't a member yet.</p>
     </div>
 
     <div id="refer-loading" style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Loading your link…</div>
@@ -418,15 +418,12 @@
         </div>
       </div>
 
-      <!-- Reward-ready prompt -->
-      <div id="refer-claim-row" style="display:none;padding:14px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #fcd34d;border-radius:12px;margin-bottom:14px">
-        <div style="font-weight:700;color:#7c2d12;margin-bottom:6px">🎉 You earned a $100 reward!</div>
-        <div style="font-size:13px;color:#78350f;margin-bottom:10px" id="refer-claim-detail">Pick how you'd like it — the board approves it before it's applied:</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn" onclick="claimReward('next_year_discount')" style="background:#0a3b5c;color:#fff;font-size:13px">Ask for next year's dues</button>
-          <button class="btn btn-ghost" onclick="claimReward('current_year_refund')" style="font-size:13px">Refund me $100 now</button>
-        </div>
-      </div>
+      <!-- The rules, up front (H6): what they save, when it unlocks, the
+           choice, the board, the cap. -->
+      <div id="refer-rules" style="margin:0 0 14px;padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.6"></div>
+
+      <!-- Rewards on their way: unlock date and the member's choice. -->
+      <div id="refer-claim-row" style="display:none;margin-bottom:14px"></div>
 
       <!-- The shareable link -->
       <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);margin:6px 0 4px">Your invite link</label>
@@ -448,7 +445,7 @@
 
       <!-- Fine print -->
       <div style="margin-top:18px;padding:10px 12px;background:#fafaf8;border-radius:8px;font-size:11.5px;color:var(--muted);line-height:1.55">
-        Reward earned only when the new family joins, pays, and isn't a returning member from this season or last. We notify you here when payment clears.
+        Only for families who have never been members here. If their payment is refunded, the reward is cancelled.
       </div>
     </div>
 
@@ -1352,6 +1349,16 @@ function renderReferModal() {
   document.getElementById('refer-loading').style.display = 'none';
   document.getElementById('refer-content').style.display = 'block';
 
+  const rules = r.rules || { reward_cents: 10000, new_family_cents: 2500, wait_days: 30 };
+  const $$ = c => '$' + (Number(c || 0) / 100).toFixed(Number(c || 0) % 100 ? 2 : 0);
+  document.getElementById('refer-title').textContent = `Refer a friend, earn ${$$(rules.reward_cents)}`;
+  document.getElementById('refer-rules').innerHTML = `
+    <div style="font-weight:700;color:var(--blue);margin-bottom:4px">How it works</div>
+    <div>1. A family joins with your link${rules.new_family_cents ? ` and saves <b>${$$(rules.new_family_cents)}</b>` : ''}.</div>
+    <div>2. <b>30 days</b> after they pay, your <b>${$$(rules.reward_cents)}</b> unlocks. We text you both days.</div>
+    <div>3. You choose credit toward your next dues, or a refund.</div>
+    <div>4. The board approves it, then it's applied or sent.</div>
+    <div style="color:var(--muted);margin-top:4px">You can earn up to the price of your own membership: a free membership.</div>`;
   document.getElementById('rs-invites').textContent = r.stats.total_invites;
   document.getElementById('rs-verified').textContent = r.stats.verified_unclaimed + r.stats.rewarded;
   document.getElementById('rs-earned').textContent = '$' + Math.round((r.stats.total_earned_cents || 0) / 100);
@@ -1385,27 +1392,32 @@ function renderReferModal() {
   // SMS / email links pre-fill native share apps. SMS uses 'sms:' which most
   // mobile browsers handle. Email uses mailto with subject + body.
   const club = r.tenant_display_name || 'our club';
-  const smsBody = encodeURIComponent(`I'm a member at ${club} — want to join? Use my link and I'll get $100 off my dues. ${r.share_url}`);
+  const saves = rules.new_family_cents ? ` you save ${$$(rules.new_family_cents)} and` : '';
+  const smsBody = encodeURIComponent(`I'm a member at ${club} — want to join? If you sign up with my link,${saves} I earn a reward. ${r.share_url}`);
   const emailSubject = encodeURIComponent(`You're invited to join ${club}`);
-  const emailBody = encodeURIComponent(`Hi,\n\nI'm a member at ${club} and wanted to invite you to join. Here's my personal link — when you sign up, I get $100 off my dues:\n\n${r.share_url}\n\nLet me know if you have any questions!\n`);
+  const emailBody = encodeURIComponent(`Hi,\n\nI'm a member at ${club} and wanted to invite you to join. Here's my personal link. If you sign up with it,${saves} I earn a reward:\n\n${r.share_url}\n\nLet me know if you have any questions!\n`);
   document.getElementById('refer-sms').href = `sms:?&body=${smsBody}`;
   document.getElementById('refer-email').href = `mailto:?subject=${emailSubject}&body=${emailBody}`;
 
-  // Reward-ready prompt — show only the OLDEST verified-unclaimed referral.
-  // (If they have multiple, claiming each gets its own choice; we surface
-  // them one at a time so the prompt stays simple.)
+  // Rewards on their way (H6): each one's unlock date and the member's
+  // choice, which they can change until the board approves it.
   const claimRow = document.getElementById('refer-claim-row');
-  const verified = (r.referrals || []).filter(x => x.status === 'verified');
-  if (verified.length) {
-    const oldest = verified[verified.length - 1];
-    document.getElementById('refer-claim-detail').textContent =
-      `${oldest.applied_by} just paid up — your $${Math.round((oldest.reward_amount_cents || 0) / 100)} reward is ready. Pick how to use it:`;
-    claimRow.style.display = 'block';
-    claimRow.dataset.referralId = oldest.id;
-  } else {
-    claimRow.style.display = 'none';
-    delete claimRow.dataset.referralId;
-  }
+  const open = (r.referrals || []).filter(x => x.status === 'verified' || x.status === 'claimed');
+  claimRow.style.display = open.length ? 'block' : 'none';
+  claimRow.innerHTML = open.map(x => {
+    const credit = x.reward_type !== 'current_year_refund';
+    const when = x.status === 'claimed' ? 'Unlocked. The board approves it next.'
+      : `Unlocks ${x.unlocks_at ? new Date(x.unlocks_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'in 30 days'}.`;
+    const pick = (type, label, on) => `<button class="btn ${on ? '' : 'btn-ghost'}" onclick="claimReward('${escapeHtml(x.id)}','${type}')" style="font-size:13px;${on ? 'background:#0a3b5c;color:#fff' : ''}">${on ? '✓ ' : ''}${label}</button>`;
+    return `<div style="padding:14px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #fcd34d;border-radius:12px;margin-bottom:8px">
+      <div style="font-weight:700;color:#7c2d12">🎉 ${escapeHtml(x.applied_by || 'A family')} joined: ${$$(x.reward_amount_cents)} for you</div>
+      <div style="font-size:13px;color:#78350f;margin:4px 0 10px">${when}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${pick('next_year_discount', 'Credit toward my dues', credit)}
+        ${pick('current_year_refund', 'Refund to me', !credit)}
+      </div>
+    </div>`;
+  }).join('');
 
   // Activity feed
   const activitySection = document.getElementById('refer-activity-section');
@@ -1416,10 +1428,16 @@ function renderReferModal() {
       const when = new Date(ref.applied_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       const who = escapeHtml(ref.applied_by || 'Someone');
       let badge, color;
-      if (ref.status === 'rewarded')      { badge = `🎁 $${Math.round((ref.reward_amount_cents || 0) / 100)} ${ref.reward_type === 'next_year_discount' ? 'credited next year' : 'refund queued'}`; color = '#0a5a2a'; }
-      else if (ref.status === 'verified') { badge = '✓ Joined — claim your reward!'; color = '#7c2d12'; }
-      else if (ref.status === 'rejected') { badge = '✗ Not eligible'; color = 'var(--muted)'; }
-      else                                 { badge = '⏳ Waiting on payment'; color = 'var(--muted)'; }
+      const amt = $$(ref.reward_amount_cents);
+      if (ref.status === 'rewarded')      { badge = ref.reward_type === 'current_year_refund'
+                                              ? (ref.refund_at ? `🎁 ${amt} refund sent` : `🎁 ${amt} refund approved, on its way`)
+                                              : `🎁 ${amt} credit toward your next dues`; color = '#0a5a2a'; }
+      else if (ref.status === 'claimed')  { badge = `✓ ${amt} unlocked, with the board`; color = '#7c2d12'; }
+      else if (ref.status === 'verified') { badge = `✓ Joined, ${amt} unlocks ${ref.unlocks_at ? new Date(ref.unlocks_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'in 30 days'}`; color = '#7c2d12'; }
+      else if (ref.status === 'declined') { badge = `✗ Not approved${ref.decline_reason ? ': ' + escapeHtml(ref.decline_reason) : ''}`; color = 'var(--muted)'; }
+      else if (ref.status === 'void')     { badge = `✗ Cancelled${ref.void_reason ? ': ' + escapeHtml(ref.void_reason) : ''}`; color = 'var(--muted)'; }
+      else if (ref.status === 'rejected') { badge = '✗ Not a new family'; color = 'var(--muted)'; }
+      else                                 { badge = '⏳ Waiting for them to pay'; color = 'var(--muted)'; }
       return `<div style="padding:7px 0;border-top:1px solid var(--border)"><b>${who}</b> · <span style="color:${color}">${badge}</span> <span style="color:var(--muted);font-size:11.5px">· ${escapeHtml(when)}</span></div>`;
     }).join('');
   } else {
@@ -1442,24 +1460,15 @@ async function copyReferLink() {
   }
 }
 
-async function claimReward(rewardType) {
-  const claimRow = document.getElementById('refer-claim-row');
-  const referralId = claimRow.dataset.referralId;
-  if (!referralId) return;
-  const niceLabel = rewardType === 'next_year_discount' ? 'credit toward next year' : 'a $100 refund';
-  if (!(await askConfirm(`Ask for your reward as ${niceLabel}?\n\nYou can't change which one once it's sent to the board.`, 'Send to the board'))) return;
+// Credit or refund (H6). Can be changed until the board approves.
+async function claimReward(referralId, rewardType) {
   try {
-    const r = await callMember('claim_reward', { referral_id: referralId, reward_type: rewardType }, '/functions/v1/referrals');
-    // A capped claim comes back 409 with an explanation worth reading, so show
-    // the server's message rather than a generic failure.
+    const r = await callMember('choose_reward', { referral_id: referralId, reward_type: rewardType }, '/functions/v1/referrals');
     if (!r.ok) throw new Error(r.error || 'Something went wrong');
-    // Deliberately not "Done!" — nothing has happened yet, and telling a member
-    // their reward is applied when a board member has not looked at it is how
-    // they find out from an unchanged invoice next spring.
     notify(rewardType === 'next_year_discount'
-      ? 'Sent to your board. Once they approve it, it comes off next season\'s dues.'
-      : 'Sent to your board. Once they approve it, the treasurer will be in touch about the refund.');
-    openReferModal();   // reload to show updated stats
+      ? 'Saved: credit toward your next dues, once the board approves it.'
+      : 'Saved: a refund to you, once the board approves it.');
+    openReferModal();   // reload to show it
   } catch (e) {
     notify(e.message, 'err');
   }
@@ -2280,7 +2289,8 @@ async function submitProfile() {
   // Hero card with greeting + quick actions
   const heroActions = [];
   // Refer a friend gets the bright treatment — it's the growth lever.
-  heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, get $100 off</button>`);
+  const referReward = Number(publicData.public_settings?.referrals?.reward_cents ?? 10000);
+  heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, earn $${(referReward / 100).toFixed(referReward % 100 ? 2 : 0)}</button>`);
   if (user.can_book_parties) heroActions.push(`<button class="btn btn-ghost" onclick="openPartyModal()">🎉 Request a party</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openPhotoUpload()">📸 Upload a photo</button>`);
   heroActions.push(`<button class="btn btn-ghost" onclick="openHelp()">🙋 Ask the board</button>`);

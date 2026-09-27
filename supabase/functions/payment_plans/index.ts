@@ -738,6 +738,14 @@ Deno.serve(async (req) => {
       enforced++;
     }
 
+    // 5. Referral rewards whose 30 days are up go to the board, and the
+    //    member is texted (H6). Folded in here: one daily job, not two.
+    let referralsUnlocked = 0;
+    try {
+      const { unlockDueRewards } = await import('../_shared/referral_rewards.ts');
+      referralsUnlocked = await unlockDueRewards(sb);
+    } catch (e) { console.error('referral unlock failed:', (e as Error).message); }
+
     // ── Free-season warnings ─────────────────────────────────────────
     // Folded into this daily run rather than given its own schedule: it is
     // one query a day, and another cron is another thing to forget exists.
@@ -868,7 +876,7 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices, late_fees_assessed, emails_sent, emails_queued });
+    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   // ── Admin actions below — verify tenant admin ────────────────────────────

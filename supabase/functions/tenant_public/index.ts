@@ -15,6 +15,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { poolDayBounds, validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
 import { sellingYear, opensMonthOf } from '../_shared/membership_year.ts';
 import { twoPaymentTerms } from '../_shared/payment_schedule.ts';
+import { referralSettings } from '../_shared/pricing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -282,7 +283,12 @@ Deno.serve(async (req) => {
   return jsonResponse({
     ok: true,
     tenant: publicTenant,
-    public_settings: { ...public_settings, home_codes },
+    public_settings: { ...public_settings, home_codes, referrals: (() => {
+      // The referral amounts the club set (H6), for the Refer button and
+      // the "You were invited" banner.
+      const r = referralSettings(v);
+      return { reward_cents: r.reward_cents, new_family_cents: r.new_family_cents, wait_days: r.wait_days };
+    })() },
     posts, events, photos, programs, tiers,
     sponsors,
     member_count: memberCount,

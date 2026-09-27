@@ -1624,6 +1624,18 @@ Deno.serve(async (req) => {
       phone: app.primary_phone as string | null,
     }, pm.id);
 
+    // "Approve & verify Venmo" is a payment clearing too: start the referral
+    // reward's 30 days, as verify_payment and the Stripe webhook do (H6).
+    if (verifyVenmo) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/referrals`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+          body: JSON.stringify({ action: 'verify_referral', application_id: id, tenant_id: TID }),
+        });
+      } catch { /* never blocks approval */ }
+    }
+
     return jsonResponse({
       ok: true,
       household_id: hh.id, primary_id: pm.id,
@@ -1849,6 +1861,11 @@ Deno.serve(async (req) => {
     }).eq('id', id).eq('tenant_id', TID).eq('status', 'pending').select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     if (!data)  return jsonResponse({ ok: false, error: 'Application not pending' }, 409);
+    // A cancelled application voids any referral reward for it (H6).
+    {
+      const { voidRewardsForApplication } = await import('../_shared/referral_rewards.ts');
+      await voidRewardsForApplication(sb, id, 'Their application was rejected');
+    }
 
     // Send rejection email if the applicant has an email on file.
     if (data.primary_email) {
@@ -1890,6 +1907,11 @@ Deno.serve(async (req) => {
     }
     await sb.from('admin_tasks').delete()
       .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id);
+    // Before the row goes: any referral reward for it is void (H6).
+    {
+      const { voidRewardsForApplication } = await import('../_shared/referral_rewards.ts');
+      await voidRewardsForApplication(sb, id, 'Their application was deleted');
+    }
     await sb.from('application_actions').delete().eq('tenant_id', TID).eq('application_id', id);
     const { error } = await sb.from('applications').delete().eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);

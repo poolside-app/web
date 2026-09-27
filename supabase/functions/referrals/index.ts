@@ -30,6 +30,13 @@
 //      The cap is re-checked at approval rather than trusted from claim time,
 //      because weeks can pass waiting on a board meeting.
 //
+// H6 (Doug, 2026-09-26) changed the timeline: verifying a referral starts a
+// 30-day wait and texts the member the unlock date; the member picks credit
+// (the default) or a refund at any point; the daily payment_plans job moves
+// unlocked rewards to the board (unlockDueRewards); approval needs the
+// payments permission, never for your own family, and not before unlock; a
+// Venmo or check refund needs its reference. See _shared/referral_rewards.ts.
+//
 // Actions:
 //   { action: 'get_my_code' }                     → member JWT
 //   { action: 'claim_reward', referral_id, reward_type }  → member JWT
@@ -44,6 +51,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { capState, grantableReward } from '../_shared/referral_cap.ts';
+import { referralSettings } from '../_shared/pricing.ts';
+import {
+  unlockAt, shortDate, dollars, theFamily, approvalProblem, isOwnFamily, referrerOf,
+  paidText, approvedText, sentText, declinedText, textReferrer, unlockDueRewards,
+} from '../_shared/referral_rewards.ts';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -150,6 +162,10 @@ async function isEligibleNewMember(
   tenantId: string,
   email: string | null,
   phone: string | null,
+  // The new family's own household. By the time their payment is verified
+  // they have been approved, so their own members exist and would otherwise
+  // match — which rejected every referral.
+  exceptHousehold?: string | null,
 ): Promise<{ eligible: boolean; reason?: string }> {
   if (!email && !phone) return { eligible: true };  // nothing to match on
 
@@ -159,6 +175,7 @@ async function isEligibleNewMember(
   let query = sb.from('household_members')
     .select('id, name, active, created_at')
     .eq('tenant_id', tenantId);
+  if (exceptHousehold) query = query.neq('household_id', exceptHousehold);
   if (email) query = query.ilike('email', email);
   // Note: can't use OR with two ilike on different columns easily; do
   // separate phone check below.
@@ -168,10 +185,12 @@ async function isEligibleNewMember(
   }
 
   if (phone) {
-    const { data: phoneMatches } = await sb.from('household_members')
+    let pq = sb.from('household_members')
       .select('id, name')
       .eq('tenant_id', tenantId)
       .eq('phone_e164', phone);
+    if (exceptHousehold) pq = pq.neq('household_id', exceptHousehold);
+    const { data: phoneMatches } = await pq;
     if (phoneMatches && phoneMatches.length) {
       return { eligible: false, reason: `Phone ${phone} was already on file as a member` };
     }
@@ -207,8 +226,12 @@ Deno.serve(async (req) => {
       sb.from('households').select('family_name').eq('id', rc.household_id).maybeSingle(),
     ]);
     const referrerFirstName = member?.name ? String(member.name).trim().split(/\s+/)[0] : null;
+    const { data: vs } = await sb.from('settings').select('value').eq('tenant_id', tenant.id).maybeSingle();
+    const rules = referralSettings(vs?.value);
     return jsonResponse({
       ok: true, valid: true,
+      new_family_cents: rules.new_family_cents,
+      reward_cents: rules.reward_cents,
       code: rc.code,
       referrer_first_name: referrerFirstName,
       referrer_family: hh?.family_name || null,
@@ -241,11 +264,12 @@ Deno.serve(async (req) => {
 
     // Pull the application's email + phone for eligibility check.
     const { data: app } = await sb.from('applications')
-      .select('primary_email, primary_phone, family_name')
+      .select('primary_email, primary_phone, family_name, household_id, paid_at')
       .eq('id', applicationId).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'application not found' }, 404);
 
-    const elig = await isEligibleNewMember(sb, tenantId, normalizeEmail(app.primary_email as string | null), app.primary_phone as string | null);
+    const elig = await isEligibleNewMember(sb, tenantId, normalizeEmail(app.primary_email as string | null),
+      app.primary_phone as string | null, app.household_id as string | null);
     if (!elig.eligible) {
       await sb.from('referrals').update({
         status: 'rejected',
@@ -255,28 +279,48 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: true, status: 'rejected', reason: elig.reason });
     }
 
+    // The 30-day wait starts now (H6). The reward is the club's setting at
+    // the moment the family paid; the member's choice starts as credit.
+    const paidAt = (app.paid_at as string | null) ?? new Date().toISOString();
+    const unlocks = unlockAt(paidAt);
+    const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+    const reward = referralSettings(settingsRow?.value).reward_cents;
     await sb.from('referrals').update({
       status: 'verified',
+      referee_paid_at: paidAt,
+      unlocks_at: unlocks,
+      reward_amount_cents: reward,
+      reward_type: 'next_year_discount',
       updated_at: new Date().toISOString(),
     }).eq('id', ref.id);
 
-    // Notify referrer via admin task (admins see membership-related tasks)
-    // + audit log so the trail is durable.
-    const { data: rc } = await sb.from('referral_codes')
-      .select('member_id, household_id').eq('id', ref.referral_code_id).maybeSingle();
-    if (rc) {
-      const { data: ref_member } = await sb.from('household_members')
-        .select('name').eq('id', rc.member_id).maybeSingle();
-      await sb.from('audit_log').insert({
-        tenant_id: tenantId,
-        kind: 'referral.verified',
-        entity_type: 'referral', entity_id: ref.id,
-        summary: `Referral verified: ${ref_member?.name || 'A member'} earned $${10000 / 100} for inviting ${app.family_name || app.primary_email}`,
-        actor_kind: 'system',
-        metadata: { application_id: applicationId, referral_id: ref.id },
-      });
+    // Tell the member now, with the date. Audit log for the durable trail.
+    const who = await referrerOf(sb as never, ref.referral_code_id as string);
+    const { data: tenant } = await sb.from('tenants').select('display_name, timezone').eq('id', tenantId).maybeSingle();
+    const { zoneOrDefault } = await import('../_shared/pool_time.ts');
+    const unlockDay = shortDate(unlocks, zoneOrDefault(tenant?.timezone));
+    const texted = await textReferrer(sb as never, tenantId, ref.referral_code_id as string,
+      paidText((tenant?.display_name as string) || 'Your pool', app.family_name as string, reward, unlockDay),
+      'referrals.verified');
+    await sb.from('audit_log').insert({
+      tenant_id: tenantId,
+      kind: 'referral.verified',
+      entity_type: 'referral', entity_id: ref.id,
+      summary: `Referral verified: ${who?.name || 'A member'} (${theFamily(who?.family)}) referred ${theFamily(app.family_name as string)}. ${dollars(reward)} unlocks ${unlockDay}${texted ? '; member texted' : ''}`,
+      actor_kind: 'system',
+      metadata: { application_id: applicationId, referral_id: ref.id, unlocks_at: unlocks, reward_cents: reward },
+    });
+    return jsonResponse({ ok: true, status: 'verified', unlocks_at: unlocks });
+  }
+
+  // ── unlock_due: the daily sweep (H6). payment_plans' daily job runs the
+  // same code directly; this entry point is for tests and a manual nudge.
+  if (action === 'unlock_due') {
+    const CRON_SECRET = Deno.env.get('CRON_SECRET');
+    if (!CRON_SECRET || req.headers.get('x-cron-secret') !== CRON_SECRET) {
+      return jsonResponse({ ok: false, error: 'Bad cron secret' }, 401);
     }
-    return jsonResponse({ ok: true, status: 'verified' });
+    return jsonResponse({ ok: true, unlocked: await unlockDueRewards(sb as never) });
   }
 
   // ── Below this point: actions require auth ──────────────────────────────
@@ -321,14 +365,14 @@ Deno.serve(async (req) => {
     // Pull stats: how many invites used this code, breakdown by status, +
     // any rewards ready to claim (verified but not yet rewarded).
     const { data: usages } = await sb.from('referrals')
-      .select('id, status, applied_by_email, applied_by_family, applied_at, reward_type, reward_amount_cents, reward_chosen_at')
+      .select('id, status, applied_by_email, applied_by_family, applied_at, reward_type, reward_amount_cents, reward_chosen_at, unlocks_at, decline_reason, void_reason, refund_at, refund_method')
       .eq('referral_code_id', rc.id)
       .order('applied_at', { ascending: false });
     const list = usages || [];
     const stats = {
       total_invites:     list.length,
       pending_payment:   list.filter(r => r.status === 'applied').length,
-      verified_unclaimed: list.filter(r => r.status === 'verified').length,
+      verified_unclaimed: list.filter(r => r.status === 'verified' || r.status === 'claimed').length,
       rewarded:          list.filter(r => r.status === 'rewarded').length,
       rejected:          list.filter(r => r.status === 'rejected').length,
       total_earned_cents: list.filter(r => r.status === 'rewarded').reduce((s, r) => s + (r.reward_amount_cents || 0), 0),
@@ -336,6 +380,8 @@ Deno.serve(async (req) => {
 
     // Tenant slug for building the share URL on the client side
     const { data: tenant } = await sb.from('tenants').select('slug, display_name').eq('id', tid).maybeSingle();
+    const { data: codeSettings } = await sb.from('settings').select('value').eq('tenant_id', tid).maybeSingle();
+    const rules = referralSettings(codeSettings?.value);
 
     return jsonResponse({
       ok: true,
@@ -351,6 +397,8 @@ Deno.serve(async (req) => {
       // referrals is only a tally.
       cap: await referralCap(sb, tid, rc.household_id as string | null),
       tenant_display_name: tenant?.display_name || null,
+      // The rules, shown up front in the Refer panel (H6).
+      rules: { reward_cents: rules.reward_cents, new_family_cents: rules.new_family_cents, wait_days: rules.wait_days },
       stats,
       referrals: list.map(r => ({
         id: r.id,
@@ -360,12 +408,21 @@ Deno.serve(async (req) => {
         reward_type: r.reward_type,
         reward_amount_cents: r.reward_amount_cents,
         reward_chosen_at: r.reward_chosen_at,
+        unlocks_at: r.unlocks_at,
+        decline_reason: r.decline_reason,
+        void_reason: r.void_reason,
+        refund_at: r.refund_at,
+        refund_method: r.refund_method,
       })),
     });
   }
 
-  // ── Member: claim_reward ───────────────────────────────────────────────
-  if (action === 'claim_reward') {
+  // ── Member: claim_reward — choose credit or a refund (H6) ─────────────
+  // The member can choose (or change their mind) any time before the board
+  // approves. Nothing is applied here: at unlock the reward goes to the
+  // board, and approval is the first moment anything happens. The cap is
+  // applied then, since weeks pass in between.
+  if (action === 'claim_reward' || action === 'choose_reward') {
     if (kind !== 'member') return jsonResponse({ ok: false, error: 'Members only' }, 403);
 
     const referralId = String(body.referral_id ?? '');
@@ -375,91 +432,41 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Invalid reward_type' }, 400);
     }
 
-    // Verify the referral belongs to this member (via the code)
     const { data: ref } = await sb.from('referrals')
-      .select('id, status, referral_code_id, reward_amount_cents, applied_by_email, applied_by_family')
+      .select('id, status, referral_code_id, reward_type')
       .eq('id', referralId).eq('tenant_id', tid).maybeSingle();
     if (!ref) return jsonResponse({ ok: false, error: 'Referral not found' }, 404);
-    if (ref.status !== 'verified') {
-      return jsonResponse({ ok: false, error: `Cannot claim — status is ${ref.status}` }, 409);
-    }
-
     const { data: rc } = await sb.from('referral_codes')
-      .select('member_id, household_id').eq('id', ref.referral_code_id).maybeSingle();
-    if (!rc || rc.member_id !== sub) {
-      return jsonResponse({ ok: false, error: 'Not your referral' }, 403);
+      .select('member_id').eq('id', ref.referral_code_id).maybeSingle();
+    if (!rc || rc.member_id !== sub) return jsonResponse({ ok: false, error: 'Not your referral' }, 403);
+    if (!['verified', 'claimed'].includes(String(ref.status))) {
+      return jsonResponse({ ok: false, error: ref.status === 'applied'
+        ? 'They haven\'t paid yet. You can choose once they have.'
+        : 'The board has already decided on this one.' }, 409);
     }
 
     const now = new Date().toISOString();
-    const offered = Number(ref.reward_amount_cents || 10000);
-
-    // Never pay out past the price of their own membership. Refer enough
-    // neighbors and the season is free; refer more and the club does not
-    // start owing money.
-    const cap = await referralCap(sb, tid, rc.household_id as string | null);
-    const amount = grantableReward(cap, offered);
-
-    if (!cap.uncapped && amount <= 0) {
-      // Deliberately NOT marked rewarded. Dues rise between seasons, and a
-      // referral banked this year should still be claimable next year when
-      // there is room under the cap again — losing it would punish the member
-      // for referring too well.
-      return jsonResponse({
-        ok: false,
-        capped: true,
-        error: `Your membership is already fully covered — you've earned $${
-          Math.round(cap.awarded_cents / 100)} against $${Math.round(cap.dues_cents / 100)} of dues. ` +
-          `This one stays saved for next season.`,
-        cap,
-      }, 409);
+    await sb.from('referrals').update({ reward_type: rewardType, reward_chosen_at: now, updated_at: now }).eq('id', referralId);
+    if (ref.status === 'claimed') {
+      // Already with the board: keep their task saying the right thing.
+      await sb.from('admin_tasks').update({
+        summary: `Referral reward: the member now wants ${rewardType === 'current_year_refund' ? 'a refund' : 'credit toward their dues'}`,
+      }).eq('source_kind', 'referral').eq('source_id', referralId).is('completed_at', null);
     }
-
-    // NOTHING is applied here. A claim is a request; a board member decides.
-    //
-    // This used to write the credit straight onto the household the moment a
-    // member picked "discount next season" — no approval, no record of anyone
-    // agreeing to it. That is not money leaving a bank account, but it is a
-    // standing reduction in what the club collects next year, decided
-    // entirely by the person receiving it. Both reward types now wait.
-    {
-      const { data: member } = await sb.from('household_members')
-        .select('name').eq('id', sub).maybeSingle();
-      await sb.from('admin_tasks').insert({
-        tenant_id: tid,
-        target_scopes: ['payments'],
-        kind: 'referral.reward_request',
-        summary: `${member?.name || 'A member'} is asking for a $${(amount / 100).toFixed(0)} referral reward (${
-          rewardType === 'current_year_refund' ? 'refund this season' : 'credit next season'}) — needs board approval`,
-        link_url: '/club/admin/payments.html',
-        source_kind: 'referral', source_id: ref.id,
-      });
-    }
-
-    await sb.from('referrals').update({
-      status: 'claimed',            // waiting on a board member
-      reward_type: rewardType,
-      // The GRANTED amount, not the offered one. A partial award — the last
-      // referral before the cap, worth $50 of a $100 reward — has to be
-      // written back, or the next cap calculation counts the full $100 and
-      // under-credits them from then on.
-      reward_amount_cents: amount,
-      reward_chosen_at: now,
-      reward_applied_at: now,
-      updated_at: now,
-    }).eq('id', referralId);
-
     await sb.from('audit_log').insert({
       tenant_id: tid,
-      kind: 'referral.rewarded',
+      kind: 'referral.choice',
       entity_type: 'referral', entity_id: referralId,
-      summary: `Referral reward $${(amount / 100).toFixed(0)} ${rewardType === 'next_year_discount' ? 'credited to next year\'s dues' : 'queued as refund'}`,
+      summary: `Member chose ${rewardType === 'next_year_discount' ? 'credit toward their dues' : 'a refund'} for their referral reward`,
       actor_id: sub, actor_kind: 'member',
     });
-
-    return jsonResponse({ ok: true, reward_type: rewardType, amount_cents: amount });
+    return jsonResponse({ ok: true, reward_type: rewardType });
   }
 
-  // ── Admin: list (enriched with both-membership facts) ──────────────────
+  // ── Admin: list — the Referral rewards list under Money (H6) ──────────
+  // "The Smiths referred the Johnsons", with both payments (date verified,
+  // who verified it, transaction code), the unlock date, who approved and
+  // paid it, and totals.
   if (action === 'list') {
     if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
 
@@ -468,67 +475,84 @@ Deno.serve(async (req) => {
         id, status, applied_at, applied_by_email, applied_by_family,
         reward_type, reward_amount_cents, reward_chosen_at,
         rejection_reason, application_id, referral_code_id,
-        refund_method, refund_id, refund_at, refund_by, refund_decline_reason
+        refund_method, refund_id, refund_amount_cents, refund_at, refund_by, refund_decline_reason,
+        approved_by, approved_at, declined_by, declined_at, decline_reason,
+        referee_paid_at, unlocks_at, voided_at, void_reason
       `)
       .eq('tenant_id', tid)
       .order('applied_at', { ascending: false })
-      .limit(200);
+      .limit(300);
 
-    if (!refs || !refs.length) return jsonResponse({ ok: true, referrals: [] });
+    // Totals: credit approved and not yet used, and cash sent this year.
+    const { data: credits } = await sb.from('households').select('referral_credits_cents')
+      .eq('tenant_id', tid).gt('referral_credits_cents', 0);
+    const year = new Date().getUTCFullYear();
+    const totals = {
+      credit_owed_cents: (credits ?? []).reduce((n, h) => n + (Number(h.referral_credits_cents) || 0), 0),
+      cash_paid_cents: (refs ?? []).filter(r => r.refund_at && ['stripe', 'venmo', 'check'].includes(String(r.refund_method))
+        && String(r.refund_at).startsWith(String(year))).reduce((n, r) => n + (Number(r.refund_amount_cents) || 0), 0),
+      waiting_for_approval: (refs ?? []).filter(r => r.status === 'claimed').length,
+      in_waiting_period: (refs ?? []).filter(r => r.status === 'verified').length,
+      year,
+    };
+    if (!refs || !refs.length) return jsonResponse({ ok: true, referrals: [], totals });
 
-    // Pull referrer info (member + household)
     const codeIds = [...new Set(refs.map(r => r.referral_code_id))];
-    const { data: codes } = await sb.from('referral_codes')
-      .select('id, code, member_id, household_id').in('id', codeIds);
+    const { data: codes } = await sb.from('referral_codes').select('id, code, member_id, household_id').in('id', codeIds);
     const codeById = new Map((codes ?? []).map(c => [c.id, c]));
-
     const refMemberIds = [...new Set((codes ?? []).map(c => c.member_id))];
-    const refHhIds     = [...new Set((codes ?? []).map(c => c.household_id))];
-    const { data: refMembers } = refMemberIds.length
-      ? await sb.from('household_members').select('id, name, active, household_id').in('id', refMemberIds)
-      : { data: [] };
-    const { data: refHhs } = refHhIds.length
-      ? await sb.from('households').select('id, family_name, dues_paid_for_year, paid_until_year, active').in('id', refHhIds)
-      : { data: [] };
+    const refHhIds = [...new Set((codes ?? []).map(c => c.household_id))];
+    const [{ data: refMembers }, { data: refHhs }] = await Promise.all([
+      sb.from('household_members').select('id, name, active').in('id', refMemberIds),
+      sb.from('households').select('id, family_name, dues_paid_for_year, paid_until_year, active').in('id', refHhIds),
+    ]);
     const refMemberById = new Map((refMembers ?? []).map(m => [m.id, m]));
-    const refHhById     = new Map((refHhs ?? []).map(h => [h.id, h]));
+    const refHhById = new Map((refHhs ?? []).map(h => [h.id, h]));
 
-    // Pull referrer's most recent application for refund-channel detection
-    const { data: refApps } = refMemberIds.length
-      ? await sb.from('applications')
-          .select('id, household_id, payment_method, payment_status, stripe_payment_intent_id, paid_at, paid_until_year')
-          .in('household_id', refHhIds)
-          .order('created_at', { ascending: false })
-      : { data: [] };
-    const refAppByHhId = new Map();
-    (refApps ?? []).forEach(a => {
-      if (!refAppByHhId.has(a.household_id)) refAppByHhId.set(a.household_id, a);
-    });
+    const APP_FIELDS = 'id, household_id, family_name, primary_name, status, payment_method, payment_status, paid_at, verified_at, verified_by, stripe_payment_intent_id, stripe_session_id, payment_reference, amount_due_cents, membership_year';
+    // The referrer's own most recent paid membership payment.
+    const { data: refApps } = await sb.from('applications').select(APP_FIELDS)
+      .in('household_id', refHhIds).eq('payment_status', 'paid').order('paid_at', { ascending: false });
+    const refAppByHh = new Map();
+    for (const a of refApps ?? []) if (!refAppByHh.has(a.household_id)) refAppByHh.set(a.household_id, a);
+    const refereeIds = refs.map(r => r.application_id).filter(Boolean) as string[];
+    const { data: refereeApps } = refereeIds.length
+      ? await sb.from('applications').select(APP_FIELDS).in('id', refereeIds) : { data: [] };
+    const refereeById = new Map((refereeApps ?? []).map(a => [a.id, a]));
 
-    // Pull referee info (the application that came in via the code)
-    const refereeAppIds = refs.map(r => r.application_id).filter(Boolean) as string[];
-    const { data: refereeApps } = refereeAppIds.length
-      ? await sb.from('applications')
-          .select('id, family_name, primary_name, primary_email, primary_phone, payment_method, payment_status, paid_at, paid_until_year, status')
-          .in('id', refereeAppIds)
-      : { data: [] };
-    const refereeAppById = new Map((refereeApps ?? []).map(a => [a.id, a]));
+    // Names for "verified by", "approved by", "paid by".
+    const adminIds = new Set<string>();
+    for (const a of [...(refApps ?? []), ...(refereeApps ?? [])]) if (a.verified_by) adminIds.add(a.verified_by as string);
+    for (const r of refs) for (const k of ['approved_by', 'refund_by', 'declined_by'] as const) if (r[k]) adminIds.add(r[k] as string);
+    const { data: admins } = adminIds.size
+      ? await sb.from('admin_users').select('id, display_name, username').in('id', [...adminIds]) : { data: [] };
+    const adminName = new Map((admins ?? []).map(a => [a.id, (a.display_name || a.username) as string]));
+
+    // Whether the person looking is part of each referring family.
+    const ownFamily = new Map<string, boolean>();
+    for (const hh of refHhIds) ownFamily.set(hh as string, await isOwnFamily(sb as never, sub, hh as string));
+
+    // deno-lint-ignore no-explicit-any
+    const payment = (a: any) => a ? {
+      application_id: a.id,
+      method: a.payment_method, status: a.payment_status, season: a.membership_year,
+      amount_cents: a.amount_due_cents,
+      verified_at: a.verified_at || a.paid_at,
+      verified_by: a.verified_by ? (adminName.get(a.verified_by) || 'A board member')
+        : a.payment_method === 'stripe' ? 'Stripe (card)'
+        : a.payment_method === 'free' ? 'Nothing to pay (covered by a discount)'
+        : 'Automatic',
+      // Stripe payment id, or the Venmo/check reference the board recorded.
+      transaction: a.stripe_payment_intent_id || a.payment_reference || a.stripe_session_id || null,
+    } : null;
 
     const enriched = refs.map(r => {
       const code = codeById.get(r.referral_code_id);
       const refMember = code ? refMemberById.get(code.member_id) : null;
-      const refHh     = code ? refHhById.get(code.household_id) : null;
-      const refApp    = refHh ? refAppByHhId.get(refHh.id) : null;
-      const refereeApp = r.application_id ? refereeAppById.get(r.application_id) : null;
-
-      const refundChannelHint = (() => {
-        if (!refApp) return 'unknown';
-        if (refApp.payment_method === 'stripe' && refApp.stripe_payment_intent_id) return 'stripe';
-        return 'manual';   // venmo/check/etc — admin handles off-platform
-      })();
-
+      const refHh = code ? refHhById.get(code.household_id) : null;
+      const refApp = refHh ? refAppByHh.get(refHh.id) : null;
+      const refereeApp = r.application_id ? refereeById.get(r.application_id) : null;
       return {
-        // The referral itself
         id: r.id,
         status: r.status,
         applied_at: r.applied_at,
@@ -536,14 +560,22 @@ Deno.serve(async (req) => {
         reward_amount_cents: r.reward_amount_cents,
         reward_chosen_at: r.reward_chosen_at,
         rejection_reason: r.rejection_reason,
-
-        // Refund disposition
+        referee_paid_at: r.referee_paid_at,
+        unlocks_at: r.unlocks_at,
+        unlocked: !!r.unlocks_at && Date.now() >= new Date(r.unlocks_at).getTime(),
+        approved_by: r.approved_by ? (adminName.get(r.approved_by) || 'A board member') : null,
+        approved_at: r.approved_at,
+        declined_by: r.declined_by ? (adminName.get(r.declined_by) || 'A board member') : null,
+        decline_reason: r.decline_reason,
+        voided_at: r.voided_at, void_reason: r.void_reason,
         refund_method: r.refund_method,
         refund_id: r.refund_id,
+        refund_amount_cents: r.refund_amount_cents,
         refund_at: r.refund_at,
+        refund_by: r.refund_by ? (adminName.get(r.refund_by) || 'A board member') : null,
         refund_decline_reason: r.refund_decline_reason,
-
-        // Referrer (the member earning the reward)
+        // "The Smiths referred the Johnsons"
+        headline: `${theFamily(refHh?.family_name).replace(/^the/, 'The')} referred ${theFamily(refereeApp?.family_name || r.applied_by_family)}`,
         referrer: {
           name: refMember?.name || 'Unknown',
           family: refHh?.family_name || null,
@@ -553,29 +585,25 @@ Deno.serve(async (req) => {
           paid_until_year: refHh?.paid_until_year || null,
           payment_method: refApp?.payment_method || null,
           stripe_payment_intent_id: refApp?.stripe_payment_intent_id || null,
+          payment: payment(refApp),
         },
-        // Referee (the new applicant who used the code)
         referee: refereeApp ? {
           family: refereeApp.family_name,
           name: refereeApp.primary_name,
-          email: refereeApp.primary_email,
           payment_method: refereeApp.payment_method,
           payment_status: refereeApp.payment_status,
           paid_at: refereeApp.paid_at,
           status: refereeApp.status,
+          payment: payment(refereeApp),
         } : null,
-
-        // What admin can do
-        refund_channel_hint: refundChannelHint,   // 'stripe' | 'manual' | 'unknown'
+        own_family: code ? !!ownFamily.get(code.household_id) : false,
+        refund_channel_hint: refApp?.payment_method === 'stripe' && refApp?.stripe_payment_intent_id ? 'stripe' : 'manual',
         is_pending_refund: r.reward_type === 'current_year_refund' && r.status === 'rewarded' && !r.refund_at,
-        // Waiting on a board member. Both reward types: a credit against next
-        // season costs the club exactly as much as a refund, it just arrives
-        // as revenue that never turns up.
         awaiting_board: r.status === 'claimed',
       };
     });
 
-    return jsonResponse({ ok: true, referrals: enriched });
+    return jsonResponse({ ok: true, referrals: enriched, totals });
   }
 
   // ── Admin: issue_refund — record disposition AND optionally fire the
@@ -595,6 +623,10 @@ Deno.serve(async (req) => {
     if (!['stripe', 'venmo', 'check'].includes(method)) {
       return jsonResponse({ ok: false, error: 'method must be stripe / venmo / check' }, 400);
     }
+    // A Venmo or check refund is only traceable by its reference (H6).
+    if (method !== 'stripe' && !(note && note.trim().length >= 3)) {
+      return jsonResponse({ ok: false, error: `The ${method === 'venmo' ? 'Venmo transaction' : 'check number'} reference is required.` }, 400);
+    }
 
     // Load + sanity-check the referral
     const { data: ref } = await sb.from('referrals')
@@ -606,6 +638,12 @@ Deno.serve(async (req) => {
     }
     if (ref.refund_at) {
       return jsonResponse({ ok: false, error: 'Refund already recorded for this referral' }, 409);
+    }
+    {
+      const who = await referrerOf(sb as never, ref.referral_code_id as string);
+      if (who && await isOwnFamily(sb as never, sub, who.household_id)) {
+        return jsonResponse({ ok: false, error: "You can't send a reward to your own family. Another board member with the payments permission has to." }, 403);
+      }
     }
 
     const amount = Number(ref.reward_amount_cents || 10000);
@@ -683,6 +721,11 @@ Deno.serve(async (req) => {
       .eq('tenant_id', tid).eq('source_kind', 'referral').eq('source_id', referralId)
       .is('completed_at', null);
 
+    {
+      const { data: t } = await sb.from('tenants').select('display_name').eq('id', tid).maybeSingle();
+      await textReferrer(sb as never, tid, ref.referral_code_id as string,
+        sentText((t?.display_name as string) || 'Your pool', amount, method, method === 'stripe' ? null : note), 'referrals.refund_sent');
+    }
     await sb.from('audit_log').insert({
       tenant_id: tid,
       kind: 'referral.refund_issued',
@@ -754,16 +797,31 @@ Deno.serve(async (req) => {
     if (!referralId) return jsonResponse({ ok: false, error: 'referral_id required' }, 400);
 
     const { data: ref } = await sb.from('referrals')
-      .select('id, status, reward_type, reward_amount_cents, referral_code_id, applied_by_family')
+      .select('id, status, reward_type, reward_amount_cents, referral_code_id, applied_by_family, unlocks_at, application_id')
       .eq('id', referralId).eq('tenant_id', tid).maybeSingle();
     if (!ref) return jsonResponse({ ok: false, error: 'Referral not found' }, 404);
-    if (ref.status !== 'claimed') {
-      return jsonResponse({ ok: false, error: `Nothing to approve — status is ${ref.status}` }, 409);
-    }
 
     const { data: rc } = await sb.from('referral_codes')
       .select('member_id, household_id').eq('id', ref.referral_code_id).maybeSingle();
     if (!rc) return jsonResponse({ ok: false, error: 'Referral code missing' }, 500);
+
+    // H6: not before the 30 days are up, never for your own family, and only
+    // while the new family's payment still stands.
+    const { data: refereeApp } = ref.application_id
+      ? await sb.from('applications').select('payment_status').eq('id', ref.application_id).maybeSingle()
+      : { data: null };
+    const refereePaid = refereeApp?.payment_status === 'paid';
+    const problem = approvalProblem({
+      status: String(ref.status), unlocksAt: ref.unlocks_at as string | null, now: new Date(),
+      ownFamily: await isOwnFamily(sb as never, sub, rc.household_id as string), refereePaid,
+    });
+    if (problem) {
+      if (!refereePaid && ref.application_id && ['verified', 'claimed'].includes(String(ref.status))) {
+        const { voidRewardsForApplication } = await import('../_shared/referral_rewards.ts');
+        await voidRewardsForApplication(sb as never, ref.application_id as string, "The new family's payment is no longer paid");
+      }
+      return jsonResponse({ ok: false, error: problem }, 409);
+    }
 
     // Re-check the cap here rather than trusting the figure worked out when
     // the member claimed. Weeks can pass waiting on a board meeting, and
@@ -795,6 +853,19 @@ Deno.serve(async (req) => {
       reward_amount_cents: amount,     // what was actually approved
       approved_by: payload.sub, approved_at: now, updated_at: now,
     }).eq('id', referralId);
+
+    // A credit is done now, so its board task is too. A refund's task stays
+    // open until the money is recorded as sent.
+    if (ref.reward_type !== 'current_year_refund') {
+      await sb.from('admin_tasks').update({ completed_at: now, completed_by: payload.sub })
+        .eq('tenant_id', tid).eq('source_kind', 'referral').eq('source_id', referralId).is('completed_at', null);
+    }
+    {
+      const { data: t } = await sb.from('tenants').select('display_name').eq('id', tid).maybeSingle();
+      await textReferrer(sb as never, tid, ref.referral_code_id as string,
+        approvedText((t?.display_name as string) || 'Your pool', ref.applied_by_family as string, amount, ref.reward_type as string | null),
+        'referrals.approved');
+    }
 
     try {
       await sb.from('audit_log').insert({
@@ -836,6 +907,15 @@ Deno.serve(async (req) => {
       .select('id').maybeSingle();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     if (!updated) return jsonResponse({ ok: false, error: 'Nothing to decline — it may already have been decided.' }, 409);
+    await sb.from('admin_tasks').update({ completed_at: now, completed_by: payload.sub })
+      .eq('tenant_id', tid).eq('source_kind', 'referral').eq('source_id', referralId).is('completed_at', null);
+    {
+      // The member is told, with the reason.
+      const { data: r2 } = await sb.from('referrals').select('referral_code_id, applied_by_family').eq('id', referralId).maybeSingle();
+      const { data: t } = await sb.from('tenants').select('display_name').eq('id', tid).maybeSingle();
+      if (r2) await textReferrer(sb as never, tid, r2.referral_code_id as string,
+        declinedText((t?.display_name as string) || 'Your pool', r2.applied_by_family as string, reason), 'referrals.declined');
+    }
 
     try {
       await sb.from('audit_log').insert({

@@ -53,16 +53,24 @@ export async function codeUses(sb: SB, codeId: string, exceptAppId?: string | nu
   return count ?? 0;
 }
 
-/** Has anyone with this email or phone ever been a member here? */
-export async function wasMember(sb: SB, tenantId: string, email?: string | null, phone?: string | null): Promise<boolean> {
+/** Has anyone with this email or phone ever been a member here? Not
+ *  counting `exceptHousehold`: once approved, a new family's own members
+ *  exist and would otherwise count against them. */
+export async function wasMember(
+  sb: SB, tenantId: string, email?: string | null, phone?: string | null, exceptHousehold?: string | null,
+): Promise<boolean> {
   if (email) {
-    const { data } = await sb.from('household_members').select('id')
-      .eq('tenant_id', tenantId).ilike('email', email.trim().toLowerCase()).limit(1);
+    let q = sb.from('household_members').select('id')
+      .eq('tenant_id', tenantId).ilike('email', email.trim().toLowerCase());
+    if (exceptHousehold) q = q.neq('household_id', exceptHousehold);
+    const { data } = await q.limit(1);
     if (data && data.length) return true;
   }
   if (phone) {
-    const { data } = await sb.from('household_members').select('id')
-      .eq('tenant_id', tenantId).eq('phone_e164', phone).limit(1);
+    let q = sb.from('household_members').select('id')
+      .eq('tenant_id', tenantId).eq('phone_e164', phone);
+    if (exceptHousehold) q = q.neq('household_id', exceptHousehold);
+    const { data } = await q.limit(1);
     if (data && data.length) return true;
   }
   return false;
@@ -71,7 +79,7 @@ export async function wasMember(sb: SB, tenantId: string, email?: string | null,
 /** The referral discount a new family gets through a member's link. */
 export async function referralOff(
   sb: SB, tenantId: string, settingsValue: unknown,
-  args: { referralCode?: string | null; email?: string | null; phone?: string | null },
+  args: { referralCode?: string | null; email?: string | null; phone?: string | null; householdId?: string | null },
 ): Promise<{ cents: number; family: string | null }> {
   const raw = String(args.referralCode ?? '').trim().toUpperCase();
   if (!raw) return { cents: 0, family: null };
@@ -80,7 +88,7 @@ export async function referralOff(
   if (!rc || !rc.active) return { cents: 0, family: null };
   // For families new to the club. A lapsed member coming back through a
   // friend's link pays the regular price.
-  if (await wasMember(sb, tenantId, args.email, args.phone)) return { cents: 0, family: null };
+  if (await wasMember(sb, tenantId, args.email, args.phone, args.householdId)) return { cents: 0, family: null };
   const { data: hh } = await sb.from('households').select('family_name').eq('id', rc.household_id).maybeSingle();
   return { cents: referralSettings(settingsValue).new_family_cents, family: (hh?.family_name as string | null) ?? null };
 }
