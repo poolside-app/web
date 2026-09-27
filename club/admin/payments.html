@@ -256,6 +256,36 @@
         </div>
       </div>
 
+      <!-- H7 (2026-09-26): discount codes. Early bird is one of these now.
+           One discount per membership: a code or the referral discount,
+           whichever saves more (the family is told). -->
+      <div class="card" id="discounts-card" data-focus="discounts">
+        <h2>🏷️ Discounts</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Codes families type under "Have a code?" when they sign up or renew. Early bird is a code with a last day. A family gets one discount: a code or the referral discount, whichever saves more.</p>
+        <div id="codes-list" style="font-size:13px"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
+
+        <h3 style="margin:18px 0 4px;font-size:14px" id="code-form-title">Make a code</h3>
+        <input type="hidden" id="code-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label>Code</label><input id="code-code" placeholder="EARLYBIRD" autocapitalize="characters" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff;text-transform:uppercase"></div>
+          <div><label>Name <span class="opt">(optional)</span></label><input id="code-label" placeholder="Early bird" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
+          <div><label>Takes off</label>
+            <div style="display:flex;gap:6px">
+              <select id="code-kind" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff;width:auto"><option value="amount">$</option><option value="percent">%</option></select>
+              <input id="code-value" type="number" min="1" step="1" placeholder="50" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff">
+            </div>
+          </div>
+          <div><label>Last day <span class="opt">(optional)</span></label><input id="code-expires" type="date" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
+          <div><label>Up to how many families <span class="opt">(blank = no limit)</span></label><input id="code-max" type="number" min="1" step="1" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
+          <div style="display:flex;align-items:end"><label class="checkbox-row" style="margin:0 0 8px;display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;font-weight:500"><input type="checkbox" id="code-home" style="width:auto"> Show it on the member home</label></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" id="code-save" type="button" onclick="Codes.save()" style="background:var(--blue)">Save code</button>
+          <button class="btn" id="code-cancel" type="button" onclick="Codes.reset()" style="display:none;font-size:12px;padding:6px 12px">Cancel</button>
+        </div>
+        <div class="err" id="code-err"></div>
+      </div>
+
       <div id="late-fee-card" class="card" data-owner-only data-focus="late-fees">
         <h2>⏰ Late fees</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6">
@@ -593,6 +623,107 @@ async function saveTestMode(cb) {
     cb.disabled = false;
   }
 }
+
+// ── Discount codes (H7) ────────────────────────────────────────────────
+// Made and switched off here; checked by the server wherever a family types
+// one (applications.quote / set_code). Uses count families who have paid.
+const Codes = (() => {
+  let LIST = [];
+  const fmtOff = c => c.amount_cents ? '$' + (c.amount_cents / 100).toFixed(c.amount_cents % 100 ? 2 : 0) + ' off' : Number(c.percent_off) + '% off';
+  function paint() {
+    const host = document.getElementById('codes-list');
+    if (!LIST.length) {
+      host.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:0">No codes yet. Make one below.</p>';
+      return;
+    }
+    const today = PoolTime.todayKey();
+    host.innerHTML = LIST.map(c => {
+      const ended = c.expires_on && today > c.expires_on;
+      const usedUp = c.max_uses && c.uses >= c.max_uses;
+      const state = !c.active ? 'Switched off' : ended ? 'Ended' : usedUp ? 'Used up' : '';
+      return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);${c.active ? '' : 'opacity:.6'}">
+        <div style="min-width:0">
+          <div style="font-weight:700;letter-spacing:.02em">${escapeHtml(c.code)}${c.label ? ` <span style="font-weight:500;color:var(--muted)">· ${escapeHtml(c.label)}</span>` : ''}</div>
+          <div style="color:var(--muted);font-size:12.5px;margin-top:2px">${fmtOff(c)} · ${c.expires_on ? 'through ' + PoolTime.fmtDay(c.expires_on, { month: 'short', day: 'numeric', year: 'numeric' }) : 'no end date'}
+            · ${c.uses} ${c.uses === 1 ? 'family' : 'families'}${c.max_uses ? ' of ' + c.max_uses : ''}${c.show_on_home && c.active ? ' · on the member home' : ''}${state ? ` · <b>${state}</b>` : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn" type="button" style="font-size:12px;padding:6px 10px" onclick="Codes.edit('${c.id}')">Edit</button>
+          ${c.active ? `<button class="btn" type="button" style="font-size:12px;padding:6px 10px" onclick="Codes.off('${c.id}')">Switch off</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+  async function load() {
+    try {
+      const r = await call('codes_list');
+      if (!r.ok) throw new Error(r.error || 'Could not load codes');
+      LIST = r.codes || [];
+      paint();
+    } catch (e) {
+      document.getElementById('codes-list').innerHTML = `<div class="err show">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  function reset() {
+    for (const id of ['code-id', 'code-code', 'code-label', 'code-value', 'code-expires', 'code-max']) document.getElementById(id).value = '';
+    document.getElementById('code-kind').value = 'amount';
+    document.getElementById('code-home').checked = false;
+    document.getElementById('code-form-title').textContent = 'Make a code';
+    document.getElementById('code-cancel').style.display = 'none';
+    document.getElementById('code-err').classList.remove('show');
+  }
+  function edit(id) {
+    const c = LIST.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('code-id').value = c.id;
+    document.getElementById('code-code').value = c.code;
+    document.getElementById('code-label').value = c.label || '';
+    document.getElementById('code-kind').value = c.amount_cents ? 'amount' : 'percent';
+    document.getElementById('code-value').value = c.amount_cents ? c.amount_cents / 100 : Number(c.percent_off);
+    document.getElementById('code-expires').value = c.expires_on || '';
+    document.getElementById('code-max').value = c.max_uses || '';
+    document.getElementById('code-home').checked = !!c.show_on_home;
+    document.getElementById('code-form-title').textContent = 'Change ' + c.code;
+    document.getElementById('code-cancel').style.display = '';
+    document.getElementById('code-code').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  async function save() {
+    const errEl = document.getElementById('code-err');
+    errEl.classList.remove('show');
+    const btn = document.getElementById('code-save');
+    const kind = document.getElementById('code-kind').value;
+    const value = Number(document.getElementById('code-value').value);
+    const id = document.getElementById('code-id').value || null;
+    const existing = id ? LIST.find(x => x.id === id) : null;
+    btn.disabled = true;
+    try {
+      const r = await call('code_save', { code: {
+        id,
+        code: document.getElementById('code-code').value,
+        label: document.getElementById('code-label').value,
+        amount_cents: kind === 'amount' ? Math.round(value * 100) : null,
+        percent_off: kind === 'percent' ? value : null,
+        expires_on: document.getElementById('code-expires').value || null,
+        max_uses: document.getElementById('code-max').value || null,
+        show_on_home: document.getElementById('code-home').checked,
+        active: existing ? existing.active : true,
+      } });
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+      reset();
+      await load();
+    } catch (e) {
+      errEl.textContent = e.message; errEl.classList.add('show');
+    } finally { btn.disabled = false; }
+  }
+  async function off(id) {
+    const c = LIST.find(x => x.id === id);
+    if (!c || !confirm(`Switch off ${c.code}? Families who already used it keep their discount.`)) return;
+    const r = await call('code_off', { id });
+    if (!r.ok) { alert(r.error || 'Could not switch it off'); return; }
+    await load();
+  }
+  return { load, reset, edit, save, off };
+})();
 
 // ── Membership prices (J8) ─────────────────────────────────────────────
 // Moved here from the Tiers page on 2026-09-26. Painted from the settings
@@ -1251,6 +1382,7 @@ async function waiveLateFee(id) {
   loadPlansList();
   loadRefundQueue();
   loadLateFees();
+  Codes.load();
 })();
 </script>
 </body>

@@ -12,11 +12,19 @@
 //   { action: 'mark_paid', source: 'application'|'program'|'dues',
 //     source_id: <uuid>, household_id?: <uuid for 'dues'> }
 //     → { ok }
+//
+// Discount codes (H7, Doug 2026-09-26). Early bird is one of these now.
+//   { action: 'codes_list' }  → { ok, codes: [{ ..., uses }] }
+//   { action: 'code_save', code: { id?, code, label?, amount_cents? | percent_off?,
+//       expires_on?, max_uses?, show_on_home?, active? } } → { ok, code }
+//   { action: 'code_off', id }  → { ok }   switched off; kept for the record
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
+import { recordDiscountUse } from '../_shared/membership_price.ts';
+import { normalizeCode } from '../_shared/pricing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -87,7 +95,7 @@ Deno.serve(async (req) => {
         .select('id, family_name, paid_until_year, decided_at:created_at')
         .eq('tenant_id', TID).eq('active', true).eq('dues_paid_for_year', false),
       sb.from('applications')
-        .select('id, family_name, household_id, payment_method, decided_at, created_at')
+        .select('id, family_name, household_id, payment_method, decided_at, created_at, amount_due_cents')
         .eq('tenant_id', TID).eq('status', 'approved')
         .neq('payment_status', 'paid'),
       sb.from('program_bookings')
@@ -144,7 +152,8 @@ Deno.serve(async (req) => {
         family_name: a.family_name,
         kind: 'Membership application',
         label: `${a.payment_method === 'venmo' ? 'Venmo' : 'Stripe'} payment pending`,
-        amount_cents: null,
+        // What they owe after any discount (H5).
+        amount_cents: typeof a.amount_due_cents === 'number' ? a.amount_due_cents : null,
         age_days: ageDays(a.decided_at ?? a.created_at),
       });
     }
@@ -201,6 +210,8 @@ Deno.serve(async (req) => {
         })
         .eq('id', source_id).eq('tenant_id', TID);
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      // The payment cleared: count any code use and spend any credit (H5).
+      await recordDiscountUse(sb, source_id);
       // Application.verify_payment also flips household.dues_paid_for_year — replicate that here
       const { data: app } = await sb.from('applications').select('household_id')
         .eq('id', source_id).maybeSingle();
@@ -245,6 +256,7 @@ Deno.serve(async (req) => {
             verified_at: new Date().toISOString(), verified_by: payload.sub,
           }).eq('id', it.source_id).eq('tenant_id', TID);
           if (error) throw new Error(error.message);
+          await recordDiscountUse(sb, it.source_id);
           const { data: app } = await sb.from('applications').select('household_id').eq('id', it.source_id).maybeSingle();
           if (app?.household_id) {
             await sb.from('households').update({ dues_paid_for_year: true }).eq('id', app.household_id).eq('tenant_id', TID);
@@ -276,6 +288,79 @@ Deno.serve(async (req) => {
       });
     } catch { /* audit failure non-fatal */ }
     return jsonResponse({ ok: true, verified: ok.length, failed: failed.length, failures: failed });
+  }
+
+  // ── Discount codes (H7) ──────────────────────────────────────────────
+  if (action === 'codes_list') {
+    const { data: codes, error } = await sb.from('discount_codes')
+      .select('id, code, label, amount_cents, percent_off, expires_on, max_uses, show_on_home, active, created_at')
+      .eq('tenant_id', TID).order('active', { ascending: false }).order('created_at', { ascending: false });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // Families who paid with each code.
+    const ids = (codes ?? []).map(c => c.id);
+    const uses = new Map<string, number>();
+    if (ids.length) {
+      const { data: used } = await sb.from('applications').select('discount_code_id')
+        .in('discount_code_id', ids).not('discount_recorded_at', 'is', null);
+      for (const u of used ?? []) uses.set(u.discount_code_id as string, (uses.get(u.discount_code_id as string) ?? 0) + 1);
+    }
+    return jsonResponse({ ok: true, codes: (codes ?? []).map(c => ({ ...c, uses: uses.get(c.id) ?? 0 })) });
+  }
+
+  if (action === 'code_save') {
+    const c = (body.code ?? {}) as Record<string, unknown>;
+    const code = normalizeCode(c.code);
+    if (code.length < 2) return jsonResponse({ ok: false, error: 'A code needs at least 2 letters or numbers.' }, 400);
+    const amount = c.amount_cents != null && c.amount_cents !== '' ? Math.round(Number(c.amount_cents)) : null;
+    const pct = c.percent_off != null && c.percent_off !== '' ? Number(c.percent_off) : null;
+    if ((amount == null) === (pct == null)) return jsonResponse({ ok: false, error: 'Give either a dollar amount or a percent off.' }, 400);
+    if (amount != null && !(amount > 0)) return jsonResponse({ ok: false, error: 'The dollar amount has to be more than $0.' }, 400);
+    if (pct != null && !(pct > 0 && pct <= 100)) return jsonResponse({ ok: false, error: 'The percent has to be between 1 and 100.' }, 400);
+    const expires = c.expires_on ? String(c.expires_on).slice(0, 10) : null;
+    if (expires && !/^\d{4}-\d{2}-\d{2}$/.test(expires)) return jsonResponse({ ok: false, error: 'Last day must be a date.' }, 400);
+    const maxUses = c.max_uses != null && c.max_uses !== '' ? Math.trunc(Number(c.max_uses)) : null;
+    if (maxUses != null && !(maxUses > 0)) return jsonResponse({ ok: false, error: 'The family limit has to be 1 or more, or blank for no limit.' }, 400);
+    const row = {
+      tenant_id: TID, code,
+      label: c.label ? String(c.label).trim().slice(0, 60) || null : null,
+      amount_cents: amount, percent_off: pct, expires_on: expires, max_uses: maxUses,
+      show_on_home: c.show_on_home === true, active: c.active !== false,
+      updated_at: new Date().toISOString(),
+    };
+    const q = c.id
+      ? sb.from('discount_codes').update(row).eq('id', String(c.id)).eq('tenant_id', TID)
+      : sb.from('discount_codes').insert({ ...row, created_by: payload.sub });
+    const { data, error } = await q.select('id, code, label, amount_cents, percent_off, expires_on, max_uses, show_on_home, active').maybeSingle();
+    if (error) {
+      return jsonResponse({ ok: false, error: /duplicate|unique/i.test(error.message) ? `There's already a code ${code}.` : error.message }, 400);
+    }
+    if (!data) return jsonResponse({ ok: false, error: 'Code not found' }, 404);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: c.id ? 'discount_code.updated' : 'discount_code.created',
+        entity_type: 'discount_code', entity_id: data.id,
+        summary: `${c.id ? 'Changed' : 'Made'} discount code ${code}: ${amount != null ? '$' + (amount / 100).toFixed(2) : pct + '%'} off${expires ? ' until ' + expires : ''}${maxUses ? ', up to ' + maxUses + ' families' : ''}`,
+        actor_id: payload.sub, actor_kind: 'tenant_admin',
+      });
+    } catch { /* the code saved; the log line is secondary */ }
+    return jsonResponse({ ok: true, code: data });
+  }
+
+  if (action === 'code_off') {
+    // Switched off, not deleted: payments made with it still point at it.
+    const id = String(body.id ?? '');
+    const { data, error } = await sb.from('discount_codes')
+      .update({ active: false, show_on_home: false, updated_at: new Date().toISOString() })
+      .eq('id', id).eq('tenant_id', TID).select('code').maybeSingle();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!data) return jsonResponse({ ok: false, error: 'Code not found' }, 404);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'discount_code.switched_off', entity_type: 'discount_code', entity_id: id,
+        summary: `Switched off discount code ${data.code}`, actor_id: payload.sub, actor_kind: 'tenant_admin',
+      });
+    } catch { /* non-fatal */ }
+    return jsonResponse({ ok: true });
   }
 
   // ── Late fees ────────────────────────────────────────────────────────

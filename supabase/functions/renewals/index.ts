@@ -20,9 +20,8 @@
 // verify URL in email + SMS body. Recipient = first active adult in each
 // household with email or phone. One blast per household.
 //
-// Early-bird config lives in settings.value.renewals.early_bird and is
-// managed via tenant_settings.save (server-side merge keeps unrelated keys).
-// This function reads it to compose the body's discount line.
+// Early bird is a discount code now (H7, 2026-09-26). A code the board marked
+// "show on the member home" is mentioned in the message too.
 // =============================================================================
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -391,16 +390,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: settingsRow } = await sb.from('settings')
-      .select('value').eq('tenant_id', payload.tid).maybeSingle();
-    const eb = ((settingsRow?.value as Record<string, unknown> | undefined)?.renewals as Record<string, unknown> | undefined)?.early_bird as Record<string, unknown> | undefined;
     let earlyBirdLine = '';
-    if (eb && eb.enabled && eb.deadline) {
-      const deadline = String(eb.deadline);
-      const cents = Number(eb.discount_cents ?? 0);
-      const pct   = Number(eb.discount_percent ?? 0);
-      const offCopy = cents > 0 ? `$${(cents/100).toFixed(0)} off` : (pct > 0 ? `${pct}% off` : 'Early-bird pricing');
-      earlyBirdLine = `Early-bird: ${offCopy} if paid by ${deadline}.`;
+    {
+      const { poolToday, tenantTimeZone, fmtPoolDate } = await import('../_shared/pool_time.ts');
+      const tz = await tenantTimeZone(sb, payload.tid);
+      const today = poolToday(tz);
+      const { data: codes } = await sb.from('discount_codes')
+        .select('code, label, amount_cents, percent_off, expires_on')
+        .eq('tenant_id', payload.tid).eq('active', true).eq('show_on_home', true)
+        .order('created_at', { ascending: false }).limit(5);
+      const c = (codes ?? []).find(x => !x.expires_on || String(x.expires_on) >= today);
+      if (c) {
+        const off = c.amount_cents ? `$${(Number(c.amount_cents) / 100).toFixed(0)} off` : `${Number(c.percent_off)}% off`;
+        const until = c.expires_on ? ` through ${fmtPoolDate(`${c.expires_on}T12:00:00Z`, tz, { month: 'short', day: 'numeric' })}` : '';
+        earlyBirdLine = `${c.label ? c.label + ': ' : ''}${off} with code ${c.code}${until}.`;
+      }
     }
 
     const currentYear = new Date().getFullYear();

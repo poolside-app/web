@@ -171,6 +171,11 @@ export async function renderChecks({ check, read, sql, jwt }) {
         });
         check('J8: Money setup holds prices, plans, late fees and test payments',
           money.tiers.length >= 1 && money.tiers.includes('Family') && money.inSetup && !money.tiersLink, JSON.stringify(money));
+        const codes = await pg.evaluate(() => ({
+          inSetup: document.getElementById('setup-section').contains(document.getElementById('discounts-card')),
+          list: document.getElementById('codes-list')?.textContent.trim().slice(0, 60),
+        }));
+        check('H7: Money setup has Discounts, and the code list loads', codes.inSetup && codes.list && !/Loading|error/i.test(codes.list), JSON.stringify(codes));
       }
       if (path === '/club/admin/settings.html') {
         // J5–J7: Season has the on-sale month, hours per day, one gate section.
@@ -239,7 +244,12 @@ export async function renderChecks({ check, read, sql, jwt }) {
     if (want('home')) {
     // D3/D8/D9/D4: member home
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
-    const h = await open('/m/', { poolside_member_token: memTok });
+    // H7: a code marked for the member home shows as a banner while they
+    // still owe. A sample code is added to the page's data for the render.
+    await sql(`update households set paid_until_year = extract(year from now())::int - 1 where id = '${m.household_id}'`);
+    const h = await open('/m/', { poolside_member_token: memTok }, (action, json) =>
+      json && json.public_settings ? { ...json, public_settings: { ...json.public_settings,
+        home_codes: [{ code: 'EARLYBIRD', label: 'Early bird', amount_cents: 5000, percent_off: null, expires_on: '2099-03-01' }] } } : json);
     await h.waitForSelector('.hero-card', { timeout: 30000 });
     await wait(2500);   // the calendar feeds load after the page
     const first = await h.$eval('.hero-card .sub', el => el.textContent.trim());
@@ -257,6 +267,8 @@ export async function renderChecks({ check, read, sql, jwt }) {
     }));
     check('I: member home has no feedback card, pop-up or member-count line', !trimmed.feedback && !trimmed.popup && !trimmed.count, JSON.stringify(trimmed));
     check('D9: "Coming up" doesn\'t list the daily Pool Open', !/Pool Open/.test(coming), coming.slice(0, 160));
+    const banner = await h.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').match(/Early bird: [^.]*?EARLYBIRD[^.]*?2099|Early bird: \$50 off with code EARLYBIRD through [A-Z][a-z]{2} 1/)?.[0] || '');
+    check('H7: the member home shows the early-bird code', /\$50 off with code EARLYBIRD through Mar 1/.test(banner), banner || 'no banner');
     const picking = h.evaluate(() => pickFamilyMember('Who\'s signing up for Swim lessons?'));
     await wait(300);
     const pick = await h.$eval('#ask-scrim', el => ({ open: el.classList.contains('open'), text: el.innerText.replace(/\s+/g, ' ') }));

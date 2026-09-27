@@ -60,6 +60,21 @@ Deno.serve(async (req) => {
   const { data: settings } = await sb.from('settings')
     .select('value').eq('tenant_id', tenant.id).maybeSingle();
   const v = (settings?.value ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  // Discount codes the board marked "show on the member home" (H7). They
+  // replace the old early-bird banner: early bird is a code now.
+  const { data: homeRows } = await sb.from('discount_codes')
+    .select('id, code, label, amount_cents, percent_off, expires_on, max_uses')
+    .eq('tenant_id', tenant.id).eq('active', true).eq('show_on_home', true);
+  const home_codes: Array<Record<string, unknown>> = [];
+  for (const c of homeRows ?? []) {
+    if (c.expires_on && poolDay.key > String(c.expires_on)) continue;
+    if (c.max_uses) {
+      const { count } = await sb.from('applications').select('id', { count: 'exact', head: true })
+        .eq('discount_code_id', c.id).not('discount_recorded_at', 'is', null);
+      if ((count ?? 0) >= Number(c.max_uses)) continue;
+    }
+    home_codes.push({ code: c.code, label: c.label, amount_cents: c.amount_cents, percent_off: c.percent_off, expires_on: c.expires_on });
+  }
   const planTerms = twoPaymentTerms(v.payments?.plan as Record<string, unknown> | undefined, sellingYear(v), opensMonthOf(v));
   const public_settings = {
     hero: {
@@ -128,18 +143,6 @@ Deno.serve(async (req) => {
                                 ? (v as Record<string, unknown>).access_methods
                                 : ['paper_roster'],
       show_member_pool_pass:  ((v as Record<string, unknown>).access_methods as string[] | undefined)?.includes('member_pass') ?? false,
-    },
-    // Early-bird renewal discount surfaced so member home + apply form can
-    // show the deadline + savings copy. Honor system for Venmo; Stripe
-    // checkout enforces the math server-side.
-    renewals: {
-      early_bird: {
-        enabled:          !!(v.renewals as Record<string, unknown> | undefined)?.early_bird && !!((v.renewals as Record<string, Record<string, unknown>>).early_bird?.enabled),
-        discount_cents:   Number((v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.discount_cents ?? 0),
-        discount_percent: Number((v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.discount_percent ?? 0),
-        deadline:         (v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.deadline ?? null,
-        message:          (v.renewals as Record<string, Record<string, unknown>> | undefined)?.early_bird?.message ?? null,
-      },
     },
     // Bishop-parity surfaces — driven by settings.value.* keys, surfaced
     // here so the public + member home pages can render in one round-trip.
@@ -279,7 +282,7 @@ Deno.serve(async (req) => {
   return jsonResponse({
     ok: true,
     tenant: publicTenant,
-    public_settings,
+    public_settings: { ...public_settings, home_codes },
     posts, events, photos, programs, tiers,
     sponsors,
     member_count: memberCount,

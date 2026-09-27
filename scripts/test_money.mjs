@@ -161,6 +161,23 @@ console.log('\nH5 · discounts come off the price (offline)');
     /const FIELDS = '[^']*amount_due_cents[^']*payment_reference/.test(apps), 'FIELDS lacks amount_due_cents');
 }
 
+// ── H7: discount codes (offline) ────────────────────────────────────────
+console.log('\nH7 · discount codes (offline)');
+{
+  const money = read('club/admin/payments.html');
+  check('H7: Money setup has a Discounts section for codes',
+    /id="discounts-card"/.test(money) && /data-focus="discounts"/.test(money) && /codes_list/.test(money) && /code_save/.test(money), 'no discounts card');
+  const pa = read('supabase/functions/payments_admin/index.ts');
+  check('H7: the server lists, saves and switches off codes (payments permission)',
+    /action === 'codes_list'/.test(pa) && /action === 'code_save'/.test(pa) && /action === 'code_off'/.test(pa), 'missing actions');
+  check('H7: "Mark paid" records the discount too', (pa.match(/recordDiscountUse/g) || []).length >= 2, 'mark_paid skips recordDiscountUse');
+  const pub = read('supabase/functions/tenant_public/index.ts');
+  check('H7: the member home shows codes marked for it, not the old early-bird setting',
+    /home_codes/.test(pub) && !/early_bird/.test(pub) && /home_codes/.test(read('m/index.html')) && !/early_bird/.test(read('m/index.html')), 'still early_bird');
+  const ren = read('supabase/functions/renewals/index.ts');
+  check('H7: the renewal blast mentions a home code instead of early bird', /show_on_home/.test(ren) && !/early_bird/.test(ren), 'renewals still reads early_bird');
+}
+
 // ── Live ─────────────────────────────────────────────────────────────────
 if (live('H4')) {
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
@@ -274,6 +291,42 @@ if (live('H5')) {
   } finally {
     await purgeTestFamilies(sql, club.id, `SimMoney % ${STAMP}`);
     await sql(`delete from discount_codes where tenant_id = ${q(club.id)} and code in (${q(OFF)}, ${q(FREE)})`);
+  }
+}
+
+// ── H7 live ──────────────────────────────────────────────────────────────
+if (live('H7')) {
+  const STAMP = String(Date.now()).slice(-6);
+  const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
+  const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
+  const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+  const CODE = `SIMEARLY${STAMP}`;
+  console.log(`\nH7 · live (about 8 calls; code ${CODE}, removed afterward)`);
+  try {
+    const both = await fn('payments_admin', 'code_save', ownerTok, { code: { code: CODE, amount_cents: 5000, percent_off: 10 } });
+    check('H7: a code needs either $ or %, not both', !both.ok && /either a dollar amount or a percent/.test(both.error || ''), short(both));
+    const made = await fn('payments_admin', 'code_save', ownerTok, { code: {
+      code: CODE.toLowerCase(), label: 'Early bird', amount_cents: 5000, expires_on: '2099-03-01', max_uses: 40, show_on_home: true,
+    } });
+    check('H7: the board makes an early-bird code', made.ok && made.code?.code === CODE && made.code?.show_on_home === true, short(made));
+    const dup = await fn('payments_admin', 'code_save', ownerTok, { code: { code: CODE, percent_off: 5 } });
+    check('H7: two codes can\'t share a name', !dup.ok && /already a code/.test(dup.error || ''), short(dup));
+    const list = await fn('payments_admin', 'codes_list', ownerTok);
+    const row = (list.codes || []).find(c => c.code === CODE);
+    check('H7: the list shows it with 0 families so far', list.ok && row && row.uses === 0 && row.max_uses === 40, short(row));
+    const pub = await fn('tenant_public', undefined, null, { slug: 'bishopestates' });
+    const home = (pub.public_settings?.home_codes || []).find(c => c.code === CODE);
+    check('H7: it shows on the member home', !!home && home.amount_cents === 5000 && home.expires_on === '2099-03-01', short(pub.public_settings?.home_codes));
+    const off = await fn('payments_admin', 'code_off', ownerTok, { id: made.code?.id });
+    const pub2 = await fn('tenant_public', undefined, null, { slug: 'bishopestates' });
+    const q2 = await fn('applications', 'quote', null, { slug: 'bishopestates', tier_slug: 'family', code: CODE });
+    check('H7: switched off, it leaves the home and stops working', off.ok && !(pub2.public_settings?.home_codes || []).some(c => c.code === CODE)
+      && /isn't active/.test(q2.price?.code_problem || ''), short({ off, q: q2.price?.code_problem }));
+    const [audit] = await sql(`select count(*)::int n from audit_log where tenant_id = '${club.id}' and entity_id = '${made.code?.id}'`);
+    check('H7: making and switching off a code are in the audit log', audit.n >= 2, short(audit));
+  } finally {
+    await sql(`delete from audit_log where tenant_id = '${club.id}' and entity_id in (select id from discount_codes where tenant_id = '${club.id}' and code = '${CODE}')`);
+    await sql(`delete from discount_codes where tenant_id = '${club.id}' and code = '${CODE}'`);
   }
 }
 

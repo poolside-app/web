@@ -35,4 +35,4 @@ Some smaller clubs decide each family's dues by hand. That works in Poolside too
 
 ### Want to offer an early-bird discount?
 
-Don't change your prices. Make a discount code instead, under **Money → Money setup → Discounts**, with an end date. The regular price stays on file, and the discount only applies to families who use the code before it ends.
+Don't change your prices. Make a discount code instead, under **Money → Money setup → Discounts**, with a last day. The regular price stays on file, and the discount only applies to families who use the code before it ends. A family gets one discount: a code or the referral discount, whichever saves more.

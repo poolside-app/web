@@ -28,7 +28,7 @@ This is the most common ask. On the Renewals page, set **Audience = Lapsed (unpa
 
 ### Want to offer an early-bird discount?
 
-Make a discount code under **Money → Money setup → Discounts**, with an end date, and put the code in your custom intro. Families type it in when they pay.
+Make a discount code under **Money → Money setup → Discounts**, with a last day, and tick **Show it on the member home**. It then shows on every member's home page and is mentioned in the renewal email and text. Families type it under **Have a code?** when they pay.
 
 ### Did everyone get it?
 

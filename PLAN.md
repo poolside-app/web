@@ -289,7 +289,7 @@ Steps (each: failing test first, then the fix, then proof):
     - The member is texted when it's approved and when it's sent.
   - **Safety:** if the new family's payment is refunded or cancelled first, the reward is cancelled. Credit plus cash never adds up to more than the member's own membership.
   - **Tracking:** a Referral rewards list under Money: who referred whom, both payments, unlock date, approved by, paid by and how, reference, and totals (credit owed, cash paid this season). Every step is also in the audit log.
-- **H7. Discount codes.**
+- **H7. ✅ Discount codes.**
   - The board makes codes under Money: a code, $ or % off, an expiry date, and optionally a limit on how many families can use it. The early-bird setting becomes one of these.
   - The signup form and the renewal page get "Have a code?". It's checked on the server, and the new price shows before paying.
   - A code can be marked "show on the member home" to replace the early-bird banner, so no campaign is needed.
