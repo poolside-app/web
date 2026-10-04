@@ -115,7 +115,14 @@
 
 <main>
   <h1 id="page-title">Governance</h1>
-  <p class="lede">Public board meeting minutes — agendas, voting records, follow-ups. <a href="/" style="color:var(--muted)">← Back to home</a></p>
+  <p class="lede">The club's bylaws, who's on the board, and the minutes of board meetings. <a href="/" style="color:var(--muted)">← Back to home</a></p>
+
+  <!-- PLAN.md K6 (Doug, 2026-10-04): the bylaws, always public, first. -->
+  <h2>Bylaws</h2>
+  <div id="bylaws-host"><div class="meeting-card" style="height:60px"></div></div>
+
+  <h2>The board</h2>
+  <div id="board-host"></div>
 
   <h2>Board meeting minutes</h2>
   <div id="meetings-host"><div class="meeting-card" style="height:120px"></div></div>
@@ -175,7 +182,23 @@ function getSlug() {
     document.getElementById('club-name').textContent = slug;
   }
 
-  // Documents section removed 2026-05-21.
+  // ── Bylaws and the board (K6) ──────────────────────────────────────────
+  const day = iso => new Date(iso).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+  const by = meetingsRes.ok ? meetingsRes.bylaws : null;
+  document.getElementById('bylaws-host').innerHTML = by && by.current
+    ? `<div class="meeting-card" style="padding:16px 18px">
+        <a href="${escapeHtml(by.current.url)}" target="_blank" rel="noopener" style="font-weight:600;font-size:16px">📜 Read the bylaws (PDF)</a>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">Posted ${escapeHtml(day(by.current.uploaded_at))}</div>
+        ${by.earlier && by.earlier.length ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Earlier versions</summary>
+          <ul style="margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.7">${by.earlier.map(v =>
+            `<li><a href="${escapeHtml(v.url)}" target="_blank" rel="noopener">${escapeHtml(v.file_name || 'Bylaws')}</a> · ${escapeHtml(day(v.uploaded_at))}</li>`).join('')}</ul></details>` : ''}
+      </div>`
+    : '<p style="color:var(--muted);font-size:14px;margin:0">The bylaws haven\'t been posted yet.</p>';
+  const roster = meetingsRes.ok && Array.isArray(meetingsRes.board) ? meetingsRes.board : [];
+  document.getElementById('board-host').innerHTML = roster.length
+    ? `<div class="meeting-card" style="padding:12px 18px"><ul style="margin:0;padding:0;list-style:none;line-height:1.9;font-size:15px">${roster.map(m =>
+        `<li><b>${escapeHtml(m.name)}</b> <span style="color:var(--muted)">· ${escapeHtml(m.titles.join(', '))}</span></li>`).join('')}</ul></div>`
+    : '<p style="color:var(--muted);font-size:14px;margin:0">Not listed yet.</p>';
 
   // ── Public board meetings ──────────────────────────────────────────────
   const meetHost = document.getElementById('meetings-host');

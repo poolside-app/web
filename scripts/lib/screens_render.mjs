@@ -15,7 +15,7 @@ const LOCAL = {
   '/club/admin/application.html': 'club/admin/application.html', '/js/upcoming.js': 'js/upcoming.js', '/js/today.js': 'js/today.js', '/js/calendar.js': 'js/calendar.js',
   '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
-  '/js/pooltime.js': 'js/pooltime.js', '/club/admin/board.html': 'club/admin/board.html', '/club/admin/admins.html': 'club/admin/admins.html', '/m/renew.html': 'm/renew.html', '/renew.html': 'renew.html', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
+  '/js/pooltime.js': 'js/pooltime.js', '/governance.html': 'governance.html', '/club/admin/board-meetings.html': 'club/admin/board-meetings.html', '/club/admin/board.html': 'club/admin/board.html', '/club/admin/admins.html': 'club/admin/admins.html', '/m/renew.html': 'm/renew.html', '/renew.html': 'renew.html', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
 };
 
 // RENDER_ONLY=apply,login,members,home limits the run to those pages.
@@ -144,7 +144,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
     // Board pages load clean for the president (every page the trim and
     // the consolidation touched).
     const tok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
-    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/admin/application.html', '/club/admin/members.html', '/club/admin/board.html']) {
+    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/admin/application.html', '/club/admin/members.html', '/club/admin/board.html', '/club/admin/board-meetings.html']) {
       const pg = await open(path, { poolside_tenant_token: tok });
       await wait(2000);
       if (path === '/club/admin/') {
@@ -225,6 +225,11 @@ export async function renderChecks({ check, read, sql, jwt }) {
         await pg.evaluate(() => editPosition(document.querySelector('[data-position]:nth-child(3)').dataset.position));
         await pg.screenshot({ path: '/tmp/poolside-board-edit.png' });
       }
+      if (path === '/club/admin/board-meetings.html') {
+        await pg.waitForFunction(() => /Bylaws/.test(document.getElementById('bylaws-card')?.textContent || ''), { timeout: 15000 }).catch(() => {});
+        const by = await pg.evaluate(() => document.getElementById('bylaws-card')?.innerText.replace(/\s+/g, ' ') || '');
+        check('K6: the Board minutes page has the bylaws card, with upload for the president', /Bylaws/.test(by) && /Upload/.test(by) && /public/.test(by), by.slice(0, 160));
+      }
       const url = new URL(pg.url()).pathname;
       check(`board: ${path} loads with no errors`, pg.errs.filter(e => !/browser pop-up/.test(e)).length === 0 && !/login/.test(url),
         `${url} ${pg.errs.join(' | ').slice(0, 200)}`);
@@ -239,6 +244,17 @@ export async function renderChecks({ check, read, sql, jwt }) {
     await wait(1500);
     const txt = await pub.evaluate(() => document.body.innerText);
     check('public page: loads with no errors, no anonymous feedback', pub.errs.length === 0 && !/anonymous feedback/i.test(txt), pub.errs.join(' | '));
+    // K6: the public "Bylaws & board minutes" page: bylaws first, then the board.
+    const gov = await open('/governance.html');
+    await gov.waitForFunction(() => !document.querySelector('#bylaws-host .meeting-card[style*="height"]'), { timeout: 15000 }).catch(() => {});
+    const g = await gov.evaluate(() => ({
+      bylaws: document.getElementById('bylaws-host')?.innerText.trim(),
+      board: document.getElementById('board-host')?.innerText.trim(),
+      wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    }));
+    check('K6: the public page shows the bylaws section and the board (names and positions)',
+      /bylaws/i.test(g.bylaws || '') && /Doug.*President/.test(g.board || '') && g.wide <= 1 && gov.errs.length === 0, JSON.stringify(g).slice(0, 200));
+    await gov.screenshot({ path: '/tmp/poolside-governance.png' });
     }
 
     const m = await makeTempMember(sql, club.id, FAMILY);

@@ -59,6 +59,17 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, canDeleteMeeting, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { clearFollowUpTasks, syncFollowUpTasks, type MeetingForTasks } from '../_shared/meeting_follow_ups.ts';
+import { loadBoard } from '../_shared/positions_db.ts';
+import { boardRoster } from '../_shared/positions.ts';
+
+// The bylaws (PLAN.md K6): every upload is kept; the newest is current.
+const DOC_FIELDS = 'id, url, file_name, uploaded_by_name, uploaded_at';
+async function bylawsFor(sb: ReturnType<typeof createClient>, tenantId: string) {
+  const { data } = await sb.from('club_documents').select(DOC_FIELDS)
+    .eq('tenant_id', tenantId).eq('kind', 'bylaws').order('uploaded_at', { ascending: false }).limit(20);
+  const rows = data ?? [];
+  return { current: rows[0] ?? null, earlier: rows.slice(1) };
+}
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -244,7 +255,14 @@ Deno.serve(async (req) => {
     const meetings = (data ?? []).map(({ edited_by, ...m }) => ({
       ...m, edited_by_name: edited_by ? editors.get(edited_by) ?? 'the board' : null,
     }));
-    return jsonResponse({ ok: true, meetings });
+    // The bylaws, always public (K6), and who's on the board: names and
+    // positions only. Job descriptions stay with the board.
+    const b = await loadBoard(sb as never, tenant.id);
+    return jsonResponse({
+      ok: true, meetings,
+      bylaws: await bylawsFor(sb, tenant.id),
+      board: boardRoster(b.positions, b.holders, b.logins),
+    });
   }
 
   // ── Admin-only actions below ───────────────────────────────────────────
@@ -302,6 +320,41 @@ Deno.serve(async (req) => {
         metadata: { before: Object.fromEntries(CONTENT.map(k => [k, row[k]])) },
       });
     } catch { /* never block the change on the audit write */ }
+  }
+
+  // ── bylaws (K6) ─────────────────────────────────────────────────────────
+  // Any board member reads them. The President, or whoever can edit the club's
+  // policies (the Secretary), sets a new version; the old ones are kept.
+  if (action === 'bylaws') {
+    const { data: a } = await sb.from('admin_users').select('scopes').eq('id', me.id).maybeSingle();
+    return jsonResponse({ ok: true, ...(await bylawsFor(sb, TID)),
+      can_change: me.isOwner || ((a?.scopes as string[] | null) ?? []).includes('policies') });
+  }
+  if (action === 'set_bylaws') {
+    const { data: a } = await sb.from('admin_users').select('scopes').eq('id', me.id).maybeSingle();
+    if (!me.isOwner && !((a?.scopes as string[] | null) ?? []).includes('policies')) {
+      return jsonResponse({ ok: false, error: 'Only the President or the Secretary can change the bylaws.' }, 403);
+    }
+    const url = String(body.url ?? '').trim();
+    // Only a file the club uploaded (tenant_upload → public club-assets).
+    const ours = `${SUPABASE_URL}/storage/v1/object/public/club-assets/${TID}/`;
+    if (!url.startsWith(ours) || !/\.pdf$/i.test(url)) {
+      return jsonResponse({ ok: false, error: 'Upload the bylaws as a PDF.' }, 400);
+    }
+    const fileName = strOrNull(body.file_name)?.slice(0, 160) ?? 'Bylaws.pdf';
+    const { data: row, error } = await sb.from('club_documents').insert({
+      tenant_id: TID, kind: 'bylaws', url, file_name: fileName,
+      uploaded_by: payload.synthetic ? null : me.id, uploaded_by_name: me.name,
+    }).select(DOC_FIELDS).single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'bylaws.uploaded', entity_type: 'club_document', entity_id: row.id,
+        summary: `${me.name} posted a new version of the bylaws (${fileName})`,
+        actor_id: payload.synthetic ? null : me.id, actor_kind: 'tenant_admin',
+      });
+    } catch { /* never block on the audit write */ }
+    return jsonResponse({ ok: true, bylaws: row });
   }
 
   // ── list ────────────────────────────────────────────────────────────────

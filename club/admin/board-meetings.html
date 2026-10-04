@@ -261,6 +261,11 @@
     </div>
   </div>
   <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Closing a meeting posts its minutes on the club's public page, unless you switch it to board-only for a closed session.</p>
+
+  <!-- PLAN.md K6 (Doug, 2026-10-04): the bylaws, always public, at the top
+       of the club's "Bylaws & board minutes" page. The President or the
+       Secretary uploads a new version; earlier ones are kept. -->
+  <div class="card" id="bylaws-card"><div style="height:40px"></div></div>
   <div id="list-host">
     <div class="card" style="height:60px"></div>
     <div class="card" style="height:60px"></div>
@@ -398,6 +403,61 @@ async function call(action, extra = {}) {
   });
   if (r.status === 401) { logout(); throw new Error('Session expired'); }
   return r.json();
+}
+
+// ── The bylaws (K6) ────────────────────────────────────────────────────
+const UPLOAD_URL = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_upload';
+async function loadBylaws() {
+  const card = document.getElementById('bylaws-card');
+  try {
+    const r = await call('bylaws');
+    if (!r.ok) throw new Error(r.error || 'Could not load the bylaws');
+    const day = iso => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    const cur = r.current;
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0">📜 Bylaws</h2>
+          <div style="font-size:13.5px;margin-top:4px">${cur
+            ? `<a href="${escapeHtml(cur.url)}" target="_blank" rel="noopener" style="font-weight:600">${escapeHtml(cur.file_name || 'Bylaws.pdf')}</a>
+               <span style="color:var(--muted)"> · posted ${escapeHtml(day(cur.uploaded_at))}${cur.uploaded_by_name ? ' by ' + escapeHtml(cur.uploaded_by_name) : ''}</span>`
+            : '<span style="color:var(--muted)">Not posted yet.</span>'}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">Always public, at the top of the club's <a href="/governance.html" target="_blank" rel="noopener">Bylaws &amp; board minutes</a> page.</div>
+        </div>
+        ${r.can_change ? `<label class="btn btn-ghost" style="cursor:pointer">${cur ? 'Upload a new version' : 'Upload the bylaws (PDF)'}
+          <input type="file" accept="application/pdf" id="bylaws-file" style="display:none" onchange="uploadBylaws(this)"></label>` : ''}
+      </div>
+      ${r.earlier.length ? `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--blue)">Earlier versions (${r.earlier.length})</summary>
+        <ul style="margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.7">${r.earlier.map(v =>
+          `<li><a href="${escapeHtml(v.url)}" target="_blank" rel="noopener">${escapeHtml(v.file_name || 'Bylaws.pdf')}</a> <span style="color:var(--muted)">· ${escapeHtml(day(v.uploaded_at))}</span></li>`).join('')}</ul></details>` : ''}
+      <div id="bylaws-msg" style="font-size:13px;margin-top:8px"></div>`;
+  } catch (e) {
+    card.innerHTML = `<div style="color:var(--red);font-size:13px">${escapeHtml(e.message)}</div>`;
+  }
+}
+async function uploadBylaws(input) {
+  const f = input.files && input.files[0];
+  const msg = document.getElementById('bylaws-msg');
+  if (!f) return;
+  if (f.type !== 'application/pdf') { msg.textContent = 'Pick a PDF.'; return; }
+  if (f.size > 25 * 1024 * 1024) { msg.textContent = 'That file is over 25 MB.'; return; }
+  msg.textContent = 'Uploading…';
+  try {
+    const base64 = await new Promise((ok, no) => {
+      const rd = new FileReader();
+      rd.onload = () => ok(String(rd.result).split(',')[1]);
+      rd.onerror = () => no(new Error('Could not read the file'));
+      rd.readAsDataURL(f);
+    });
+    const up = await fetch(UPLOAD_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ filename: f.name, content_type: 'application/pdf', base64 }),
+    }).then(r => r.json());
+    if (!up.ok) throw new Error(up.error || 'Upload failed');
+    const set = await call('set_bylaws', { url: up.url, file_name: f.name });
+    if (!set.ok) throw new Error(set.error || 'Could not post them');
+    await loadBylaws();
+  } catch (e) { msg.textContent = e.message; }
 }
 
 // ── List ───────────────────────────────────────────────────────────────
@@ -987,6 +1047,7 @@ async function deleteMeeting() {
   // Clear the hash first so a refresh doesn't start a second meeting.
   const wantsStart = window.location.hash === '#start';
   if (wantsStart) history.replaceState(null, '', window.location.pathname);
+  loadBylaws();
   await loadList();
   if (wantsStart) { startNewMeeting(); return; }
 

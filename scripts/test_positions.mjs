@@ -174,6 +174,24 @@ console.log('\nK5 · setup checklist (offline)');
     /Set up your board positions/.test(item) && /board\.html/.test(item) && /board_position_holders/.test(between(ts, "action === 'setup_status'", '{ id: \'logo\'')), item.slice(0, 160));
 }
 
+// ── K6: the bylaws (offline) ───────────────────────────────────────────
+console.log('\nK6 · the bylaws (offline)');
+{
+  const mig = exists('supabase/migrations/20261004000300_club_documents.sql') ? read('supabase/migrations/20261004000300_club_documents.sql') : '';
+  check('K6: a place for the bylaws, keeping every version', /create table if not exists public\.club_documents/.test(mig) && /'bylaws'/.test(mig), 'no migration');
+  const bm = read('supabase/functions/board_meetings/index.ts');
+  check('K6: the President or Secretary sets the bylaws; only a file stored with the club counts',
+    /action === 'set_bylaws'/.test(bm) && /policies/.test(between(bm, "action === 'set_bylaws'", 'return jsonResponse({ ok: true')) && /club-assets/.test(bm), '');
+  check('K6: the public minutes page gets the bylaws and the board (names and positions)',
+    /bylaws/.test(between(bm, "action === 'list_public'", "Admin-only actions below")) && /boardRoster/.test(bm), '');
+  const page = read('board-meetings.html'.replace(/^/, 'club/admin/'));
+  check('K6: the Board minutes page has the bylaws, with upload', /id="bylaws-card"/.test(page) && /tenant_upload/.test(page) && /set_bylaws/.test(page), '');
+  const gov = read('governance.html');
+  check('K6: the public page shows the bylaws first, always, and the board', /id="bylaws-host"/.test(gov) && /id="board-host"/.test(gov)
+    && gov.indexOf('id="bylaws-host"') < gov.indexOf('id="meetings-host"'), '');
+  check('K6: the member app links to the bylaws and minutes', /href="\/governance\.html"/.test(read('m/index.html')), '');
+}
+
 if (live('K1')) {
   console.log('\nK1 · live (database reads only)');
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
@@ -278,6 +296,44 @@ if (live('K3')) {
     const [n] = await sql(`select count(*)::int as n from board_position_holders h join board_positions p on p.id = h.position_id
       where p.tenant_id = '${club.id}' and p.slug in ('grounds', 'treasurer')`);
     check('K3: Bishop is back as it was', n.n === 0, short(n));
+  }
+}
+
+if (live('K6')) {
+  console.log('\nK6 · live (about 8 calls; temporary board logins and test files, removed afterward)');
+  const { makeTempAdmin, purgeTempAdmins } = await import('./lib/testdata.mjs');
+  const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
+  const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
+  const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates', role_template: 'owner', scopes: [] });
+  const [sec] = await sql(`select id from board_positions where tenant_id = '${club.id}' and slug = 'secretary'`);
+  const STAMP = String(Date.now()).slice(-6);
+  const started = new Date().toISOString();
+  const fileUrl = n => `${SUPABASE_URL}/storage/v1/object/public/club-assets/${club.id}/simtest-bylaws-${STAMP}-${n}.pdf`;
+  try {
+    const s = await makeTempAdmin(sql, club.id, 'K6 Secretary', [], 'custom');
+    const n = await makeTempAdmin(sql, club.id, 'K6 Grounds', [], 'custom');
+    const tok = id => jwt({ sub: id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+    await fn('board', 'set_holders', ownerTok, { position_id: sec.id, admin_ids: [s] });
+    const no = await fn('board_meetings', 'set_bylaws', tok(n), { url: fileUrl(1), file_name: 'Bylaws.pdf' });
+    check('K6: only the President or Secretary posts the bylaws', no.status === 403, short(no));
+    const elsewhere = await fn('board_meetings', 'set_bylaws', tok(s), { url: 'https://example.com/bylaws.pdf' });
+    check('K6: only a PDF uploaded to the club counts', elsewhere.status === 400, short(elsewhere));
+    const v1 = await fn('board_meetings', 'set_bylaws', tok(s), { url: fileUrl(1), file_name: 'Bishop Bylaws 2025.pdf' });
+    const v2 = await fn('board_meetings', 'set_bylaws', tok(s), { url: fileUrl(2), file_name: 'Bishop Bylaws 2026.pdf' });
+    check('K6: the Secretary posts the bylaws, and a new version keeps the old', v1.ok && v2.ok, short({ v1: v1.error, v2: v2.error }));
+    const pub = await fn('board_meetings', 'list_public', null, { slug: 'bishopestates' });
+    check('K6: the public page gets the current bylaws and earlier versions, with no sign-in',
+      pub.ok && pub.bylaws?.current?.url === fileUrl(2) && pub.bylaws?.earlier?.some(v => v.url === fileUrl(1)), short(pub.bylaws));
+    check('K6: and the board: names and positions only', Array.isArray(pub.board)
+      && pub.board.some(m => /Doug/.test(m.name) && m.titles.includes('President')) && pub.board.some(m => m.titles.includes('Secretary'))
+      && !JSON.stringify(pub.board).includes('description'), short(pub.board));
+  } finally {
+    await sql(`delete from club_documents where tenant_id = '${club.id}' and url like '%simtest-bylaws-${STAMP}%'`);
+    await sql(`delete from audit_log where tenant_id = '${club.id}' and (kind like 'board_position.%' or kind = 'bylaws.uploaded') and created_at >= '${started}'`);
+    await purgeTempAdmins(sql, club.id);
+    const [left] = await sql(`select (select count(*) from club_documents where url like '%simtest%')::int as docs,
+      (select count(*) from board_position_holders h join board_positions p on p.id = h.position_id where p.tenant_id = '${club.id}' and p.slug = 'secretary')::int as sec`);
+    check('K6: Bishop is back as it was', left.docs === 0 && left.sec === 0, short(left));
   }
 }
 
