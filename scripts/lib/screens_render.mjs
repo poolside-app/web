@@ -156,6 +156,15 @@ export async function renderChecks({ check, read, sql, jwt }) {
           return { shown: true, rows: card.querySelectorAll('div[style*="border:1px solid #fde68a"]').length,
             links: [...card.querySelectorAll('a[data-setup]')].map(a => a.getAttribute('href')) };
         });
+        // K4: "Your job" with the President's purpose and job description.
+        await pg.waitForFunction(() => document.getElementById('my-job-card')?.style.display !== 'none', { timeout: 15000 }).catch(() => {});
+        const job = await pg.evaluate(() => ({
+          title: document.querySelector('#my-job-card h2')?.textContent,
+          desc: document.querySelector('#my-job-card details')?.textContent || '',
+          shown: document.getElementById('my-job-card')?.style.display !== 'none',
+        }));
+        check('K4: the dashboard shows "Your job: President" with the job description',
+          job.shown && /Your job: President/.test(job.title || '') && /Every month/.test(job.desc), JSON.stringify(job).slice(0, 200));
         check('J1: the dashboard shows the one checklist (9 items, real screens)',
           setup.shown && (setup.folded || (setup.rows === 9 && setup.links.every(h => !/wizard|setup\.html/.test(h)))), JSON.stringify(setup).slice(0, 220));
       }

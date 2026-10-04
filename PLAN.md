@@ -369,7 +369,7 @@ Steps (each: failing test first, then the fix, then proof):
   - Membership & Marketing Director: photos to approve.
   - Events & Rentals Director: party and rental requests and their payments, member help "parties & events".
   - Secretary and Vice-President: nothing on their own today. Meeting follow-ups already go to whoever they're assigned.
-- **K4. "My job" on the dashboard.** Each board member sees their position, its purpose and the full description, so every director has their list in front of them.
+- **✅ K4. "My job" on the dashboard.** Each board member sees their position, its purpose and the full description, so every director has their list in front of them.
 - **K5. Setup checklist.** "Invite the rest of your board" becomes "Set up your board positions", opening the Board page. It's done when another board member holds a position.
 - **K6. Bylaws.** The President or Secretary uploads the bylaws PDF on the Board minutes page. It shows at the top of the public "Bylaws & board minutes" page, always, and the member app links there. Replacing it keeps the old versions with their dates. The same public page lists the board: names and positions.
 

@@ -274,6 +274,10 @@ document.getElementById('signout').addEventListener('click', logout);
       <div id="gate-quick-feedback" style="font-size:13px;margin-top:10px;min-height:18px"></div>
     </div>
 
+    <!-- PLAN.md K4: the board member's own position(s) and job description,
+         so every director has their list in front of them. -->
+    <div class="card" id="my-job-card" style="display:none"></div>
+
     <div class="card" id="activity-card">
       <h2>What needs your attention</h2>
       <div class="placeholder">Loading…</div>
@@ -698,6 +702,8 @@ document.getElementById('signout').addEventListener('click', logout);
     }
   } catch { /* non-critical */ }
 
+  paintMyJob(tdata);
+
   // Member help: what's waiting on you, and which topics come to you.
   const helpNote = document.getElementById('member-help-mine');
   if (helpNote && tdata && tdata.ok) {
@@ -725,10 +731,32 @@ document.getElementById('signout').addEventListener('click', logout);
 
 })();
 
-// Who a task is for: one board member, a role, or the president.
+// Who a task is for: one board member, a board position, a role, or the president.
 function taskFor(t, me) {
   if (t.assigned_admin_id) return t.assigned_admin_id === me ? 'For you' : `For ${t.assigned_name || 'a board member'}`;
+  if (t.for_position) return `For the ${t.for_position}`;
   return (t.target_scopes || []).join(', ') || 'President';
+}
+
+// "Your job": the positions this board member holds, with the purpose up
+// front and the full job description a tap away.
+function paintMyJob(tdata) {
+  const card = document.getElementById('my-job-card');
+  const mine = (tdata && tdata.my_positions) || [];
+  if (!card || !mine.length) return;
+  const line = l => {
+    const t = l.trim(), m = t.match(/^([^:]{2,40}):\s(.*)$/);
+    const inner = m && !/^\d+\./.test(t) ? `<b>${escapeHtml(m[1])}:</b> ${escapeHtml(m[2])}` : escapeHtml(t);
+    return `<p style="margin:0 0 6px${/^\s+/.test(l) ? ';margin-left:18px' : ''}">${inner}</p>`;
+  };
+  card.innerHTML = `<h2>Your job: ${escapeHtml(mine.map(p => p.title).join(' · '))}</h2>`
+    + mine.map(p => `
+      ${p.purpose ? `<p style="font-size:14px;margin:6px 0 0">${escapeHtml(p.purpose)}</p>` : ''}
+      ${p.description ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--blue)">${mine.length > 1 ? escapeHtml(p.title) + ': job' : 'Job'} description</summary>
+        <div style="font-size:13.5px;line-height:1.6;margin-top:8px">${String(p.description).split('\n').filter(l => l.trim()).map(line).join('')}</div></details>` : ''}`).join('')
+    + (tdata.spending_rule ? `<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0"><b>Spending rule:</b> ${escapeHtml(tdata.spending_rule)}</p>` : '')
+    + `<p style="font-size:12.5px;margin:6px 0 0"><a href="/club/admin/board.html">The whole board</a></p>`;
+  card.style.display = '';
 }
 
 async function completeTask(id) {

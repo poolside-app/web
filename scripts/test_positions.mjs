@@ -152,6 +152,19 @@ console.log('\nK3 · alerts follow positions (offline)');
     /const signedName = myTitle \? `\$\{me\.name\} \(\$\{myTitle\}\)`/.test(hr) && /board_title/.test(between(hr, 'const myTitle', ';')) && /replyText\([^)]*signedName/.test(hr), '');
 }
 
+// ── K4: "My job" on the dashboard (offline) ────────────────────────────
+console.log('\nK4 · "My job" on the dashboard (offline)');
+{
+  const at = read('supabase/functions/admin_tasks/index.ts');
+  check('K4: the dashboard\'s task list brings the person\'s positions and the spending rule (no extra call)',
+    /my_positions/.test(at) && /spending_rule/.test(at), '');
+  check('K4: each task says which position it\'s for', /for_position/.test(at), '');
+  const dash = read('club/admin/index.html');
+  check('K4: the dashboard shows "Your job" with the purpose and full description',
+    /id="my-job-card"/.test(dash) && /my_positions/.test(dash) && /description/.test(between(dash, 'function paintMyJob', '\n}\n')), '');
+  check('K4: a task names its position ("For the Treasurer")', /for_position/.test(between(dash, 'function taskFor', '\n}\n')), '');
+}
+
 if (live('K1')) {
   console.log('\nK1 · live (database reads only)');
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);

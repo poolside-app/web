@@ -33,7 +33,8 @@ import { markFollowUpDone } from '../_shared/meeting_follow_ups.ts';
 import { markHelpSolved } from '../_shared/help_tasks.ts';
 import { TOPIC_LABELS } from '../_shared/help.ts';
 import { loadBoard } from '../_shared/positions_db.ts';
-import { noticeRecipients, HELP_NOTICE } from '../_shared/positions.ts';
+import { noticeRecipients, HELP_NOTICE, SPENDING_RULE } from '../_shared/positions.ts';
+import { taskNotice } from '../_shared/task_routing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -114,6 +115,11 @@ Deno.serve(async (req) => {
     const { data, error } = await q;
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     const tasks = (data ?? []).filter(visible);
+    // "For the Treasurer": the position a board-position alert belongs to.
+    for (const t of tasks as Record<string, unknown>[]) {
+      const n = taskNotice(t as never);
+      if (n && !t.assigned_admin_id) t.for_position = board.positions.find(p => (p.notices ?? []).includes(n))?.title ?? 'President';
+    }
     // Name who each assigned task is for ("For you" / "For Kristin").
     const ids = [...new Set(tasks.map(t => t.assigned_admin_id).filter(Boolean))];
     if (ids.length) {
@@ -133,7 +139,17 @@ Deno.serve(async (req) => {
     const help_topics_mine = (Object.keys(TOPIC_LABELS) as (keyof typeof TOPIC_LABELS)[])
       .filter(t => recipientsOf(HELP_NOTICE[t]).includes(caller.id))
       .map(t => TOPIC_LABELS[t]);
-    return jsonResponse({ ok: true, tasks, me: caller.id, help_topics_mine, push_devices: devices ?? 0 });
+    // "Your job" (PLAN.md K4): the positions this person holds, with their
+    // job descriptions, and the club's spending rule.
+    const heldIds = new Set(board.holders.filter(h => h.admin_user_id === caller.id).map(h => h.position_id));
+    const my_positions = board.positions.filter(p => heldIds.has(p.id))
+      .map(p => ({ title: p.title, purpose: p.purpose ?? null, description: p.description ?? null }));
+    const { data: st } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const rule = ((st?.value as Record<string, Record<string, unknown>> | null)?.board?.spending_rule);
+    return jsonResponse({
+      ok: true, tasks, me: caller.id, help_topics_mine, push_devices: devices ?? 0,
+      my_positions, spending_rule: typeof rule === 'string' ? rule : SPENDING_RULE,
+    });
   }
 
   if (action === 'count') {
