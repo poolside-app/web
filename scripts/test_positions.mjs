@@ -165,6 +165,15 @@ console.log('\nK4 · "My job" on the dashboard (offline)');
   check('K4: a task names its position ("For the Treasurer")', /for_position/.test(between(dash, 'function taskFor', '\n}\n')), '');
 }
 
+// ── K5: the setup checklist (offline) ──────────────────────────────────
+console.log('\nK5 · setup checklist (offline)');
+{
+  const ts = read('supabase/functions/tenant_settings/index.ts');
+  const item = between(ts, "{ id: 'invite_board'", "{ id: 'share_link'");
+  check('K5: "Set up your board positions" opens the Board page and is done when someone else holds a position',
+    /Set up your board positions/.test(item) && /board\.html/.test(item) && /board_position_holders/.test(between(ts, "action === 'setup_status'", '{ id: \'logo\'')), item.slice(0, 160));
+}
+
 if (live('K1')) {
   console.log('\nK1 · live (database reads only)');
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);

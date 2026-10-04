@@ -188,8 +188,10 @@ Deno.serve(async (req) => {
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
       sb.from('policies').select('id', { count: 'exact', head: true })
         .eq('tenant_id', payload.tid).eq('active', true),
-      sb.from('admin_users').select('id', { count: 'exact', head: true })
-        .eq('tenant_id', payload.tid).eq('active', true),
+      // Who holds a board position (PLAN.md K5): the board is set up once
+      // someone besides the founder holds one.
+      sb.from('board_position_holders').select('admin_user_id, admin_users!inner(active)')
+        .eq('tenant_id', payload.tid).eq('admin_users.active', true),
       sb.from('admin_users').select('linked_member_id, member_apply_dismissed')
         .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle(),
     ]);
@@ -237,9 +239,10 @@ Deno.serve(async (req) => {
         fix_url: '/apply.html?prefill=admin', fix_label: 'Sign up',
         why: 'Same form your members use, so you see it the way they do. Not a swimmer? Mark it done.',
         can_skip: !me.linked_member_id && !me.member_apply_dismissed },
-      { id: 'invite_board', label: 'Invite the rest of your board', done: (adminsRes.count ?? 0) > 1,
-        fix_url: '/club/admin/admins.html', fix_label: 'Invite',
-        why: 'So the treasurer, keyfob person and others can handle their part.' },
+      { id: 'invite_board', label: 'Set up your board positions',
+        done: new Set(((adminsRes.data ?? []) as Array<{ admin_user_id: string }>).map(h => h.admin_user_id)).size > 1,
+        fix_url: '/club/admin/board.html', fix_label: 'Set up',
+        why: 'Each position gets its own alerts and screens: the treasurer gets payments, the facilities person gets the gate.' },
       { id: 'share_link', label: 'Share your join link with members', done: !!onboarding.apply_link_shared,
         fix_url: '/club/admin/#apply-link-card', fix_label: 'Show me',
         why: `Families join at ${tenant.slug ? `${tenant.slug}.poolsideapp.com/apply.html` : 'your apply page'}.` },
