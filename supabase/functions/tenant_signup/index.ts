@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
     is_default_pw: false,
     active: true,
     role_template: 'owner',
-    board_title: 'President',  // sensible default — admins.html lets them rename
+    board_title: 'President',  // the President position, seeded below
   }).select('id').single();
 
   if (uErr || !admin) {

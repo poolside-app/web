@@ -526,7 +526,7 @@
       <div class="err" id="access-err"></div>
 
       <div style="margin-top:18px;padding:14px 16px;background:var(--bg-2);border-radius:10px;font-size:13px;line-height:1.55">
-        <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Invite them as a co-admin with the <b>"Gate attendant / lifeguard"</b> role from <a href="/club/admin/admins.html">Co-admins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
+        <div style="margin-bottom:10px"><b>Have a lifeguard or gate attendant?</b> Add them under <a href="/club/admin/board.html#staff">Settings → Board → Lifeguard and gate logins</a>. They get a scoped login that ONLY shows the check-in page — no member contact info, no finances. Designed for a shared iPad at the gate.</div>
         <a class="btn btn-ghost" href="/club/admin/checkin.html" style="font-size:12.5px">Open the check-in page →</a>
       </div>
 
@@ -1258,7 +1258,7 @@ function formatPhoneInput(el) {
   el.value = `(${digits.slice(0,3)})-${digits.slice(3,6)}-${digits.slice(6)}`;
 }
 
-// Admin management moved to the dedicated /club/admin/admins.html page.
+// Admin management is on the Board page (/club/admin/board.html).
 // The "Manage admins & roles →" link in the admins-card above takes admins
 // there. Removed all admin CRUD functions from this page so there's only
 // one source of truth.

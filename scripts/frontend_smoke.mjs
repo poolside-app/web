@@ -122,7 +122,7 @@ const LS = {
 const ADMIN_PAGES = ['', 'members.html', 'application.html', 'payments.html', 'billing.html',
   'events.html', 'parties.html', 'programs.html', 'lifeguards.html', 'my-shifts.html', 'volunteer.html',
   'policies.html', 'sponsors.html', 'donations.html', 'board-meetings.html',
-  'audit.html', 'emails.html', 'photos.html', 'checkin.html', 'settings.html', 'admins.html',
+  'audit.html', 'emails.html', 'photos.html', 'checkin.html', 'settings.html', 'board.html',
   'change-password.html', 'help.html',
   'import.html', 'migrate.html'];
 

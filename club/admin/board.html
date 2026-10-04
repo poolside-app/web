@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Board — Poolside</title>
+<script src="/js/pooltime.js"></script>
+<script src="/js/errors.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#475569;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+    --green-soft:#dcfce7; --amber-soft:#fef3c7; --red-soft:#fee2e2;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 28px; }
+  h2 { font-size: 18px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:880px; width:100%; margin:0 auto; }
+  .lede { font-size:15px; color:var(--muted); margin:6px 0 22px; max-width:640px; line-height:1.55; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow); margin-bottom:14px; padding:16px 18px; }
+  .rule { background:#fffbeb; border-color:#fcd34d; }
+  .rule .label { font-size:11.5px; font-weight:700; color:#92400e; letter-spacing:.06em; text-transform:uppercase; }
+  .rule .text { font-size:15px; margin-top:4px; white-space:pre-wrap; }
+
+  .pos-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; }
+  .pos-title { font-family:'Fraunces',serif; font-size:19px; font-weight:600; color:var(--blue); }
+  .pos-who { font-size:14px; margin-top:2px; }
+  .pos-who .vacant { color:var(--muted); }
+  .pos-purpose { font-size:14px; color:var(--text); margin-top:8px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { font-size:11.5px; padding:3px 9px; border-radius:999px; background:var(--blue-l); color:var(--blue); font-weight:500; }
+  .chip.full { background:#efe1c0; color:#5a3d00; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; background:var(--amber-soft); color:#7c2d12; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin-left:4px; vertical-align:1px; }
+  details.job { margin-top:10px; }
+  details.job summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--blue); }
+  .job-text { font-size:13.5px; line-height:1.6; margin-top:8px; }
+  .job-text p { margin:0 0 6px; }
+  .job-text p.sub { margin-left:18px; }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .btn { padding:8px 14px; border-radius:8px; font:600 13px 'Inter'; cursor:pointer; border:1.5px solid var(--border); background:#fff; color:var(--blue); }
+  .btn:hover { filter:brightness(.97); }
+  .btn-primary { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .btn-danger { color:var(--red); border-color:#fecaca; }
+  .btn-sm { padding:5px 10px; font-size:12.5px; }
+  .btn:disabled { opacity:.5; cursor:wait; }
+
+  .mrow { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .mrow:first-child { border-top:0; }
+  .mrow .nm { font-weight:600; font-size:14.5px; }
+  .mrow .ttl { font-size:12.5px; color:var(--muted); }
+
+  .scrim { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:24px 12px; z-index:60; }
+  .scrim.open { display:flex; }
+  .modal { background:#fff; border-radius:var(--r-lg); padding:20px; width:100%; max-width:620px; box-shadow:0 20px 60px rgba(10,59,92,.18); }
+  .modal label.f { display:block; font-weight:600; font-size:12.5px; margin:12px 0 4px; }
+  .modal input[type=text], .modal input[type=tel], .modal input[type=email], .modal textarea {
+    width:100%; padding:9px 11px; font:14px/1.5 'Inter'; border:1.5px solid var(--border); border-radius:10px; background:#fff; }
+  .modal textarea { resize:vertical; min-height:220px; }
+  .checks { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; }
+  @media (max-width: 560px) { .checks { grid-template-columns:1fr; } }
+  .checks label { display:flex; gap:8px; align-items:flex-start; font-size:13px; cursor:pointer; padding:3px 0; }
+  .checks input { margin-top:3px; }
+  .modal-foot { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .modal-foot .left { margin-right:auto; }
+  .hint { font-size:12px; color:var(--muted); margin:4px 0 0; }
+  .err { display:none; background:var(--red-soft); border:1px solid #fca5a5; color:#7f1d1d; padding:9px 11px; border-radius:8px; font-size:13px; margin-top:10px; }
+  .err.show { display:block; }
+  .ok { display:none; background:var(--green-soft); border:1px solid #bbf7d0; padding:10px 12px; border-radius:8px; font-size:13px; margin-top:10px; word-break:break-word; }
+  .ok.show { display:block; }
+
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--blue); color:#fff; padding:12px 18px; border-radius:10px; font-size:13.5px; display:none; align-items:center; gap:14px; box-shadow:0 12px 32px -10px rgba(0,0,0,.3); z-index:70; }
+  .toast.open { display:flex; }
+  .toast .undo { color:var(--sun); font-weight:700; cursor:pointer; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/payments.html">Money</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/audit.html">Insights</a>
+  <a href="/club/admin/settings.html" class="on">Settings</a>
+</nav>
+<div id="admin-subtabs"></div>
+<script src="/js/admin-subtabs.js"></script>
+
+<!-- PLAN.md K (Doug, 2026-10-04): the club's board positions, each with its
+     job description, the alerts it gets and the screens it can use. Whoever
+     holds a position gets its alerts and screens. Replaced "Admins & roles". -->
+<main>
+  <h1>Board</h1>
+  <p class="lede">Your board positions, who holds them, and what each one is told about. Alerts go to whoever holds the position. If nobody does, they go to the President.</p>
+
+  <div class="card rule" id="spending-rule"><div class="label">Spending rule for every position</div><div class="text">…</div></div>
+  <div id="positions"><div class="card" style="height:90px"></div><div class="card" style="height:90px"></div></div>
+  <div id="add-position"></div>
+
+  <h2 style="margin:26px 0 10px">Board members</h2>
+  <div class="card" id="members"><div style="height:60px"></div></div>
+
+  <a id="staff-anchor" name="staff"></a>
+  <h2 style="margin:26px 0 4px">Lifeguard and gate logins</h2>
+  <p class="hint" style="margin:0 0 10px">A login that only shows the check-in page and the person's own lifeguard shifts. No member contact details, no money. Use one for a shared iPad at the gate, or one per lifeguard.</p>
+  <div class="card" id="staff" data-focus="staff"><div style="height:40px"></div></div>
+</main>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<!-- Edit a position -->
+<div class="scrim" id="pos-scrim">
+  <div class="modal">
+    <h2 id="pos-modal-title">Position</h2>
+    <input type="hidden" id="pos-id">
+    <label class="f" for="pos-title">Title</label>
+    <input type="text" id="pos-title" maxlength="80" placeholder="Treasurer">
+    <label class="f" for="pos-purpose">Purpose <span style="font-weight:500;color:var(--muted)">(one line)</span></label>
+    <input type="text" id="pos-purpose" maxlength="400">
+    <label class="f" for="pos-description">Job description</label>
+    <textarea id="pos-description" maxlength="8000" placeholder="Every month: …&#10;Can do without asking: …&#10;Needs board approval: …"></textarea>
+    <p class="hint">One line per item. "Every month:" at the start of a line shows in bold. Indent a line to make it a sub-item.</p>
+    <label class="f">Gets told about</label>
+    <div class="checks" id="pos-notices"></div>
+    <label class="f">Can use</label>
+    <label style="display:flex;gap:8px;font-size:13px;margin:2px 0 6px;cursor:pointer"><input type="checkbox" id="pos-full"> <b>Everything</b> (full access, like the President)</label>
+    <div class="checks" id="pos-scopes"></div>
+    <p class="hint">Getting an alert gives the screens needed to act on it.</p>
+    <div class="err" id="pos-err"></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger left" id="pos-delete" type="button">Remove this position</button>
+      <button class="btn" type="button" onclick="closeScrim('pos-scrim')">Cancel</button>
+      <button class="btn btn-primary" id="pos-save" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Who holds a position, and inviting someone into it -->
+<div class="scrim" id="hold-scrim">
+  <div class="modal">
+    <h2 id="hold-title">Who holds it</h2>
+    <input type="hidden" id="hold-id">
+    <div class="checks" id="hold-list" style="margin-top:12px"></div>
+    <p class="hint" style="margin-top:10px">Someone new? Invite them straight into this position. They get a text or email with a one-tap link.</p>
+    <details id="hold-invite" style="margin-top:8px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13.5px;color:var(--blue)">Invite someone new</summary>
+      <label class="f" for="iv-name">Their name</label>
+      <input type="text" id="iv-name" placeholder="Margaret Kowalski" autocomplete="off">
+      <label class="f" for="iv-phone">Their mobile number <span style="font-weight:500;color:var(--muted)">(we text the invite)</span></label>
+      <input type="tel" id="iv-phone" placeholder="(555) 123-4567" autocomplete="off">
+      <label class="f" for="iv-email">Or their email</label>
+      <input type="email" id="iv-email" placeholder="margaret@example.com" autocomplete="off">
+      <div style="margin-top:10px"><button class="btn btn-primary" id="iv-send" type="button">Send invite</button></div>
+      <div class="ok" id="iv-ok"></div>
+    </details>
+    <div class="err" id="hold-err"></div>
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="closeScrim('hold-scrim')">Cancel</button>
+      <button class="btn btn-primary" id="hold-save" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- A person's positions -->
+<div class="scrim" id="person-scrim">
+  <div class="modal">
+    <h2 id="person-title">Positions</h2>
+    <input type="hidden" id="person-id">
+    <div class="checks" id="person-list" style="margin-top:12px"></div>
+    <div class="err" id="person-err"></div>
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="closeScrim('person-scrim')">Cancel</button>
+      <button class="btn btn-primary" id="person-save" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit the spending rule -->
+<div class="scrim" id="rule-scrim">
+  <div class="modal">
+    <h2>Spending rule</h2>
+    <label class="f" for="rule-text">Shown above every position</label>
+    <textarea id="rule-text" maxlength="600" style="min-height:100px"></textarea>
+    <div class="err" id="rule-err"></div>
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="closeScrim('rule-scrim')">Cancel</button>
+      <button class="btn btn-primary" id="rule-save" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toast-msg"></span><span class="undo" id="toast-undo">Undo</span></div>
+
+<script src="/js/admin-flags.js"></script>
+<script src="/js/phone-format.js"></script>
+<script src="/js/focus-highlight.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const BOARD_URL = `${SUPABASE_URL}/functions/v1/board`;
+const ADMIN_URL = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function logout() {
+  // Only sign out on a confirmed bad token, never on a network blip.
+  try {
+    const t = token();
+    if (t) {
+      const vr = await fetch(ADMIN_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` }, body: JSON.stringify({ action: 'me' }) });
+      if (vr.status !== 401) return;
+    }
+  } catch (_) { return; }
+  ['poolside_tenant_token', 'poolside_tenant_user', 'poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+async function call(url, action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` }, body: JSON.stringify({ action, ...extra }) });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+const board = (action, extra) => call(BOARD_URL, action, extra);
+const admin = (action, extra) => call(ADMIN_URL, action, extra);
+function openScrim(id) { document.getElementById(id).classList.add('open'); }
+function closeScrim(id) { document.getElementById(id).classList.remove('open'); }
+function showErr(id, msg) { const e = document.getElementById(id); e.textContent = msg; e.classList.add('show'); }
+function hideErr(id) { document.getElementById(id).classList.remove('show'); }
+
+let B = null;   // the board function's `get`
+
+// "Member help: keyfob & gate" → "Help: keyfob & gate"; "Payments to check: …" → "Payments to check".
+function noticeChip(key) {
+  const label = (B.notices || {})[key] || key;
+  return label.startsWith('Member help: ') ? 'Help: ' + label.slice(13) : label.split(':')[0];
+}
+// One line per item; "Label:" in bold; indented lines are sub-items.
+function jobHtml(text) {
+  return String(text || '').split('\n').filter(l => l.trim()).map(line => {
+    const sub = /^\s+/.test(line);
+    const t = line.trim();
+    const m = t.match(/^([^:]{2,40}):\s(.*)$/);
+    const inner = m && !/^\d+\./.test(t) ? `<b>${escapeHtml(m[1])}:</b> ${escapeHtml(m[2])}` : escapeHtml(t);
+    return `<p class="${sub ? 'sub' : ''}">${inner}</p>`;
+  }).join('');
+}
+
+function render() {
+  const owner = B.is_owner;
+  const rule = document.getElementById('spending-rule');
+  rule.innerHTML = `<div class="pos-head"><div class="label">Spending rule for every position</div>${owner ? '<button class="btn btn-sm" onclick="editRule()">Edit</button>' : ''}</div>
+    <div class="text">${escapeHtml(B.spending_rule || 'None set.')}</div>`;
+
+  document.getElementById('positions').innerHTML = B.positions.map((p, i) => {
+    const who = p.holders.length
+      ? p.holders.map(h => `${escapeHtml(h.name)}${h.pending ? '<span class="pill">Invited</span>' : ''}`).join(', ')
+      : `<span class="vacant">Nobody yet.${p.vacant_goes_to && p.vacant_goes_to.length ? ` Its alerts go to ${escapeHtml(p.vacant_goes_to.join(', '))}.` : ''}</span>`;
+    const chips = [
+      ...(p.full_access ? ['<span class="chip full">Full access</span>'] : []),
+      ...(p.notices || []).map(n => `<span class="chip">${escapeHtml(noticeChip(n))}</span>`),
+    ].join('');
+    return `<div class="card" data-position="${escapeHtml(p.id)}">
+      <div class="pos-head">
+        <div>
+          <div class="pos-title">${escapeHtml(p.title)}</div>
+          <div class="pos-who">${who}</div>
+        </div>
+        ${owner ? `<div class="actions">
+          <button class="btn btn-sm" onclick="editHolders('${p.id}')">Who holds it</button>
+          <button class="btn btn-sm" onclick="editPosition('${p.id}')">Edit</button>
+          ${i > 0 ? `<button class="btn btn-sm" title="Move up" onclick="move('${p.id}', -1)">↑</button>` : ''}
+        </div>` : ''}
+      </div>
+      ${p.purpose ? `<div class="pos-purpose">${escapeHtml(p.purpose)}</div>` : ''}
+      ${chips ? `<div class="chips">${chips}</div>` : ''}
+      ${p.description ? `<details class="job"><summary>Job description</summary><div class="job-text">${jobHtml(p.description)}</div></details>` : ''}
+    </div>`;
+  }).join('') || '<div class="card">No positions yet.</div>';
+
+  document.getElementById('add-position').innerHTML = owner
+    ? '<button class="btn" onclick="editPosition(null)">+ Add a position</button>' : '';
+
+  const members = B.members;
+  document.getElementById('members').innerHTML = members.map(m => {
+    const titles = B.positions.filter(p => m.position_ids.includes(p.id)).map(p => p.title);
+    return `<div class="mrow">
+      <div>
+        <div class="nm">${escapeHtml(m.name)}${m.id === B.me ? ' <span style="font-weight:500;color:var(--muted);font-size:12.5px">(you)</span>' : ''}${m.pending ? '<span class="pill">Invited</span>' : ''}</div>
+        <div class="ttl">${titles.length ? escapeHtml(titles.join(' · ')) : (m.board_title ? escapeHtml(m.board_title) + ' · no position yet' : 'No position yet')}</div>
+      </div>
+      ${owner ? `<div class="actions">
+        <button class="btn btn-sm" onclick="editPerson('${m.id}')">Positions</button>
+        ${m.id !== B.me ? `<button class="btn btn-sm btn-danger" onclick="removePerson('${m.id}')">Remove from the board</button>` : ''}
+      </div>` : ''}
+    </div>`;
+  }).join('') || '<div style="color:var(--muted)">Nobody yet.</div>';
+
+  const staff = B.staff || [];
+  document.getElementById('staff').innerHTML = staff.map(m => `<div class="mrow">
+      <div class="nm">${escapeHtml(m.name)}${m.pending ? '<span class="pill">Invited</span>' : ''}</div>
+      ${owner ? `<div class="actions"><button class="btn btn-sm btn-danger" onclick="removePerson('${m.id}', true)">Remove</button></div>` : ''}
+    </div>`).join('')
+    + (staff.length ? '' : '<div style="color:var(--muted);font-size:13.5px">None yet.</div>')
+    + (owner ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;color:var(--blue)">Add a lifeguard or gate login</summary>
+        <div class="modal" style="box-shadow:none;padding:6px 0 0;max-width:none">
+          <label class="f" for="st-name">Name</label><input type="text" id="st-name" placeholder="Gate iPad, or the lifeguard's name" autocomplete="off">
+          <label class="f" for="st-phone">Mobile number <span style="font-weight:500;color:var(--muted)">(we text the invite)</span></label><input type="tel" id="st-phone" placeholder="(555) 123-4567" autocomplete="off">
+          <label class="f" for="st-email">Or email</label><input type="email" id="st-email" autocomplete="off">
+          <div style="margin-top:10px"><button class="btn btn-primary" id="st-send" type="button" onclick="inviteStaff()">Send invite</button></div>
+          <div class="err" id="st-err"></div><div class="ok" id="st-ok"></div>
+        </div></details>` : '');
+}
+
+async function inviteStaff() {
+  const name = document.getElementById('st-name').value.trim();
+  const phone = document.getElementById('st-phone').value.trim();
+  const email = document.getElementById('st-email').value.trim().toLowerCase();
+  hideErr('st-err');
+  if (!name) return showErr('st-err', 'Add a name.');
+  if (phone.replace(/\D/g, '').length < 10 && !email.includes('@')) return showErr('st-err', 'Add a mobile number or an email.');
+  const btn = document.getElementById('st-send'); btn.disabled = true;
+  try {
+    const channel = phone.replace(/\D/g, '').length >= 10 ? 'sms' : 'email';
+    const r = await admin('invite_admin', { channel, display_name: name, roles: ['gate_attendant'], phone_e164: phone || undefined, email: email || undefined });
+    if (!r.ok) throw new Error(r.error || 'Invite failed');
+    if (!r.sent) {
+      const ok = document.getElementById('st-ok');
+      ok.innerHTML = `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`;
+      ok.classList.add('show');
+      return;
+    }
+    await load();
+  } catch (e) { showErr('st-err', e.message); } finally { btn.disabled = false; }
+}
+
+// ── Edit a position ───────────────────────────────────────────────────
+function editPosition(id) {
+  const p = id ? B.positions.find(x => x.id === id) : { title: '', purpose: '', description: '', notices: [], scopes: [], full_access: false, holders: [] };
+  hideErr('pos-err');
+  document.getElementById('pos-modal-title').textContent = id ? `Edit ${p.title}` : 'Add a position';
+  document.getElementById('pos-id').value = id || '';
+  document.getElementById('pos-title').value = p.title || '';
+  document.getElementById('pos-purpose').value = p.purpose || '';
+  document.getElementById('pos-description').value = p.description || '';
+  document.getElementById('pos-full').checked = !!p.full_access;
+  document.getElementById('pos-notices').innerHTML = Object.entries(B.notices).map(([k, label]) =>
+    `<label><input type="checkbox" value="${k}" ${(p.notices || []).includes(k) ? 'checked' : ''}> ${escapeHtml(label)}</label>`).join('');
+  document.getElementById('pos-scopes').innerHTML = Object.entries(B.screens).map(([k, label]) =>
+    `<label><input type="checkbox" value="${k}" ${(p.scopes || []).includes(k) ? 'checked' : ''}> ${escapeHtml(label)}</label>`).join('');
+  const del = document.getElementById('pos-delete');
+  del.style.display = id && !p.holders.length ? '' : 'none';
+  openScrim('pos-scrim');
+}
+document.getElementById('pos-save').addEventListener('click', async () => {
+  const btn = document.getElementById('pos-save'); hideErr('pos-err'); btn.disabled = true;
+  try {
+    const r = await board('save_position', { position: {
+      id: document.getElementById('pos-id').value || null,
+      title: document.getElementById('pos-title').value,
+      purpose: document.getElementById('pos-purpose').value,
+      description: document.getElementById('pos-description').value,
+      full_access: document.getElementById('pos-full').checked,
+      notices: [...document.querySelectorAll('#pos-notices input:checked')].map(c => c.value),
+      scopes: [...document.querySelectorAll('#pos-scopes input:checked')].map(c => c.value),
+    } });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    closeScrim('pos-scrim'); await load();
+  } catch (e) { showErr('pos-err', e.message); } finally { btn.disabled = false; }
+});
+document.getElementById('pos-delete').addEventListener('click', async () => {
+  const id = document.getElementById('pos-id').value;
+  const p = B.positions.find(x => x.id === id);
+  if (!p || !confirm(`Remove the ${p.title} position?`)) return;
+  const r = await board('delete_position', { id });
+  if (!r.ok) { showErr('pos-err', r.error || 'Could not remove it'); return; }
+  closeScrim('pos-scrim'); await load();
+});
+async function move(id, dir) {
+  const ids = B.positions.map(p => p.id);
+  const i = ids.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  await board('reorder', { ids }); await load();
+}
+
+// ── Who holds a position ──────────────────────────────────────────────
+function editHolders(id) {
+  const p = B.positions.find(x => x.id === id);
+  hideErr('hold-err'); document.getElementById('iv-ok').classList.remove('show');
+  document.getElementById('hold-title').textContent = `Who holds ${p.title}`;
+  document.getElementById('hold-id').value = id;
+  const held = new Set(p.holders.map(h => h.id));
+  document.getElementById('hold-list').innerHTML = B.members.map(m =>
+    `<label><input type="checkbox" value="${m.id}" ${held.has(m.id) ? 'checked' : ''}> ${escapeHtml(m.name)}</label>`).join('');
+  document.getElementById('hold-invite').open = !B.members.length;
+  openScrim('hold-scrim');
+}
+document.getElementById('hold-save').addEventListener('click', async () => {
+  const btn = document.getElementById('hold-save'); hideErr('hold-err'); btn.disabled = true;
+  try {
+    const r = await board('set_holders', {
+      position_id: document.getElementById('hold-id').value,
+      admin_ids: [...document.querySelectorAll('#hold-list input:checked')].map(c => c.value),
+    });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    closeScrim('hold-scrim'); await load();
+  } catch (e) { showErr('hold-err', e.message); } finally { btn.disabled = false; }
+});
+document.getElementById('iv-send').addEventListener('click', async () => {
+  const name = document.getElementById('iv-name').value.trim();
+  const phone = document.getElementById('iv-phone').value.trim();
+  const email = document.getElementById('iv-email').value.trim().toLowerCase();
+  hideErr('hold-err');
+  if (!name) return showErr('hold-err', 'Add their name.');
+  if (phone.replace(/\D/g, '').length < 10 && !email.includes('@')) return showErr('hold-err', 'Add a mobile number or an email.');
+  const btn = document.getElementById('iv-send'); btn.disabled = true;
+  try {
+    const channel = phone.replace(/\D/g, '').length >= 10 ? 'sms' : 'email';
+    const r = await admin('invite_admin', {
+      channel, display_name: name, roles: ['custom'], scopes: [],
+      phone_e164: phone || undefined, email: email || undefined,
+      position_ids: [document.getElementById('hold-id').value],
+    });
+    if (!r.ok) throw new Error(r.error || 'Invite failed');
+    const ok = document.getElementById('iv-ok');
+    ok.innerHTML = r.sent
+      ? `<b>Invite sent</b> by ${channel === 'sms' ? 'text' : 'email'}. ${escapeHtml(name)} holds this position now.`
+      : `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`;
+    ok.classList.add('show');
+    for (const f of ['iv-name', 'iv-phone', 'iv-email']) document.getElementById(f).value = '';
+    await load();
+    // Keep the dialog open and current, so the link stays on screen.
+    const id = document.getElementById('hold-id').value;
+    const held = new Set(B.positions.find(x => x.id === id).holders.map(h => h.id));
+    document.getElementById('hold-list').innerHTML = B.members.map(m =>
+      `<label><input type="checkbox" value="${m.id}" ${held.has(m.id) ? 'checked' : ''}> ${escapeHtml(m.name)}</label>`).join('');
+  } catch (e) { showErr('hold-err', e.message); } finally { btn.disabled = false; }
+});
+
+// ── A person's positions ──────────────────────────────────────────────
+function editPerson(id) {
+  const m = B.members.find(x => x.id === id);
+  hideErr('person-err');
+  document.getElementById('person-title').textContent = `${m.name}'s positions`;
+  document.getElementById('person-id').value = id;
+  document.getElementById('person-list').innerHTML = B.positions.map(p =>
+    `<label><input type="checkbox" value="${p.id}" ${m.position_ids.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.title)}</label>`).join('');
+  openScrim('person-scrim');
+}
+document.getElementById('person-save').addEventListener('click', async () => {
+  const id = document.getElementById('person-id').value;
+  const m = B.members.find(x => x.id === id);
+  const want = new Set([...document.querySelectorAll('#person-list input:checked')].map(c => c.value));
+  const btn = document.getElementById('person-save'); hideErr('person-err'); btn.disabled = true;
+  try {
+    // Additions first, so taking someone out of President after giving it
+    // to them elsewhere never trips the full-access check in between.
+    const changes = B.positions.filter(p => want.has(p.id) !== m.position_ids.includes(p.id))
+      .sort((a, b) => Number(want.has(b.id)) - Number(want.has(a.id)));
+    for (const p of changes) {
+      const holders = p.holders.map(h => h.id).filter(x => x !== id);
+      if (want.has(p.id)) holders.push(id);
+      const r = await board('set_holders', { position_id: p.id, admin_ids: holders });
+      if (!r.ok) throw new Error(r.error || 'Save failed');
+    }
+    closeScrim('person-scrim'); await load();
+  } catch (e) { showErr('person-err', e.message); await load(); } finally { btn.disabled = false; }
+});
+
+let undoTimer = null;
+async function removePerson(id, isStaff) {
+  const m = (isStaff ? B.staff : B.members).find(x => x.id === id);
+  if (!m || !confirm(isStaff ? `Remove ${m.name}'s login?`
+    : `Remove ${m.name} from the board? Their positions' alerts go to whoever else holds them, or the President.`)) return;
+  const r = await admin('deactivate_admin', { id });
+  if (!r.ok) { alert(r.error || 'Could not remove them'); return; }
+  await load();
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = `Removed ${m.name}.`;
+  toast.classList.add('open');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => toast.classList.remove('open'), 30000);
+  document.getElementById('toast-undo').onclick = async () => {
+    toast.classList.remove('open'); clearTimeout(undoTimer);
+    const u = await admin('reactivate_admin', { id });
+    if (!u.ok) alert('Could not undo: ' + (u.error || 'unknown error'));
+    await load();
+  };
+}
+
+// ── Spending rule ─────────────────────────────────────────────────────
+function editRule() {
+  hideErr('rule-err');
+  document.getElementById('rule-text').value = B.spending_rule || '';
+  openScrim('rule-scrim');
+}
+document.getElementById('rule-save').addEventListener('click', async () => {
+  const r = await board('set_spending_rule', { text: document.getElementById('rule-text').value });
+  if (!r.ok) { showErr('rule-err', r.error || 'Save failed'); return; }
+  closeScrim('rule-scrim'); await load();
+});
+
+async function load() {
+  const r = await board('get');
+  if (!r.ok) throw new Error(r.error || 'Could not load the board');
+  B = r;
+  render();
+}
+
+(async () => {
+  try {
+    const me = await admin('me');
+    if (!me.ok) { logout(); return; }
+    document.getElementById('whoami').textContent = me.user?.display_name || me.user?.email || '';
+    await load();
+  } catch (e) {
+    document.getElementById('positions').innerHTML = `<div class="card" style="color:var(--red)">Couldn't load: ${escapeHtml(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

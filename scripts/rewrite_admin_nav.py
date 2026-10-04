@@ -77,7 +77,7 @@ PAGE_TO_TAB = {
     "audit.html":          "insights",
     # Settings — configuration and the club's account with Poolside
     "settings.html":       "settings",
-    "admins.html":         "settings",
+    "board.html":          "settings",
     "billing.html":        "settings",
     # Deliberately no active tab: reached from the dashboard, a FAB, or an
     # emailed link rather than from the nav.

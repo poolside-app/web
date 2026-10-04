@@ -97,6 +97,30 @@ console.log('K1 · positions (offline)');
       && /30 new or returning families signed up by June 1\. \(2026 had 27\.\)/.test(mig) && /Under \$50, go ahead/.test(mig), 'no migration');
 }
 
+// ── K2: one Board page (offline) ────────────────────────────────────────
+console.log('\nK2 · the Board page (offline)');
+{
+  const fnSrc = exists('supabase/functions/board/index.ts') ? read('supabase/functions/board/index.ts') : '';
+  check('K2: the board function lists positions and lets the president change them',
+    ['get', 'save_position', 'delete_position', 'reorder', 'set_holders', 'set_spending_rule'].every(a => fnSrc.includes(`action === '${a}'`))
+      && /isOwner/.test(fnSrc), 'missing actions');
+  check('K2: changing positions keeps someone with full access', /full access/i.test(between(fnSrc, "action === 'set_holders'", "action === '")) , '');
+  const page = exists('club/admin/board.html') ? read('club/admin/board.html') : '';
+  check('K2: the Board page has the spending rule, each position, its alerts and job description',
+    /id="spending-rule"/.test(page) && /id="positions"/.test(page) && /notices/.test(page) && /description/.test(page), 'no board page');
+  check('K2: the president can edit a position, assign holders, and invite someone into it',
+    /save_position/.test(page) && /set_holders/.test(page) && /invite_admin/.test(page) && /position_ids/.test(page), '');
+  const admins = read('club/admin/admins.html');
+  check('K2: the old Admins & roles page sends people to the Board page', /location\.replace\(['"]\/club\/admin\/board\.html/.test(admins) && admins.length < 3000, '');
+  const subtabs = read('js/admin-subtabs.js');
+  check('K2: Settings shows Board instead of Admins', /label: 'Board',\s*href: '\/club\/admin\/board\.html'/.test(subtabs) && !/admins\.html/.test(subtabs), '');
+  const auth = read('supabase/functions/_shared/auth.ts');
+  check('K2: a new position applies right away, not after the sign-in token renews',
+    /select\('active, role_template, roles, scopes, is_super'\)/.test(between(auth, 'if (jwtComplete) {', '\n  }\n')), 'permissions read from the token');
+  const taa = read('supabase/functions/tenant_admin_auth/index.ts');
+  check('K2: an invite can put someone straight into a position', /position_ids/.test(between(taa, "action === 'invite_admin'", "action === 'update_admin_title'")), '');
+}
+
 if (live('K1')) {
   console.log('\nK1 · live (database reads only)');
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
@@ -108,6 +132,49 @@ if (live('K1')) {
   check('K1: Doug holds President', /Doug/.test(pres?.display_name || ''), short(pres));
   const [{ rule }] = await sql(`select value->'board'->>'spending_rule' as rule from settings where tenant_id = '${club.id}'`);
   check('K1: the spending rule is set', rule === 'Under $50, go ahead. $50 or more needs board approval.', rule);
+}
+
+if (live('K2')) {
+  console.log('\nK2 · live (about 12 calls; temporary board logins, removed afterward)');
+  const { makeTempAdmin, purgeTempAdmins } = await import('./lib/testdata.mjs');
+  const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
+  const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
+  const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates', role_template: 'owner', scopes: [] });
+  const [treas] = await sql(`select id, notices from board_positions where tenant_id = '${club.id}' and slug = 'treasurer'`);
+  const started = new Date().toISOString();
+  try {
+    const got = await fn('board', 'get', ownerTok);
+    check('K2: the president sees every position and can edit', got.ok && got.is_owner && got.positions?.length === 8 && Array.isArray(got.staff), short({ ok: got.ok, n: got.positions?.length, err: got.error }));
+    const a = await makeTempAdmin(sql, club.id, 'K2 Treasurer', [], 'custom');
+    // A token made before they had a position: role and screens inside it are old.
+    const aTok = jwt({ sub: a, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates', role_template: 'custom', scopes: [] });
+    const before = await fn('payments_admin', 'codes_list', aTok);
+    const set = await fn('board', 'set_holders', ownerTok, { position_id: treas.id, admin_ids: [a] });
+    const [row] = await sql(`select board_title, role_template, scopes from admin_users where id = '${a}'`);
+    check('K2: holding Treasurer gives the title and the Treasurer\'s screens', set.ok && row.board_title === 'Treasurer' && row.scopes.includes('payments') && row.scopes.includes('applications'), short(row));
+    const after = await fn('payments_admin', 'codes_list', aTok);
+    check('K2: it applies right away, even with their old sign-in token', before.status === 403 && after.ok, short({ before: before.status, after: after.status }));
+    const notMine = await fn('board', 'save_position', aTok, { position: { title: 'Sneaky' } });
+    check('K2: only the president changes positions', notMine.status === 403, short(notMine));
+    const pres = (got.positions || []).find(p => p.slug === 'president');
+    const noPres = await fn('board', 'set_holders', ownerTok, { position_id: pres?.id, admin_ids: [] });
+    check('K2: the last person with full access can\'t be taken out', noPres.status === 409 && /full access/.test(noPres.error || ''), short(noPres));
+    const edit = await fn('board', 'save_position', ownerTok, { position: { id: treas.id, title: 'Treasurer', notices: [...treas.notices, 'rentals'],
+      scopes: ['payments', 'applications', 'households', 'renewals', 'tiers', 'audit'], purpose: (got.positions.find(p => p.id === treas.id) || {}).purpose,
+      description: (got.positions.find(p => p.id === treas.id) || {}).description } });
+    const [row2] = await sql(`select scopes from admin_users where id = '${a}'`);
+    check('K2: editing a position updates the people holding it', edit.ok && row2.scopes.includes('parties'), short({ edit: edit.error, scopes: row2.scopes }));
+    const made = await fn('board', 'save_position', ownerTok, { position: { title: 'SimTest Pool Captain', purpose: 'Test', notices: ['help_grounds'] } });
+    const del = await fn('board', 'delete_position', ownerTok, { id: made.position?.id });
+    check('K2: the president can add and remove a position', made.ok && made.position?.slug === 'simtest_pool_captain' && del.ok, short({ made: made.error, del: del.error }));
+  } finally {
+    await sql(`update board_positions set notices = array[${treas.notices.map(n => `'${n}'`).join(',')}]::text[] where id = '${treas.id}'`);
+    await sql(`delete from board_positions where tenant_id = '${club.id}' and slug like 'simtest%'`);
+    await sql(`delete from audit_log where tenant_id = '${club.id}' and kind like 'board_position.%' and created_at >= '${started}'`);
+    await purgeTempAdmins(sql, club.id);
+    const [n] = await sql(`select count(*)::int as n from board_position_holders h join board_positions p on p.id = h.position_id where p.tenant_id = '${club.id}' and p.slug = 'treasurer'`);
+    check('K2: Bishop is back as it was', n.n === 0, short(n));
+  }
 }
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

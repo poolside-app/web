@@ -175,6 +175,7 @@ async function getJwtKey(): Promise<CryptoKey> {
 type TenantAdminPayload = {
   sub: string; kind: 'tenant_admin'; tid: string; slug: string; exp: number;
   impersonated_by?: string; synthetic?: boolean;
+  role_template?: string; scopes?: string[];
 };
 
 // Predefined role templates. The `owner` template is special — it skips
@@ -698,7 +699,12 @@ Deno.serve(async (req) => {
     if (!payload.impersonated_by && payload.exp && tenant.slug) {
       const remaining = (payload.exp as number) * 1000 - Date.now();
       const NINETY_THREE_DAYS_MS = 93 * 24 * 60 * 60 * 1000;
-      if (remaining < NINETY_THREE_DAYS_MS) {
+      // Also renew when their access changed since the token was made (a new
+      // board position), so the new screens apply on their next page.
+      const sameScopes = (a: unknown, b: unknown) => JSON.stringify([...((a as string[]) ?? [])].sort()) === JSON.stringify([...((b as string[]) ?? [])].sort());
+      const changed = (payload.role_template !== undefined && payload.role_template !== (user.role_template ?? 'owner'))
+        || (payload.scopes !== undefined && !sameScopes(payload.scopes, user.scopes));
+      if (remaining < NINETY_THREE_DAYS_MS || changed) {
         try {
           renewed_token = await signToken(payload.sub, payload.tid, tenant.slug, {
             role_template: user.role_template ?? 'owner',
@@ -860,11 +866,24 @@ Deno.serve(async (req) => {
     // board_title — display-only label distinct from role_template
     // (permissions). Free text but the UI provides a dropdown of common
     // pool-club titles.
-    const board_title = (() => {
+    let board_title = (() => {
       const s = String(body.board_title ?? '').trim();
       return s ? s.slice(0, 60) : null;
     })();
-    const roleLabel = ROLE_TEMPLATES[role_template]?.label ?? role_template;
+    let roleLabel = ROLE_TEMPLATES[role_template]?.label ?? role_template;
+
+    // Invited straight into board positions (the Board page, PLAN.md K):
+    // their title, screens and full access come from the positions.
+    const positionIds = Array.isArray(body.position_ids) ? [...new Set((body.position_ids as unknown[]).map(String))] : [];
+    if (positionIds.length) {
+      const { data: held } = await sb.from('board_positions').select('id, slug, title, notices, scopes, full_access, sort')
+        .eq('tenant_id', payload.tid).in('id', positionIds);
+      if (!held || held.length !== positionIds.length) return jsonResponse({ ok: false, error: 'Position not found' }, 404);
+      const { loginFromPositions } = await import('../_shared/positions.ts');
+      const login = loginFromPositions(held);
+      role_template = login.role_template; roles = login.roles; scopes = login.scopes;
+      board_title = login.board_title; roleLabel = login.board_title || roleLabel;
+    }
 
     // Tenant — needed to build the activation link's subdomain URL.
     const { data: tnt } = await sb.from('tenants').select('slug, display_name').eq('id', payload.tid).maybeSingle();
@@ -909,6 +928,12 @@ Deno.serve(async (req) => {
       }).select('id').single();
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
       adminId = data.id;
+    }
+    if (positionIds.length) {
+      await sb.from('board_position_holders').upsert(
+        positionIds.map(id => ({ position_id: id, admin_user_id: adminId, tenant_id: payload.tid })),
+        { onConflict: 'position_id,admin_user_id' },
+      );
     }
 
     try {

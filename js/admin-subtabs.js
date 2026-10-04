@@ -70,7 +70,7 @@
     // reach its own billing page.
     settings: [
       { key: 'settings', label: 'Settings', href: '/club/admin/settings.html', scope: 'settings' },
-      { key: 'admins',   label: 'Admins',   href: '/club/admin/admins.html',   scope: 'admins'   },
+      { key: 'board',    label: 'Board',    href: '/club/admin/board.html',    scope: ''         },  // every board member reads it; the president edits
       { key: 'plan',     label: 'Plan',     href: '/club/admin/billing.html',  scope: 'settings' },
     ],
   };
@@ -87,7 +87,7 @@
     'announcements.html': 'content', 'photos.html': 'content',
     'board-meetings.html': 'content', 'member-help.html': 'content',
     'audit.html': 'insights',
-    'settings.html': 'settings', 'admins.html': 'settings', 'billing.html': 'settings',
+    'settings.html': 'settings', 'board.html': 'settings', 'billing.html': 'settings',
   };
 
   const file = (window.location.pathname.split('/').pop() || 'index.html');

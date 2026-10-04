@@ -122,18 +122,19 @@ async function resolveRole(
     (payload.role_template !== undefined || payload.roles !== undefined) &&
     payload.scopes !== undefined;
   if (jwtComplete) {
-    // Still need to check `active` — JWT can't carry that safely (would
-    // need rotation on deactivate). Quick targeted query.
+    // `active` has to come from the database: a JWT can't be revoked. So do
+    // the role and screens, read in the same query, so a changed board
+    // position applies on the next call rather than when the token renews.
     const { data: row } = await sb.from('admin_users')
-      .select('active').eq('id', payload.sub).maybeSingle();
+      .select('active, role_template, roles, scopes, is_super').eq('id', payload.sub).maybeSingle();
     if (!row || !row.active) return { active: false, isSuper: false, isOwner: false, scopes: [] };
-    const rolesArr = Array.isArray(payload.roles) ? payload.roles : [];
-    const isOwner = payload.role_template === 'owner' || rolesArr.includes('owner');
+    const rolesArr = (row.roles as string[] | null) ?? [];
+    const isOwner = ((row.role_template as string | null) ?? 'owner') === 'owner' || rolesArr.includes('owner');
     return {
       active: true,
-      isSuper: !!payload.is_super,
+      isSuper: !!row.is_super,
       isOwner,
-      scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
+      scopes: (row.scopes as string[] | null) ?? [],
     };
   }
 
