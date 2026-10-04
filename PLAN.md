@@ -347,6 +347,32 @@ Doug chose all of these. Rule: every setting is edited in exactly one place, and
 3. J (consolidate).
 4. H4–H7 (plans, discounts and referrals, which land in J8's Money setup page).
 
+### K. Board positions, notifications by position, and the bylaws (Doug, 10/4)
+Doug's ask: the club's board positions with job descriptions, editable during club setup and any time after, and notifications go to whoever holds the position. Plus a place for the bylaws, always public, next to the minutes.
+
+Doug decided (10/4):
+- Positions replace roles: a position decides the person's screens and alerts.
+- Add a member help topic "Grounds, bathrooms & cleaning", going to the Grounds Director.
+- Documents: just the bylaws, public, with old versions kept.
+- The public "Bylaws & board minutes" page shows the board: names and positions. Job descriptions stay board-only.
+
+What's there today: fixed "roles" (Board chair, Treasurer, Membership chair, Volunteer coordinator, Communications, Secretary) that only decide which screens someone sees, a free-text title, and alerts routed by screen permission. Member help topics are assigned to people separately, on the Member help page. The public "Bylaws & board minutes" page exists but has no bylaws (the documents section was removed in May).
+
+Steps (each: failing test first, then the fix, then proof):
+- **✅ K1. Positions in the database.** Each position has a title, a one-line purpose, the full job description (editable text), what it gets told about, and what screens it can use. One person can hold several positions (the Vice-President is a second title), and a position can have more than one holder. A club-wide spending rule shows above them all ("Under $50, go ahead. $50 or more needs board approval."). Bishop starts with Doug's seven, word for word. New clubs start with the same seven without the Bishop-only details (bylaw article numbers, 2027 goals, the 170 homes), ready to edit. Doug is set as President. Kristin keeps her current access until Doug gives her a position.
+- **K2. One Board page** under Settings, replacing "Admins & roles". The spending rule, then each position: who holds it, what it's told about, and its job description. The president edits a position's text, notifications and screens, and assigns someone or invites a new person straight into it. A person's title and access follow their positions. There's always someone with full access.
+- **K3. Notifications follow positions.** Each kind of alert belongs to a position. The dashboard task and phone pop-up go to whoever holds it now. An empty position's alerts go to the President, and to the Vice-President if that's empty too. Reassigning a position moves its open tasks with it. Member help topics move here from the Member help page. Gate alerts go to the Facilities Director. Board replies to members are signed with name and position. Proposed for Bishop:
+  - President: club business (Poolside plan and billing), member help "something else", and anything whose position is empty.
+  - Treasurer: new signups and family changes, payments to check (Venmo, refunds, disputes, failed cards, lapsed plans), referral rewards to approve, member help "membership & dues".
+  - Facilities Director: gate and keyfob alerts, member help "keyfob & gate" and "pool problem".
+  - Grounds Director: member help "grounds, bathrooms & cleaning" (new topic).
+  - Membership & Marketing Director: photos to approve.
+  - Events & Rentals Director: party and rental requests and their payments, member help "parties & events".
+  - Secretary and Vice-President: nothing on their own today. Meeting follow-ups already go to whoever they're assigned.
+- **K4. "My job" on the dashboard.** Each board member sees their position, its purpose and the full description, so every director has their list in front of them.
+- **K5. Setup checklist.** "Invite the rest of your board" becomes "Set up your board positions", opening the Board page. It's done when another board member holds a position.
+- **K6. Bylaws.** The President or Secretary uploads the bylaws PDF on the Board minutes page. It shows at the top of the public "Bylaws & board minutes" page, always, and the member app links there. Replacing it keeps the old versions with their dates. The same public page lists the board: names and positions.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

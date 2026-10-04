@@ -19,6 +19,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { STARTER_POSITIONS, SPENDING_RULE } from '../_shared/positions.ts';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 import { validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
 
@@ -258,8 +259,25 @@ Deno.serve(async (req) => {
         { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },
         { slug: 'senior', label: 'Senior',  price_cents: 25000, description: '65+' },
       ],
+      board: { spending_rule: SPENDING_RULE },
     },
   });
+
+  // ── Seed the board positions (PLAN.md K) ──────────────────────────────
+  // A starter set to edit on the Board page, with the founder as President.
+  // Positions decide each board member's screens and alerts.
+  {
+    const { data: seeded } = await sb.from('board_positions').insert(
+      STARTER_POSITIONS.map((p, i) => ({
+        tenant_id: tenant.id, sort: i, slug: p.slug, title: p.title, purpose: p.purpose,
+        description: p.description, notices: p.notices, scopes: p.scopes, full_access: !!p.full_access,
+      })),
+    ).select('id, slug');
+    const president = (seeded ?? []).find(p => p.slug === 'president');
+    if (president) {
+      await sb.from('board_position_holders').insert({ position_id: president.id, admin_user_id: admin.id, tenant_id: tenant.id });
+    }
+  }
 
   // ── Seed default policies (BE parity: 5 placeholder texts the club edits) ─
   await sb.from('policies').insert([
