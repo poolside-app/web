@@ -160,7 +160,7 @@ const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const HELP_URL = `${SUPABASE_URL}/functions/v1/help_requests`;
 const ME_URL   = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const STATUS = { open: 'New', in_progress: 'Being handled', solved: 'Solved' };
-const TOPIC_ICON = { keyfob: '🔑', membership: '🪪', parties: '🎉', facility: '🛠️', other: '💬' };
+const TOPIC_ICON = { keyfob: '🔑', membership: '🪪', parties: '🎉', facility: '🛠️', grounds: '🧹', other: '💬' };
 
 let VIEW = 'open';
 let TOPICS = null;       // { topics, labels, board, mine, is_owner }
@@ -206,51 +206,26 @@ const ago = iso => {
 const boardName = id => (TOPICS && TOPICS.board.find(b => b.id === id) || {}).name;
 
 // ── Who handles what ─────────────────────────────────────────────────
+// Each topic goes to whoever holds the board position that gets it, set on
+// the Board page (PLAN.md K3). Read-only here.
 async function loadTopics() {
   const r = await call('topics');
   if (!r.ok) return;
   TOPICS = r;
   const card = document.getElementById('topics-card');
-  const keys = ['keyfob', 'membership', 'parties', 'facility'];
-  const holder = t => r.topics[t] ? r.topics[t].name : 'The president';
-  if (r.is_owner) {
-    const opts = sel => `<option value="">The president (you)</option>` + r.board.filter(b => !b.is_owner || b.id === sel)
-      .map(b => `<option value="${escapeAttr(b.id)}" ${b.id === sel ? 'selected' : ''}>${escapeHtml(b.name)}${b.board_title ? ' — ' + escapeHtml(b.board_title) : ''}</option>`).join('');
-    document.getElementById('topics-body').innerHTML = keys.map(t => `
-      <div class="topic-row">
-        <label for="topic-${t}" style="font-size:13.5px;font-weight:600">${TOPIC_ICON[t]} ${escapeHtml(r.labels[t])}</label>
-        <select id="topic-${t}">${opts(r.topics[t] && r.topics[t].admin_id)}</select>
-      </div>`).join('') + `
-      <div class="topic-row"><span style="font-size:13.5px;font-weight:600">${TOPIC_ICON.other} ${escapeHtml(r.labels.other)}</span><span style="font-size:13px;color:var(--muted)">Always the president</span></div>
-      <p style="font-size:12.5px;color:var(--muted);margin:12px 0 10px">Missing someone? Invite them from <a href="/club/admin/admins.html">Admins</a>. They'll need pop-ups turned on, from their dashboard, to hear about new questions.</p>
-      <button class="btn btn-sm" onclick="saveTopics()">Save</button>`;
-    const unset = keys.filter(t => !r.topics[t]).length;
-    document.getElementById('topics-summary').textContent = unset
-      ? `Who handles what · ${unset} topic${unset === 1 ? '' : 's'} still coming to you`
-      : 'Who handles what';
-    if (unset === keys.length) card.open = true;
-  } else {
-    document.getElementById('topics-body').innerHTML = keys.map(t => `
-      <div class="topic-row"><span style="font-size:13.5px;font-weight:600">${TOPIC_ICON[t]} ${escapeHtml(r.labels[t])}</span><span style="font-size:13.5px">${escapeHtml(holder(t))}</span></div>`).join('')
-      + `<p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">The president decides who handles each topic.</p>`;
-    document.getElementById('topics-summary').textContent = r.mine.length
-      ? `You handle: ${r.mine.map(t => r.labels[t]).join(', ')}`
-      : 'Who handles what';
-  }
+  const keys = ['keyfob', 'membership', 'parties', 'facility', 'grounds', 'other'];
+  const who = t => r.topics[t]
+    ? `${escapeHtml(r.topics[t].name)}${r.topics[t].position ? ` <span style="color:var(--muted)">(${escapeHtml(r.topics[t].position)})</span>` : ''}`
+    : 'The president';
+  document.getElementById('topics-body').innerHTML = keys.map(t => `
+    <div class="topic-row"><span style="font-size:13.5px;font-weight:600">${TOPIC_ICON[t] || '💬'} ${escapeHtml(r.labels[t])}</span><span style="font-size:13.5px">${who(t)}</span></div>`).join('')
+    + `<p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">Each topic goes to whoever holds its board position. ${r.is_owner ? 'Change it' : 'The president changes it'} on the <a href="/club/admin/board.html">Board page</a>. They'll need pop-ups turned on, from their dashboard, to hear about new questions.</p>`;
+  document.getElementById('topics-summary').textContent = r.mine.length
+    ? `You handle: ${r.mine.map(t => r.labels[t]).join(', ')}`
+    : 'Who handles what';
   card.style.display = '';
 }
-async function saveTopics() {
-  const topics = {};
-  for (const t of ['keyfob', 'membership', 'parties', 'facility']) topics[t] = document.getElementById(`topic-${t}`).value || null;
-  try {
-    const r = await call('set_topics', { topics });
-    if (!r.ok) throw new Error(r.error || 'Could not save');
-    toast('Saved. New questions go to the people you picked.');
-    loadTopics();
-  } catch (e) { toast(e.message, 'err'); }
-}
 
-// ── List ─────────────────────────────────────────────────────────────
 async function loadList() {
   const host = document.getElementById('list');
   try {

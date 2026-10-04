@@ -17,6 +17,7 @@ export const TOPIC_LABELS = {
   membership: 'Membership & dues',
   parties: 'Parties & events',
   facility: 'Pool problem',
+  grounds: 'Grounds, bathrooms & cleaning',   // PLAN.md K3: the Grounds Director
   other: 'Something else',
 } as const;
 export type Topic = keyof typeof TOPIC_LABELS;

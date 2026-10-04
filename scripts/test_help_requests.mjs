@@ -70,8 +70,9 @@ try {
     && h.canSeeHelpRequest({ assigned_admin_id: 'fob' }, { id: 'doug', isOwner: true }));
   check('other board members can\'t', !h.canSeeHelpRequest({ assigned_admin_id: 'fob' }, { id: 'party', isOwner: false })
     && !h.canSeeHelpRequest({ assigned_admin_id: null }, { id: 'party', isOwner: false }));
-  check('five topics, "Something else" going to the president',
-    Object.keys(h.TOPIC_LABELS).join(',') === 'keyfob,membership,parties,facility,other');
+  // Grounds added 2026-10-04 (PLAN.md K3), for the Grounds Director.
+  check('six topics, including grounds, with "Something else" last',
+    Object.keys(h.TOPIC_LABELS).join(',') === 'keyfob,membership,parties,facility,grounds,other');
 } catch (e) {
   check('_shared/help.ts exists', false, e.message.split('\n')[0]);
 }
@@ -85,7 +86,7 @@ console.log('\nMember app (E3, offline)');
   const app = read('m/index.html');
   check('the member home has an Ask the board button and a list of their questions',
     /Ask the board/.test(app) && /help_requests/.test(app) && /function openHelp\(/.test(app) && /id="help-list"/.test(app));
-  check('the topic picker has all five topics', ['keyfob', 'membership', 'parties', 'facility', 'other']
+  check('the topic picker has all six topics', ['keyfob', 'membership', 'parties', 'facility', 'grounds', 'other']
     .every(t => new RegExp(`data-topic="${t}"`).test(app)));
   check('the link in the reply text opens that conversation, even after signing in',
     /#help=/.test(app) && /poolside_member_return/.test(app));
@@ -98,7 +99,7 @@ console.log('\nBoard side (E4, offline)');
 {
   const inbox = (() => { try { return read('club/admin/member-help.html'); } catch { return ''; } })();
   check('there is a Member help inbox page', /help_requests/.test(inbox)
-    && ['list', 'get', 'reply', 'set_status', 'assign', 'topics', 'set_topics'].every(a => new RegExp(`'${a}'`).test(inbox)));
+    && ['list', 'get', 'reply', 'set_status', 'assign', 'topics'].every(a => new RegExp(`'${a}'`).test(inbox)));
   check('it opens a request from a dashboard link (#r=)', /#r=/.test(inbox));
   check('dashboard tasks link to it', /member-help\.html#r=/.test(read('supabase/functions/_shared/help_tasks.ts')));
   const subtabs = read('js/admin-subtabs.js');
@@ -126,8 +127,13 @@ if (!check('help requests can be stored', hasTable === 1)) {
   process.exit(1);
 }
 const FAMILY = `SimTest help ${String(Date.now()).slice(-6)}`;
+const started = new Date().toISOString();
 const PHONE = `+1555010${String(Date.now()).slice(-4)}`;
-const [{ topics: savedTopics }] = await sql(`select value->'help_topics' as topics from settings where tenant_id = '${club.id}'`);
+// Topics go to board positions since 2026-10-04 (PLAN.md K3): keyfob & gate
+// is the Facilities Director's. The test gives that position to a temporary
+// login and puts its holders back afterward.
+const [facilities] = await sql(`select id from board_positions where tenant_id = '${club.id}' and slug = 'facilities'`);
+const savedHolders = (await sql(`select admin_user_id from board_position_holders where position_id = '${facilities.id}'`)).map(r => r.admin_user_id);
 const reqTasks = id => sql(`select id, assigned_admin_id, target_scopes, completed_at, dismissed_at from admin_tasks
   where source_kind = 'help_request' and source_id = '${id}' order by created_at`);
 let r1, r2;
@@ -143,12 +149,11 @@ try {
   const partyTok = jwt({ sub: partyId, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
   const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
 
-  console.log('\nWho handles what (E4)');
-  const keep = { ...(savedTopics || {}), keyfob: fobId };
-  const st1 = await help('set_topics', fobTok, { topics: keep });
+  console.log('\nWho handles what (E4, by board position since K3)');
+  const st1 = await fn('board', 'set_holders', fobTok, { position_id: facilities.id, admin_ids: [fobId] });
   check('only the president can choose who handles each topic', st1.status === 403, short(st1));
-  const st2 = await help('set_topics', ownerTok, { topics: keep });
-  check('the president hands keyfob & gate to the keyfob person', st2.ok, short(st2));
+  const st2 = await fn('board', 'set_holders', ownerTok, { position_id: facilities.id, admin_ids: [...savedHolders, fobId] });
+  check('the president makes the keyfob person Facilities Director', st2.ok, short(st2));
   const tp = await help('topics', fobTok);
   check('the keyfob person sees that it\'s theirs', tp.ok && tp.topics?.keyfob?.admin_id === fobId && tp.mine?.includes('keyfob'), short(tp));
   const dt = await fn('admin_tasks', 'list', fobTok);
@@ -164,8 +169,12 @@ try {
   const s2 = await help('submit', memTok, { topic: 'other', body: 'Can I bring my dog to the swim meet?' });
   r2 = s2.request?.id;
   const t2 = await reqTasks(r2);
-  check('"Something else" goes to the president', s2.ok && s2.request?.assigned_name === null
-    && t2.length === 1 && t2[0].assigned_admin_id === null && t2[0].target_scopes.length === 0, short(t2));
+  // Since K3 it goes to whoever holds President (the position that gets
+  // "something else"), named, rather than to any owner login.
+  const [presHolder] = await sql(`select h.admin_user_id from board_position_holders h join board_positions p on p.id = h.position_id
+    where p.tenant_id = '${club.id}' and p.slug = 'president' limit 1`);
+  check('"Something else" goes to the president', s2.ok && t2.length === 1 && t2[0].assigned_admin_id === presHolder?.admin_user_id
+    && t2[0].target_scopes.length === 0, short(t2));
 
   const lf = await help('list', fobTok, { view: 'open' });
   const fobIds = (lf.requests || []).map(x => x.id);
@@ -235,16 +244,15 @@ try {
   const d3 = await help('delete', ownerTok, { id: r2 });
   if (d3.ok) r2 = null;
 } finally {
-  await sql(`update settings set value = ${savedTopics == null ? `value - 'help_topics'` : `jsonb_set(value, '{help_topics}', '${JSON.stringify(savedTopics).replace(/'/g, "''")}'::jsonb)`}
-    where tenant_id = '${club.id}'`);
   await purgeTestFamilies(sql, club.id, `${FAMILY}%`);
   await purgeTempAdmins(sql, club.id);
+  await sql(`delete from audit_log where tenant_id = '${club.id}' and kind like 'board_position.%' and created_at >= '${started}'`);
 }
 const [{ n: left }] = await sql(`select (select count(*) from help_requests hr join households h on h.id = hr.household_id
     where h.family_name like 'SimTest%') + (select count(*) from admin_users where username like 'simtest-%') as n`);
-const [{ t: topicsNow }] = await sql(`select value->'help_topics' as t from settings where tenant_id = '${club.id}'`);
-check('test families, logins and requests removed; keyfob topic put back',
-  Number(left) === 0 && JSON.stringify(topicsNow) === JSON.stringify(savedTopics), `left=${left}, topics=${JSON.stringify(topicsNow)}`);
+const holdersNow = (await sql(`select admin_user_id from board_position_holders where position_id = '${facilities.id}'`)).map(r => r.admin_user_id);
+check('test families, logins and requests removed; Facilities Director put back',
+  Number(left) === 0 && JSON.stringify(holdersNow.sort()) === JSON.stringify(savedHolders.sort()), `left=${left}, holders=${JSON.stringify(holdersNow)}`);
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

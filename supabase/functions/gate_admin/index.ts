@@ -47,7 +47,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
-import { topicOwnerId } from '../_shared/task_routing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -285,11 +284,10 @@ Deno.serve(async (req) => {
         // just generates a confused reply.
         if (clubWasTold) {
           try {
-            // Same person the offline alert went to: whoever handles
-            // keyfob & gate help, else the president.
+            // The same people the offline alert went to: whoever holds the
+            // position that gets gate alerts, else the president.
             await pushBoard({
-              tenant_id: tenantId, target_scopes: [],
-              assigned_admin_id: await topicOwnerId(sb, tenantId, 'keyfob'),
+              tenant_id: tenantId, target_scopes: [], notice: 'gate',
               title: `Gate bridge back online at ${clubName}`,
               body: 'Phone unlock is working again. Nothing else to do.',
               url: '/club/admin/settings.html#gate',
@@ -425,8 +423,9 @@ Deno.serve(async (req) => {
               : 'no contact_phone on file';
           }
 
-          // Board dashboard task + push, to whoever handles keyfob & gate
-          // help (Member help → who handles what), else the president. One
+          // Board dashboard task + push, to whoever holds the board position
+          // that gets gate alerts (Facilities Director at Bishop, PLAN.md K3),
+          // else the president. One
           // task per outage: if one is still open (the bridge came back
           // without a recovery pass, or is flapping), refresh it rather
           // than stacking another beside it (D11).
@@ -440,7 +439,7 @@ Deno.serve(async (req) => {
             await enqueueAdminTask(sb, {
               tenant_id: tenantId,
               target_scopes: [],
-              assigned_admin_id: await topicOwnerId(sb, tenantId, 'keyfob'),
+              notice: 'gate',
               kind: 'gate.bridge_offline',
               summary: offlineSummary,
               link_url: '/club/admin/settings.html#gate',

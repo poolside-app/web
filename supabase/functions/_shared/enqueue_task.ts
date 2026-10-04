@@ -8,8 +8,10 @@
 // when they next log in.
 //
 // Push targeting (_shared/task_routing.ts): a task with assigned_admin_id
-// pops up for that board member only. Otherwise everyone holding one of its
-// target_scopes, plus owner-role admins (mirrors the dashboard check).
+// pops up for that board member only. A task whose kind is a board-position
+// alert (positions.ts TASK_NOTICE, or an explicit `notice`) pops up for
+// whoever holds that position (PLAN.md K3). Otherwise everyone holding one of
+// its target_scopes, plus owner-role admins (mirrors the dashboard check).
 //
 // Anti-spam: tag === source_kind:source_id, so a re-fired task for the
 // same entity replaces the previous OS notification rather than stacking
@@ -18,6 +20,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { TASK_NOTICE } from './positions.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -26,6 +29,7 @@ export type TaskInput = {
   tenant_id: string;
   target_scopes: string[];                  // e.g. ['applications', 'payments']
   assigned_admin_id?: string | null;        // for one board member only
+  notice?: string | null;                   // a board-position alert; defaults from kind
   kind: string;                             // 'application.submitted', 'venmo.claim', etc.
   summary: string;                          // human-readable for the queue UI
   link_url?: string;                        // dashboard deep-link
@@ -50,6 +54,7 @@ export async function enqueueAdminTask(
       tenant_id: input.tenant_id,
       target_scopes: input.target_scopes,
       assigned_admin_id: input.assigned_admin_id ?? null,
+      notice: input.notice ?? TASK_NOTICE[input.kind] ?? null,
       kind: input.kind,
       summary: input.summary,
       link_url: input.link_url ?? null,
@@ -74,6 +79,7 @@ export async function enqueueAdminTask(
     tenant_id: input.tenant_id,
     target_scopes: input.target_scopes,
     assigned_admin_id: input.assigned_admin_id ?? null,
+    notice: input.notice ?? TASK_NOTICE[input.kind] ?? null,
     title: input.push_title ?? input.summary,
     body: input.push_body ?? '',
     url: input.push_url ?? input.link_url ?? '/club/admin/',
@@ -88,6 +94,7 @@ export async function pushBoard(input: {
   tenant_id: string;
   target_scopes: string[];
   assigned_admin_id?: string | null;
+  notice?: string | null;            // pops up for that position's holders
   title: string;
   body: string;
   url: string;
@@ -106,6 +113,7 @@ export async function pushBoard(input: {
         tenant_id: input.tenant_id,
         scopes: input.target_scopes,
         assigned_admin_id: input.assigned_admin_id ?? null,
+        notice: input.notice ?? null,
         title: input.title,
         body: input.body,
         url: input.url,

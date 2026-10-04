@@ -138,6 +138,7 @@ Deno.serve(async (req) => {
     if (!tenant_id) return jsonResponse({ ok: false, error: 'tenant_id required' }, 400);
     const scopes = Array.isArray(body.scopes) ? (body.scopes as string[]) : [];
     const assigned_admin_id = body.assigned_admin_id ? String(body.assigned_admin_id) : null;
+    const notice = body.notice ? String(body.notice) : null;
     const title = String(body.title || 'Action needed');
     body.body  = String(body.body  || '');
     const url   = body.url ? String(body.url) : '/club/admin/';
@@ -146,7 +147,14 @@ Deno.serve(async (req) => {
     const { data: admins } = await sb.from('admin_users')
       .select('id, role_template, scopes, active')
       .eq('tenant_id', tenant_id).eq('active', true);
-    const targetAdminIds = pushRecipients(admins ?? [], { scopes, assigned_admin_id });
+    // A board-position alert pops up for whoever holds that position now
+    // (PLAN.md K3), or the President while it's empty.
+    let notice_recipients: string[] | null = null;
+    if (notice && !assigned_admin_id) {
+      const { recipientsFor } = await import('../_shared/positions_db.ts');
+      notice_recipients = await recipientsFor(sb, tenant_id, notice);
+    }
+    const targetAdminIds = pushRecipients(admins ?? [], { scopes, assigned_admin_id, notice_recipients });
 
     if (targetAdminIds.length === 0) {
       return jsonResponse({ ok: true, sent: 0, failed: 0, no_targets: true });

@@ -21,8 +21,8 @@
 //                               // texted to the member (email if no cell)
 //   { action: 'set_status', id, status: 'open' | 'in_progress' | 'solved' }
 //   { action: 'assign', id, admin_id | null }   // null = the president
-//   { action: 'topics' }      → { ok, topics, board, mine }
-//   { action: 'set_topics', topics: { keyfob: admin_id | null, … } } (president)
+//   { action: 'topics' }      → { ok, topics, board, mine }   who handles each topic,
+//                               // by board position (set on the Board page, PLAN.md K3)
 //   { action: 'delete', id }  (president; removes its photos)
 // =============================================================================
 
@@ -179,7 +179,9 @@ Deno.serve(async (req) => {
       const id = crypto.randomUUID();
       const photo = await savePhoto(sb, TID, id, body);
       if (photo.error) return j({ ok: false, error: photo.error }, 400);
-      const assigned = topic === 'other' ? null : await topicOwnerId(sb, TID, topic as typeof HELP_TOPICS[number]);
+      // Whoever holds the board position that gets this topic (PLAN.md K3),
+      // else the President.
+      const assigned = await topicOwnerId(sb, TID, topic);
       const { data: r, error } = await sb.from('help_requests').insert({
         id, tenant_id: TID, household_id: me.household_id, member_id: me.id, topic, assigned_admin_id: assigned,
       }).select(REQ_FIELDS).single();
@@ -271,35 +273,25 @@ Deno.serve(async (req) => {
     ...r, topic_label: TOPIC_LABELS[r.topic as Topic], assigned_name: nameOf(r.assigned_admin_id as string | null),
   });
 
+  // Who handles each topic: whoever holds the board position that gets it.
+  // Set on the Board page (PLAN.md K3); this is read-only.
   if (action === 'topics') {
-    const { data: s } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
-    const saved = ((s?.value as Record<string, unknown> | null)?.help_topics ?? {}) as Record<string, string | null>;
-    const topics: Record<string, { admin_id: string; name: string } | null> = {};
-    for (const t of HELP_TOPICS) {
-      const id = saved[t];
-      const b = id ? board.find(x => x.id === id) : undefined;
-      topics[t] = b ? { admin_id: b.id, name: b.name } : null;
+    const { loadBoard } = await import('../_shared/positions_db.ts');
+    const { noticeRecipients, HELP_NOTICE } = await import('../_shared/positions.ts');
+    const b = await loadBoard(sb, TID);
+    const topics: Record<string, { admin_id: string; name: string; position: string | null } | null> = {};
+    for (const t of [...HELP_TOPICS, 'other'] as const) {
+      const id = noticeRecipients(HELP_NOTICE[t], b.positions, b.holders, b.logins)[0];
+      const who = id ? board.find(x => x.id === id) : undefined;
+      const pos = b.positions.find(p => (p.notices ?? []).includes(HELP_NOTICE[t]));
+      topics[t] = who ? { admin_id: who.id, name: who.name, position: pos?.title ?? null } : null;
     }
-    const mine = HELP_TOPICS.filter(t => topics[t]?.admin_id === me.id);
+    const mine = [...HELP_TOPICS, 'other'].filter(t => topics[t]?.admin_id === me.id);
     return j({ ok: true, topics, labels: TOPIC_LABELS, board, mine, is_owner: me.isOwner });
   }
 
   if (action === 'set_topics') {
-    if (!me.isOwner) return j({ ok: false, error: 'Only the president can choose who handles each topic.' }, 403);
-    const input = (body.topics ?? {}) as Record<string, unknown>;
-    const clean: Record<string, string | null> = {};
-    for (const t of HELP_TOPICS) {
-      const id = input[t] ? String(input[t]) : null;
-      if (id && !board.some(b => b.id === id)) return j({ ok: false, error: 'Pick someone on the board.' }, 400);
-      clean[t] = id;
-    }
-    const { data: s } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
-    const value = { ...((s?.value as Record<string, unknown>) ?? {}), help_topics: clean };
-    const { error } = s
-      ? await sb.from('settings').update({ value }).eq('tenant_id', TID)
-      : await sb.from('settings').insert({ tenant_id: TID, value });
-    if (error) return j({ ok: false, error: error.message }, 500);
-    return j({ ok: true });
+    return j({ ok: false, error: 'Who handles each topic is set by board position now, on the Board page.' }, 410);
   }
 
   if (action === 'list') {
@@ -361,12 +353,15 @@ Deno.serve(async (req) => {
 
     // Text the member (email if there's no cell, or the text didn't go).
     const link = helpLink(tenant.slug, r.id);
+    const myTitle = board.find(b => b.id === me.id)?.board_title;
+    const signedName = myTitle ? `${me.name} (${myTitle})` : me.name;
     let sent_by: 'text' | 'email' | null = null;
     let send_error: string | null = null;
     if (member.phone) {
       const s = await sendSms({
         sb, tenantId: TID, tenantPlan: tenant.plan, to: member.phone,
-        body: replyText(tenant.display_name || 'Your pool', me.name, text, link),
+        // Signed with their position, so the member knows who's answering.
+        body: replyText(tenant.display_name || 'Your pool', signedName, text, link),
         kind: 'transactional', source: 'help_requests.reply',
       });
       if (s.sent) sent_by = 'text'; else send_error = s.error ?? 'The text did not go through';
@@ -375,11 +370,11 @@ Deno.serve(async (req) => {
       const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
       const e = await sendEmail({
         to: member.email,
-        subject: `${tenant.display_name}: ${me.name} replied to your question`,
+        subject: `${tenant.display_name}: ${signedName} replied to your question`,
         html: emailShell({
           tenantName: tenant.display_name, clubUrl,
           preheader: snippet(text, 90),
-          contentHtml: `<p style="margin:0 0 12px">${escHtml(me.name)} replied to your ${escHtml(TOPIC_LABELS[r.topic as Topic].toLowerCase())} question:</p>
+          contentHtml: `<p style="margin:0 0 12px">${escHtml(signedName)} replied to your ${escHtml(TOPIC_LABELS[r.topic as Topic].toLowerCase())} question:</p>
             <blockquote style="margin:0 0 16px;padding:12px 16px;background:#f1f5f9;border-radius:10px;white-space:pre-wrap">${escHtml(text)}</blockquote>
             <p style="margin:0"><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a3b5c;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">Read or reply</a></p>`,
         }),

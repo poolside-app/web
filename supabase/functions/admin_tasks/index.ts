@@ -32,6 +32,8 @@ import { taskVisibleTo, type Caller } from '../_shared/task_routing.ts';
 import { markFollowUpDone } from '../_shared/meeting_follow_ups.ts';
 import { markHelpSolved } from '../_shared/help_tasks.ts';
 import { TOPIC_LABELS } from '../_shared/help.ts';
+import { loadBoard } from '../_shared/positions_db.ts';
+import { noticeRecipients, HELP_NOTICE } from '../_shared/positions.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -63,7 +65,7 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, target_scopes, assigned_admin_id, kind, summary, link_url, source_kind, source_id, metadata, created_at, completed_at, completed_by, dismissed_at';
+const FIELDS = 'id, tenant_id, target_scopes, assigned_admin_id, notice, kind, summary, link_url, source_kind, source_id, metadata, created_at, completed_at, completed_by, dismissed_at';
 
 // Returns the caller's effective scopes + owner flag, sourced from the DB
 // rather than the JWT (so role changes take effect immediately on next call).
@@ -96,6 +98,12 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const caller = await getCaller(sb, payload);
+  // Who gets each board-position alert right now (PLAN.md K3). Loaded once
+  // per call; tasks are routed when they're shown, so a reassigned position
+  // takes its open tasks with it.
+  const board = await loadBoard(sb, TID);
+  const recipientsOf = (notice: string) => noticeRecipients(notice, board.positions, board.holders, board.logins);
+  const visible = (t: Parameters<typeof taskVisibleTo>[0]) => taskVisibleTo(t, caller, recipientsOf);
 
   if (action === 'list') {
     let q = sb.from('admin_tasks').select(FIELDS).eq('tenant_id', TID);
@@ -105,7 +113,7 @@ Deno.serve(async (req) => {
     q = q.order('created_at', { ascending: false }).limit(100);
     const { data, error } = await q;
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    const tasks = (data ?? []).filter(t => taskVisibleTo(t, caller));
+    const tasks = (data ?? []).filter(visible);
     // Name who each assigned task is for ("For you" / "For Kristin").
     const ids = [...new Set(tasks.map(t => t.assigned_admin_id).filter(Boolean))];
     if (ids.length) {
@@ -119,33 +127,30 @@ Deno.serve(async (req) => {
     // For the dashboard: the member-help topics that come to this board
     // member, and how many of their devices get pop-ups. Pop-ups are the
     // only alert for help requests, so a topic owner with none hears nothing.
-    const [{ data: st }, { count: devices }] = await Promise.all([
-      sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle(),
-      sb.from('admin_push_subscriptions').select('id', { count: 'exact', head: true })
-        .eq('tenant_id', TID).eq('admin_user_id', caller.id),
-    ]);
-    const assigned = ((st?.value as Record<string, unknown> | null)?.help_topics ?? {}) as Record<string, string | null>;
+    const { count: devices } = await sb.from('admin_push_subscriptions').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).eq('admin_user_id', caller.id);
+    // The member help topics that come to this person through their position.
     const help_topics_mine = (Object.keys(TOPIC_LABELS) as (keyof typeof TOPIC_LABELS)[])
-      .filter(t => assigned[t] === caller.id || (caller.isOwner && (t === 'other' || !assigned[t])))
+      .filter(t => recipientsOf(HELP_NOTICE[t]).includes(caller.id))
       .map(t => TOPIC_LABELS[t]);
     return jsonResponse({ ok: true, tasks, me: caller.id, help_topics_mine, push_devices: devices ?? 0 });
   }
 
   if (action === 'count') {
-    const { data, error } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id')
+    const { data, error } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, notice, kind')
       .eq('tenant_id', TID).is('completed_at', null).is('dismissed_at', null);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    const open = (data ?? []).filter(t => taskVisibleTo(t, caller)).length;
+    const open = (data ?? []).filter(visible).length;
     return jsonResponse({ ok: true, open });
   }
 
   if (action === 'complete') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, completed_at, kind, source_id, metadata')
+    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, notice, completed_at, kind, source_id, metadata')
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!task) return jsonResponse({ ok: false, error: 'Task not found' }, 404);
-    if (!taskVisibleTo(task, caller)) {
+    if (!visible(task)) {
       return jsonResponse({ ok: false, error: 'Not your scope' }, 403);
     }
     if (task.completed_at) return jsonResponse({ ok: true });
@@ -168,10 +173,10 @@ Deno.serve(async (req) => {
   if (action === 'dismiss') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, dismissed_at')
+    const { data: task } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, notice, kind, dismissed_at')
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!task) return jsonResponse({ ok: false, error: 'Task not found' }, 404);
-    if (!taskVisibleTo(task, caller)) {
+    if (!visible(task)) {
       return jsonResponse({ ok: false, error: 'Not your scope' }, 403);
     }
     if (task.dismissed_at) return jsonResponse({ ok: true });

@@ -121,6 +121,37 @@ console.log('\nK2 · the Board page (offline)');
   check('K2: an invite can put someone straight into a position', /position_ids/.test(between(taa, "action === 'invite_admin'", "action === 'update_admin_title'")), '');
 }
 
+// ── K3: alerts follow positions (offline) ──────────────────────────────
+console.log('\nK3 · alerts follow positions (offline)');
+{
+  const R = await importTs(new URL('supabase/functions/_shared/task_routing.ts', root));
+  const treasurer = { id: 'tess', isOwner: false, scopes: ['payments'] };
+  const other = { id: 'olly', isOwner: false, scopes: ['payments'] };
+  const recipientsOf = n => (n === 'payments' ? ['tess'] : []);
+  const task = { kind: 'venmo.claim', target_scopes: ['payments', 'applications'] };
+  check('K3: a payments task goes to whoever holds the position that gets it',
+    R.taskVisibleTo(task, treasurer, recipientsOf) === true && R.taskVisibleTo(task, other, recipientsOf) === false, '');
+  check('K3: the president still sees every task', R.taskVisibleTo(task, { id: 'doug', isOwner: true, scopes: [] }, recipientsOf) === true, '');
+  check('K3: an assigned task still goes to that person', R.taskVisibleTo({ kind: 'help.request', assigned_admin_id: 'olly' }, other, recipientsOf) === true, '');
+  check('K3: pop-ups for a position\'s alert go only to its holders',
+    JSON.stringify(R.pushRecipients([{ id: 'doug', role_template: 'owner' }, { id: 'tess', role_template: 'custom' }], { scopes: ['payments'], notice_recipients: ['tess'] })) === JSON.stringify(['tess']), '');
+  check('K3: members can ask about grounds, bathrooms & cleaning', R.HELP_TOPICS.includes('grounds')
+    && /grounds: 'Grounds, bathrooms & cleaning'/.test(read('supabase/functions/_shared/help.ts')) && /data-topic="grounds"/.test(read('m/index.html'))
+    && exists('supabase/migrations/20261004000200_help_grounds.sql'), '');
+  const enq = read('supabase/functions/_shared/enqueue_task.ts');
+  check('K3: every new task records its alert and pops up for that position', /TASK_NOTICE/.test(enq) && /notice/.test(between(enq, 'export async function pushBoard', '\n}\n')), '');
+  check('K3: the pop-up sender routes by position', /noticeRecipients|recipientsFor/.test(read('supabase/functions/push_admin/index.ts')), '');
+  const routing = read('supabase/functions/_shared/task_routing.ts');
+  check('K3: member help topics go by position, not a separate setting', /HELP_NOTICE/.test(routing) && !/help_topics/.test(between(routing, 'export async function topicOwnerId', '\n}\n')), '');
+  check('K3: gate alerts go to the gate position', !/topicOwnerId\(sb, tenantId, 'keyfob'\)/.test(read('supabase/functions/gate_admin/index.ts')) && /notice: 'gate'/.test(read('supabase/functions/gate_admin/index.ts')), '');
+  check('K3: the dashboard list routes by position', /loadBoard/.test(read('supabase/functions/admin_tasks/index.ts')), '');
+  const mh = read('club/admin/member-help.html');
+  check('K3: Member help shows who handles each topic and links to the Board page', !/saveTopics/.test(mh) && /board\.html/.test(mh), '');
+  const hr = read('supabase/functions/help_requests/index.ts');
+  check('K3: board replies to members say the board member\'s position',
+    /const signedName = myTitle \? `\$\{me\.name\} \(\$\{myTitle\}\)`/.test(hr) && /board_title/.test(between(hr, 'const myTitle', ';')) && /replyText\([^)]*signedName/.test(hr), '');
+}
+
 if (live('K1')) {
   console.log('\nK1 · live (database reads only)');
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
@@ -174,6 +205,57 @@ if (live('K2')) {
     await purgeTempAdmins(sql, club.id);
     const [n] = await sql(`select count(*)::int as n from board_position_holders h join board_positions p on p.id = h.position_id where p.tenant_id = '${club.id}' and p.slug = 'treasurer'`);
     check('K2: Bishop is back as it was', n.n === 0, short(n));
+  }
+}
+
+if (live('K3')) {
+  console.log('\nK3 · live (about 12 calls; temporary family and board logins, removed afterward)');
+  const { makeTempAdmin, purgeTempAdmins, makeTempMember, purgeTestFamilies } = await import('./lib/testdata.mjs');
+  const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
+  const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
+  const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates', role_template: 'owner', scopes: [] });
+  const pos = Object.fromEntries((await sql(`select slug, id from board_positions where tenant_id = '${club.id}'`)).map(r => [r.slug, r.id]));
+  const STAMP = String(Date.now()).slice(-6);
+  const started = new Date().toISOString();
+  let taskId = null;
+  try {
+    const g = await makeTempAdmin(sql, club.id, 'K3 Grounds', [], 'custom');
+    const x = await makeTempAdmin(sql, club.id, 'K3 Money Screen', ['payments'], 'custom');
+    const t = await makeTempAdmin(sql, club.id, 'K3 Treasurer', [], 'custom');
+    const tok = id => jwt({ sub: id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+    await fn('board', 'set_holders', ownerTok, { position_id: pos.grounds, admin_ids: [g] });
+
+    // A member reports a grounds problem: it goes to the Grounds Director.
+    const m = await makeTempMember(sql, club.id, `SimPos Family ${STAMP}`);
+    const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
+    const ask = await fn('help_requests', 'submit', memTok, { topic: 'grounds', body: 'The women\'s bathroom is out of paper towels. (test)' });
+    const [req] = ask.ok ? await sql(`select assigned_admin_id from help_requests where id = '${ask.request?.id}'`) : [null];
+    check('K3: a grounds question goes to the Grounds Director', ask.ok && req?.assigned_admin_id === g, short({ err: ask.error, req }));
+    const gList = await fn('admin_tasks', 'list', tok(g));
+    check('K3: it\'s on the Grounds Director\'s dashboard, and says it\'s theirs', gList.ok && (gList.tasks || []).some(k => k.kind === 'help.request' && k.source_id === ask.request?.id)
+      && (gList.help_topics_mine || []).includes('Grounds, bathrooms & cleaning'), short({ n: gList.tasks?.length, mine: gList.help_topics_mine }));
+    const topics = await fn('help_requests', 'topics', ownerTok);
+    check('K3: Member help shows who handles grounds, by position', topics.ok && topics.topics?.grounds?.admin_id === g && topics.topics?.grounds?.position === 'Grounds Director', short(topics.topics?.grounds));
+
+    // A payments task: the Treasurer's, not everyone who can open Money.
+    const [task] = await sql(`insert into admin_tasks (tenant_id, target_scopes, kind, summary, source_kind, source_id)
+      values ('${club.id}', array['payments','applications'], 'venmo.claim', 'SimTest K3 Venmo to check', 'simtest', '${club.id}') returning id`);
+    taskId = task.id;
+    const sees = async id => ((await fn('admin_tasks', 'list', tok(id))).tasks || []).some(k => k.id === taskId);
+    const xBefore = await sees(x);
+    const dougSees = ((await fn('admin_tasks', 'list', ownerTok)).tasks || []).some(k => k.id === taskId);
+    await fn('board', 'set_holders', ownerTok, { position_id: pos.treasurer, admin_ids: [t] });
+    const tSees = await sees(t), xAfter = await sees(x);
+    check('K3: a payments task goes to the Treasurer, not to everyone with the Money screen', !xBefore && dougSees && tSees && !xAfter,
+      short({ xBefore, dougSees, tSees, xAfter }));
+  } finally {
+    if (taskId) await sql(`delete from admin_tasks where id = '${taskId}'`);
+    await sql(`delete from audit_log where tenant_id = '${club.id}' and kind like 'board_position.%' and created_at >= '${started}'`);
+    await purgeTestFamilies(sql, club.id, `SimPos Family ${STAMP}`);
+    await purgeTempAdmins(sql, club.id);
+    const [n] = await sql(`select count(*)::int as n from board_position_holders h join board_positions p on p.id = h.position_id
+      where p.tenant_id = '${club.id}' and p.slug in ('grounds', 'treasurer')`);
+    check('K3: Bishop is back as it was', n.n === 0, short(n));
   }
 }
 

@@ -72,11 +72,15 @@ The Free Forever tier was retired 2026-09; `plan='free'` survives only as a lega
 
 ### Dashboard tasks
 
-`admin_tasks` rows are the board's to-do list. `_shared/task_routing.ts` decides who sees each one and who gets the phone pop-up. A task goes to one board member (`assigned_admin_id`), or to everyone holding one of its `target_scopes`, and owners always see everything. Every scope used must be a real one from `ALL_SCOPES` in `tenant_admin_auth`. A made-up scope silently hides the task from everyone but the owner. `node scripts/test_task_routing.mjs` checks this, offline.
+`admin_tasks` rows are the board's to-do list. `_shared/task_routing.ts` decides who sees each one and who gets the phone pop-up. A task goes to one board member (`assigned_admin_id`); or, if it's a board-position alert (its `notice`, or its kind in `TASK_NOTICE` in `_shared/positions.ts`), to whoever holds that position now, else the President; or to everyone holding one of its `target_scopes`. Owners always see everything on the dashboard. Every scope used must be a real one from `ALL_SCOPES` in `tenant_admin_auth`. A made-up scope silently hides the task from everyone but the owner. `node scripts/test_task_routing.mjs` checks this, offline.
+
+### Board positions
+
+Each club has its own board positions (`board_positions`, `board_position_holders`), edited on Settings → Board (`board` function). A position has a job description, the alerts it gets (`notices`) and the screens it can use (`scopes`); holding it sets the person's `board_title`, role and scopes (`_shared/positions_db.ts` `syncLogins`). Positions replaced the old fixed role templates in the UI. Permission checks read the login's current role and scopes from the database, so a change applies on the next call. An empty position's alerts go to the President, then the Vice-President. `node scripts/test_positions.mjs [--offline]`.
 
 ### Member help
 
-Members ask the board from the app (`help_requests` function, `help_requests` + `help_messages` tables). Each topic goes to the board member picked in the Member help inbox (`settings.value.help_topics`), else the president. Only they see it, it keeps one dashboard task until solved, and board replies are texted to the member with a `/m/#help=<id>` link. Photos live in the private `help-photos` bucket behind signed links. SQL can't delete storage files, so delete a request through the function (president) to remove its photos. `node scripts/test_help_requests.mjs [--offline]`.
+Members ask the board from the app (`help_requests` function, `help_requests` + `help_messages` tables). Each topic goes to whoever holds the board position that gets it (`HELP_NOTICE` in `_shared/positions.ts`), else the president. Only they see it, it keeps one dashboard task until solved, and board replies are texted to the member with a `/m/#help=<id>` link. Photos live in the private `help-photos` bucket behind signed links. SQL can't delete storage files, so delete a request through the function (president) to remove its photos. `node scripts/test_help_requests.mjs [--offline]`.
 
 Offline tests load Edge Function helpers with `scripts/lib/importts.mjs`, which follows their relative `.ts` imports.
 

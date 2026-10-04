@@ -59,7 +59,9 @@ async function tasks(action, token, extra = {}) {
 // ── Offline ─────────────────────────────────────────────────────────────
 console.log('Who sees a task, and who gets the pop-up (offline, no calls)');
 try {
-  const { taskVisibleTo, pushRecipients } = await importTs('supabase/functions/_shared/task_routing.ts');
+  // Follows task_routing's own .ts imports (positions.ts).
+  const { importTs: importTsFollow } = await import('./lib/importts.mjs');
+  const { taskVisibleTo, pushRecipients } = await importTsFollow(new URL('../supabase/functions/_shared/task_routing.ts', import.meta.url));
   const owner = { id: 'own', isOwner: true, scopes: [] };
   const kris  = { id: 'kri', isOwner: false, scopes: ['households', 'events'] };
   const fob   = { id: 'fob', isOwner: false, scopes: ['events'] };
@@ -118,7 +120,9 @@ console.log('\nEvery alert uses permissions that exist (offline)');
   check('every alert says who it is for', !untagged.length, untagged.join(', '));
   const gate = read('supabase/functions/gate_admin/index.ts');
   const offline = gate.slice(gate.indexOf("kind: 'gate.bridge_offline'") - 400, gate.indexOf("kind: 'gate.bridge_offline'"));
-  check('gate-offline alerts go to the keyfob person', /topicOwnerId\([^)]*'keyfob'\)/.test(gate) && /assigned_admin_id/.test(offline));
+  // Since 2026-10-04 (PLAN.md K3) gate alerts go to the board position that
+  // gets them (Facilities Director at Bishop), not the keyfob help topic.
+  check('gate-offline alerts go to the gate position', /notice: 'gate'/.test(offline));
   check('pop-ups and the dashboard use the tested rules',
     /from '\.\.\/_shared\/task_routing\.ts'/.test(read('supabase/functions/push_admin/index.ts'))
     && /from '\.\.\/_shared\/task_routing\.ts'/.test(read('supabase/functions/admin_tasks/index.ts'))
