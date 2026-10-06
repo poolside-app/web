@@ -55,6 +55,10 @@
 //   { action: 'add_item', body }         → one line, 100 characters at most
 //   { action: 'update_item', id, body }  → your own (the president: anyone's)
 //   { action: 'delete_item', id }        → your own (the president: anyone's)
+//   { action: 'create_agenda', meeting_id? | meeting_date + planned_time? + location? }
+//                                         → the next planned meeting (or a new
+//                                           one) gets the waiting items
+//   { action: 'agenda', meeting_id }     → the agenda, laid out by person
 //
 // Public action (no auth, used by the /governance.html public page):
 //   { action: 'list_public', slug }
@@ -66,7 +70,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, canDeleteMeeting, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { clearFollowUpTasks, syncFollowUpTasks, type MeetingForTasks } from '../_shared/meeting_follow_ups.ts';
-import { cleanItem, itemProblem } from '../_shared/agenda.ts';
+import { cleanItem, itemProblem, buildAgenda, agendaText, type AgendaItem, type FollowUp } from '../_shared/agenda.ts';
 import { loadBoard } from '../_shared/positions_db.ts';
 import { boardRoster } from '../_shared/positions.ts';
 
@@ -421,6 +425,87 @@ Deno.serve(async (req) => {
     if (deny) return deny;
     await sb.from('agenda_items').delete().eq('id', row!.id).eq('tenant_id', TID);
     return jsonResponse({ ok: true });
+  }
+
+  // ── Create and view the agenda (PLAN.md L2) ─────────────────────────────
+  // Anyone on the board. Builds from the items, the board positions, the
+  // last minutes and open follow-ups, so it's always current.
+  async function agendaFor(m: Record<string, unknown>) {
+    let q = sb.from('agenda_items').select(ITEM_FIELDS).eq('tenant_id', TID);
+    // Before the meeting, anything still waiting is on it too.
+    q = m.status === 'draft' ? q.or(`meeting_id.eq.${m.id},meeting_id.is.null`) : q.eq('meeting_id', m.id as string);
+    const [{ data: itemRows }, b, { data: past }] = await Promise.all([
+      q.order('created_at'),
+      loadBoard(sb as never, TID),
+      sb.from('board_meetings').select('meeting_date, follow_ups_json')
+        .eq('tenant_id', TID).eq('status', 'completed').lte('meeting_date', m.meeting_date as string)
+        .neq('id', m.id as string).order('meeting_date', { ascending: false }).limit(24),
+    ]);
+    const shaped = await shapeItems(itemRows ?? []);
+    const openFollowUps: FollowUp[] = [];
+    for (const pm of past ?? []) {
+      for (const f of (pm.follow_ups_json as Array<Record<string, unknown>> | null) ?? []) {
+        if ((f.status ?? 'open') === 'open' && f.description) {
+          openFollowUps.push({ description: String(f.description), assigned_to: (f.assigned_to as string) ?? null,
+            due_date: (f.due_date as string) ?? null, meeting_date: pm.meeting_date as string });
+        }
+      }
+    }
+    const agenda = buildAgenda({
+      meeting: m as never, positions: b.positions, holders: b.holders, logins: b.logins,
+      items: shaped as unknown as AgendaItem[],
+      lastMinutesDate: (past ?? [])[0]?.meeting_date as string ?? null,
+      openFollowUps: openFollowUps.slice(0, 30),
+    });
+    const names = new Map(b.logins.map(l => [l.id, l.display_name || 'A board member']));
+    return {
+      agenda, text: agendaText(agenda), items: shaped,
+      created_by_name: m.agenda_created_by ? names.get(m.agenda_created_by as string) ?? null : null,
+      sent_by_name: m.agenda_sent_by ? names.get(m.agenda_sent_by as string) ?? null : null,
+    };
+  }
+
+  if (action === 'create_agenda') {
+    let meeting: Record<string, unknown> | null = null;
+    if (body.meeting_id) {
+      const { data } = await sb.from('board_meetings').select(FIELDS).eq('id', String(body.meeting_id)).eq('tenant_id', TID).maybeSingle();
+      meeting = data;
+      if (!meeting) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
+      if (meeting.status !== 'draft') return jsonResponse({ ok: false, error: 'That meeting has already started.' }, 409);
+    } else {
+      meeting = await nextMeeting();
+    }
+    const time = String(body.planned_time ?? '').trim();
+    const plannedTime = /^[0-2]\d:[0-5]\d$/.test(time) ? time : null;
+    if (!meeting) {
+      // Nothing planned: plan it now, from the date, time and place given.
+      const date = String(body.meeting_date ?? '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return jsonResponse({ ok: false, error: 'Pick the meeting date.' }, 400);
+      if (date < poolToday(await tenantTimeZone(sb, TID))) return jsonResponse({ ok: false, error: 'Pick a date that hasn\'t passed.' }, 400);
+      const { data, error } = await sb.from('board_meetings').insert({
+        tenant_id: TID, title: 'Board Meeting', meeting_date: date, planned_time: plannedTime,
+        location: strOrNull(body.location), status: 'draft', visibility: 'public',
+        created_by: payload.synthetic ? null : me.id,
+      }).select(FIELDS).single();
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      meeting = data;
+    }
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (!meeting.agenda_created_at) { patch.agenda_created_at = patch.updated_at; patch.agenda_created_by = payload.synthetic ? null : me.id; }
+    if (plannedTime && !meeting.planned_time) patch.planned_time = plannedTime;
+    if (body.location && !meeting.location) patch.location = strOrNull(body.location);
+    const { data: updated, error: upErr } = await sb.from('board_meetings').update(patch)
+      .eq('id', meeting.id as string).eq('tenant_id', TID).select(FIELDS).single();
+    if (upErr) return jsonResponse({ ok: false, error: upErr.message }, 500);
+    // Everything waiting is on this meeting's agenda now.
+    await sb.from('agenda_items').update({ meeting_id: updated.id }).eq('tenant_id', TID).is('meeting_id', null).eq('covered', false);
+    return jsonResponse({ ok: true, meeting: await one(updated), ...(await agendaFor(updated)) });
+  }
+
+  if (action === 'agenda') {
+    const { data: m } = await sb.from('board_meetings').select(FIELDS).eq('id', String(body.meeting_id ?? '')).eq('tenant_id', TID).maybeSingle();
+    if (!m) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
+    return jsonResponse({ ok: true, meeting: await one(m), ...(await agendaFor(m)) });
   }
 
   // ── bylaws (K6) ─────────────────────────────────────────────────────────

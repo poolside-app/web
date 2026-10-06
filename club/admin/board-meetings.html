@@ -319,8 +319,16 @@
         <input id="m-date" type="date" oninput="scheduleSave()">
       </div>
     </div>
-    <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional — Pool House, Zoom link, etc.)</span></label>
-    <input id="m-location" placeholder="Pool House" oninput="scheduleSave()">
+    <div class="row2">
+      <div>
+        <label>Starts at <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
+        <input id="m-time" type="time" oninput="scheduleSave()">
+      </div>
+      <div>
+        <label>Location <span style="color:var(--muted);font-weight:500;font-size:11px">(optional — Pool House, Zoom link, etc.)</span></label>
+        <input id="m-location" placeholder="Pool House" oninput="scheduleSave()">
+      </div>
+    </div>
 
     <h3 style="margin: 20px 0 4px">Who's here?</h3>
     <p class="lede" style="margin:0 0 10px">Check off the board members in attendance. Add anyone else (member, guest) at the bottom.</p>
@@ -375,6 +383,18 @@
         <button class="btn btn-success" onclick="finalize()" id="final-btn" style="display:none">✓ Close meeting</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- The agenda (PLAN.md L2): board only. -->
+<div class="scrim" id="agenda-scrim" onclick="if (event.target.id==='agenda-scrim') closeAgenda()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="agenda-title">Agenda</h2>
+      <button class="modal-close" onclick="closeAgenda()" aria-label="Close">×</button>
+    </div>
+    <div id="agenda-body"></div>
+    <div id="agenda-foot" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)"></div>
   </div>
 </div>
 
@@ -556,6 +576,95 @@ async function deleteItem(id) {
   await loadNext();
 }
 
+// ── Create and view the agenda (PLAN.md L2) ────────────────────────────
+function paintAgendaActions() {
+  const host = document.getElementById('agenda-actions');
+  const m = NEXT && NEXT.meeting;
+  if (m && m.agenda_created_at) {
+    host.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary" type="button" onclick="openAgenda('${m.id}')">View agenda</button>
+      ${typeof sendLine === 'function' ? sendLine(m) : ''}
+    </div>`;
+    return;
+  }
+  if (m) {
+    host.innerHTML = `<button class="btn btn-primary" type="button" id="create-agenda" onclick="createAgenda('${m.id}')">Create agenda</button>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:8px">Lays out everything above, by person.</span>`;
+    return;
+  }
+  // Nothing planned yet: plan the meeting while making the agenda.
+  host.innerHTML = `<details id="plan-form"><summary class="btn btn-primary" style="display:inline-block;list-style:none">Create agenda</summary>
+      <div class="row2" style="margin-top:6px">
+        <div><label for="plan-date">Meeting date</label><input type="date" id="plan-date" min="${PoolTime.todayKey()}"></div>
+        <div><label for="plan-time">Starts at</label><input type="time" id="plan-time" value="10:00"></div>
+      </div>
+      <label for="plan-place">Where</label><input id="plan-place" placeholder="Clubhouse">
+      <div style="margin-top:10px"><button class="btn btn-primary" type="button" id="create-agenda" onclick="createAgenda(null)">Create agenda</button></div>
+    </details>`;
+}
+async function createAgenda(meetingId) {
+  const err = document.getElementById('item-err'); err.textContent = '';
+  const btn = document.getElementById('create-agenda'); if (btn) btn.disabled = true;
+  try {
+    const extra = meetingId ? { meeting_id: meetingId } : {
+      meeting_date: document.getElementById('plan-date').value,
+      planned_time: document.getElementById('plan-time').value,
+      location: document.getElementById('plan-place').value,
+    };
+    const r = await call('create_agenda', extra);
+    if (!r.ok) throw new Error(r.error || 'Could not create the agenda');
+    await loadNext();
+    loadList();
+    showAgenda(r);
+  } catch (e) { err.textContent = e.message; if (btn) btn.disabled = false; }
+}
+async function openAgenda(meetingId) {
+  try {
+    const r = await call('agenda', { meeting_id: meetingId });
+    if (!r.ok) throw new Error(r.error || 'Could not load the agenda');
+    showAgenda(r);
+  } catch (e) { alert(e.message); }
+}
+let AGENDA = null;
+function showAgenda(r) {
+  AGENDA = r;
+  const a = r.agenda, m = r.meeting;
+  history.replaceState(null, '', '#agenda=' + encodeURIComponent(m.id));
+  const when = [PoolTime.fmtDay(a.date, { weekday: 'long', month: 'long', day: 'numeric' }), a.time ? fmtClock(a.time) : null, a.location].filter(Boolean).join(' · ');
+  document.getElementById('agenda-title').textContent = a.title || 'Board Meeting';
+  const sec = (s, i) => {
+    let inner = '';
+    if (s.key === 'reports') {
+      inner = s.people.length ? s.people.map(p => `<div style="margin:8px 0 0 18px">
+          <div style="font-weight:600">${escapeHtml(p.name)}${p.titles.length ? `<span style="font-weight:500;color:var(--muted)">, ${escapeHtml(p.titles.join(' · '))}</span>` : ''}</div>
+          ${p.items.map(it => `<div style="margin:3px 0 0 16px">– ${escapeHtml(it.body)}${it.carried_from_date ? ` <span style="color:var(--muted);font-size:12px">(from ${escapeHtml(PoolTime.fmtDay(it.carried_from_date, { month: 'short', day: 'numeric' }))})</span>` : ''}</div>`).join('')}
+        </div>`).join('') : '<div style="margin:6px 0 0 18px;color:var(--muted)">No one on the board yet.</div>';
+    }
+    if (s.key === 'old') {
+      inner = s.followUps.map(f => `<div style="margin:3px 0 0 18px">– ${escapeHtml(f.description)}<span style="color:var(--muted);font-size:12.5px">${f.assigned_to ? ' · ' + escapeHtml(f.assigned_to) : ''}${f.due_date ? ' · due ' + escapeHtml(PoolTime.fmtDay(f.due_date, { month: 'short', day: 'numeric' })) : ''}</span></div>`).join('');
+    }
+    return `<div style="margin:12px 0 0"><div style="font-weight:700">${i + 1}. ${escapeHtml(s.title)}</div>${inner}</div>`;
+  };
+  document.getElementById('agenda-body').innerHTML = `
+    <div style="font-size:14px;color:var(--muted)">${escapeHtml(when)}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:2px">${r.created_by_name ? 'Created by ' + escapeHtml(r.created_by_name) : 'Not created yet; this is what it would look like.'} · board only</div>
+    <div style="font-size:14.5px;line-height:1.55">${a.sections.map(sec).join('')}</div>`;
+  document.getElementById('agenda-foot').innerHTML = `
+    <button class="btn btn-ghost" type="button" onclick="copyAgenda()">Copy as text</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${typeof sendLine === 'function' && m.agenda_created_at ? sendLine(m) : ''}</div>`;
+  document.getElementById('agenda-scrim').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeAgenda() {
+  document.getElementById('agenda-scrim').classList.remove('open');
+  document.body.style.overflow = '';
+  history.replaceState(null, '', window.location.pathname);
+}
+async function copyAgenda() {
+  try { await navigator.clipboard.writeText(AGENDA.text); alert('Copied.'); }
+  catch (_) { prompt('Copy the agenda:', AGENDA.text); }
+}
+
 // ── List ───────────────────────────────────────────────────────────────
 async function loadList() {
   const host = document.getElementById('list-host');
@@ -674,6 +783,7 @@ function paintEditor() {
   document.getElementById('m-title').value = m.title || 'Board Meeting';
   document.getElementById('m-date').value = m.meeting_date;
   document.getElementById('m-location').value = m.location || '';
+  document.getElementById('m-time').value = m.planned_time || '';
   document.getElementById('m-notes').value = m.notes_md || '';
   document.getElementById(`vis-${m.visibility === 'public' ? 'public' : 'private'}`).checked = true;
 
@@ -1052,6 +1162,7 @@ async function saveNow() {
   MEETING.title = document.getElementById('m-title').value.trim() || 'Board Meeting';
   MEETING.meeting_date = document.getElementById('m-date').value || MEETING.meeting_date;
   MEETING.location = document.getElementById('m-location').value.trim() || null;
+  MEETING.planned_time = document.getElementById('m-time').value || null;
   MEETING.notes_md = document.getElementById('m-notes').value;
   MEETING.visibility = document.getElementById('vis-public').checked ? 'public' : 'private';
   try {
@@ -1060,6 +1171,7 @@ async function saveNow() {
       title: MEETING.title,
       meeting_date: MEETING.meeting_date,
       location: MEETING.location,
+      planned_time: MEETING.planned_time,
       notes_md: MEETING.notes_md,
       attendees: MEETING.attendees_json,
       votes: MEETING.votes_json,
@@ -1148,6 +1260,10 @@ async function deleteMeeting() {
   await loadList();
   if (window.location.hash === '#add') document.getElementById('item-input').focus();
   if (wantsStart) { startNewMeeting(); return; }
+
+  // #agenda=<id> (the link in "Send to the board") opens the agenda.
+  const agendaMatch = (window.location.hash || '').match(/^#agenda=(.+)$/);
+  if (agendaMatch) { openAgenda(decodeURIComponent(agendaMatch[1])); return; }
 
   // Hash deep-link: #m=<id> opens the modal automatically.
   const hashMatch = (window.location.hash || '').match(/^#m=(.+)$/);

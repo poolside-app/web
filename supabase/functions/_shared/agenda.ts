@@ -90,11 +90,17 @@ export function buildAgenda(args: {
     person.items.push(it);
   }
 
+  // Directors first (in board order), then current board members with no
+  // position, then anyone who has left the board.
+  const directors = people.filter(p => p.titles.length);
+  const others = people.filter(p => !p.titles.length);
+  const ordered = [...directors, ...others.filter(p => active.has(p.id)), ...others.filter(p => !active.has(p.id))];
+
   const sections: Agenda['sections'] = [
     { key: 'open', title: 'Call to order and roll call' },
   ];
   if (args.lastMinutesDate) sections.push({ key: 'minutes', title: `Approve the minutes of the ${longDate(args.lastMinutesDate, false)} meeting` });
-  sections.push({ key: 'reports', title: 'Reports and items', people: people.map(({ name, titles, items }) => ({ name, titles, items })) });
+  sections.push({ key: 'reports', title: 'Reports and items', people: ordered.map(({ name, titles, items }) => ({ name, titles, items })) });
   if ((args.openFollowUps ?? []).length) {
     sections.push({ key: 'old', title: 'Open action items from past meetings', followUps: args.openFollowUps! });
   }

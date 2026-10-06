@@ -74,6 +74,42 @@ if (A) {
   check('L1: the dashboard\'s Board meeting card links straight to adding an item', /board-meetings\.html#add/.test(read('club/admin/index.html')), '');
 }
 
+// ── L2: create and view the agenda (offline) ────────────────────────────
+console.log('\nL2 · create agenda (offline)');
+if (A) {
+  const positions = [{ id: 'p', title: 'President', sort: 0 }, { id: 'v', title: 'Vice-President', sort: 1 }, { id: 't', title: 'Treasurer', sort: 2 }, { id: 'g', title: 'Grounds Director', sort: 5 }];
+  const holders = [{ position_id: 'p', admin_user_id: 'doug' }, { position_id: 't', admin_user_id: 'kris' }, { position_id: 'v', admin_user_id: 'kris' }];
+  const logins = [{ id: 'doug', display_name: 'Doug Frevele' }, { id: 'kris', display_name: 'Kristin' }, { id: 'sam', display_name: 'Sam' }];
+  const items = [
+    { id: '1', body: 'Bathrooms have been complained about', added_by: 'kris', added_by_name: 'Kristin', created_at: '2026-10-06T10:00:00Z' },
+    { id: '2', body: 'Close for the season Oct 18', added_by: 'doug', added_by_name: 'Doug Frevele', created_at: '2026-10-06T11:00:00Z' },
+    { id: '3', body: 'New lounge chairs', added_by: 'sam', added_by_name: 'Sam', created_at: '2026-10-06T12:00:00Z', carried_from_date: '2026-09-12' },
+    { id: '4', body: 'Old idea', added_by: null, added_by_name: 'Pat (left the board)', created_at: '2026-10-01T12:00:00Z' },
+  ];
+  const ag = A.buildAgenda({ meeting: { meeting_date: '2026-10-10', planned_time: '10:00', location: 'Clubhouse' }, positions, holders, logins, items,
+    lastMinutesDate: '2026-09-12', openFollowUps: [{ description: 'Get 3 quotes on the pump', assigned_to: 'Facilities', due_date: '2026-10-01', meeting_date: '2026-09-12' }] });
+  const reports = ag.sections.find(x => x.key === 'reports');
+  check('L2: the agenda has the standard sections in order',
+    ag.sections.map(x => x.key).join(',') === 'open,minutes,reports,old,actions,close', ag.sections.map(x => x.key).join(','));
+  check('L2: each board member\'s items sit under their name, in board order',
+    reports.people.map(p => `${p.name}:${p.titles.join('+')}:${p.items.map(i => i.id).join('')}`).join(' | ')
+      === 'Doug Frevele:President:2 | Kristin:Vice-President+Treasurer:1 | Sam::3 | Pat (left the board)::4',
+    reports.people.map(p => `${p.name}:${p.titles.join('+')}:${p.items.map(i => i.id).join('')}`).join(' | '));
+  const text = A.agendaText(ag);
+  check('L2: the written agenda reads like the format Doug saw',
+    /^Board Meeting — Saturday, October 10 · 10:00 AM · Clubhouse/.test(text) && /2\. Approve the minutes of the September 12 meeting/.test(text)
+      && /Kristin, Vice-President · Treasurer\n {5}- Bathrooms have been complained about/.test(text) && /New lounge chairs \(from September 12\)/.test(text)
+      && /Get 3 quotes on the pump \(Facilities, due October 1\)/.test(text) && /6\. Set the next meeting, adjourn$/.test(text), text);
+}
+{
+  const bm = read('supabase/functions/board_meetings/index.ts');
+  check('L2: the board can create and view the agenda', /action === 'create_agenda'/.test(bm) && /action === 'agenda'/.test(bm) && /buildAgenda/.test(bm), '');
+  const page = read('club/admin/board-meetings.html');
+  check('L2: the page has Create agenda, a date/time/place form when nothing\'s planned, and the agenda view',
+    /create_agenda/.test(page) && /id="agenda-scrim"/.test(page) && /id="plan-time"/.test(page) && /#agenda=/.test(page), '');
+  check('L2: a meeting can have a start time', /id="m-time"/.test(page) && /planned_time/.test(between(page, 'async function saveNow', '\n}\n')), '');
+}
+
 const club = OFFLINE ? null : (await sql(`select id from tenants where slug = 'bishopestates'`))[0];
 const owner = OFFLINE ? null : (await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`))[0];
 const STAMP = String(Date.now()).slice(-6);
@@ -111,6 +147,43 @@ if (live('L1')) {
     await cleanup();
     const [n] = await sql(`select count(*)::int as n from agenda_items where body like '%${tag}%'`);
     check('L1: test items and logins removed', n.n === 0, short(n));
+  }
+}
+
+if (live('L2')) {
+  console.log('\nL2 · live (about 8 calls; a test meeting, items and logins, removed afterward)');
+  const { makeTempAdmin } = await import('./lib/testdata.mjs');
+  let meetingId = null;
+  try {
+    const a = await makeTempAdmin(sql, club.id, 'L2 Adder', [], 'custom');
+    const b = await makeTempAdmin(sql, club.id, 'L2 Reader', [], 'custom');
+    await fn('board_meetings', 'add_item', tok(a), { body: `Bathrooms have been complained about ${tag}` });
+    const noDate = await fn('board_meetings', 'create_agenda', tok(a), {});
+    check('L2: with nothing planned, Create agenda asks for the date', noDate.status === 400 && /date/.test(noDate.error || ''), short(noDate));
+    const date = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    const made = await fn('board_meetings', 'create_agenda', tok(a), { meeting_date: date, planned_time: '10:00', location: 'SimTest Clubhouse' });
+    meetingId = made.meeting?.id;
+    const reports = (made.agenda?.sections || []).find(x => x.key === 'reports');
+    const adder = reports?.people?.find(p => /L2 Adder/.test(p.name));
+    check('L2: anyone on the board creates it; it plans the meeting and puts their item under their name',
+      made.ok && made.meeting?.agenda_created_at && made.meeting?.planned_time === '10:00' && adder?.items?.some(it => it.body.includes(tag))
+        && reports.people[0]?.titles?.includes('President'), short({ err: made.error, people: reports?.people?.map(p => p.name) }));
+    await sql(`update board_meetings set title = 'SimTest Board Meeting' where id = '${meetingId}'`);
+    await fn('board_meetings', 'add_item', tok(b), { body: `Late addition ${tag}` });
+    const [late] = await sql(`select meeting_id from agenda_items where body = 'Late addition ${tag}'`);
+    check('L2: something added after the agenda is made joins it', late?.meeting_id === meetingId, short(late));
+    const view = await fn('board_meetings', 'agenda', tok(b), { meeting_id: meetingId });
+    check('L2: any board member sees the agenda, with who made it',
+      view.ok && /Late addition/.test(view.text || '') && /Bathrooms have been complained about/.test(view.text || '') && /L2 Adder/.test(view.created_by_name || ''),
+      short({ err: view.error, by: view.created_by_name }));
+    const pub = await fn('board_meetings', 'list_public', null, { slug: 'bishopestates' });
+    check('L2: the agenda isn\'t on the public page', pub.ok && !JSON.stringify(pub).includes(tag), '');
+  } finally {
+    if (meetingId) await sql(`delete from board_meetings where id = '${meetingId}'`);
+    await cleanup();
+    const [n] = await sql(`select (select count(*) from agenda_items where body like '%${tag}%')::int as items,
+      (select count(*) from board_meetings where location = 'SimTest Clubhouse')::int as meetings`);
+    check('L2: test meeting, items and logins removed', n.items === 0 && n.meetings === 0, short(n));
   }
 }
 
