@@ -373,6 +373,27 @@ Steps (each: failing test first, then the fix, then proof):
 - **✅ K5. Setup checklist.** "Invite the rest of your board" becomes "Set up your board positions", opening the Board page. It's done when another board member holds a position.
 - **✅ K6. Bylaws.** The President or Secretary uploads the bylaws PDF on the Board minutes page. It shows at the top of the public "Bylaws & board minutes" page, always, and the member app links there. Replacing it keeps the old versions with their dates. The same public page lists the board: names and positions.
 
+### L. Meeting agendas from one-liners (Doug, 10/6)
+Doug decided (10/6):
+- Any board member can add an item for the next meeting at any time: one line, 100 characters at most ("Bathrooms have been complained about").
+- Right before the meeting, anyone presses "Create agenda". It builds the agenda in the standard format, with each person's items under their name.
+- The agenda is board-only, and anyone on the board can see it at any time. It's sent only when someone presses "Send to the board".
+- Anything not checked off at the meeting carries over to the next one. Anything added after the agenda is made still joins it, until the meeting starts.
+
+The format:
+1. Call to order and roll call
+2. Approve the minutes of the last meeting
+3. Reports and items: each position in board order with its holder, and the one-liners that person added under them. Then anyone on the board without a position.
+4. Open action items from past meetings (follow-ups not yet done)
+5. Action list: who, what, by when
+6. Set the next meeting, adjourn
+
+Steps (each: failing test first, then the fix, then proof):
+- **✅ L1. One-liners for the next meeting.** A "Next meeting" card on the Board minutes page: an "Add to the agenda" box (one line, 100 characters, with a counter) and the list of what's waiting, each with who added it. People can change or remove their own items; the president can remove anyone's.
+- **L2. Create agenda.** It uses the next planned meeting, or asks for the date, time and place and plans one; a meeting can now have a start time. It builds the agenda above, and "View agenda" shows it to any board member.
+- **L3. Send to the board.** It goes to every board member by text or email (their own preference), plus a pop-up, with a link to the agenda. Only when someone presses the button. "Send again" is there if it changes.
+- **L4. At the meeting.** The meeting's notes screen lists the agenda items to check off. When the meeting closes, anything not checked off goes back on the list for the next meeting, marked where it came from.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

@@ -49,6 +49,13 @@
 //                                    // Board members, for the attendance
 //                                    // checkboxes (no lifeguard logins)
 //
+// Agenda (PLAN.md L, Doug 2026-10-06). Any board member; board only:
+//   { action: 'next' }                   → the next planned meeting and the
+//                                           one-liners waiting for it
+//   { action: 'add_item', body }         → one line, 100 characters at most
+//   { action: 'update_item', id, body }  → your own (the president: anyone's)
+//   { action: 'delete_item', id }        → your own (the president: anyone's)
+//
 // Public action (no auth, used by the /governance.html public page):
 //   { action: 'list_public', slug }
 //     → { ok, meetings: [...] }      // only completed + visibility='public'
@@ -59,6 +66,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, canDeleteMeeting, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { clearFollowUpTasks, syncFollowUpTasks, type MeetingForTasks } from '../_shared/meeting_follow_ups.ts';
+import { cleanItem, itemProblem } from '../_shared/agenda.ts';
 import { loadBoard } from '../_shared/positions_db.ts';
 import { boardRoster } from '../_shared/positions.ts';
 
@@ -101,7 +109,7 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, title, meeting_date, location, status, started_at, ended_at, visibility, notes_md, attendees_json, votes_json, follow_ups_json, created_by, created_at, updated_at, edited_at, edited_by';
+const FIELDS = 'id, tenant_id, title, meeting_date, location, status, started_at, ended_at, visibility, notes_md, attendees_json, votes_json, follow_ups_json, created_by, created_at, updated_at, edited_at, edited_by, planned_time, agenda_created_at, agenda_created_by, agenda_sent_at, agenda_sent_by';
 const PUBLIC_FIELDS = 'id, title, meeting_date, location, started_at, ended_at, notes_md, attendees_json, votes_json, follow_ups_json, edited_at, edited_by';
 // What a correction can change, and what the audit log keeps of the old one.
 const CONTENT = ['title', 'meeting_date', 'location', 'notes_md', 'attendees_json', 'votes_json', 'follow_ups_json', 'visibility'] as const;
@@ -207,6 +215,10 @@ function contentPatch(body: Record<string, unknown>): { patch: Record<string, un
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) patch.meeting_date = s;
   }
   if (body.location !== undefined)   patch.location = strOrNull(body.location);
+  if (body.planned_time !== undefined) {
+    const t = String(body.planned_time ?? '').trim();
+    patch.planned_time = /^[0-2]\d:[0-5]\d$/.test(t) ? t : null;
+  }
   if (body.notes_md !== undefined)   patch.notes_md = String(body.notes_md ?? '').slice(0, 50000);
   if (body.attendees !== undefined)  patch.attendees_json  = sanitizeAttendees(body.attendees);
   if (body.votes !== undefined)      patch.votes_json      = sanitizeVotes(body.votes);
@@ -320,6 +332,95 @@ Deno.serve(async (req) => {
         metadata: { before: Object.fromEntries(CONTENT.map(k => [k, row[k]])) },
       });
     } catch { /* never block the change on the audit write */ }
+  }
+
+  // ── Agenda items (PLAN.md L1) ──────────────────────────────────────────
+  // One-liners for the next meeting. Waiting items have no meeting; once an
+  // agenda is made for a meeting, new items join it until it starts.
+  const ITEM_FIELDS = 'id, body, added_by, added_by_name, meeting_id, covered, carried_from, created_at';
+  async function nextMeeting() {
+    const today = poolToday(await tenantTimeZone(sb, TID));
+    const { data } = await sb.from('board_meetings').select(FIELDS)
+      .eq('tenant_id', TID).eq('status', 'draft').gte('meeting_date', today)
+      .order('meeting_date').order('created_at').limit(1);
+    return (data ?? [])[0] ?? null;
+  }
+  // Names, titles and "from Sep 12" for a list of items.
+  async function shapeItems(rows: Record<string, unknown>[]) {
+    const authorIds = [...new Set(rows.map(r => r.added_by).filter(Boolean))] as string[];
+    const fromIds = [...new Set(rows.map(r => r.carried_from).filter(Boolean))] as string[];
+    const [{ data: authors }, { data: froms }] = await Promise.all([
+      authorIds.length ? sb.from('admin_users').select('id, display_name, board_title').in('id', authorIds) : Promise.resolve({ data: [] }),
+      fromIds.length ? sb.from('board_meetings').select('id, meeting_date').in('id', fromIds) : Promise.resolve({ data: [] }),
+    ]);
+    const who = new Map((authors ?? []).map(a => [a.id, a]));
+    const from = new Map((froms ?? []).map(m => [m.id, m.meeting_date]));
+    return rows.map(r => {
+      const a = r.added_by ? who.get(r.added_by as string) : null;
+      return {
+        id: r.id, body: r.body, created_at: r.created_at, covered: !!r.covered, meeting_id: r.meeting_id,
+        added_by: r.added_by ?? null,
+        added_by_name: (a?.display_name as string | undefined) || (r.added_by_name as string | null) || 'A board member',
+        added_by_title: (a?.board_title as string | undefined) || null,
+        carried_from_date: r.carried_from ? from.get(r.carried_from as string) ?? null : null,
+        can_change: me!.isOwner || (!!r.added_by && r.added_by === me!.id),
+      };
+    });
+  }
+  async function changeableItem(id: string): Promise<{ row?: Record<string, unknown>; deny?: Response }> {
+    const { data: row } = await sb.from('agenda_items').select(ITEM_FIELDS).eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!row) return { deny: jsonResponse({ ok: false, error: 'Item not found' }, 404) };
+    if (!me!.isOwner && row.added_by !== me!.id) {
+      return { deny: jsonResponse({ ok: false, error: 'Only the person who added it, or the president, can change it.' }, 403) };
+    }
+    if (row.meeting_id) {
+      const { data: m } = await sb.from('board_meetings').select('status').eq('id', row.meeting_id).maybeSingle();
+      if (m?.status === 'completed') return { deny: jsonResponse({ ok: false, error: 'That meeting is over.' }, 409) };
+    }
+    return { row };
+  }
+
+  if (action === 'next') {
+    const meeting = await nextMeeting();
+    let q = sb.from('agenda_items').select(ITEM_FIELDS).eq('tenant_id', TID).eq('covered', false);
+    q = meeting ? q.or(`meeting_id.is.null,meeting_id.eq.${meeting.id}`) : q.is('meeting_id', null);
+    const { data } = await q.order('created_at');
+    return jsonResponse({ ok: true, meeting: meeting ? await one(meeting) : null, items: await shapeItems(data ?? []) });
+  }
+
+  if (action === 'add_item') {
+    const problem = itemProblem(body.body);
+    if (problem) return jsonResponse({ ok: false, error: problem }, 400);
+    const { count } = await sb.from('agenda_items').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).is('meeting_id', null);
+    if ((count ?? 0) >= 200) return jsonResponse({ ok: false, error: 'The list for the next meeting is full. Hold a meeting first.' }, 409);
+    // Once the next meeting has its agenda, a new item joins it.
+    const next = await nextMeeting();
+    const { data: row, error } = await sb.from('agenda_items').insert({
+      tenant_id: TID, body: cleanItem(body.body),
+      added_by: payload.synthetic ? null : me.id, added_by_name: me.name,
+      meeting_id: next?.agenda_created_at ? next.id : null,
+    }).select(ITEM_FIELDS).single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, item: (await shapeItems([row]))[0] });
+  }
+
+  if (action === 'update_item') {
+    const { row, deny } = await changeableItem(String(body.id ?? ''));
+    if (deny) return deny;
+    const problem = itemProblem(body.body);
+    if (problem) return jsonResponse({ ok: false, error: problem }, 400);
+    const { data, error } = await sb.from('agenda_items').update({ body: cleanItem(body.body), updated_at: new Date().toISOString() })
+      .eq('id', row!.id).eq('tenant_id', TID).select(ITEM_FIELDS).single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, item: (await shapeItems([data]))[0] });
+  }
+
+  if (action === 'delete_item') {
+    const { row, deny } = await changeableItem(String(body.id ?? ''));
+    if (deny) return deny;
+    await sb.from('agenda_items').delete().eq('id', row!.id).eq('tenant_id', TID);
+    return jsonResponse({ ok: true });
   }
 
   // ── bylaws (K6) ─────────────────────────────────────────────────────────

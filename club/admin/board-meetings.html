@@ -266,6 +266,28 @@
        of the club's "Bylaws & board minutes" page. The President or the
        Secretary uploads a new version; earlier ones are kept. -->
   <div class="card" id="bylaws-card"><div style="height:40px"></div></div>
+
+  <!-- PLAN.md L (Doug, 2026-10-06): one-liners for the next meeting. Anyone
+       on the board adds one any time; "Create agenda" lays them out by
+       person; "Send to the board" is the only thing that sends it. -->
+  <div class="card" id="next-card" data-focus="add">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap">
+      <h2 style="margin:0">Next meeting</h2>
+      <span id="next-when" style="font-size:13.5px;color:var(--muted)"></span>
+    </div>
+    <label for="item-input" style="margin-top:12px">Add to the agenda</label>
+    <div style="display:flex;gap:8px">
+      <input id="item-input" maxlength="100" autocomplete="off" placeholder="Bathrooms have been complained about"
+        oninput="countItem()" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addItem(); }">
+      <button class="btn btn-primary" type="button" id="item-add" onclick="addItem()">Add</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);margin-top:4px">
+      <span>One line. Anyone on the board can add to it.</span><span id="item-count">0/100</span>
+    </div>
+    <div id="item-err" style="font-size:13px;color:var(--red);margin-top:6px"></div>
+    <div id="items-host" style="margin-top:12px"></div>
+    <div id="agenda-actions" style="margin-top:12px"></div>
+  </div>
   <div id="list-host">
     <div class="card" style="height:60px"></div>
     <div class="card" style="height:60px"></div>
@@ -458,6 +480,80 @@ async function uploadBylaws(input) {
     if (!set.ok) throw new Error(set.error || 'Could not post them');
     await loadBylaws();
   } catch (e) { msg.textContent = e.message; }
+}
+
+// ── Next meeting: one-liners (PLAN.md L1) ──────────────────────────────
+let NEXT = null;   // { meeting, items }
+function countItem() {
+  const n = document.getElementById('item-input').value.length;
+  const c = document.getElementById('item-count');
+  c.textContent = `${n}/100`;
+  c.style.color = n >= 90 ? '#b45309' : '';
+}
+async function loadNext() {
+  try {
+    const r = await call('next');
+    if (!r.ok) throw new Error(r.error || 'Could not load the next meeting');
+    NEXT = r;
+    paintNext();
+  } catch (e) {
+    document.getElementById('items-host').innerHTML = `<div style="color:var(--red);font-size:13px">${escapeHtml(e.message)}</div>`;
+  }
+}
+function paintNext() {
+  const m = NEXT.meeting;
+  document.getElementById('next-when').textContent = m
+    ? [PoolTime.fmtDay(m.meeting_date, { weekday: 'long', month: 'long', day: 'numeric' }), m.planned_time ? fmtClock(m.planned_time) : null, m.location].filter(Boolean).join(' · ')
+    : 'Not planned yet';
+  const items = NEXT.items || [];
+  document.getElementById('items-host').innerHTML = items.length
+    ? items.map(it => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border)">
+        <div style="font-size:14px;min-width:0">
+          <div>${escapeHtml(it.body)}</div>
+          <div style="font-size:12px;color:var(--muted)">${escapeHtml(it.added_by_name)}${it.added_by_title ? ' (' + escapeHtml(it.added_by_title) + ')' : ''}
+            · ${escapeHtml(new Date(it.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}${it.carried_from_date ? ' · carried over from ' + escapeHtml(PoolTime.fmtDay(it.carried_from_date, { month: 'short', day: 'numeric' })) : ''}</div>
+        </div>
+        ${it.can_change ? `<div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="editItem('${it.id}')">Edit</button>
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="deleteItem('${it.id}')" aria-label="Remove">✕</button>
+        </div>` : ''}
+      </div>`).join('')
+    : '<div style="font-size:13.5px;color:var(--muted)">Nothing on the list yet.</div>';
+  if (typeof paintAgendaActions === 'function') paintAgendaActions();
+}
+function fmtClock(hhmm) {
+  const [h, mm] = String(hhmm).split(':').map(Number);
+  return `${h % 12 || 12}:${String(mm).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+async function addItem() {
+  const input = document.getElementById('item-input');
+  const err = document.getElementById('item-err');
+  err.textContent = '';
+  const text = input.value.replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  const btn = document.getElementById('item-add'); btn.disabled = true;
+  try {
+    const r = await call('add_item', { body: text });
+    if (!r.ok) throw new Error(r.error || 'Could not add it');
+    input.value = ''; countItem();
+    await loadNext();
+  } catch (e) { err.textContent = e.message; } finally { btn.disabled = false; }
+}
+async function editItem(id) {
+  const it = (NEXT.items || []).find(x => x.id === id);
+  if (!it) return;
+  const next = prompt('Change this item (one line, 100 characters at most):', it.body);
+  if (next === null || next.trim() === it.body) return;
+  const r = await call('update_item', { id, body: next });
+  if (!r.ok) { alert(r.error || 'Could not change it'); return; }
+  await loadNext();
+}
+async function deleteItem(id) {
+  const it = (NEXT.items || []).find(x => x.id === id);
+  if (!it || !confirm(`Take "${it.body}" off the list?`)) return;
+  const r = await call('delete_item', { id });
+  if (!r.ok) { alert(r.error || 'Could not remove it'); return; }
+  await loadNext();
 }
 
 // ── List ───────────────────────────────────────────────────────────────
@@ -1048,7 +1144,9 @@ async function deleteMeeting() {
   const wantsStart = window.location.hash === '#start';
   if (wantsStart) history.replaceState(null, '', window.location.pathname);
   loadBylaws();
+  loadNext();
   await loadList();
+  if (window.location.hash === '#add') document.getElementById('item-input').focus();
   if (wantsStart) { startNewMeeting(); return; }
 
   // Hash deep-link: #m=<id> opens the modal automatically.
