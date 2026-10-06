@@ -134,6 +134,18 @@ if (A) {
   check('L3: "Send to the board" only on the button, with who\'ll get it how; "Send again" after', /send_agenda/.test(page) && /preview: true/.test(page) && /Send again/.test(page), '');
 }
 
+// ── L4: at the meeting (offline) ────────────────────────────────────────
+console.log('\nL4 · at the meeting (offline)');
+{
+  const bm = read('supabase/functions/board_meetings/index.ts');
+  check('L4: the note-taker checks items off', /action === 'cover_item'/.test(bm) && /editable\(/.test(between(bm, "action === 'cover_item'", 'return jsonResponse({ ok: true')), '');
+  check('L4: closing the meeting sends anything not checked off back for the next one',
+    /carried_from/.test(between(bm, "action === 'finalize'", "// ── delete")) && /covered', false\)/.test(between(bm, "action === 'finalize'", "// ── delete")), '');
+  check('L4: starting a meeting brings in anything still waiting', /agenda_items/.test(between(bm, "action === 'start'", "action === 'update'")), '');
+  const page = read('club/admin/board-meetings.html');
+  check('L4: the meeting screen lists the agenda items with check boxes', /id="agenda-host"/.test(page) && /cover_item/.test(page), '');
+}
+
 const club = OFFLINE ? null : (await sql(`select id from tenants where slug = 'bishopestates'`))[0];
 const owner = OFFLINE ? null : (await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`))[0];
 const STAMP = String(Date.now()).slice(-6);
@@ -241,6 +253,39 @@ if (live('L3')) {
     const [n] = await sql(`select (select count(*) from board_meetings where title like 'SimTest%')::int as meetings,
       (select count(*) from agenda_items where body like '%${tag}%')::int as items`);
     check('L3: test meeting, items and logins removed', n.meetings === 0 && n.items === 0, short(n));
+  }
+}
+
+if (live('L4')) {
+  console.log('\nL4 · live (about 10 calls; a test meeting, items and logins, removed afterward)');
+  const { makeTempAdmin } = await import('./lib/testdata.mjs');
+  let meetingId = null;
+  try {
+    const n = await makeTempAdmin(sql, club.id, 'L4 Note Taker', [], 'custom');
+    const o = await makeTempAdmin(sql, club.id, 'L4 Other', [], 'custom');
+    const i1 = await fn('board_meetings', 'add_item', tok(n), { body: `Covered item ${tag}` });
+    const i2 = await fn('board_meetings', 'add_item', tok(o), { body: `Not reached ${tag}` });
+    const made = await fn('board_meetings', 'create_agenda', tok(n), { meeting_date: new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10), location: 'SimTest Room' });
+    meetingId = made.meeting?.id;
+    await sql(`update board_meetings set title = 'SimTest Agenda Meeting', visibility = 'private' where id = '${meetingId}'`);
+    const started = await fn('board_meetings', 'start', tok(n), { id: meetingId });
+    const notTaker = await fn('board_meetings', 'cover_item', tok(o), { id: i1.item?.id, covered: true });
+    check('L4: only the note-taker (or the president) checks items off', started.ok && notTaker.status === 403, short({ started: started.error, notTaker }));
+    const cov = await fn('board_meetings', 'cover_item', tok(n), { id: i1.item?.id, covered: true });
+    const closed = await fn('board_meetings', 'finalize', tok(n), { id: meetingId });
+    const rows = await sql(`select body, meeting_id, covered, carried_from from agenda_items where body like '%${tag}%' order by body`);
+    const covered = rows.find(r => r.body.startsWith('Covered')), left = rows.find(r => r.body.startsWith('Not reached'));
+    check('L4: checked-off items stay with the meeting; the rest go back on the list, marked where they came from',
+      cov.ok && closed.ok && covered?.meeting_id === meetingId && covered?.covered === true && left?.meeting_id === null && left?.carried_from === meetingId, short(rows));
+    const next = await fn('board_meetings', 'next', tok(o));
+    const carried = (next.items || []).find(x => x.id === i2.item?.id);
+    check('L4: the next meeting\'s list shows it as carried over', !!carried?.carried_from_date, short(carried));
+  } finally {
+    if (meetingId) await sql(`delete from board_meetings where id = '${meetingId}'`);
+    await cleanup();
+    const [c] = await sql(`select (select count(*) from board_meetings where title like 'SimTest%')::int as meetings,
+      (select count(*) from agenda_items where body like '%${tag}%')::int as items`);
+    check('L4: test meeting, items and logins removed', c.meetings === 0 && c.items === 0, short(c));
   }
 }
 

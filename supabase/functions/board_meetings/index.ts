@@ -59,6 +59,10 @@
 //                                         → the next planned meeting (or a new
 //                                           one) gets the waiting items
 //   { action: 'agenda', meeting_id }     → the agenda, laid out by person
+//   { action: 'cover_item', id, covered }  → checked off at the meeting
+//                                           (note-taker or president). When
+//                                           the meeting closes, unchecked
+//                                           items go back on the list.
 //   { action: 'send_agenda', meeting_id, preview? }
 //                                         → texts or emails it to every board
 //                                           member (their preference) and pops
@@ -514,6 +518,18 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, meeting: await one(m), ...(await agendaFor(m)) });
   }
 
+  // ── Check an item off at the meeting (PLAN.md L4) ──────────────────────
+  // Whoever can change the meeting (the note-taker, the president).
+  if (action === 'cover_item') {
+    const { data: it } = await sb.from('agenda_items').select('id, meeting_id').eq('id', String(body.id ?? '')).eq('tenant_id', TID).maybeSingle();
+    if (!it || !it.meeting_id) return jsonResponse({ ok: false, error: 'That item isn\'t on a meeting yet.' }, 404);
+    const { row: mt, deny } = await editable(it.meeting_id as string);
+    if (deny) return deny;
+    if (mt!.status === 'completed') return jsonResponse({ ok: false, error: 'That meeting is over.' }, 409);
+    await sb.from('agenda_items').update({ covered: body.covered === true, updated_at: new Date().toISOString() }).eq('id', it.id);
+    return jsonResponse({ ok: true, covered: body.covered === true });
+  }
+
   // ── Send to the board (PLAN.md L3) ─────────────────────────────────────
   // Only when someone presses the button. Every board member (not gate-iPad
   // logins) gets a text or an email, their own preference, and a pop-up.
@@ -678,6 +694,10 @@ Deno.serve(async (req) => {
       created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (startNow) {
+      // Started on the spot: anything waiting is on its agenda (PLAN.md L4).
+      await sb.from('agenda_items').update({ meeting_id: data.id }).eq('tenant_id', TID).is('meeting_id', null).eq('covered', false);
+    }
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
@@ -698,6 +718,9 @@ Deno.serve(async (req) => {
       status: 'in_progress', started_at: now, updated_at: now,
     }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // Anything still waiting is on this meeting's agenda, even if nobody
+    // pressed Create agenda (PLAN.md L4).
+    await sb.from('agenda_items').update({ meeting_id: id }).eq('tenant_id', TID).is('meeting_id', null).eq('covered', false);
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
@@ -755,6 +778,10 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     // Follow-ups for board members go on their dashboards now.
     await syncFollowUpTasks(sb, data as MeetingForTasks, payload.synthetic ? null : me.id);
+    // Agenda items nobody got to go back on the list for the next meeting,
+    // marked where they came from (PLAN.md L4).
+    await sb.from('agenda_items').update({ meeting_id: null, carried_from: id, updated_at: now })
+      .eq('tenant_id', TID).eq('meeting_id', id).eq('covered', false);
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 

@@ -229,6 +229,37 @@ export async function renderChecks({ check, read, sql, jwt }) {
         await pg.waitForFunction(() => /Bylaws/.test(document.getElementById('bylaws-card')?.textContent || ''), { timeout: 15000 }).catch(() => {});
         const by = await pg.evaluate(() => document.getElementById('bylaws-card')?.innerText.replace(/\s+/g, ' ') || '');
         check('K6: the Board minutes page has the bylaws card, with upload for the president', /Bylaws/.test(by) && /Upload/.test(by) && /public/.test(by), by.slice(0, 160));
+        // L1–L3: the Next meeting card, and the agenda view (sample data, so
+        // nothing real is created).
+        await pg.waitForFunction(() => /Not planned yet|·/.test(document.getElementById('next-when')?.textContent || ''), { timeout: 15000 }).catch(() => {});
+        const nx = await pg.evaluate(() => ({
+          max: document.getElementById('item-input')?.maxLength,
+          count: document.getElementById('item-count')?.textContent,
+          create: /Create agenda/.test(document.getElementById('agenda-actions')?.textContent || ''),
+        }));
+        check('L1: the Next meeting card has the one-line box (100), its counter, and Create agenda', nx.max === 100 && nx.count === '0/100' && nx.create, JSON.stringify(nx));
+        await pg.evaluate(() => showAgenda({
+          meeting: { id: 'sample', agenda_created_at: '2026-10-06T12:00:00Z', agenda_sent_at: null },
+          created_by_name: 'Doug Frevele', text: '',
+          agenda: { title: 'Board Meeting', date: '2026-10-10', time: '10:00', location: 'Clubhouse', sections: [
+            { key: 'open', title: 'Call to order and roll call' },
+            { key: 'minutes', title: 'Approve the minutes of the September 12 meeting' },
+            { key: 'reports', title: 'Reports and items', people: [
+              { name: 'Doug Frevele', titles: ['President'], items: [{ id: '1', body: 'Close for the season Oct 18' }] },
+              { name: 'Kristin', titles: ['Membership & Marketing Director'], items: [{ id: '2', body: 'Bathrooms have been complained about' }, { id: '3', body: 'New lounge chairs', carried_from_date: '2026-09-12' }] },
+              { name: 'Sam', titles: ['Treasurer'], items: [] } ] },
+            { key: 'old', title: 'Open action items from past meetings', followUps: [{ description: 'Get 3 quotes on the pump', assigned_to: 'Facilities', due_date: '2026-10-01' }] },
+            { key: 'actions', title: 'Action list: who, what, by when' },
+            { key: 'close', title: 'Set the next meeting, adjourn' } ] },
+        }));
+        const ag = await pg.evaluate(() => ({
+          text: document.getElementById('agenda-body')?.innerText.replace(/\s+/g, ' '),
+          send: /Send to the board/.test(document.getElementById('agenda-foot')?.textContent || ''),
+        }));
+        check('L2/L3: the agenda view reads in the agreed format, with Send to the board',
+          /3\. Reports and items/.test(ag.text) && /Kristin, Membership & Marketing Director – Bathrooms have been complained about/.test(ag.text) && ag.send, (ag.text || '').slice(0, 200));
+        await pg.screenshot({ path: '/tmp/poolside-agenda.png' });
+        await pg.evaluate(() => closeAgenda());
       }
       const url = new URL(pg.url()).pathname;
       check(`board: ${path} loads with no errors`, pg.errs.filter(e => !/browser pop-up/.test(e)).length === 0 && !/login/.test(url),

@@ -392,7 +392,7 @@ Steps (each: failing test first, then the fix, then proof):
 - **✅ L1. One-liners for the next meeting.** A "Next meeting" card on the Board minutes page: an "Add to the agenda" box (one line, 100 characters, with a counter) and the list of what's waiting, each with who added it. People can change or remove their own items; the president can remove anyone's.
 - **✅ L2. Create agenda.** It uses the next planned meeting, or asks for the date, time and place and plans one; a meeting can now have a start time. It builds the agenda above, and "View agenda" shows it to any board member.
 - **✅ L3. Send to the board.** It goes to every board member by text or email (their own preference), plus a pop-up, with a link to the agenda. Only when someone presses the button. "Send again" is there if it changes.
-- **L4. At the meeting.** The meeting's notes screen lists the agenda items to check off. When the meeting closes, anything not checked off goes back on the list for the next meeting, marked where it came from.
+- **✅ L4. At the meeting.** The meeting's notes screen lists the agenda items to check off. When the meeting closes, anything not checked off goes back on the list for the next meeting, marked where it came from.
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).

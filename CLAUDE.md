@@ -20,7 +20,7 @@ node scripts/test_payments.mjs    # targeted: fake card + fake Venmo signup end 
 node scripts/test_screens.mjs [--live] [--render]   # member/board screens (D1–D13); offline by default
 ```
 
-Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`.
+Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas). `ONLY=<step>` limits the live part of the last three.
 
 All of these read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
 
