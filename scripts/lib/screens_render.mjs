@@ -15,7 +15,7 @@ const LOCAL = {
   '/club/admin/application.html': 'club/admin/application.html', '/js/upcoming.js': 'js/upcoming.js', '/js/today.js': 'js/today.js', '/js/calendar.js': 'js/calendar.js',
   '/js/admin-subtabs.js': 'js/admin-subtabs.js', '/js/admin-push.js': 'js/admin-push.js',
   '/js/upcoming.js': 'js/upcoming.js', '/js/admin-help-fab.js': 'js/admin-help-fab.js', '/js/admin-flags.js': 'js/admin-flags.js',
-  '/js/pooltime.js': 'js/pooltime.js', '/governance.html': 'governance.html', '/club/admin/board-meetings.html': 'club/admin/board-meetings.html', '/club/admin/board.html': 'club/admin/board.html', '/club/admin/admins.html': 'club/admin/admins.html', '/m/renew.html': 'm/renew.html', '/renew.html': 'renew.html', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
+  '/js/pooltime.js': 'js/pooltime.js', '/club/admin/events.html': 'club/admin/events.html', '/club/admin/member-help.html': 'club/admin/member-help.html', '/js/calendar.js': 'js/calendar.js', '/governance.html': 'governance.html', '/club/admin/board-meetings.html': 'club/admin/board-meetings.html', '/club/admin/board.html': 'club/admin/board.html', '/club/admin/admins.html': 'club/admin/admins.html', '/m/renew.html': 'm/renew.html', '/renew.html': 'renew.html', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
 };
 
 // RENDER_ONLY=apply,login,members,home limits the run to those pages.
@@ -144,7 +144,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
     // Board pages load clean for the president (every page the trim and
     // the consolidation touched).
     const tok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
-    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/admin/application.html', '/club/admin/members.html', '/club/admin/board.html', '/club/admin/board-meetings.html']) {
+    for (const path of ['/club/admin/', '/club/admin/payments.html', '/club/admin/settings.html', '/club/admin/application.html', '/club/admin/members.html', '/club/admin/board.html', '/club/admin/board-meetings.html', '/club/admin/events.html', '/club/admin/member-help.html']) {
       const pg = await open(path, { poolside_tenant_token: tok });
       await wait(2000);
       if (path === '/club/admin/') {
