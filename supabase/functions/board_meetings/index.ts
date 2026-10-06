@@ -59,6 +59,11 @@
 //                                         → the next planned meeting (or a new
 //                                           one) gets the waiting items
 //   { action: 'agenda', meeting_id }     → the agenda, laid out by person
+//   { action: 'send_agenda', meeting_id, preview? }
+//                                         → texts or emails it to every board
+//                                           member (their preference) and pops
+//                                           up; preview: true says who'd get
+//                                           it how, and sends nothing
 //
 // Public action (no auth, used by the /governance.html public page):
 //   { action: 'list_public', slug }
@@ -70,7 +75,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, canDeleteMeeting, canEditMeeting, isBoardMember, type BoardCaller } from '../_shared/board.ts';
 import { poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { clearFollowUpTasks, syncFollowUpTasks, type MeetingForTasks } from '../_shared/meeting_follow_ups.ts';
-import { cleanItem, itemProblem, buildAgenda, agendaText, type AgendaItem, type FollowUp } from '../_shared/agenda.ts';
+import { cleanItem, itemProblem, buildAgenda, agendaText, agendaSms, sendChannel, longDate, clock, type AgendaItem, type FollowUp } from '../_shared/agenda.ts';
 import { loadBoard } from '../_shared/positions_db.ts';
 import { boardRoster } from '../_shared/positions.ts';
 
@@ -295,7 +300,7 @@ Deno.serve(async (req) => {
 
   // Adds who is taking the notes and whether the caller may change it.
   async function decorate(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
-    const ids = [...new Set(rows.flatMap(r => [r.created_by, r.edited_by]).filter(Boolean))] as string[];
+    const ids = [...new Set(rows.flatMap(r => [r.created_by, r.edited_by, r.agenda_sent_by]).filter(Boolean))] as string[];
     const names = new Map<string, string>();
     if (ids.length) {
       const { data } = await sb.from('admin_users').select('id, display_name, email')
@@ -306,6 +311,7 @@ Deno.serve(async (req) => {
       ...r,
       note_taker: r.created_by ? names.get(r.created_by as string) ?? null : null,
       edited_by_name: r.edited_by ? names.get(r.edited_by as string) ?? null : null,
+      agenda_sent_by_name: r.agenda_sent_by ? names.get(r.agenda_sent_by as string) ?? null : null,
       can_edit: canEditMeeting(r as { created_by?: string | null }, me!),
       can_delete: canDeleteMeeting(r as { created_by?: string | null; status?: string }, me!),
     }));
@@ -506,6 +512,75 @@ Deno.serve(async (req) => {
     const { data: m } = await sb.from('board_meetings').select(FIELDS).eq('id', String(body.meeting_id ?? '')).eq('tenant_id', TID).maybeSingle();
     if (!m) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
     return jsonResponse({ ok: true, meeting: await one(m), ...(await agendaFor(m)) });
+  }
+
+  // ── Send to the board (PLAN.md L3) ─────────────────────────────────────
+  // Only when someone presses the button. Every board member (not gate-iPad
+  // logins) gets a text or an email, their own preference, and a pop-up.
+  if (action === 'send_agenda') {
+    const { data: m } = await sb.from('board_meetings').select(FIELDS).eq('id', String(body.meeting_id ?? '')).eq('tenant_id', TID).maybeSingle();
+    if (!m) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
+    if (!m.agenda_created_at) return jsonResponse({ ok: false, error: 'Create the agenda first.' }, 409);
+    if (m.status === 'completed') return jsonResponse({ ok: false, error: 'That meeting is over.' }, 409);
+    const [{ data: t }, { data: people }] = await Promise.all([
+      sb.from('tenants').select('slug, display_name, plan').eq('id', TID).maybeSingle(),
+      sb.from('admin_users').select('id, display_name, email, phone_e164, notify_pref, role_template, roles, active')
+        .eq('tenant_id', TID).eq('active', true).order('display_name'),
+    ]);
+    const board = (people ?? []).filter(isBoardMember);
+    const plan = board.map(a => ({ a, name: (a.display_name || a.email || 'Board member') as string, channel: sendChannel(a) }));
+    if (body.preview === true) {
+      return jsonResponse({ ok: true, recipients: plan.map(p => ({ name: p.name, channel: p.channel })),
+        already_sent_at: m.agenda_sent_at ?? null });
+    }
+
+    const club = (t?.display_name as string) || 'Your pool';
+    const clubUrl = `https://${t?.slug}.poolsideapp.com`;
+    const link = `${clubUrl}/club/admin/board-meetings.html#agenda=${m.id}`;
+    const { text: agendaTxt } = await agendaFor(m);
+    const when = `${longDate(m.meeting_date as string, true)}${m.planned_time ? ', ' + clock(m.planned_time as string) : ''}`;
+    const { sendSms } = await import('../_shared/send_sms.ts');
+    const { sendEmail, emailShell, escHtml } = await import('../_shared/send_email.ts');
+    const email = (to: string) => sendEmail({
+      to, subject: `${club}: agenda for the ${when} board meeting`,
+      html: emailShell({ tenantName: club, clubUrl, preheader: `The agenda for the ${when} board meeting`,
+        contentHtml: `<p style="margin:0 0 12px">The agenda for the board meeting ${escHtml(when)}:</p>
+          <pre style="white-space:pre-wrap;font:14px/1.6 Inter,Arial,sans-serif;background:#f8fafc;border-radius:10px;padding:14px 16px;margin:0 0 16px">${escHtml(agendaTxt)}</pre>
+          <p style="margin:0"><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a3b5c;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">Open the agenda</a></p>` }),
+    });
+    let texted = 0, emailed = 0;
+    const missed: string[] = [];
+    for (const p of plan) {
+      let done = false;
+      if (p.channel === 'text') {
+        const r = await sendSms({ sb: sb as never, tenantId: TID, tenantPlan: t?.plan as string | null, to: p.a.phone_e164 as string,
+          body: agendaSms(club, m.meeting_date as string, m.planned_time as string | null, link), kind: 'transactional', source: 'board_meetings.agenda' });
+        if (r.sent) { texted++; done = true; }
+      }
+      // An email if that's their choice, or the text didn't go.
+      if (!done && p.a.email && (p.channel === 'email' || p.channel === 'text')) {
+        const r = await email(p.a.email as string);
+        if (r.sent) { emailed++; done = true; }
+      }
+      if (!done) missed.push(p.name);
+    }
+    try {
+      const { pushBoard } = await import('../_shared/enqueue_task.ts');
+      await pushBoard({ tenant_id: TID, target_scopes: [], admin_ids: board.map(a => a.id as string),
+        title: `Board meeting agenda: ${when}`, body: 'The agenda is up. Tap to read it.',
+        url: `/club/admin/board-meetings.html#agenda=${m.id}`, tag: `agenda:${m.id}` });
+    } catch { /* the texts and emails are what count */ }
+    const now = new Date().toISOString();
+    const { data: updated } = await sb.from('board_meetings').update({ agenda_sent_at: now, agenda_sent_by: payload.synthetic ? null : me.id })
+      .eq('id', m.id).eq('tenant_id', TID).select(FIELDS).single();
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'board_meeting.agenda_sent', entity_type: 'board_meeting', entity_id: m.id,
+        summary: `${me.name} sent the agenda for the ${when} meeting to the board (${texted} by text, ${emailed} by email${missed.length ? `, not reached: ${missed.join(', ')}` : ''})`,
+        actor_id: payload.synthetic ? null : me.id, actor_kind: 'tenant_admin',
+      });
+    } catch { /* never block on the audit write */ }
+    return jsonResponse({ ok: true, texted, emailed, missed, meeting: updated ? await one(updated) : null });
   }
 
   // ── bylaws (K6) ─────────────────────────────────────────────────────────

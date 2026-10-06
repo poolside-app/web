@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
     const scopes = Array.isArray(body.scopes) ? (body.scopes as string[]) : [];
     const assigned_admin_id = body.assigned_admin_id ? String(body.assigned_admin_id) : null;
     const notice = body.notice ? String(body.notice) : null;
+    const admin_ids = Array.isArray(body.admin_ids) ? (body.admin_ids as unknown[]).map(String) : null;
     const title = String(body.title || 'Action needed');
     body.body  = String(body.body  || '');
     const url   = body.url ? String(body.url) : '/club/admin/';
@@ -154,7 +155,7 @@ Deno.serve(async (req) => {
       const { recipientsFor } = await import('../_shared/positions_db.ts');
       notice_recipients = await recipientsFor(sb, tenant_id, notice);
     }
-    const targetAdminIds = pushRecipients(admins ?? [], { scopes, assigned_admin_id, notice_recipients });
+    const targetAdminIds = pushRecipients(admins ?? [], { scopes, assigned_admin_id, notice_recipients, admin_ids });
 
     if (targetAdminIds.length === 0) {
       return jsonResponse({ ok: true, sent: 0, failed: 0, no_targets: true });

@@ -41,9 +41,11 @@ export function taskVisibleTo(task: RoutedTask, caller: Caller, recipientsOf?: (
  *  board (inactive or gone) hands it to the president. */
 export function pushRecipients(
   admins: BoardLogin[],
-  opts: { scopes?: string[] | null; assigned_admin_id?: string | null; notice_recipients?: string[] | null },
+  opts: { scopes?: string[] | null; assigned_admin_id?: string | null; notice_recipients?: string[] | null; admin_ids?: string[] | null },
 ): string[] {
   const active = admins.filter(a => a.active !== false);
+  // A named list, e.g. the whole board for a meeting agenda (PLAN.md L3).
+  if (opts.admin_ids && opts.admin_ids.length) return active.filter(a => opts.admin_ids!.includes(a.id)).map(a => a.id);
   if (opts.assigned_admin_id) {
     const who = active.find(a => a.id === opts.assigned_admin_id);
     if (who) return [who.id];

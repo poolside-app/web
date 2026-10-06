@@ -110,6 +110,30 @@ if (A) {
   check('L2: a meeting can have a start time', /id="m-time"/.test(page) && /planned_time/.test(between(page, 'async function saveNow', '\n}\n')), '');
 }
 
+// ── L3: send to the board (offline) ─────────────────────────────────────
+console.log('\nL3 · send to the board (offline)');
+if (A) {
+  const sms = A.agendaSms ? A.agendaSms('Bishop Estates Cabana Club', '2026-10-10', '10:00', 'https://bishopestates.poolsideapp.com/club/admin/board-meetings.html#agenda=0f8b6a2c-1111-2222-3333-444455556666') : '';
+  check('L3: the text says which meeting, when, and links to the agenda, in one plain-text message',
+    /Bishop Estates Cabana Club: the agenda for the board meeting Saturday, October 10, 10:00 AM is up\./.test(sms) && /#agenda=/.test(sms)
+      && sms.length <= 306 && /^[\x20-\x7e]*$/.test(sms), sms);
+  const how = A.sendChannel;
+  check('L3: each board member gets it their way: email if they chose email, else text, else email',
+    how && how({ notify_pref: 'email', email: 'a@x.co', phone_e164: '+15551234567' }) === 'email'
+      && how({ notify_pref: 'sms', email: 'a@x.co', phone_e164: '+15551234567' }) === 'text'
+      && how({ notify_pref: 'sms', email: 'a@x.co', phone_e164: null }) === 'email'
+      && how({ notify_pref: 'email', email: null, phone_e164: null }) === null, '');
+}
+{
+  const bm = read('supabase/functions/board_meetings/index.ts');
+  const send = between(bm, "action === 'send_agenda'", "// ── bylaws");
+  check('L3: sending is its own action, with a preview, and records who sent it', /preview/.test(send) && /agenda_sent_at/.test(send) && /agenda_sent_by/.test(send), '');
+  check('L3: it texts, emails and pops up for the whole board', /sendSms/.test(send) && /sendEmail/.test(send) && /pushBoard/.test(send) && /admin_ids/.test(send), '');
+  check('L3: pop-ups can go to a named list of board members', /admin_ids/.test(read('supabase/functions/push_admin/index.ts')) && /admin_ids/.test(read('supabase/functions/_shared/task_routing.ts')), '');
+  const page = read('club/admin/board-meetings.html');
+  check('L3: "Send to the board" only on the button, with who\'ll get it how; "Send again" after', /send_agenda/.test(page) && /preview: true/.test(page) && /Send again/.test(page), '');
+}
+
 const club = OFFLINE ? null : (await sql(`select id from tenants where slug = 'bishopestates'`))[0];
 const owner = OFFLINE ? null : (await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`))[0];
 const STAMP = String(Date.now()).slice(-6);
@@ -184,6 +208,39 @@ if (live('L2')) {
     const [n] = await sql(`select (select count(*) from agenda_items where body like '%${tag}%')::int as items,
       (select count(*) from board_meetings where location = 'SimTest Clubhouse')::int as meetings`);
     check('L2: test meeting, items and logins removed', n.items === 0 && n.meetings === 0, short(n));
+  }
+}
+
+if (live('L3')) {
+  // Preview only: a real send would text and email the real board.
+  console.log('\nL3 · live, preview only (about 6 calls; nothing is sent)');
+  const { makeTempAdmin } = await import('./lib/testdata.mjs');
+  let meetingId = null, bare = null;
+  try {
+    const x = await makeTempAdmin(sql, club.id, 'L3 Texter', [], 'custom');
+    const y = await makeTempAdmin(sql, club.id, 'L3 Emailer', [], 'custom');
+    const z = await makeTempAdmin(sql, club.id, 'L3 Gate iPad', ['check_in'], 'gate_attendant');
+    await sql(`update admin_users set notify_pref = 'sms', phone_e164 = '+1555${STAMP}1' where id = '${x}'`);
+    await sql(`update admin_users set notify_pref = 'email' where id = '${y}'`);
+    const plain = await fn('board_meetings', 'create', tok(x), { title: 'SimTest No Agenda', meeting_date: new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 10) });
+    bare = plain.meeting?.id;
+    const early = await fn('board_meetings', 'send_agenda', tok(x), { meeting_id: bare, preview: true });
+    check('L3: nothing to send before the agenda is created', early.status === 409 && /Create the agenda/.test(early.error || ''), short(early));
+    await fn('board_meetings', 'add_item', tok(x), { body: `Bathrooms ${tag}` });
+    const made = await fn('board_meetings', 'create_agenda', tok(x), { meeting_id: bare });
+    meetingId = made.meeting?.id;
+    const pv = await fn('board_meetings', 'send_agenda', tok(y), { meeting_id: meetingId, preview: true });
+    const ch = name => (pv.recipients || []).find(r => r.name.includes(name))?.channel;
+    check('L3: it goes to every board member their way, and not to gate iPads',
+      pv.ok && ch('L3 Texter') === 'text' && ch('L3 Emailer') === 'email' && ch('Doug') === 'email' && !ch('L3 Gate iPad'), short(pv.recipients));
+    const [m] = await sql(`select agenda_sent_at from board_meetings where id = '${meetingId}'`);
+    check('L3: a preview sends nothing and isn\'t recorded as sent', m && !m.agenda_sent_at, short(m));
+  } finally {
+    if (bare) await sql(`delete from board_meetings where id = '${bare}'`);
+    await cleanup();
+    const [n] = await sql(`select (select count(*) from board_meetings where title like 'SimTest%')::int as meetings,
+      (select count(*) from agenda_items where body like '%${tag}%')::int as items`);
+    check('L3: test meeting, items and logins removed', n.meetings === 0 && n.items === 0, short(n));
   }
 }
 

@@ -95,6 +95,7 @@ export async function pushBoard(input: {
   target_scopes: string[];
   assigned_admin_id?: string | null;
   notice?: string | null;            // pops up for that position's holders
+  admin_ids?: string[] | null;       // pops up for exactly these board members
   title: string;
   body: string;
   url: string;
@@ -114,6 +115,7 @@ export async function pushBoard(input: {
         scopes: input.target_scopes,
         assigned_admin_id: input.assigned_admin_id ?? null,
         notice: input.notice ?? null,
+        admin_ids: input.admin_ids ?? null,
         title: input.title,
         body: input.body,
         url: input.url,

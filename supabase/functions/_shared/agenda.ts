@@ -137,6 +137,22 @@ export function agendaText(a: Agenda): string {
   return out.join('\n');
 }
 
+/** The text that goes out with "Send to the board". Plain ASCII, so it stays
+ *  one cheap message. */
+export function agendaSms(club: string, date: string, time: string | null, link: string): string {
+  return `${club}: the agenda for the board meeting ${longDate(date, true)}${time ? ', ' + clock(time) : ''} is up. ${link}`
+    .replace(/[^\x20-\x7e]/g, '');
+}
+
+/** How a board member gets the agenda: email if they chose email, else a
+ *  text, else email; null if we have neither. */
+export function sendChannel(a: { notify_pref?: string | null; email?: string | null; phone_e164?: string | null }): 'text' | 'email' | null {
+  if (a.notify_pref === 'email' && a.email) return 'email';
+  if (a.phone_e164) return 'text';
+  if (a.email) return 'email';
+  return null;
+}
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
