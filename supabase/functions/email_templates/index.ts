@@ -1,30 +1,25 @@
 // =============================================================================
-// email_templates — admin CRUD for tenant email overrides
+// email_templates — the Emails page (Settings → Emails, PLAN.md T)
 // =============================================================================
-// Auth: tenant admin with 'communications' scope (or owner template).
+// Auth: tenant admin with the communications or announcements screen (or
+// owner). 15 emails, by the moment they go out (_shared/email_template.ts);
+// a club changes an email's subject and message, or switches it off.
 //
 // Actions:
 //   { action: 'list' }
-//     → { ok, templates: [{ key, label, description, audience, variables,
-//                            default_subject, default_body_html,
-//                            override?: { subject, body_html, enabled, updated_at } }] }
-//
-//   { action: 'get', key }
-//     → { ok, template: <registry entry>, override: <row or null> }
-//
-//   { action: 'save', key, subject, body_html, enabled }
-//     → { ok }     upserts the override
-//
-//   { action: 'reset', key }
-//     → { ok }     deletes the override (revert to default)
-//
-//   { action: 'preview', key, subject, body_html, variables? }
-//     → { ok, subject, html }    renders without saving
+//     → { ok, sections, emails: [{ key, label, when, section, adds, placeholders,
+//          default_subject, default_message, variants: [{ id, label }], override }], aliases }
+//   { action: 'save', key, subject, message, enabled? }   → { ok }  (message cleaned)
+//   { action: 'set_enabled', key, enabled }               → { ok }
+//   { action: 'reset', key }                              → { ok }  back to the original
+//   { action: 'preview', key, subject?, message?, variant? } → { ok, subject, html }
+//   { action: 'test', key, subject?, message?, variant? } → { ok, to }  to your own email
+//   { action: 'outbox' | 'outbox_send_now' | 'outbox_cancel' } — mail waiting for tomorrow
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
-import { EMAIL_REGISTRY, getRegistryEntry, renderPreview } from '../_shared/email_template.ts';
+import { EMAIL_REGISTRY, EMAIL_SECTIONS, EMAIL_ALIASES, getRegistryEntry, renderPreview, cleanMessage } from '../_shared/email_template.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -39,7 +34,7 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
 }
 
-type AdminPayload = { sub: string; kind: string; tid: string; slug: string; scopes?: string[]; role_template?: string; is_super?: boolean };
+type AdminPayload = { sub: string; kind: string; tid: string; slug: string; scopes?: string[]; role_template?: string; is_super?: boolean; synthetic?: boolean };
 async function verifyAdmin(token: string): Promise<AdminPayload | null> {
   if (!JWT_SECRET) return null;
   try {
@@ -98,6 +93,20 @@ const SAMPLE_VARS: Record<string, string> = {
   charge_date:       'December 15, 2026',
   manage_url:        'https://bishopestates.poolsideapp.com/m/renew.html',
   renew_link:        'https://bishopestates.poolsideapp.com/renew.html?t=sample-link',
+  // The 15 emails (PLAN.md T) use these too.
+  message:           "It's time to sign up for the 2027 season! Click the link to renew. Your family's details are already filled in.",
+  party_title:       "Emma's 8th birthday",
+  party_date:        'Sat, Jun 12, 2027',
+  party_time:        '2:00 PM',
+  price:             '$250',
+  member_url:        'https://bishopestates.poolsideapp.com/m/index.html#parties',
+  member_name:       'Sam Smith',
+  member_role:       'child',
+  reason:            'your card could not be charged',
+  paid:              '$300.00',
+  owed:              '$100.00',
+  fee:               '$50.00',
+  total:             '$150.00',
   club_url:          'https://bishopestates.poolsideapp.com',
 };
 
@@ -121,83 +130,91 @@ Deno.serve(async (req) => {
 
   if (action === 'list') {
     const { data: overrides } = await sb.from('email_templates')
-      .select('key, subject, body_html, enabled, updated_at')
-      .eq('tenant_id', payload.tid);
-    const overrideMap: Record<string, { subject: string; body_html: string; enabled: boolean; updated_at: string }> = {};
-    (overrides ?? []).forEach(o => {
-      overrideMap[o.key as string] = {
-        subject: o.subject as string, body_html: o.body_html as string,
-        enabled: !!o.enabled, updated_at: o.updated_at as string,
+      .select('key, subject, body_html, enabled, updated_at').eq('tenant_id', payload.tid);
+    type Ovr = { key: string; subject: string; body_html: string; enabled: boolean; updated_at: string };
+    const byKey = new Map<string, Ovr>(((overrides ?? []) as Ovr[]).map(o => [o.key, o]));
+    const emails = EMAIL_REGISTRY.map(d => {
+      const o = byKey.get(d.key);
+      return {
+        key: d.key, label: d.label, when: d.when, section: d.section, adds: d.adds, placeholders: d.placeholders,
+        default_subject: d.default_subject, default_message: d.default_message,
+        variants: (d.variants ?? []).map(v => ({ id: v.id, label: v.label })),
+        override: o ? { subject: o.subject, message: o.body_html, enabled: !!o.enabled, updated_at: o.updated_at } : null,
       };
     });
-    const templates = EMAIL_REGISTRY.map(def => ({
-      key: def.key,
-      label: def.label,
-      description: def.description,
-      audience: def.audience,
-      variables: def.variables,
-      default_subject: def.default_subject,
-      default_body_html: def.default_body_html,
-      override: overrideMap[def.key] ?? null,
-    }));
-    return jsonResponse({ ok: true, templates });
+    return jsonResponse({ ok: true, sections: EMAIL_SECTIONS, emails, aliases: EMAIL_ALIASES });
   }
 
-  if (action === 'get') {
-    const key = String(body.key ?? '');
-    const def = getRegistryEntry(key);
-    if (!def) return jsonResponse({ ok: false, error: 'Unknown template key' }, 404);
-    const { data: override } = await sb.from('email_templates')
-      .select('subject, body_html, enabled, updated_at')
-      .eq('tenant_id', payload.tid).eq('key', key).maybeSingle();
-    return jsonResponse({ ok: true, template: def, override: override ?? null });
-  }
-
+  // Keep an email's own subject and message (and its switch).
   if (action === 'save') {
-    const key = String(body.key ?? '');
-    const def = getRegistryEntry(key);
-    if (!def) return jsonResponse({ ok: false, error: 'Unknown template key' }, 404);
-    const subject = String(body.subject ?? '').trim();
-    const body_html = String(body.body_html ?? '').trim();
-    const enabled = body.enabled === false ? false : true;
-    if (!subject || !body_html) return jsonResponse({ ok: false, error: 'subject and body_html required' }, 400);
-    const updated_by = payload.synthetic ? null : payload.sub;
+    const def = getRegistryEntry(String(body.key ?? ''));
+    if (!def) return jsonResponse({ ok: false, error: 'Unknown email' }, 404);
+    const subject = String(body.subject ?? '').trim().slice(0, 300);
+    const message = cleanMessage(String(body.message ?? ''));
+    if (!subject) return jsonResponse({ ok: false, error: 'Write a subject line.' }, 400);
+    if (!message.replace(/<[^>]+>/g, '').trim()) return jsonResponse({ ok: false, error: 'Write a message.' }, 400);
+    const { data: existing } = await sb.from('email_templates').select('enabled').eq('tenant_id', payload.tid).eq('key', def.key).maybeSingle();
+    const enabled = body.enabled === undefined ? (existing ? !!existing.enabled : true) : body.enabled !== false;
     const { error } = await sb.from('email_templates').upsert({
-      tenant_id: payload.tid,
-      key, subject, body_html, enabled, updated_by,
-      updated_at: new Date().toISOString(),
+      tenant_id: payload.tid, key: def.key, subject, body_html: message, enabled,
+      updated_by: payload.synthetic ? null : payload.sub, updated_at: new Date().toISOString(),
     }, { onConflict: 'tenant_id,key' });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, message });
   }
 
+  // The on/off switch. Turning one off keeps the club's wording, if any.
+  if (action === 'set_enabled') {
+    const def = getRegistryEntry(String(body.key ?? ''));
+    if (!def) return jsonResponse({ ok: false, error: 'Unknown email' }, 404);
+    const enabled = body.enabled !== false;
+    const { data: existing } = await sb.from('email_templates').select('subject, body_html').eq('tenant_id', payload.tid).eq('key', def.key).maybeSingle();
+    const { error } = await sb.from('email_templates').upsert({
+      tenant_id: payload.tid, key: def.key, enabled,
+      subject: existing?.subject || def.default_subject, body_html: existing?.body_html || def.default_message,
+      updated_by: payload.synthetic ? null : payload.sub, updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id,key' });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, enabled });
+  }
+
+  // Back to Poolside's wording (and switched on).
   if (action === 'reset') {
-    const key = String(body.key ?? '');
-    if (!key) return jsonResponse({ ok: false, error: 'key required' }, 400);
-    const { error } = await sb.from('email_templates').delete()
-      .eq('tenant_id', payload.tid).eq('key', key);
+    const def = getRegistryEntry(String(body.key ?? ''));
+    if (!def) return jsonResponse({ ok: false, error: 'Unknown email' }, 404);
+    const { error } = await sb.from('email_templates').delete().eq('tenant_id', payload.tid).eq('key', def.key);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true });
   }
 
-  if (action === 'preview') {
-    const key = String(body.key ?? '');
-    const def = getRegistryEntry(key);
-    if (!def) return jsonResponse({ ok: false, error: 'Unknown template key' }, 404);
-    const customSubject = body.subject != null ? String(body.subject) : null;
-    const customBody    = body.body_html != null ? String(body.body_html) : null;
-    const userVars = (body.variables as Record<string, string> | undefined) || {};
-    // Merge sample defaults with any vars the admin passed (for tenant-specific preview)
+  // Preview and "Send me a test" both use sample details for this club.
+  if (action === 'preview' || action === 'test') {
+    const def = getRegistryEntry(String(body.key ?? ''));
+    if (!def) return jsonResponse({ ok: false, error: 'Unknown email' }, 404);
     const vars: Record<string, string> = { ...SAMPLE_VARS };
-    // Pull tenant-specific defaults so preview reads as the actual club
-    const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', payload.tid).maybeSingle();
+    const [{ data: tenant }, { data: sv }] = await Promise.all([
+      sb.from('tenants').select('display_name, slug').eq('id', payload.tid).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
+    ]);
     if (tenant) {
       vars.tenant_name = tenant.display_name as string;
-      vars.club_url    = `https://${tenant.slug as string}.poolsideapp.com`;
+      vars.club_url = `https://${tenant.slug as string}.poolsideapp.com`;
     }
-    Object.assign(vars, userVars);
-    const rendered = renderPreview(key, customSubject, customBody, vars);
-    return jsonResponse({ ok: true, subject: rendered.subject, html: rendered.html });
+    const value = (sv?.value ?? {}) as Record<string, unknown>;
+    const logo = (value.branding as Record<string, unknown> | undefined)?.logo_url;
+    if (logo) vars.__logo_url = String(logo);
+    const venmo = (value.payments as Record<string, unknown> | undefined)?.venmo_handle;
+    if (venmo) vars.venmo_handle = String(venmo).replace(/^@+/, '');
+    const subject = body.subject != null ? String(body.subject) : null;
+    const message = body.message != null ? cleanMessage(String(body.message)) : null;
+    const rendered = renderPreview(def.key, subject, message, vars, body.variant ? String(body.variant) : null);
+    if (action === 'preview') return jsonResponse({ ok: true, subject: rendered.subject, html: rendered.html });
+    const { data: me } = await sb.from('admin_users').select('email').eq('id', payload.sub).maybeSingle();
+    if (!me?.email) return jsonResponse({ ok: false, error: 'Your board login has no email address.' }, 400);
+    const { sendEmail } = await import('../_shared/send_email.ts');
+    const r = await sendEmail({ to: me.email as string, subject: `[Test] ${rendered.subject}`, html: rendered.html });
+    if (!r.sent) return jsonResponse({ ok: false, error: r.error || 'Could not send the test' }, 502);
+    return jsonResponse({ ok: true, to: me.email });
   }
 
   // ── The outbox ─────────────────────────────────────────────────────────

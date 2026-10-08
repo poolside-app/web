@@ -1574,8 +1574,9 @@ def auto_renew_emails_are_registered():
     # as members never hearing from us.
     r = post(f'{SUPABASE_URL}/functions/v1/email_templates', {'action': 'list'}, comms_token)
     assert r.get('ok'), f'list: {r}'
-    keys = {t['key'] for t in (r.get('templates') or [])}
-    for key in ('auto_renew_notice', 'auto_renew_charged', 'auto_renew_failed'):
+    # PLAN.md T (2026-10-08): 15 emails; auto_renew_failed was retired with R7.
+    keys = {t['key'] for t in (r.get('emails') or [])}
+    for key in ('auto_renew_notice', 'auto_renew_charged'):
         assert key in keys, f'{key} missing from the email registry'
         pv = post(f'{SUPABASE_URL}/functions/v1/email_templates',
                   {'action': 'preview', 'key': key}, comms_token)

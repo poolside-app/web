@@ -1,594 +1,393 @@
 // =============================================================================
-// email_template.ts — registry of system emails + render-and-send helper
+// email_template.ts — the emails Poolside sends, and the one way to send them
 // =============================================================================
-// Single source of truth for every email Poolside sends. Each entry has:
-//   key           — stable identifier used by code that fires the email
-//   label         — admin-visible title in the Emails page list
-//   description   — when this email fires
-//   variables     — list of {{name}} placeholders the template can use
-//   default_subject / default_body_html — what we ship as defaults
+// PLAN.md T (Doug, 2026-10-08: "the emails tab is super confusing"). There
+// are 15 emails, grouped by the moment they go out. Each has two parts:
 //
-// Admin can override subject / body_html per tenant via the email_templates
-// table. renderAndSend() looks up the override, falls back to the default,
-// substitutes variables, and dispatches via sendEmail.
+//   - The message: plain words a club can change on Settings → Emails
+//     (stored per club in the email_templates table: subject, body_html
+//     holds the message, enabled). {{placeholders}} are filled in, escaped.
+//   - Poolside's part: the heading, the details box, the button, the
+//     sign-in line, built here from the same variables. A club can't break it.
 //
-// Variable substitution: Mustache-like {{name}}. Values are HTML-escaped
-// before insertion. The default templates can use {{vars}} freely without
-// concern that user-controlled data (e.g. family_name) breaks layout.
+// The code that sends an email is unchanged. It still names the exact
+// version ('application_approved_stripe_paid_no_app' and so on); ALIASES map
+// those to the merged email plus what differs (how they paid, app or not),
+// which only changes Poolside's part. 12 welcome versions became 1 email.
+//
+// 'application_received_stripe' and '_stripe_plan' are deliberately unknown:
+// a family paying by card gets the Welcome email as soon as it clears, not a
+// "we got it" first.
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendEmail, escHtml, emailShell, type EmailAttachment } from './send_email.ts';
 
-export type EmailTemplateDef = {
+type Vars = Record<string, string | number | null | undefined>;
+type Variant = Record<string, unknown>;
+
+export type EmailSection = 'signup' | 'welcome' | 'payments' | 'renewals' | 'parties' | 'family';
+export const EMAIL_SECTIONS: Array<{ id: EmailSection; label: string }> = [
+  { id: 'signup', label: 'Signing up' },
+  { id: 'welcome', label: 'Welcome' },
+  { id: 'payments', label: 'Payments' },
+  { id: 'renewals', label: 'Renewals' },
+  { id: 'parties', label: 'Parties' },
+  { id: 'family', label: 'Family changes' },
+];
+
+export type EmailDef = {
   key: string;
   label: string;
-  description: string;
-  audience: 'applicant' | 'member' | 'admin';
-  variables: string[];
+  /** When it goes out, in plain words. */
+  when: string;
+  section: EmailSection;
   default_subject: string;
-  default_body_html: string;     // wrapped by emailShell at render time
+  /** The part a club can change: short paragraphs, {{placeholders}}. */
+  default_message: string;
+  /** Placeholders worth offering in the editor. */
+  placeholders: string[];
+  /** What Poolside adds under the message, said plainly for the editor. */
+  adds: string;
+  heading: (v: Vars, x: Variant) => string;
+  details?: (v: Vars, x: Variant) => string;
+  /** Versions to preview, for the merged emails. */
+  variants?: Array<{ id: string; label: string; x: Variant }>;
 };
 
-// Helper to construct a default body wrapped in the standard shell.
-// Templates only define their content; the shell adds the footer.
-function withShell(content: string): string {
-  // The shell needs tenant_name + club_url at render time. We expose them
-  // as variables so the default content can reference them, then we wrap.
-  // (When admin overrides, they can use the same {{vars}}.)
-  return content;
-}
+// ── Building blocks for Poolside's part ─────────────────────────────────────
+const e = (v: unknown) => escHtml(v == null ? '' : String(v));
+const para = (html: string) => `<p style="margin:0 0 12px;color:#334155;line-height:1.6">${html}</p>`;
+const small = (html: string) => `<p style="margin:12px 0 0;color:#64748b;font-size:13px;line-height:1.5">${html}</p>`;
+const ok = (html: string) => `<p style="margin:16px 0;padding:12px 14px;background:#f0fdf4;border-radius:10px;color:#166534;line-height:1.55">${html}</p>`;
+const box = (html: string, tone: 'plain' | 'warn' = 'plain') =>
+  `<div style="margin:16px 0;padding:14px 16px;background:${tone === 'warn' ? '#fef3c7' : '#f7f3eb'};border-radius:10px;font-size:14px;color:${tone === 'warn' ? '#7c2d12' : '#334155'};line-height:1.6">${html}</div>`;
+const button = (label: string, url: unknown) => url
+  ? `<p style="margin:22px 0"><a href="${e(url)}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">${e(label)}</a></p>`
+  : '';
+const link = (url: unknown, text?: string) => `<a href="${e(url)}" style="color:#0a3b5c">${e(text ?? url)}</a>`;
+const signedCopy = (x: Variant, who = 'every policy you accepted') => x.attached
+  ? small(`📎 A signed copy of your application is attached, with ${who} and your signature. Please keep it for your records.`) : '';
+const boardNote = (v: Vars) => v.admin_notes ? box(`<b>Note from the board:</b> ${e(v.admin_notes)}`, 'warn') : '';
+const memberHome = (v: Vars) => `${String(v.club_url ?? '')}/m/`;
 
-export const EMAIL_REGISTRY: EmailTemplateDef[] = [
-  // ─── Application lifecycle ────────────────────────────────────────────
+export const EMAIL_REGISTRY: EmailDef[] = [
+  // ─── Signing up ────────────────────────────────────────────────────────
   {
-    key: 'application_received_venmo',
-    label: 'Application received — Venmo path',
-    description: 'Sent immediately when an applicant submits the apply form with Venmo selected as payment method.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'family_name', 'tier_label', 'tier_price', 'venmo_handle', 'num_adults', 'num_kids', 'club_url'],
-    default_subject: 'We got your application — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">📋 We got your application</h2>
-      <p style="margin:0 0 8px;color:#475569;line-height:1.55">Hi {{primary_name}} — thanks for applying to <b>{{tenant_name}}</b>. Your application is logged with the board.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
-        <div style="font-weight:700;color:#0a3b5c;margin-bottom:6px">What we received</div>
-        <div><b>Family:</b> {{family_name}}</div>
-        <div><b>Primary:</b> {{primary_name}}</div>
-        <div><b>Tier:</b> {{tier_label}} ({{tier_price}})</div>
-        <div><b>Adults:</b> {{num_adults}} · <b>Children:</b> {{num_kids}}</div>
-      </div>
-      <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 8px;font-size:16px">Next step: send your Venmo payment</h3>
-      <p style="margin:0 0 12px">Send your annual dues to <b>@{{venmo_handle}}</b> ({{tier_price}} for the {{tier_label}} tier). Once the board verifies your payment, you'll receive a separate email with your member sign-in link.</p>
-      <p style="margin:0;color:#64748b;font-size:13px">Tip: include the family name in your Venmo memo so we can match it quickly.</p>
-      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
-    `),
-  },
-  // The Stripe-path "application received" templates were removed —
-  // payment + welcome are bundled into one email now (see
-  // application_approved_stripe_paid / application_approved_plan_first
-  // below). The submit handler skips a "received" send for Stripe paths
-  // entirely, so unpaid carts get cleaned up automatically by cron rather
-  // than producing a confusing duplicate email.
-  {
-    key: 'application_received_other',
-    label: 'Application received — payment TBD',
-    description: 'Sent on submit when no payment method was selected (decide-later flow).',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'family_name', 'tier_label', 'tier_price', 'num_adults', 'num_kids', 'club_url'],
-    default_subject: 'We got your application — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">📋 We got your application</h2>
-      <p style="margin:0 0 8px;color:#475569;line-height:1.55">Hi {{primary_name}} — thanks for applying to <b>{{tenant_name}}</b>. Your application is logged with the board.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
-        <div><b>Family:</b> {{family_name}}</div>
-        <div><b>Tier:</b> {{tier_label}} ({{tier_price}})</div>
-        <div><b>Adults:</b> {{num_adults}} · <b>Children:</b> {{num_kids}}</div>
-      </div>
-      <p style="margin:0 0 12px">A board member will reach out within a few days with payment options. Once payment is sorted, you'll receive a separate email with your member sign-in link.</p>
-      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the full text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Questions? Just reply to this email.</p>
-    `),
+    key: 'application_received', section: 'signup',
+    label: 'Application received',
+    when: 'Right after a family sends the signup form, when they\'re paying by Venmo or later. A family paying by card gets the Welcome email instead, as soon as they\'ve paid.',
+    default_subject: 'We got your application to {{tenant_name}}',
+    default_message: '<p>Hi {{primary_name}},</p><p>Thanks for applying to {{tenant_name}}! The board has your application.</p><p>Questions? Just reply to this email.</p>',
+    placeholders: ['primary_name', 'family_name', 'tenant_name'],
+    adds: 'what they signed up for, how to pay, and a copy of their signed application',
+    heading: () => '📋 We got your application',
+    details: (v, x) => box(`<b>Family:</b> ${e(v.family_name)}<br><b>Membership:</b> ${e(v.tier_label)}${v.tier_price ? ` (${e(v.tier_price)})` : ''}<br><b>Adults:</b> ${e(v.num_adults)} · <b>Children:</b> ${e(v.num_kids)}`)
+      + (x.pay === 'venmo'
+        ? box(`<b>Next step: send your dues by Venmo</b><br>Send ${e(v.tier_price)} to <b>@${e(v.venmo_handle)}</b>, with your family name in the note. Once the board sees it, you'll get an email with your sign-in link.`, 'warn')
+        : para('A board member will be in touch about payment. Once that\'s sorted, you\'ll get an email with your sign-in link.'))
+      + signedCopy(x),
+    variants: [
+      { id: 'venmo', label: 'Paying by Venmo', x: { pay: 'venmo', attached: true } },
+      { id: 'other', label: 'Paying later', x: { pay: 'other', attached: true } },
+    ],
   },
   {
-    key: 'application_approved_stripe_paid',
-    label: 'Welcome — Stripe paid (combined receipt + welcome)',
-    description: 'Sent when an applicant pays via Stripe — single email confirms application received AND payment cleared. The "application received" email is suppressed for Stripe paths so the applicant gets exactly one email for the whole flow. Legal-evidence PDF is attached.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application <b>and</b> your card payment cleared. Your membership is active. One email, all set.</p>
-      <p style="margin:24px 0">
-        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
-      </p>
-      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the verbatim text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, request a fresh one at <a href="{{club_url}}/m/login.html">your member login page</a>.</p>
-    `),
-  },
-  {
-    key: 'application_approved_free',
-    label: 'Welcome — nothing to pay',
-    description: 'Sent when a discount or referral credit covered the whole price, so the family confirmed with nothing to pay.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application. Your discount covered the whole price, so there was nothing to pay. Your membership is active.</p>
-      <p style="margin:24px 0">
-        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
-      </p>
-      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the verbatim text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days. If it expires, request a fresh one at <a href="{{club_url}}/m/login.html">your member login page</a>.</p>
-    `),
-  },
-  {
-    key: 'application_approved_venmo_verified',
-    label: 'Welcome — Venmo verified at approval',
-    description: 'Sent when admin approves AND verifies Venmo payment in the same step (rare path).',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'Payment verified — welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Payment verified — welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 16px;color:#64748b;line-height:1.55">Hi {{primary_name}} — your Venmo payment was verified by the board. Your dues are paid in full and you're all set.</p>
-      <p style="margin:24px 0">
-        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
-      </p>
-      <p style="margin:0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days.</p>
-    `),
-  },
-  {
-    key: 'application_approved_unpaid_venmo',
-    label: 'Approved — final step is Venmo payment',
-    description: 'Sent when admin approves but Venmo payment hasn\'t been verified yet. Prompts the member to send their dues.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'venmo_handle', 'club_url'],
-    default_subject: 'You\'re approved — final step is dues — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 You're approved!</h2>
-      <p style="margin:0 0 16px;color:#64748b;line-height:1.55">Hi {{primary_name}} — your application was approved. One last thing: please send your annual dues via Venmo so we can finalize your membership.</p>
-      <p style="margin:24px 0">
-        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
-      </p>
-      <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:24px 0 6px;font-size:16px">Final step: send Venmo</h3>
-      <p style="margin:0 0 8px;color:#64748b">Send your annual dues to <b>@{{venmo_handle}}</b>. We'll send another email confirming once the payment is verified.</p>
-      <p style="margin:0;color:#94a3b8;font-size:12px">Sign-in link is good for one use and expires in 7 days.</p>
-    `),
-  },
-  {
-    key: 'application_approved_plan_first',
-    label: 'Welcome — payment plan set up',
-    description: 'Sent when a family\'s payment plan is set up: their first payment cleared, or their card was saved with nothing due today. One email confirms the application and the plan. The "application received" email is suppressed for plan paths. Legal-evidence PDF attached.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your payment plan is set up. Your card is charged on each date in your schedule, with a receipt each time. Sign in to see what's paid, your balance and your next payment.</p>
-      <p style="margin:24px 0">
-        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
-      </p>
-      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — it includes the verbatim text of every policy you accepted plus your signature. Please keep it for your records.
-      </div>
-    `),
-  },
-  {
-    key: 'application_approved_other',
-    label: 'Approved — payment TBD',
-    description: 'Generic approval email when no specific payment branch matches (e.g. decide-later, edge cases).',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
-    default_subject: 'Welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 16px;color:#64748b;line-height:1.55">Hi {{primary_name}} — your application was approved. Click below to sign in to your member dashboard.</p>
-      <p style="margin:24px 0">
-        <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">A board member will reach out shortly with payment details.</p>
-    `),
-  },
-  // ── "Guest checkout" no-app member variants (Doug 2026-05-23) ─────────
-  // Sent to applicants who picked "Just sign me up" on the apply form.
-  // Short + warm copy with no magic-link CTA. One subtle "you can opt in
-  // later" line at the bottom for the day they change their mind. Same
-  // templating system — admins can customize each one in the Emails admin.
-  {
-    key: 'application_approved_stripe_paid_no_app',
-    label: 'Welcome (no app) — Stripe paid',
-    description: 'Sent to guest-checkout applicants whose Stripe payment cleared. No magic-link CTA — they opted out of the app.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'club_url'],
-    default_subject: 'Welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your payment cleared. Your family's on the roster. See you at the pool!</p>
-      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
-    `),
-  },
-  {
-    key: 'application_approved_free_no_app',
-    label: 'Welcome (no app) — nothing to pay',
-    description: 'Sent to guest-checkout applicants whose discount or credit covered the whole price.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'club_url'],
-    default_subject: 'Welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application. Your discount covered the whole price, so there was nothing to pay. Your family's on the roster. See you at the pool!</p>
-      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
-    `),
-  },
-  {
-    key: 'application_approved_venmo_verified_no_app',
-    label: 'Welcome (no app) — Venmo verified at approval',
-    description: 'Sent to guest-checkout applicants when admin approves + verifies Venmo in one shot.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'club_url'],
-    default_subject: 'Payment verified — welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Payment verified — welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — your Venmo payment was verified by the board. Dues are paid in full and your family's on the roster. See you at the pool!</p>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Changed your mind about the app? You can sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
-    `),
-  },
-  {
-    key: 'application_approved_unpaid_venmo_no_app',
-    label: 'Approved (no app) — final step is Venmo payment',
-    description: 'Sent to guest-checkout applicants who are approved but haven\'t Venmo\'d their dues yet.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'venmo_handle', 'club_url'],
-    default_subject: 'You\'re approved — final step is dues — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 You're approved!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — your application was approved. One last thing: please send your annual dues via Venmo so we can finalize your membership.</p>
-      <h3 style="font-family:Georgia,serif;color:#0a3b5c;margin:18px 0 6px;font-size:16px">Send Venmo</h3>
-      <p style="margin:0 0 12px;color:#475569">Send your annual dues to <b>@{{venmo_handle}}</b>. The board will email another confirmation once the payment lands.</p>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">You can manage your membership online any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
-    `),
-  },
-  {
-    key: 'application_approved_plan_first_no_app',
-    label: 'Welcome (no app) — first installment paid',
-    description: 'Sent to guest-checkout applicants whose first Stripe-plan installment cleared.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'club_url'],
-    default_subject: 'You\'re in — welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your first installment cleared. Your membership is active and your family's on the roster. Your second installment will auto-charge on the final due date.</p>
-      <div style="margin:18px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy of your application is attached</b> — keep it for your records.
-      </div>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
-    `),
-  },
-  {
-    key: 'application_approved_other_no_app',
-    label: 'Approved (no app) — payment TBD',
-    description: 'Generic approval email for guest-checkout applicants when no specific payment branch matches.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'club_url'],
-    default_subject: 'Welcome to {{tenant_name}}!',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — your application was approved. Your family's on the roster.</p>
-      <p style="margin:0 0 12px;color:#64748b;font-size:13px">A board member will reach out shortly with payment details.</p>
-      <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.5">Want to manage your membership online? Sign in any time at <a href="{{club_url}}/m/" style="color:#94a3b8">{{club_url}}/m/</a> — your email or phone is your password, no setup needed.</p>
-    `),
-  },
-  {
-    key: 'application_rejected',
-    label: 'Application rejected',
-    description: 'Sent when admin rejects an application. Optional admin notes appear as the reason.',
-    audience: 'applicant',
-    variables: ['tenant_name', 'primary_name', 'admin_notes', 'club_url'],
+    key: 'application_rejected', section: 'signup',
+    label: 'Application not approved',
+    when: 'When the board turns down an application.',
     default_subject: 'Update on your {{tenant_name}} application',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Update on your application</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — after review, the board wasn't able to approve your application to <b>{{tenant_name}}</b> at this time.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6"><b style="color:#0a3b5c">Note from the board:</b><br>{{admin_notes}}</div>
-      <p style="margin:0 0 8px;color:#64748b;font-size:13px">If you have questions or would like to discuss, please reply to this email.</p>
-    `),
+    default_message: '<p>Hi {{primary_name}},</p><p>After review, the board wasn\'t able to approve your application to {{tenant_name}} at this time.</p><p>If you have questions, just reply to this email.</p>',
+    placeholders: ['primary_name', 'tenant_name'],
+    adds: 'the board\'s note, if you wrote one',
+    heading: () => 'Update on your application',
+    details: v => boardNote(v),
   },
+
+  // ─── Welcome ───────────────────────────────────────────────────────────
   {
-    key: 'payment_verified_venmo',
+    key: 'welcome', section: 'welcome',
+    label: 'Welcome email',
+    when: 'When a new family is approved, or as soon as their card payment clears.',
+    default_subject: 'Welcome to {{tenant_name}}!',
+    default_message: '<p>Hi {{primary_name}},</p><p>Welcome to {{tenant_name}}! We can\'t wait to see you at the pool.</p>',
+    placeholders: ['primary_name', 'tenant_name'],
+    adds: 'how they paid (or what\'s left to pay), their sign-in button, and a copy of their signed application',
+    heading: (v, x) => x.pay === 'unpaid_venmo' ? '🎉 You\'re approved!' : `🎉 Welcome to ${e(v.tenant_name)}!`,
+    details: (v, x) => {
+      const pay = ({
+        card: ok('✓ Your card payment cleared. Your membership is active.'),
+        free: ok('✓ Your discount covered the whole price, so there\'s nothing to pay. Your membership is active.'),
+        venmo_verified: ok('✓ The board verified your Venmo payment. Your dues are paid in full.'),
+        plan: ok('✓ Your payment plan is set up. Each payment is charged on its date, with a receipt each time. Sign in to see what\'s paid and what\'s next.'),
+        unpaid_venmo: box(`<b>Last step: send your dues by Venmo</b><br>Send them to <b>@${e(v.venmo_handle)}</b>. We'll email you when the board sees it.`, 'warn'),
+        other: para('A board member will be in touch about payment.'),
+      } as Record<string, string>)[String(x.pay ?? 'other')] ?? '';
+      const signIn = x.noApp
+        ? small(`You can manage your membership online any time at ${link(memberHome(v))}. Your email or phone is all you need.`)
+        : button(`Sign in to ${String(v.tenant_name ?? 'the club')}`, v.sign_in_link)
+          + small(`This sign-in link works once and expires in 7 days. If it expires, get a new one at ${link(`${String(v.club_url ?? '')}/m/login.html`, 'your member login page')}.`);
+      return pay + signIn + signedCopy(x);
+    },
+    variants: [
+      { id: 'card', label: 'Paid by card', x: { pay: 'card', attached: true } },
+      { id: 'free', label: 'Nothing to pay', x: { pay: 'free', attached: true } },
+      { id: 'venmo_verified', label: 'Venmo verified', x: { pay: 'venmo_verified' } },
+      { id: 'unpaid_venmo', label: 'Venmo still to pay', x: { pay: 'unpaid_venmo' } },
+      { id: 'plan', label: 'Payment plan', x: { pay: 'plan', attached: true } },
+      { id: 'other', label: 'Payment to sort out', x: { pay: 'other' } },
+      { id: 'card_no_app', label: 'Doesn\'t use the app', x: { pay: 'card', noApp: true, attached: true } },
+    ],
+  },
+
+  // ─── Payments ──────────────────────────────────────────────────────────
+  {
+    key: 'payment_verified_venmo', section: 'payments',
     label: 'Venmo payment verified',
-    description: 'Sent when admin clicks "Verify Venmo Payment" after the application is already approved.',
-    audience: 'member',
-    variables: ['tenant_name', 'primary_name', 'club_url'],
-    default_subject: 'Payment verified — you\'re paid in full at {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Payment verified!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — the board verified your Venmo payment to <b>{{tenant_name}}</b>. Your dues are paid in full and your membership is active for the season.</p>
-      <p style="margin:24px 0">
-        <a href="{{club_url}}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">If you saved your sign-in link from the welcome email, that still works too.</p>
-    `),
-  },
-  // ─── Payment plan installment lifecycle ──────────────────────────────
-  {
-    key: 'plan_installment_paid_partial',
-    label: 'Installment cleared (more to go)',
-    description: 'Sent when a payment plan installment charges successfully and there are more installments remaining.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'amount', 'sequence', 'next_amount', 'next_due_date', 'club_url'],
-    default_subject: 'Installment {{sequence}} paid — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Installment {{sequence}} cleared</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we charged <b>{{amount}}</b> on the card you saved at sign-up.</p>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Your next payment of <b>{{next_amount}}</b> is charged on <b>{{next_due_date}}</b>.</p>
-      <p style="margin:24px 0">
-        <a href="{{club_url}}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
-      </p>
-    `),
+    when: 'When the board confirms a Venmo payment from a family who\'s already approved.',
+    default_subject: 'Payment verified: you\'re paid in full at {{tenant_name}}',
+    default_message: '<p>Hi {{primary_name}},</p><p>The board verified your Venmo payment. Your dues are paid in full and your membership is active for the season.</p>',
+    placeholders: ['primary_name', 'tenant_name'],
+    adds: 'a button to their member page',
+    heading: () => '✓ Payment verified',
+    details: v => button('Open my member page', memberHome(v)),
   },
   {
-    key: 'plan_installment_paid_final',
-    label: 'Installment cleared (paid in full)',
-    description: 'Sent when the final payment plan installment charges successfully — member is paid in full.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'amount', 'club_url'],
-    default_subject: 'Final installment paid — you\'re paid in full at {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ You're paid in full!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we charged your final installment of <b>{{amount}}</b>. Your dues are paid in full for the season. Thanks for being part of <b>{{tenant_name}}</b>!</p>
-      <p style="margin:24px 0">
-        <a href="{{club_url}}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
-      </p>
-    `),
+    key: 'plan_payment_received', section: 'payments',
+    label: 'Plan payment received',
+    when: 'Each time a payment-plan payment goes through.',
+    default_subject: 'Your {{tenant_name}} payment went through',
+    default_message: '<p>Hi {{family_name}},</p><p>Thanks! Your payment went through.</p>',
+    placeholders: ['family_name', 'tenant_name', 'amount'],
+    adds: 'the amount, what\'s next (or "paid in full"), and a button to their member page',
+    heading: (_v, x) => x.final ? '✓ You\'re paid in full!' : '✓ Payment received',
+    details: (v, x) => (x.final
+      ? ok(`We charged ${e(v.amount)}. Your dues are paid in full for the season.`)
+      : box(`We charged ${e(v.amount)} to your saved card.${v.next_amount ? ` Your next payment of <b>${e(v.next_amount)}</b> is on <b>${e(v.next_due_date)}</b>.` : ''}`))
+      + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
+    variants: [
+      { id: 'partial', label: 'More to go', x: { final: false } },
+      { id: 'final', label: 'Paid in full', x: { final: true } },
+    ],
   },
   {
-    key: 'plan_cancelled',
-    label: 'Payment plan ended — membership canceled',
-    description: 'Sent when a payment plan ends: the card kept failing, it was not paid in full by the club\'s deadline, or the family canceled. Nothing is refunded. Tells them how to come back: pay what is overdue plus the reactivation fee.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'reason', 'paid', 'owed', 'fee', 'total', 'manage_url', 'club_url'],
+    key: 'plan_payment_failed', section: 'payments',
+    label: 'Plan payment declined',
+    when: 'When a payment-plan card is declined.',
+    default_subject: 'Your card was declined: {{tenant_name}} payment plan',
+    default_message: '<p>Hi {{family_name}},</p><p>We tried to charge your card for your {{tenant_name}} payment plan, but it was declined.</p><p>Common reasons are an expired card, a new billing address, or a daily limit. Reply to this email if you need help.</p>',
+    placeholders: ['family_name', 'tenant_name', 'amount'],
+    adds: 'the amount, what happens next, and an "Update my card" button',
+    heading: () => '⚠ Card declined',
+    details: v => box(`<b>${e(v.amount)}</b>${v.sequence ? ` (payment ${e(v.sequence)})` : ''}<br>We'll try the card again over the next two weeks. If it still can't be charged, your membership is canceled. Updating your card pays it right away.`, 'warn')
+      + button('Update my card', `${String(v.club_url ?? '')}/m/#plan`),
+  },
+  {
+    key: 'plan_cancelled', section: 'payments',
+    label: 'Plan ended, membership canceled',
+    when: 'When a payment plan ends: the card kept failing, it wasn\'t paid by the deadline, or the family canceled.',
     default_subject: 'Your {{tenant_name}} membership is canceled',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">Your membership is canceled</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — your <b>{{tenant_name}}</b> membership is canceled because {{reason}}. Your gate access and key fobs are off until you reinstate. The {{paid}} you've paid is not refunded.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12;line-height:1.55">
-        <b>To come back:</b> pay what's overdue ({{owed}}) plus the {{fee}} reactivation fee, {{total}} in all. Your plan then carries on where it left off.
-      </div>
-      <p style="margin:24px 0">
-        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Reinstate my membership</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">Questions? Reply to this email to reach the board.</p>
-    `),
-  },
-  // ─── Household roster ────────────────────────────────────────────────
-  {
-    key: 'household_member_added',
-    label: 'Household member added',
-    description: 'Sent to the household primary when they add another family member from the member home page. Attaches the legal-evidence PDF (accepted policies + signature).',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'primary_name', 'member_name', 'member_role', 'club_url'],
-    default_subject: 'New household member added — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Household updated</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — you added <b>{{member_name}}</b> ({{member_role}}) to the {{family_name}} household at <b>{{tenant_name}}</b>.</p>
-      <div style="margin:24px 0 0;padding:12px 14px;background:#eef2f7;border-radius:8px;font-size:13px;color:#475569;line-height:1.5">
-        <b style="color:#0a3b5c">📎 A signed copy is attached</b> — it includes the verbatim text of every policy {{member_name}} (or you, as guardian) accepted plus the signature on file. Please keep it for your records.
-      </div>
-      <p style="margin:24px 0">
-        <a href="{{club_url}}/m" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Open my member home</a>
-      </p>
-      <p style="margin:0;color:#94a3b8;font-size:12px">If you didn't make this change, please reply to this email so the board can investigate.</p>
-    `),
-  },
-  {
-    key: 'plan_installment_failed',
-    label: 'Installment failed (card declined)',
-    description: 'Sent when an installment first fails to charge. Subsequent retries stay silent. Final lapse alerts the admin separately.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'amount', 'sequence', 'club_url'],
-    default_subject: '[Action needed] Card declined — {{tenant_name}} installment {{sequence}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">⚠ Card declined</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we tried to charge <b>{{amount}}</b> for installment {{sequence}} of your <b>{{tenant_name}}</b> dues, but your card was declined.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12">
-        <b>What happens next:</b> we'll try the card again over the next two weeks. If it still can't be charged, your membership is canceled. Update your card in the app and the payment goes through right away.
-      </div>
-      <p style="margin:24px 0">
-        <a href="{{club_url}}/m/#plan" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Update my card</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">Common reasons: card expired, address changed, or daily limit reached. Replying to this email is the fastest way to reach us.</p>
-    `),
+    default_message: '<p>Hi {{family_name}},</p><p>Your {{tenant_name}} membership is canceled because {{reason}}.</p><p>Questions? Reply to this email to reach the board.</p>',
+    placeholders: ['family_name', 'tenant_name', 'reason'],
+    adds: 'what was paid, how to come back and what it costs, and a "Reinstate" button',
+    heading: () => 'Your membership is canceled',
+    details: v => box(`Your gate access and keyfobs are off until you reinstate. The ${e(v.paid)} you've paid isn't refunded.<br><br><b>To come back:</b> pay what's overdue (${e(v.owed)}) plus the ${e(v.fee)} reactivation fee, ${e(v.total)} in all. Your plan then carries on.`, 'warn')
+      + button('Reinstate my membership', v.manage_url),
   },
 
-  // ─── Auto-renew ───────────────────────────────────────────────────────
+  // ─── Renewals ──────────────────────────────────────────────────────────
   {
-    key: 'auto_renew_notice',
-    label: 'Auto-renew — ready to approve',
-    description: 'Sent when renewals open to households with auto-renew on, and once more a week later if they haven\'t approved. Nothing is charged until they open it, accept the policies and approve (PLAN.md R7).',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'amount', 'season', 'charge_date', 'manage_url', 'club_url'],
-    default_subject: 'Your {{season}} {{tenant_name}} renewal is ready to approve',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🏊 Your {{season}} season is coming up</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}}, your <b>{{tenant_name}}</b> renewal for {{season}} is ready. Everything is filled in from last season.</p>
-      <div style="margin:18px 0;padding:16px 18px;background:#f7f3eb;border-radius:10px;color:#0a3b5c">
-        <div style="font-size:26px;font-family:Georgia,serif;font-weight:600;line-height:1">{{amount}}</div>
-        <div style="font-size:13px;color:#475569;margin-top:6px">for the {{season}} season, with your saved card.</div>
-      </div>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Tap below to check it over, accept the club's policies and sign, and approve. You can also switch to a payment plan or another card. <b>Nothing is charged until you approve.</b></p>
-      <p style="margin:24px 0">
-        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Review and approve</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">Not coming back this season? Just ignore this. Nothing happens unless you approve.</p>
-    `),
-  },
-  {
-    key: 'auto_renew_charged',
-    label: 'Auto-renew — receipt',
-    description: 'Sent immediately after a successful auto-renew charge. Confirms the season is paid so the member never has to wonder whether it went through.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'amount', 'season', 'club_url'],
-    default_subject: "You're all set for {{season}} — {{tenant_name}}",
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#166534;margin:0 0 8px">✅ You're renewed for {{season}}</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we charged <b>{{amount}}</b> to your saved card and your <b>{{tenant_name}}</b> membership is paid through the {{season}} season. Nothing else to do.</p>
-      <p style="margin:24px 0">
-        <a href="{{club_url}}/m/" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Open my club</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">Keep this email as your receipt. See you at the pool.</p>
-    `),
-  },
-  {
-    key: 'auto_renew_failed',
-    label: 'Auto-renew — card declined',
-    description: 'Sent when an auto-renew charge is declined. The renewal stays open so the member can finish it themselves rather than losing their spot.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'amount', 'season', 'manage_url', 'club_url'],
-    default_subject: '[Action needed] We couldn\'t renew your {{tenant_name}} membership',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">⚠ Your card was declined</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we tried to renew your <b>{{tenant_name}}</b> membership for {{season}} ({{amount}}) using your saved card, and it didn't go through.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12;line-height:1.6">
-        <b>Your spot is still held.</b> Nothing has been cancelled — we've left your renewal open so you can finish it with a different card whenever suits you.
-      </div>
-      <p style="margin:24px 0">
-        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Finish renewing</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">Usually this is an expired card or a new billing address. Replying to this email reaches the board directly.</p>
-    `),
-  },
-
-  {
-    key: 'renewal_invite',
-    label: 'Renewal invite (no login needed)',
-    description: 'Sent when the board sends renewal links. Contains a one-time link that opens a pre-filled renewal the member can pay without signing in — the path for households that never use the app.',
-    audience: 'member',
-    variables: ['tenant_name', 'family_name', 'season', 'renew_link', 'club_url', 'message'],
+    key: 'renewal_invite', section: 'renewals',
+    label: 'Renewal message',
+    when: 'When the board sends the renewal message from Members → Renewals. What you type there becomes the middle of this email.',
     default_subject: 'Time to renew your {{tenant_name}} membership for {{season}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🏊 Renew for {{season}}</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}},</p>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55;white-space:pre-line">{{message}}</p>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Tap below, check it over, accept the club's policies and sign, then pay. <b>No password, no app, no signing in.</b></p>
-      <p style="margin:24px 0">
-        <a href="{{renew_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:14px 26px;border-radius:10px;font-weight:600;display:inline-block;font-size:16px">Renew my membership</a>
-      </p>
-      <p style="margin:0 0 8px;color:#64748b;font-size:13px">You can pay in full, or split it into smaller payments if your club offers that.</p>
-      <p style="margin:0;color:#64748b;font-size:13px">This link is just for your household — please don't forward it. Replying to this email reaches the board.</p>
-    `),
+    default_message: '<p>Hi {{family_name}},</p><p>{{message}}</p>',
+    placeholders: ['family_name', 'tenant_name', 'season', 'message'],
+    adds: 'their own "Renew my membership" button and how renewing works',
+    heading: v => `🏊 Renew for ${e(v.season)}`,
+    details: v => button('Renew my membership', v.renew_link)
+      + small('Tap the button, check it over, accept the club\'s policies and sign, then pay in full or with a payment plan. No password needed. This link is just for your household, so please don\'t forward it.'),
+  },
+  {
+    key: 'auto_renew_notice', section: 'renewals',
+    label: 'One-tap renewal: ready to approve',
+    when: 'When renewals open, to families who chose one-tap renewal, and once more a week later if they haven\'t approved.',
+    default_subject: 'Your {{season}} {{tenant_name}} renewal is ready to approve',
+    default_message: '<p>Hi {{family_name}},</p><p>Your {{tenant_name}} renewal for {{season}} is ready, filled in from last season.</p><p>Not coming back this season? Just ignore this. Nothing happens unless you approve.</p>',
+    placeholders: ['family_name', 'tenant_name', 'season', 'amount'],
+    adds: 'the price, that nothing is charged until they approve, and a "Review and approve" button',
+    heading: v => `🏊 Your ${e(v.season)} renewal is ready`,
+    details: v => box(`<span style="font-size:24px;font-family:Georgia,serif;font-weight:600;color:#0a3b5c">${e(v.amount)}</span><br>for the ${e(v.season)} season, with your saved card.`)
+      + para('Check it over, accept the club\'s policies and sign, and approve. You can also switch to a payment plan or another card. <b>Nothing is charged until you approve.</b>')
+      + button('Review and approve', v.manage_url),
+  },
+  {
+    key: 'auto_renew_charged', section: 'renewals',
+    label: 'One-tap renewal: receipt',
+    when: 'Right after a family approves their renewal and their saved card is charged.',
+    default_subject: 'You\'re all set for {{season}} at {{tenant_name}}',
+    default_message: '<p>Hi {{family_name}},</p><p>Thanks for renewing! See you at the pool.</p>',
+    placeholders: ['family_name', 'tenant_name', 'season', 'amount'],
+    adds: 'the amount charged and the season it covers',
+    heading: v => `✅ You're renewed for ${e(v.season)}`,
+    details: v => ok(`We charged ${e(v.amount)} to your saved card. Your membership is paid through the ${e(v.season)} season.`)
+      + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
   },
 
-  // ─── Party booking lifecycle ──────────────────────────────────────────
+  // ─── Parties ───────────────────────────────────────────────────────────
   {
-    key: 'party_request_received',
+    key: 'party_request_received', section: 'parties',
     label: 'Party request received',
-    description: 'Sent when a member submits a party booking request. The board still needs to approve.',
-    audience: 'member',
-    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'party_time', 'club_url'],
-    default_subject: 'Party request received — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Got your party request</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — thanks for booking <b>{{party_title}}</b> for <b>{{party_date}}</b> at {{party_time}}. The board will review and get back to you shortly.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.55">
-        <b>What happens next:</b> a board member will approve or reject your request. If approved, you'll get a follow-up email with payment instructions. The party is officially on the calendar only after payment is received.
-      </div>
-      <p style="margin:0;color:#94a3b8;font-size:12px">Hosting at <a href="{{club_url}}" style="color:#0a3b5c">{{tenant_name}}</a></p>
-    `),
+    when: 'When a member asks to book a party that needs the board\'s OK.',
+    default_subject: 'Party request received: {{tenant_name}}',
+    default_message: '<p>Hi {{primary_name}},</p><p>Thanks for asking to book {{party_title}}. The board will get back to you shortly.</p>',
+    placeholders: ['primary_name', 'tenant_name', 'party_title'],
+    adds: 'the date and time, and what happens next',
+    heading: () => '🎉 Got your party request',
+    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''}`)
+      + para('If it\'s approved, you\'ll pay in the app to book it. It goes on the club calendar once it\'s paid.'),
   },
   {
-    key: 'party_approved_pay',
-    label: 'Party approved — payment needed',
-    description: 'Sent when the board approves a party request. The member completes payment to officially book the date.',
-    audience: 'member',
-    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'party_time', 'price', 'venmo_handle', 'club_url', 'member_url'],
-    default_subject: 'Your party is approved — pay to confirm',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Party approved — last step is payment</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — the board approved <b>{{party_title}}</b> for <b>{{party_date}}</b> at {{party_time}}. To officially lock in the date, please complete the {{price}} party fee.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#f7f3eb;border-radius:10px;font-size:13px;color:#475569;line-height:1.6">
-        <div style="font-weight:700;color:#0a3b5c;margin-bottom:6px">How to pay</div>
-        <div><b>Venmo:</b> send {{price}} to <b>@{{venmo_handle}}</b>, then sign in and tap "I paid" so the treasurer can verify.</div>
-        <div style="margin-top:6px"><b>Card / Stripe:</b> sign in below and click "Pay with card" — the date locks instantly when payment clears (small processing fee added).</div>
-      </div>
-      <p style="margin:18px 0">
-        <a href="{{member_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to pay →</a>
-      </p>
-      <p style="margin:0;color:#94a3b8;font-size:12px">Until payment is received the date is held but not officially booked. If another member pays for the same day first, you'd need to pick a different date.</p>
-    `),
+    key: 'party_approved_pay', section: 'parties',
+    label: 'Party approved, payment needed',
+    when: 'When the board approves a party that hasn\'t been paid for yet.',
+    default_subject: 'Your party is approved: pay to book it',
+    default_message: '<p>Hi {{primary_name}},</p><p>Good news: the board approved {{party_title}}.</p>',
+    placeholders: ['primary_name', 'tenant_name', 'party_title', 'price'],
+    adds: 'the date, time and fee, how to pay, and a "Pay for my party" button',
+    heading: () => '✓ Party approved',
+    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''} · ${e(v.price)} party fee`)
+      + para(`To book it, pay in the app by card (the card fee is added)${v.venmo_handle ? `, or send ${e(v.price)} by Venmo to <b>@${e(v.venmo_handle)}</b> and tap "I paid by Venmo"` : ''}. Until it's paid, the time is only held for a short while.`)
+      + button('Pay for my party', v.member_url),
   },
   {
-    key: 'party_confirmed',
-    label: 'Party officially booked',
-    description: 'Sent when payment is verified (Venmo) or auto-confirmed (Stripe). Party is now on the calendar.',
-    audience: 'member',
-    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'party_time', 'club_url'],
-    default_subject: '🎉 Your party is officially booked',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Officially booked!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — payment received. <b>{{party_title}}</b> is locked in for <b>{{party_date}}</b> at {{party_time}}.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#dcfce7;border-radius:10px;font-size:13px;color:#14532d;line-height:1.55">
-        Your party is now on the {{tenant_name}} calendar — visible to members so everyone knows the pool's reserved that day.
-      </div>
-      <p style="margin:18px 0">
-        <a href="{{club_url}}/m/index.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Open member home →</a>
-      </p>
-      <p style="margin:0;color:#64748b;font-size:13px">If anything changes, reply to this email or message the board directly.</p>
-    `),
+    key: 'party_confirmed', section: 'parties',
+    label: 'Party booked',
+    when: 'When a party is paid for and on the calendar.',
+    default_subject: '🎉 Your party is booked',
+    default_message: '<p>Hi {{primary_name}},</p><p>Payment received. {{party_title}} is booked and on the {{tenant_name}} calendar.</p><p>If anything changes, reply to this email.</p>',
+    placeholders: ['primary_name', 'tenant_name', 'party_title'],
+    adds: 'the date and time, and a button to their member page',
+    heading: () => '🎉 It\'s booked!',
+    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''}`) + button('Open my member page', memberHome(v)),
   },
   {
-    key: 'party_rejected',
-    label: 'Party request not approved',
-    description: 'Sent when the board rejects a party request (date conflict, capacity, policy issue, etc.).',
-    audience: 'member',
-    variables: ['tenant_name', 'primary_name', 'party_title', 'party_date', 'admin_notes', 'club_url'],
-    default_subject: 'Update on your party request — {{tenant_name}}',
-    default_body_html: withShell(`
-      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">Party request not approved</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — unfortunately we can't approve <b>{{party_title}}</b> for {{party_date}}.</p>
-      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12;line-height:1.55">
-        <b>Note from the board:</b> {{admin_notes}}
-      </div>
-      <p style="margin:0;color:#475569;line-height:1.55">Pick a different date and submit a new request — sign in at <a href="{{club_url}}/m/login.html" style="color:#0a3b5c">{{club_url}}</a>.</p>
-    `),
+    key: 'party_rejected', section: 'parties',
+    label: 'Party not approved',
+    when: 'When the board turns down a party request.',
+    default_subject: 'Update on your party request: {{tenant_name}}',
+    default_message: '<p>Hi {{primary_name}},</p><p>Unfortunately, we can\'t approve {{party_title}} for {{party_date}}. You\'re welcome to pick another time in the app.</p>',
+    placeholders: ['primary_name', 'tenant_name', 'party_title', 'party_date'],
+    adds: 'the board\'s note, if you wrote one',
+    heading: () => 'Party request not approved',
+    details: v => boardNote(v),
+  },
+
+  // ─── Family changes ────────────────────────────────────────────────────
+  {
+    key: 'household_member_added', section: 'family',
+    label: 'Family member added',
+    when: 'When a family adds someone to their membership in the app.',
+    default_subject: 'New family member added: {{tenant_name}}',
+    default_message: '<p>Hi {{primary_name}},</p><p>You added {{member_name}} ({{member_role}}) to the {{family_name}} membership.</p><p>If you didn\'t make this change, reply to this email so the board can look into it.</p>',
+    placeholders: ['primary_name', 'member_name', 'member_role', 'family_name', 'tenant_name'],
+    adds: 'a copy of what they signed, and a button to their member page',
+    heading: () => '✓ Your family is updated',
+    details: (v, x) => (x.attached ? small(`📎 A signed copy is attached, with the policies ${e(v.member_name)} accepted and the signature on file. Please keep it for your records.`) : '')
+      + button('Open my member page', memberHome(v)),
   },
 ];
 
-// Lookup helper
-const REGISTRY_MAP: Record<string, EmailTemplateDef> = (() => {
-  const m: Record<string, EmailTemplateDef> = {};
-  for (const t of EMAIL_REGISTRY) m[t.key] = t;
-  return m;
+/** The exact versions the senders still name, mapped to the merged emails. */
+const ALIASES: Record<string, { key: string; x: Variant }> = (() => {
+  const a: Record<string, { key: string; x: Variant }> = {
+    application_received_venmo: { key: 'application_received', x: { pay: 'venmo' } },
+    application_received_other: { key: 'application_received', x: { pay: 'other' } },
+    plan_installment_paid_partial: { key: 'plan_payment_received', x: { final: false } },
+    plan_installment_paid_final: { key: 'plan_payment_received', x: { final: true } },
+    plan_installment_failed: { key: 'plan_payment_failed', x: {} },
+  };
+  const welcome: Record<string, string> = {
+    stripe_paid: 'card', free: 'free', venmo_verified: 'venmo_verified',
+    unpaid_venmo: 'unpaid_venmo', plan_first: 'plan', other: 'other',
+  };
+  for (const [suffix, pay] of Object.entries(welcome)) {
+    a[`application_approved_${suffix}`] = { key: 'welcome', x: { pay } };
+    a[`application_approved_${suffix}_no_app`] = { key: 'welcome', x: { pay, noApp: true } };
+  }
+  return a;
 })();
 
-export function getRegistryEntry(key: string): EmailTemplateDef | null {
-  return REGISTRY_MAP[key] ?? null;
+/** Old version names → merged email key, for the Emails page's old links. */
+export const EMAIL_ALIASES: Record<string, string> = Object.fromEntries(Object.entries(ALIASES).map(([k, v]) => [k, v.key]));
+
+const REGISTRY_MAP: Record<string, EmailDef> = Object.fromEntries(EMAIL_REGISTRY.map(d => [d.key, d]));
+
+export function getRegistryEntry(key: string): EmailDef | null {
+  return REGISTRY_MAP[key] ?? REGISTRY_MAP[ALIASES[key]?.key ?? ''] ?? null;
+}
+
+/** The email a sender's key means, and the version of Poolside's part. */
+export function resolveEmail(key: string): { def: EmailDef; x: Variant } | null {
+  if (REGISTRY_MAP[key]) return { def: REGISTRY_MAP[key], x: {} };
+  const al = ALIASES[key];
+  return al && REGISTRY_MAP[al.key] ? { def: REGISTRY_MAP[al.key], x: { ...al.x } } : null;
 }
 
 // Substitute {{var}} in a string with HTML-escaped values from `vars`. Missing
-// vars become empty strings (template authors should write fallbacks if they
-// expect blank values to look weird).
-export function substitute(template: string, vars: Record<string, string | number | null | undefined>): string {
+// vars become empty strings.
+export function substitute(template: string, vars: Vars): string {
   return template.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_match, name) => {
     const v = vars[name];
     return v == null ? '' : escHtml(String(v));
   });
+}
+
+/**
+ * What a board types, made safe: paragraphs, line breaks, bold, italic,
+ * underline, lists and links (http, https, mailto, or a {{placeholder}}).
+ * Everything else is dropped, keeping the words.
+ */
+export function cleanMessage(html: string): string {
+  let s = String(html ?? '').slice(0, 20000);
+  s = s.replace(/<(script|style|iframe|object|embed|template|svg|math)[\s\S]*?<\/\1\s*>/gi, '');
+  s = s.replace(/<!--[\s\S]*?-->/g, '');
+  s = s.replace(/<div[^>]*>/gi, '<p>').replace(/<\/div\s*>/gi, '</p>');
+  s = s.replace(/<(\/?)([a-z0-9]+)([^>]*)>/gi, (_m, close: string, tag: string, attrs: string) => {
+    const t = tag.toLowerCase().replace(/^strong$/, 'b').replace(/^em$/, 'i');
+    if (!['p', 'br', 'b', 'i', 'u', 'ul', 'ol', 'li', 'a'].includes(t)) return '';
+    if (close) return t === 'br' ? '' : `</${t}>`;
+    if (t === 'a') {
+      const href = /href\s*=\s*"([^"]*)"|href\s*=\s*'([^']*)'/i.exec(attrs);
+      const url = (href?.[1] ?? href?.[2] ?? '').trim();
+      return /^(https?:|mailto:|\{\{\s*[a-z_]+\s*\}\})/i.test(url) ? `<a href="${url.replace(/"/g, '&quot;')}">` : '<a>';
+    }
+    return t === 'br' ? '<br>' : `<${t}>`;
+  });
+  return s.replace(/<p>\s*<\/p>/g, '').trim();
+}
+
+/** Put an email together: Poolside's heading, the club's message, Poolside's part. */
+export function composeEmail(
+  key: string, customSubject: string | null, customMessage: string | null, vars: Vars,
+  extra: Variant = {},
+): { subject: string; html: string; def: EmailDef | null } {
+  const hit = resolveEmail(key);
+  if (!hit) return { subject: '', html: '', def: null };
+  const { def } = hit;
+  const x = { ...hit.x, ...extra };
+  const subject = substitute(customSubject || def.default_subject, vars).replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  const message = substitute(cleanMessage(customMessage || def.default_message), vars)
+    .replace(/<p>/g, '<p style="margin:0 0 12px;color:#334155;line-height:1.6">')
+    .replace(/<a href=/g, '<a style="color:#0a3b5c" href=');
+  const logo = vars.__logo_url ? `<p style="margin:0 0 16px"><img src="${e(vars.__logo_url)}" alt="${e(vars.tenant_name)}" style="max-height:56px;max-width:200px"></p>` : '';
+  const content = `${logo}<h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 12px">${def.heading(vars, x)}</h2>
+    <div style="font-size:15px">${message}</div>${def.details ? def.details(vars, x) : ''}`;
+  return {
+    subject,
+    html: emailShell({ tenantName: String(vars.tenant_name ?? ''), clubUrl: String(vars.club_url ?? ''), contentHtml: content }),
+    def,
+  };
 }
 
 // Look up tenant override (if any) for the given key.
@@ -599,83 +398,61 @@ async function loadOverride(sb: SupabaseClient, tenantId: string, key: string): 
   return (data as { subject: string; body_html: string; enabled: boolean } | null) ?? null;
 }
 
-// Render a template (custom override or default), substituting variables, and
-// send via Resend. Returns { sent, error?, suppressed? }. Best-effort: never
-// throws — caller can ignore the result.
+/**
+ * Send one of the 15 emails, with the club's own subject and message if it
+ * changed them, or not at all if it switched the email off. Never throws.
+ */
 export async function renderAndSend(
   sb: SupabaseClient,
   args: {
     tenantId: string;
     templateKey: string;
     to: string;
-    variables: Record<string, string | number | null | undefined>;
+    variables: Vars;
     replyTo?: string;
     attachments?: EmailAttachment[];
   },
 ): Promise<{ sent: boolean; error?: string; suppressed?: boolean }> {
-  const def = getRegistryEntry(args.templateKey);
-  if (!def) return { sent: false, error: `unknown template key: ${args.templateKey}` };
+  const hit = resolveEmail(args.templateKey);
+  if (!hit) return { sent: false, error: `unknown template key: ${args.templateKey}` };
   if (!args.to) return { sent: false, error: 'no recipient' };
 
-  let subject = def.default_subject;
-  let bodyContent = def.default_body_html;
+  let subject: string | null = null, message: string | null = null;
   try {
-    const ovr = await loadOverride(sb, args.tenantId, args.templateKey);
+    const ovr = await loadOverride(sb, args.tenantId, hit.def.key);
     if (ovr) {
       if (!ovr.enabled) return { sent: false, suppressed: true };
-      subject = ovr.subject || def.default_subject;
-      bodyContent = ovr.body_html || def.default_body_html;
+      subject = ovr.subject || null;
+      message = ovr.body_html || null;
     }
-  } catch { /* fall through to defaults */ }
+  } catch { /* the default wording */ }
 
-  // Make sure tenant_name and club_url are always available, even if caller
-  // forgot to pass them — pull from the tenants row as a backstop.
-  let vars = { ...args.variables };
-  if (!vars.tenant_name || !vars.club_url) {
-    try {
-      const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', args.tenantId).maybeSingle();
-      if (tenant) {
-        if (!vars.tenant_name) vars.tenant_name = tenant.display_name as string;
-        if (!vars.club_url)    vars.club_url    = `https://${tenant.slug as string}.poolsideapp.com`;
-      }
-    } catch { /* keep what we have */ }
-  }
+  // The club's name, address and logo, whatever the sender passed.
+  const vars: Vars = { ...args.variables };
+  try {
+    const [{ data: tenant }, { data: sv }] = await Promise.all([
+      sb.from('tenants').select('display_name, slug').eq('id', args.tenantId).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', args.tenantId).maybeSingle(),
+    ]);
+    if (tenant) {
+      if (!vars.tenant_name) vars.tenant_name = tenant.display_name as string;
+      if (!vars.club_url) vars.club_url = `https://${tenant.slug as string}.poolsideapp.com`;
+    }
+    const logo = ((sv?.value as Record<string, unknown> | undefined)?.branding as Record<string, unknown> | undefined)?.logo_url;
+    if (logo) vars.__logo_url = String(logo);
+  } catch { /* keep what we have */ }
 
-  const renderedSubject = substitute(subject, vars);
-  const renderedContent = substitute(bodyContent, vars);
-  const html = emailShell({
-    tenantName: String(vars.tenant_name ?? ''),
-    clubUrl:    String(vars.club_url ?? ''),
-    contentHtml: renderedContent,
-  });
-
-  return await sendEmail({
-    to: args.to,
-    subject: renderedSubject,
-    html,
-    replyTo: args.replyTo,
-    attachments: args.attachments,
-  });
+  const out = composeEmail(args.templateKey, subject, message, vars, { attached: !!args.attachments?.length });
+  return await sendEmail({ to: args.to, subject: out.subject, html: out.html, replyTo: args.replyTo, attachments: args.attachments });
 }
 
-// Render-only, used by the admin Preview pane. Returns the rendered html so
-// the UI can show a live preview when the admin edits the body.
+/** The Emails page's preview: an email, a version of it, sample details. */
 export function renderPreview(
-  templateKey: string,
-  customSubject: string | null,
-  customBodyHtml: string | null,
-  vars: Record<string, string | number | null | undefined>,
+  key: string, customSubject: string | null, customMessage: string | null, vars: Vars, variantId?: string | null,
 ): { subject: string; html: string } {
-  const def = getRegistryEntry(templateKey);
-  if (!def) return { subject: '(unknown template)', html: '' };
-  const subj = customSubject ?? def.default_subject;
-  const body = customBodyHtml ?? def.default_body_html;
-  const renderedSubject = substitute(subj, vars);
-  const renderedContent = substitute(body, vars);
-  const html = emailShell({
-    tenantName: String(vars.tenant_name ?? 'Sample Club'),
-    clubUrl:    String(vars.club_url ?? 'https://example.poolsideapp.com'),
-    contentHtml: renderedContent,
-  });
-  return { subject: renderedSubject, html };
+  const def = getRegistryEntry(key);
+  if (!def) return { subject: '(unknown email)', html: '' };
+  const v = def.variants?.find(x => x.id === variantId) ?? def.variants?.[0];
+  const out = composeEmail(def.key, customSubject, customMessage, vars, v?.x ?? {});
+  return { subject: out.subject, html: out.html };
 }

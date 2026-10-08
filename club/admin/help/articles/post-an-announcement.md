@@ -26,6 +26,6 @@ Announcements alone don't send an email or text — they just appear in-app. If 
 ### What's the difference between Announcements and Emails?
 
 - **Announcements** — short in-app posts, like a bulletin board. No push, no email.
-- **Emails** — the auto-emails Poolside sends on its own (welcome, renewal, payment receipt). You customize the wording under **Members → Emails**; they fire automatically.
+- **Emails** — the auto-emails Poolside sends on its own (welcome, renewal, payment receipt). You change the wording, or switch one off, under **Settings → Emails**; they go out automatically.
 
 > **Tip:** Keep announcements short — under three sentences. Members glance at them; they don't read paragraphs.

@@ -31,7 +31,6 @@
       { key: 'households',   label: 'Households', href: '/club/admin/members.html#households',   scope: 'households'   },
       { key: 'renewals',     label: 'Renewals',   href: '/club/admin/members.html#renewals',     scope: 'households'   },
       { key: 'policies',     label: 'Policies',   href: '/club/admin/policies.html',             scope: 'policies'     },
-      { key: 'emails',       label: 'Emails',     href: '/club/admin/emails.html',               scope: 'announcements' },
     ],
     // Money. Previously spread across four top tabs: dues under Members,
     // donations/sponsors/campaigns under Content, and billing nowhere at
@@ -72,6 +71,7 @@
       { key: 'settings', label: 'Settings', href: '/club/admin/settings.html', scope: 'settings' },
       { key: 'board',    label: 'Board',    href: '/club/admin/board.html',    scope: ''         },  // every board member reads it; the president edits
       { key: 'keyfobs',  label: 'Keyfobs',  href: '/club/admin/keyfobs.html',  scope: 'keyfobs', feature: 'keyfobs' },
+      { key: 'emails',   label: 'Emails',   href: '/club/admin/emails.html',   scope: 'announcements' },  // PLAN.md T: moved from Members
       { key: 'plan',     label: 'Plan',     href: '/club/admin/billing.html',  scope: 'settings' },
     ],
   };
@@ -80,7 +80,7 @@
   // no strip (dashboard, check-in, help, login, setup, change-password).
   const PAGE_SECTION = {
     'members.html': 'members', 'policies.html': 'members',
-    'import.html': 'members', 'migrate.html': 'members', 'emails.html': 'members',
+    'import.html': 'members', 'migrate.html': 'members',
     'payments.html': 'money',
     'donations.html': 'money', 'sponsors.html': 'money', 'upcoming.html': 'money',
     'events.html': 'calendar', 'programs.html': 'calendar', 'parties.html': 'calendar',
@@ -88,7 +88,7 @@
     'announcements.html': 'content', 'photos.html': 'content',
     'board-meetings.html': 'content', 'member-help.html': 'content',
     'audit.html': 'insights',
-    'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'settings', 'billing.html': 'settings',
+    'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'settings', 'emails.html': 'settings', 'billing.html': 'settings',
   };
 
   // admin-flags.js puts the waiting-task numbers on these tabs (PLAN.md R1).

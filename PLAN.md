@@ -577,6 +577,20 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ S4.** Money → Upcoming: the next 30 days with checkboxes and "Approve checked", undo before it's charged, and the last 30 days of automatic charges.
 - Notes: there were no active plans anywhere when this shipped, so nothing was waiting. Older examples in `test_flex_plan` now use a club billing on the 15th or 20th, the arithmetic Doug's examples were worked out with. `node scripts/test_plan_approval.mjs [--live]` (16 offline, 7 live checks).
 
+### T. A simpler Emails tab (Doug, 10/8) — ✅ done 10/8
+Doug: "emails tab is super confusing." It listed 29 emails with technical names; 12 were the same welcome email in different payment and app versions; no club had changed any; the editor had a Visual/HTML switch. Decided (10/8):
+- **By moment, plain names:** Signing up, Welcome, Payments, Renewals, Parties, Family changes. Each email shows its name, when it goes out, an on/off switch and its subject.
+- **Look-alikes merged:** one Welcome email (Poolside adds the right payment line and sign-in line), one Application received, one Plan payment received. 29 become 15. Nothing a family gets is lost: the code that sends them is unchanged and each old version maps to its merged email.
+- **Editing is the subject and the message in plain words** (bold, links, bullets). Poolside adds the logo, buttons and payment details. No HTML mode. "Reset to the original" stays. **"Send me a test"** sends it to your own email.
+- **It moves to Settings → Emails.**
+- The defaults are rewritten in plain words, fixing out-of-date lines (party payment, plan payments).
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ T1.** The 15 emails: message plus Poolside's part, the old keys mapped to them, a safe-HTML check on what boards type.
+- **✅ T2.** The Emails page: sections, switches, the simple editor with placeholders, a preview ("Show as" for the Welcome versions), Send me a test.
+- **✅ T3.** Settings → Emails, and the help pages that mention it.
+- Notes: emails now carry the club's logo (Settings → branding). A real welcome email was sent to Resend's test inbox and read back. The one-tap renewal "card declined" email was retired with R7 (nothing sends it). `node scripts/test_emails.mjs [--live]` (22 offline, 4 live checks).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

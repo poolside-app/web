@@ -94,6 +94,10 @@ When the next season goes on sale, the board sends the **renewal message** (Memb
 
 Auto-renew is "approve next season" (PLAN.md R7, since 2026-10-08). The daily `auto_renew_run` never charges: when renewals open it sends auto-renew families their renewal to approve (pop-up and email), with one reminder a week later. Approving with the card kept for auto-renew charges it once (`payment_plans` `renewal_charge_saved`, internal only), then runs the normal renewal approval. The terms a family agrees to are in `_shared/payment_terms.ts` (version 2).
 
+### Emails
+
+Every email Poolside sends a family is one of 15 in `_shared/email_template.ts`, grouped by moment (Signing up, Welcome, Payments, Renewals, Parties, Family changes; PLAN.md T). Each has a message a club can change on Settings → Emails (`email_templates` function and table: subject, `body_html` holds the message, enabled), and Poolside's part (heading, details, buttons, sign-in line) built in code from the same variables. Senders still name the exact version (`application_approved_stripe_paid_no_app`…); `ALIASES` maps those to the merged email and what differs. What a board types goes through `cleanMessage`. `node scripts/test_emails.mjs [--live]`.
+
 ### Member notifications
 
 Members turn on pop-ups in the app (`js/member-push.js`, the `push_member` function, `member_push_subscriptions`). Doug decided on 2026-10-07 how members are told things. Board replies, party decisions, plan receipts and announcements (with "Notify members" on) arrive as pop-ups through `_shared/member_notify.ts`, plus email where it makes sense: receipts and payment details always, a board reply only when no pop-up reached them. **No texts** except "Text all members", sign-in codes, the welcome text at approval, and the board's renewal message when they tick Text. Agendas reach the board by pop-up only. On iPhone, pop-ups need the app on the Home Screen. The member home hands that app a one-time sign-in through the manifest's start address (`member_auth` `handoff`, `tenant_manifest ?h=`), so it opens signed in. `node scripts/test_signup_notes.mjs [--live]`.

@@ -55,7 +55,7 @@ PAGE_TO_TAB = {
     "policies.html":       "members",
     "import.html":         "members",
     "migrate.html":        "members",
-    "emails.html":         "members",
+    "emails.html":         "settings",
     # Money
     "payments.html":       "money",
     "donations.html":      "money",
