@@ -297,6 +297,98 @@ async function afterPayment(sb: SupabaseClient, club: PlanClub, plan: Record<str
   await completeIfPaid(sb, club, plan, rows);
 }
 
+function randomHex(bytes: number): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * One tap: an approved renewal is paid with the card saved for auto-renew
+ * (PLAN.md R7). It must be signed first. A test-payment card (sim_pm_) is
+ * never sent to Stripe; it counts as paid only while the club's test
+ * payments are on. Once paid, the same approve step as a card renewal runs
+ * (season rolled forward, extra keyfobs set up).
+ */
+async function chargeRenewalWithSavedCard(sb: SupabaseClient, appId: string): Promise<{ ok: boolean; error?: string; paid?: boolean }> {
+  const { data: app } = await sb.from('applications')
+    .select('id, tenant_id, household_id, is_renewal, status, payment_status, accepted_at, signature_primary, membership_year, family_name')
+    .eq('id', appId).maybeSingle();
+  if (!app || !app.is_renewal || !app.household_id) return { ok: false, error: 'Renewal not found' };
+  if (app.payment_status === 'paid') return { ok: true, paid: true };
+  const { needsRenewalSignature } = await import('../_shared/renewal_sign.ts');
+  if (needsRenewalSignature(app)) return { ok: false, error: 'Accept the policies and sign first.' };
+  const [{ data: hh }, { data: tenant }, { data: settingsRow }] = await Promise.all([
+    sb.from('households').select('id, family_name, auto_renew_customer_id, auto_renew_pm_id').eq('id', app.household_id).maybeSingle(),
+    sb.from('tenants').select('id, slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived').eq('id', app.tenant_id).maybeSingle(),
+    sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle(),
+  ]);
+  if (!hh?.auto_renew_pm_id || !hh.auto_renew_customer_id) return { ok: false, error: 'There\'s no saved card. Pay with a card instead.' };
+  if (!tenant) return { ok: false, error: 'Club not found' };
+  const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
+  const pay = (sv.payments as Record<string, unknown> | undefined) ?? {};
+  const { priceApplication, recordDiscountUse } = await import('../_shared/membership_price.ts');
+  const priced = await priceApplication(sb, appId);
+  const due = priced?.amount_due_cents ?? 0;
+  const amountCents = due > 0 && pay.pass_stripe_fee
+    ? Math.ceil((due + Number(pay.stripe_fixed_cents ?? 30)) / (1 - Number(pay.stripe_pct ?? 2.9) / 100)) : due;
+  const nowIso = new Date().toISOString();
+  const sim = String(hh.auto_renew_pm_id).startsWith('sim_');
+  let intentId: string | null = null;
+  if (amountCents > 0) {
+    if (sim) {
+      if (pay.test_mode !== true) return { ok: false, error: 'That saved card was a test card. Pay with a card instead.' };
+      intentId = 'sim_pi_' + appId.slice(0, 8);
+    } else {
+      if (!tenant.stripe_account_id || !tenant.stripe_charges_enabled) return { ok: false, error: 'The club can\'t take card payments right now.' };
+      const charge = await stripe<{ id: string; status: string }>('/payment_intents', {
+        amount: amountCents, currency: 'usd',
+        customer: hh.auto_renew_customer_id as string, payment_method: hh.auto_renew_pm_id as string,
+        confirm: 'true', off_session: 'true',
+        'metadata[kind]': 'application', 'metadata[application_id]': appId, 'metadata[tenant_id]': String(tenant.id),
+        application_fee_amount: platformFeeCents(amountCents, 'dues', feePolicyFromTenant(tenant)),
+      }, tenant.stripe_account_id as string, `renewapprove_${appId}`);
+      if (!charge.ok || charge.data?.status !== 'succeeded') {
+        await sb.from('households').update({ auto_renew_last_attempt_at: nowIso, auto_renew_last_error: (charge.error || 'Card declined').slice(0, 500) }).eq('id', hh.id);
+        return { ok: false, error: 'Your saved card didn\'t go through. Pay with a different card.' };
+      }
+      intentId = charge.data?.id ?? null;
+    }
+  }
+  await sb.from('applications').update({
+    payment_status: 'paid', payment_method: amountCents > 0 ? 'stripe' : 'free', paid_at: nowIso, verified_at: nowIso,
+    stripe_payment_intent_id: intentId, status: 'pending',
+  }).eq('id', appId);
+  await recordDiscountUse(sb, appId);
+  await sb.from('households').update({ auto_renew_last_attempt_at: nowIso, auto_renew_last_error: null }).eq('id', hh.id);
+  // The same approval as any paid renewal: season forward, keyfobs, tasks.
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+      body: JSON.stringify({ action: 'approve', id: appId, tenant_id: app.tenant_id }),
+    });
+  } catch (e) { console.error('renewal approve:', (e as Error).message); }
+  try {
+    const { data: primary } = await sb.from('household_members')
+      .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
+    if (primary?.email && amountCents > 0) {
+      const { renderAndSend } = await import('../_shared/email_template.ts');
+      await renderAndSend(sb, { tenantId: tenant.id as string, templateKey: 'auto_renew_charged', to: primary.email as string,
+        variables: { family_name: hh.family_name as string, amount: '$' + (amountCents / 100).toFixed(2), season: String(app.membership_year ?? '') } });
+    }
+  } catch { /* the money moved; a failed receipt must not undo that */ }
+  await sb.from('audit_log').insert({
+    tenant_id: tenant.id, kind: 'renewal.auto_charged', entity_type: 'application', entity_id: appId,
+    summary: `${hh.family_name} approved their ${app.membership_year} renewal${sim ? ' (test card)' : ''}`,
+    actor_kind: 'member', actor_label: 'renewal approval',
+  });
+  return { ok: true, paid: true };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -309,24 +401,27 @@ Deno.serve(async (req) => {
   // Cron runner — gated by CRON_SECRET, no admin auth. Drains charges + reminders.
 
   // ── auto_renew_run (cron) ───────────────────────────────────────────────
-  // Two passes, deliberately. Members were told "we'll charge this card when
-  // the new season opens and email you first", so the notice is a promise, not
-  // a nicety: nobody is charged until they have had `auto_renew_notice_days`
-  // to look at the amount and cancel. A silent annual charge is how a club
-  // turns a loyal member into an angry one.
+  // Auto-renew is "approve next season" (PLAN.md R7, Doug 2026-10-08). The old
+  // version charged whatever the board set once a notice had gone out, which
+  // put families off. Now, when renewals open, each auto-renew family is sent
+  // the new price, the policies to accept and sign, and how they paid last
+  // time, to approve. Nothing is charged here, ever: approving charges their
+  // saved card (renewal_charge_saved). One reminder a week later, then
+  // nothing: an unapproved renewal simply doesn't happen.
   if (action === 'auto_renew_run') {
     const got = req.headers.get('x-cron-secret') || '';
     if (!CRON_SECRET || got !== CRON_SECRET) {
       return jsonResponse({ ok: false, error: 'Bad cron secret' }, 401);
     }
     const { sellingYear, renewalOpen } = await import('../_shared/membership_year.ts');
+    const { priceApplication } = await import('../_shared/membership_price.ts');
     const nowIso = new Date().toISOString();
-    let noticed = 0, charged = 0, failed = 0, skipped = 0;
+    const REMIND_AFTER_DAYS = 7;
+    const onlyHousehold = body.only_household ? String(body.only_household) : null;   // tests
+    let asked = 0, reminded = 0, skipped = 0;
 
-    // Trial clubs are running real seasons with real members — only suspended
-    // and churned clubs should be skipped.
     const { data: tenants } = await sb.from('tenants')
-      .select('id, slug, display_name, status, stripe_account_id, stripe_charges_enabled, platform_fees_waived')
+      .select('id, slug, display_name, status')
       .not('status', 'in', '("suspended","churned")');
 
     for (const tenant of (tenants ?? [])) {
@@ -334,221 +429,88 @@ Deno.serve(async (req) => {
         .select('value').eq('tenant_id', tenant.id).maybeSingle();
       const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
       if (!renewalOpen(sv)) continue;
-
       const year = sellingYear(sv);
-      const noticeDays = Number(
-        ((sv.membership as Record<string, unknown> | undefined)?.auto_renew_notice_days) ?? 7,
-      );
-
-      // Dues for the coming season, grossed up if the club passes card fees on.
       const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+      if (!tiers.some(t => Number(t.price_cents) > 0)) continue;
       const pay = (sv.payments as Record<string, unknown> | undefined) ?? {};
-      const passFee = !!pay.pass_stripe_fee;
-      const pct = Number(pay.stripe_pct ?? 2.9) / 100;
-      const fixed = Number(pay.stripe_fixed_cents ?? 30);
-      const grossUp = (cents: number): number =>
-        cents > 0 && passFee ? Math.ceil((cents + fixed) / (1 - pct)) : cents;
-      // A family's referral credit comes off first (H5), so the notice and
-      // the charge both quote what they actually owe.
-      const { priceFor: memberPrice, priceApplication, recordDiscountUse } = await import('../_shared/membership_price.ts');
-      const hasPrice = tiers.some(t => Number(t.price_cents) > 0);
+      const grossUp = (cents: number): number => cents > 0 && pay.pass_stripe_fee
+        ? Math.ceil((cents + Number(pay.stripe_fixed_cents ?? 30)) / (1 - Number(pay.stripe_pct ?? 2.9) / 100)) : cents;
 
-      const { data: households } = await sb.from('households')
-        .select('id, family_name, tier, paid_until_year, auto_renew_customer_id, auto_renew_pm_id, auto_renew_notice_year, auto_renew_notice_sent_at')
+      let q = sb.from('households')
+        .select('id, family_name, tier, paid_until_year, auto_renew_asked_year, auto_renew_asked_at, auto_renew_reminded_at')
         .eq('tenant_id', tenant.id).eq('active', true).eq('auto_renew', true)
-        .or(`paid_until_year.is.null,paid_until_year.lt.${year}`)
-        .limit(500);
+        .or(`paid_until_year.is.null,paid_until_year.lt.${year}`);
+      if (onlyHousehold) q = q.eq('id', onlyHousehold);
+      const { data: households } = await q.limit(500);
 
       for (const hh of (households ?? [])) {
-        if (!hasPrice) { skipped++; continue; }
-        let amountCents = grossUp((await memberPrice(sb, tenant.id as string, sv, {
-          tierSlug: hh.tier as string | null, householdId: hh.id as string, isRenewal: true,
-        })).amount_due_cents);
+        const first = hh.auto_renew_asked_year !== year;
+        const askedAt = hh.auto_renew_asked_at ? Date.parse(hh.auto_renew_asked_at as string) : 0;
+        const remind = !first && !hh.auto_renew_reminded_at && askedAt > 0
+          && (Date.now() - askedAt) >= REMIND_AFTER_DAYS * 86400_000;
+        if (!first && !remind) { skipped++; continue; }
 
-        // Pass 1 — the heads-up.
-        if (hh.auto_renew_notice_year !== year) {
-          const chargeOn = new Date(Date.now() + noticeDays * 86400_000).toISOString().slice(0, 10);
-          const { data: primary } = await sb.from('household_members')
-            .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
-          if (primary?.email) {
-            try {
-              const { renderAndSend } = await import('../_shared/email_template.ts');
-              await renderAndSend(sb, {
-                tenantId: tenant.id as string,
-                templateKey: 'auto_renew_notice',
-                to: primary.email as string,
-                variables: {
-                  family_name: hh.family_name as string,
-                  amount: '$' + (amountCents / 100).toFixed(2),
-                  season: String(year),
-                  charge_date: chargeOn,
-                  manage_url: `https://${tenant.slug}.poolsideapp.com/m/renew.html`,
-                },
-              });
-            } catch { /* a missing template must not block the renewal */ }
-          }
-          await sb.from('households').update({
-            auto_renew_notice_year: year, auto_renew_notice_sent_at: nowIso,
-          }).eq('id', hh.id);
-          noticed++;
-          continue;   // charge on a later run, after they have had the window
-        }
-
-        // Pass 2 — charge, once the notice has had time to land.
-        const sentAt = hh.auto_renew_notice_sent_at ? Date.parse(hh.auto_renew_notice_sent_at as string) : 0;
-        if (!sentAt || (Date.now() - sentAt) < noticeDays * 86400_000) { skipped++; continue; }
-        if (!hh.auto_renew_customer_id || !hh.auto_renew_pm_id) {
-          // Opted in but we never captured a reusable card — leave it for the
-          // renewal reminders rather than pretending it will charge.
-          await sb.from('households').update({
-            auto_renew_last_attempt_at: nowIso,
-            auto_renew_last_error: 'No saved card on file — member needs to renew manually.',
-          }).eq('id', hh.id);
-          skipped++; continue;
-        }
-        if (!tenant.stripe_account_id || !tenant.stripe_charges_enabled) { skipped++; continue; }
-
-        // The renewal application first: it is what carries the season, and
-        // what the receipt, audit trail and admin queue all hang off.
-        const { data: existing } = await sb.from('applications')
-          .select('id').eq('tenant_id', tenant.id).eq('household_id', hh.id)
-          .eq('is_renewal', true).eq('membership_year', year)
+        // Their renewal, ready to approve: everything filled in, with a
+        // no-login link (the same row the board's renewal message uses).
+        const { data: primary } = await sb.from('household_members')
+          .select('name, email, phone_e164').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
+        const { data: open } = await sb.from('applications').select('id')
+          .eq('tenant_id', tenant.id).eq('household_id', hh.id).eq('is_renewal', true).eq('membership_year', year)
           .in('status', ['prefilled', 'pending']).maybeSingle();
-        let appId = existing?.id as string | undefined;
-        if (!appId) {
-          const { data: primary } = await sb.from('household_members')
-            .select('name, email, phone_e164').eq('household_id', hh.id)
-            .eq('role', 'primary').eq('active', true).maybeSingle();
+        const tok = randomHex(24);
+        const tokHash = await sha256Hex(tok);
+        let appId = open?.id as string | undefined;
+        if (appId) {
+          await sb.from('applications').update({ claim_token_hash: tokHash, invited_at: nowIso }).eq('id', appId);
+        } else {
           const { data: created } = await sb.from('applications').insert({
-            tenant_id: tenant.id, household_id: hh.id,
-            is_renewal: true, is_new_member: false, membership_year: year,
-            status: 'pending', payment_status: 'unpaid',
-            family_name: hh.family_name,
-            primary_name: primary?.name ?? hh.family_name,
-            primary_email: primary?.email ?? null,
-            primary_phone: primary?.phone_e164 ?? null,
-            tier_slug: hh.tier,
+            tenant_id: tenant.id, household_id: hh.id, is_renewal: true, is_new_member: false, membership_year: year,
+            status: 'prefilled', payment_status: 'unpaid', family_name: hh.family_name,
+            primary_name: primary?.name ?? hh.family_name, primary_email: primary?.email ?? null, primary_phone: primary?.phone_e164 ?? null,
+            tier_slug: hh.tier, claim_token_hash: tokHash, claim_source: 'auto_renew', invited_at: nowIso,
           }).select('id').single();
           appId = created?.id as string | undefined;
         }
-        if (!appId) { failed++; continue; }
-
-        // The price stored on the renewal is what gets charged.
+        if (!appId) { skipped++; continue; }
         const priced = await priceApplication(sb, appId);
-        amountCents = grossUp(priced?.amount_due_cents ?? 0);
-        if (amountCents <= 0) {
-          // Their credit covers the whole season: nothing to charge.
-          const nowFree = new Date().toISOString();
-          await sb.from('applications').update({
-            payment_status: 'paid', payment_method: 'free', paid_at: nowFree, verified_at: nowFree,
-            status: 'approved', decided_at: nowFree,
-          }).eq('id', appId);
-          await recordDiscountUse(sb, appId);
-          await sb.from('households').update({
-            paid_until_year: Math.max(Number(hh.paid_until_year ?? 0), year),
-            dues_paid_for_year: true, auto_renew_last_attempt_at: nowFree, auto_renew_last_error: null,
-          }).eq('id', hh.id);
-          await sb.from('audit_log').insert({
-            tenant_id: tenant.id, kind: 'renewal.auto_charged',
-            entity_type: 'application', entity_id: appId,
-            summary: `${hh.family_name} renewed through ${year}; their referral credit covered it`,
-            actor_kind: 'system', actor_label: 'cron',
-          });
-          charged++;
-          continue;
-        }
+        const amount = '$' + (grossUp(priced?.amount_due_cents ?? 0) / 100).toFixed(2);
+        const link = `https://${tenant.slug}.poolsideapp.com/renew.html?t=${tok}`;
 
-        const charge = await stripe<{ id: string; status: string }>('/payment_intents', {
-          amount: amountCents,
-          currency: 'usd',
-          customer: hh.auto_renew_customer_id as string,
-          payment_method: hh.auto_renew_pm_id as string,
-          confirm: 'true',
-          off_session: 'true',
-          'metadata[kind]': 'application',
-          'metadata[application_id]': appId,
-          'metadata[tenant_id]': String(tenant.id),
-          application_fee_amount: platformFeeCents(amountCents, 'dues', feePolicyFromTenant(tenant)),
-          // One try per renewal per day: a run retried the same day can never
-          // charge the family twice.
-        }, tenant.stripe_account_id as string, `autorenew_${appId}_${nowIso.slice(0, 10)}`);
-
-        if (charge.ok && charge.data?.status === 'succeeded') {
-          const now2 = new Date().toISOString();
-          await sb.from('applications').update({
-            payment_status: 'paid', payment_method: 'stripe',
-            paid_at: now2, verified_at: now2, status: 'approved', decided_at: now2,
-            stripe_payment_intent_id: charge.data?.id ?? null,
-          }).eq('id', appId);
-          await recordDiscountUse(sb, appId);
-          await sb.from('households').update({
-            paid_until_year: Math.max(Number(hh.paid_until_year ?? 0), year),
-            dues_paid_for_year: true,
-            auto_renew_last_attempt_at: now2,
-            auto_renew_last_error: null,
-          }).eq('id', hh.id);
+        if (primary?.email) {
           try {
-            const { data: primary } = await sb.from('household_members')
-              .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
-            if (primary?.email) {
-              const { renderAndSend } = await import('../_shared/email_template.ts');
-              await renderAndSend(sb, {
-                tenantId: tenant.id as string,
-                templateKey: 'auto_renew_charged',
-                to: primary.email as string,
-                variables: {
-                  family_name: hh.family_name as string,
-                  amount: '$' + (amountCents / 100).toFixed(2),
-                  season: String(year),
-                },
-              });
-            }
-          } catch { /* the money moved; a failed receipt must not undo that */ }
-
-          await sb.from('audit_log').insert({
-            tenant_id: tenant.id, kind: 'renewal.auto_charged',
-            entity_type: 'application', entity_id: appId,
-            summary: `${hh.family_name} auto-renewed through ${year}`,
-            actor_kind: 'system', actor_label: 'cron',
-          });
-          charged++;
-        } else {
-          // Leave the application open so the member can finish it themselves
-          // from the renewal page — a declined card should not cost them a seat.
-          await sb.from('households').update({
-            auto_renew_last_attempt_at: nowIso,
-            auto_renew_last_error: (charge.error || 'Card declined').slice(0, 500),
-          }).eq('id', hh.id);
-          try {
-            const { data: primary } = await sb.from('household_members')
-              .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
-            if (primary?.email) {
-              const { renderAndSend } = await import('../_shared/email_template.ts');
-              await renderAndSend(sb, {
-                tenantId: tenant.id as string,
-                templateKey: 'auto_renew_failed',
-                to: primary.email as string,
-                variables: {
-                  family_name: hh.family_name as string,
-                  amount: '$' + (amountCents / 100).toFixed(2),
-                  season: String(year),
-                  manage_url: `https://${tenant.slug}.poolsideapp.com/m/renew.html`,
-                },
-              });
-            }
-          } catch { /* best-effort; the admin task below is the backstop */ }
-
-          await (await import('../_shared/enqueue_task.ts')).enqueueAdminTask(sb, {
-            tenant_id: tenant.id as string, target_scopes: ['payments'], kind: 'renewal.auto_renew_failed',
-            summary: `Auto-renew failed for ${hh.family_name} — card declined`,
-            source_kind: 'household', source_id: hh.id,
-          });
-          failed++;
+            const { renderAndSend } = await import('../_shared/email_template.ts');
+            await renderAndSend(sb, {
+              tenantId: tenant.id as string, templateKey: 'auto_renew_notice', to: primary.email as string,
+              variables: { family_name: hh.family_name as string, amount, season: String(year), manage_url: link, charge_date: '' },
+            });
+          } catch { /* the pop-up still goes */ }
         }
+        try {
+          const { pushMembers } = await import('../_shared/member_notify.ts');
+          await pushMembers({ tenant_id: tenant.id as string, household_ids: [hh.id as string],
+            title: `Your ${year} renewal is ready to approve`,
+            body: `${amount}. Accept the policies and approve. Nothing is charged until you do.`,
+            url: '/m/renew.html', tag: 'auto-renew' });
+        } catch { /* email went */ }
+
+        await sb.from('households').update(first
+          ? { auto_renew_asked_year: year, auto_renew_asked_at: nowIso, auto_renew_reminded_at: null }
+          : { auto_renew_reminded_at: nowIso }).eq('id', hh.id);
+        if (first) asked++; else reminded++;
       }
     }
 
-    return jsonResponse({ ok: true, noticed, charged, failed, skipped });
+    return jsonResponse({ ok: true, asked, reminded, skipped });
+  }
+
+  // ── renewal_charge_saved (internal) ──────────────────────────────────────
+  // The family approved its renewal (PLAN.md R7): charge the card saved for
+  // auto-renew. Called by member_auth (renew_approve) and applications
+  // (get_renewal approve_saved), never from a browser.
+  if (action === 'renewal_charge_saved') {
+    if (req.headers.get('x-poolside-internal') !== SERVICE_ROLE) return jsonResponse({ ok: false, error: 'Internal only' }, 403);
+    const r = await chargeRenewalWithSavedCard(sb, String(body.application_id ?? ''));
+    return jsonResponse(r, r.ok ? 200 : 409);
   }
 
   if (action === 'cron_run') {

@@ -1,37 +1,32 @@
 ---
-title: "How do I send a dues reminder (renewal blast) to last year's members?"
+title: "How do I send a dues reminder (renewal message) to last year's members?"
 category: "Email & Text"
 ---
 
-When dues season opens, you'll want to remind everyone to pay. Poolside has a one-stop tool called **Renewals** for exactly this. It sends each family a personal email (and/or text) with a one-tap sign-in link.
+When next season goes on sale, send last season's members a renewal message. Each family gets its own link that opens their renewal with everything filled in. They accept the club's policies, sign, and pay in full or with a payment plan. No password, no app.
 
-> **Where it lives:** Click **Members** in the top nav, then click the **Renewals** tab inside Members. (It's not under Emails — Emails is for editing the auto-emails that go out on their own.)
+> **Where it lives:** Click **Members** in the top nav, then the **Renewals** tab. (It's not under Emails. Emails is for editing the emails that go out on their own.)
 
-### Send the dues reminder — step by step
+### Send it, step by step
 
-1. Click **Members** in the top nav.
-2. Click the **Renewals** sub-tab.
-3. Pick who gets it under **Audience**:
-   - **Lapsed (unpaid this year)** — most common pick during dues season. Only families who haven't paid yet.
-   - **Last season's members** — bring back everyone who was a member last year, paid or not.
-   - **All active households** — everyone currently in your member list.
-   The count of families updates as you click between options, so you can see who you're about to reach.
-4. Under **Compose & send**, pick **Email**, **SMS** (text), or both. Most boards send email first. Then a week before the deadline, they send a text blast — texts get opened more often.
-5. (Optional) Type a custom intro in the **Custom intro** box. If you leave it blank, Poolside writes a friendly default for you using your club's name.
-6. Click **Send blast →**.
+1. Click **Members**, then **Renewals**.
+2. Check the box at the top. It says which season you're renewing for (like **2027**) and how many of last season's families haven't renewed yet.
+3. Pick **Email**, **Text**, or both.
+4. Change the message if you like. It starts filled in ("It's time to sign up for the 2027 season!"). Each family's own link is added after it.
+5. Click **Send renewal message →**.
 
-That's it. Each family gets a personalized message with their own one-tap sign-in link (good for 7 days).
+### Who gets it
 
-### Sending only to the people who haven't paid yet
+Only families who were members **last season** and haven't paid for the coming one, sent to the person who opened each account. Families who left before last season, and brand-new families, don't get it, so nobody is messaged year after year when they've moved on.
 
-This is the most common ask. On the Renewals page, set **Audience = Lapsed (unpaid this year)**. The list updates automatically as people pay, so you won't accidentally pester someone who already wrote you a check.
+Send it again later and it only reaches the families who still haven't renewed. The screen shows when it was last sent.
+
+### Families on one-tap renewal
+
+Families who ticked "Make next season's renewal one tap" are sent their renewal to approve automatically when the season goes on sale, with a reminder a week later. Nothing is charged until they approve.
 
 ### Want to offer an early-bird discount?
 
-Make a discount code under **Money → Money setup → Discounts**, with a last day, and tick **Show it on the member home**. It then shows on every member's home page and is mentioned in the renewal email and text. Families type it under **Have a code?** when they pay.
+Make a discount code under **Money → Money setup → Discounts**, with a last day, and tick **Show it on the member home**. Families type it under **Have a code?** when they renew.
 
-### Did everyone get it?
-
-Scroll down to **Send history** at the bottom of the Renewals page. It shows your last 20 blasts, who they went to, and how many landed.
-
-> **Important:** Texts are limited each month based on your plan. Don't worry — important reminders to existing members never count against the cap. Only marketing-style blasts do.
+> **Texts:** each text counts toward your club's monthly text allowance.

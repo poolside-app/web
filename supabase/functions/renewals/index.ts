@@ -7,6 +7,16 @@
 //
 // Actions:
 //
+//   { action: 'renewal_audience' }
+//     → { ok, year, last_year, households, with_email, with_phone, no_contact, sample, last_sent }
+//     Who the renewal message reaches (PLAN.md R5): last season's members
+//     who haven't renewed for the season on sale.
+//
+//   { action: 'send_renewal_links', channels, message? }
+//     The renewal message (PLAN.md R5, Doug 2026-10-08): to the person who
+//     opened each account, only for last season's members not yet renewed,
+//     with the board's message and the family's own no-login link.
+//
 //   { action: 'send_blast', audience, channels, message? }
 //     • audience: 'all' | 'lapsed' | 'last_season'
 //          'all'         — every active household
@@ -164,7 +174,7 @@ async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean
 }
 
 async function sendRenewalSms(args: {
-  to: string; tenantName: string; verifyLink: string; earlyBirdLine: string; sb: SupabaseClient;
+  to: string; tenantName: string; verifyLink: string; earlyBirdLine: string; sb: SupabaseClient; message?: string;
 }): Promise<{ sent: boolean; error?: string }> {
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
@@ -175,7 +185,9 @@ async function sendRenewalSms(args: {
   const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
   if (!sid || !tok || (!messagingServiceSid && !fromN)) return { sent: false, error: 'TWILIO_* env vars not set' };
   const eb = args.earlyBirdLine ? ` ${args.earlyBirdLine}` : '';
-  const body = `${args.tenantName}: time to renew!${eb} Sign in & pay: ${args.verifyLink} (link good 7 days)`;
+  const body = args.message
+    ? `${args.tenantName}: ${args.message} ${args.verifyLink}`
+    : `${args.tenantName}: time to renew!${eb} Sign in & pay: ${args.verifyLink} (link good 7 days)`;
   const params: Record<string, string> = { To: args.to, Body: body };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (fromN) params.From = fromN;
@@ -196,6 +208,20 @@ async function sendRenewalSms(args: {
   } catch (e) {
     return { sent: false, error: String(e) };
   }
+}
+
+/**
+ * Who gets the renewal message (Doug, 10/8: "only prior year members... I
+ * don't want to blast everyone constantly"): households whose membership
+ * ran through last season and who haven't paid for the season on sale.
+ */
+async function priorYearHouseholds(sb: SupabaseClient, tenantId: string, year: number) {
+  const { data } = await sb.from('households')
+    .select('id, family_name, tier, paid_until_year')
+    .eq('tenant_id', tenantId).eq('active', true)
+    .eq('paid_until_year', year - 1)      // prior_year members only
+    .order('family_name').limit(1000);
+  return data ?? [];
 }
 
 Deno.serve(async (req) => {
@@ -234,6 +260,32 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, blasts: data ?? [] });
   }
 
+  // ── renewal_audience ───────────────────────────────────────────────────
+  if (action === 'renewal_audience') {
+    const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const { sellingYear } = await import('../_shared/membership_year.ts');
+    const year = sellingYear(settingsRow?.value ?? {});
+    const hhs = await priorYearHouseholds(sb, payload.tid, year);
+    const ids = hhs.map(h => h.id as string);
+    const { data: primaries } = ids.length ? await sb.from('household_members')
+      .select('household_id, email, phone_e164').in('household_id', ids).eq('role', 'primary').eq('active', true) : { data: [] };
+    const byHh = new Map<string, { email?: string | null; phone_e164?: string | null }>(
+      ((primaries ?? []) as Array<{ household_id: string; email: string | null; phone_e164: string | null }>).map(p => [p.household_id, p]));
+    let withEmail = 0, withPhone = 0, noContact = 0;
+    for (const h of hhs) {
+      const p = byHh.get(h.id as string);
+      if (p?.email) withEmail++;
+      if (p?.phone_e164) withPhone++;
+      if (!p?.email && !p?.phone_e164) noContact++;
+    }
+    const { data: last } = await sb.from('audit_log').select('created_at, summary, metadata')
+      .eq('tenant_id', payload.tid).eq('kind', 'renewals.send_blast')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    return jsonResponse({ ok: true, year, last_year: year - 1, households: hhs.length,
+      with_email: withEmail, with_phone: withPhone, no_contact: noContact,
+      sample: hhs.slice(0, 6).map(h => h.family_name), last_sent: last ?? null });
+  }
+
   // ── send_renewal_links ─────────────────────────────────────────────────
   // One button, one link each. For every household that has not paid for the
   // season being sold, create a pre-filled renewal and text/email a one-time
@@ -245,6 +297,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'channels must be email or sms' }, 400);
     }
     const dryRun = body.dry_run === true;
+    // The board's own words (PLAN.md R5); the family's link goes after them.
+    const message = String(body.message ?? '').replace(/\s+\n/g, '\n').trim().slice(0, 600);
 
     const { data: tenant } = await sb.from('tenants')
       .select('id, slug, display_name, plan').eq('id', payload.tid).maybeSingle();
@@ -256,18 +310,14 @@ Deno.serve(async (req) => {
     const { sellingYear } = await import('../_shared/membership_year.ts');
     const year = sellingYear(sv);
 
-    const { data: households } = await sb.from('households')
-      .select('id, family_name, tier, paid_until_year')
-      .eq('tenant_id', tenant.id).eq('active', true)
-      .or(`paid_until_year.is.null,paid_until_year.lt.${year}`)
-      .limit(1000);
+    const households = await priorYearHouseholds(sb, tenant.id as string, year);
 
     if (dryRun) {
       return jsonResponse({ ok: true, year, would_send: (households ?? []).length });
     }
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    let sent = 0, skipped = 0, reused = 0;
+    let sent = 0, skipped = 0, reused = 0, emailSent = 0, smsSent = 0;
 
     for (const hh of (households ?? [])) {
       const { data: primary } = await sb.from('household_members')
@@ -325,8 +375,10 @@ Deno.serve(async (req) => {
               family_name: hh.family_name as string,
               season: String(year),
               renew_link: link,
+              message: message || `It's time to sign up for the ${year} season. Your family's details are already filled in.`,
             },
           });
+          if (r.sent) emailSent++;
           delivered = delivered || !!r.sent;
         } catch { /* fall through to SMS */ }
       }
@@ -341,6 +393,7 @@ Deno.serve(async (req) => {
             tenantName: tenant.display_name as string,
             verifyLink: link,
             earlyBirdLine: ' No login needed.',
+            message: message || undefined,
           });
           if (r.sent) {
             await recordSms(sb, {
@@ -350,6 +403,7 @@ Deno.serve(async (req) => {
               success: true,
               source: 'renewals.send_renewal_links',
             });
+            smsSent++;
             delivered = true;
           }
         }
@@ -358,7 +412,15 @@ Deno.serve(async (req) => {
       if (delivered) sent++; else skipped++;
     }
 
-    return jsonResponse({ ok: true, year, sent, skipped, reused });
+    // The screen shows when it was last sent, so nobody sends it twice by
+    // accident.
+    await sb.from('audit_log').insert({
+      tenant_id: payload.tid, kind: 'renewals.send_blast', entity_type: 'tenant', entity_id: tenant.id,
+      summary: `Renewal message for ${year}: ${sent} famil${sent === 1 ? 'y' : 'ies'} (${emailSent} email, ${smsSent} text)`,
+      actor_id: payload.sub, actor_kind: 'tenant_admin', actor_label: payload.sub,
+      metadata: { audience: 'prior_year', year, channels, total: (households ?? []).length, email_sent: emailSent, sms_sent: smsSent, send_fail: skipped },
+    });
+    return jsonResponse({ ok: true, year, sent, skipped, reused, email_sent: emailSent, sms_sent: smsSent });
   }
 
   if (action === 'send_blast') {

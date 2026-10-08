@@ -31,7 +31,6 @@
       { key: 'households',   label: 'Households', href: '/club/admin/members.html#households',   scope: 'households'   },
       { key: 'renewals',     label: 'Renewals',   href: '/club/admin/members.html#renewals',     scope: 'households'   },
       { key: 'policies',     label: 'Policies',   href: '/club/admin/policies.html',             scope: 'policies'     },
-      { key: 'applyform',    label: 'Signup form', href: '/club/admin/application.html',         scope: 'applications' },
       { key: 'emails',       label: 'Emails',     href: '/club/admin/emails.html',               scope: 'announcements' },
     ],
     // Money. Previously spread across four top tabs: dues under Members,
@@ -79,7 +78,7 @@
   // Which section each page belongs to. Pages absent from this map render
   // no strip (dashboard, check-in, help, login, setup, change-password).
   const PAGE_SECTION = {
-    'members.html': 'members', 'policies.html': 'members', 'application.html': 'members',
+    'members.html': 'members', 'policies.html': 'members',
     'import.html': 'members', 'migrate.html': 'members', 'emails.html': 'members',
     'payments.html': 'money',
     'donations.html': 'money', 'sponsors.html': 'money',
@@ -90,6 +89,9 @@
     'audit.html': 'insights',
     'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'settings', 'billing.html': 'settings',
   };
+
+  // admin-flags.js puts the waiting-task numbers on these tabs (PLAN.md R1).
+  window.AdminSections = { SECTIONS, PAGE_SECTION };
 
   const file = (window.location.pathname.split('/').pop() || 'index.html');
   const section = PAGE_SECTION[file];
@@ -179,6 +181,8 @@
       on.scrollIntoView({ block: 'nearest', inline: 'center' });
     }
     sync();
+    // Re-rendered on a hash change: put the waiting counts back.
+    if (window.PoolsideNav && window.PoolsideNav.paintSubBadges) window.PoolsideNav.paintSubBadges();
   }
 
   // Rendered synchronously: the <script> sits immediately after its

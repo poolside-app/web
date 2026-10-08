@@ -7,6 +7,8 @@
 <title>Renew — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/plan-picker.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script src="/js/renew-sign.js"></script>
 <script src="/js/errors.js" defer></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
@@ -99,7 +101,8 @@ const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/stripe_checkout`;
 
 let OPTS = null;        // renewal_options response
 let CODE = '';          // "Have a code?" (H5, H7)
-let choice = 'full';    // 'full' | 'plan'
+let choice = 'full';
+let CHOSE = false;       // the family picked how to pay; don't move it back to the saved card    // 'full' | 'plan'
 let PLAN_SEL = {};      // the plan they picked: pay today, paid off by (PLAN.md M)
 let FOB_EXTRA = null;   // extra keyfobs (PLAN.md Q); null until the first quote says
 
@@ -167,8 +170,11 @@ function render() {
   }
 
   const plansOn = !free && !!(o.plan && o.plan.available);
-  if (!plansOn) choice = 'full';
-  const goLabel = free ? 'Confirm, nothing to pay' : choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(o.dues_cents);
+  // One tap with the saved card, when there is one (PLAN.md R7).
+  if (!CHOSE) choice = o.last_plan && plansOn ? 'plan' : o.saved_card ? 'saved' : choice;
+  if (!plansOn && choice === 'plan') choice = o.saved_card ? 'saved' : 'full';
+  if (choice === 'saved' && !o.saved_card) choice = 'full';
+  const goLabel = free ? 'Confirm, nothing to pay' : choice === 'plan' ? 'Start my payment plan' : choice === 'saved' ? 'Approve and pay ' + money(o.dues_cents) : 'Pay ' + money(o.dues_cents);
 
   shell(`
     <div class="card">
@@ -183,12 +189,22 @@ function render() {
 
     ${fobCardHtml(price)}
 
+    ${RenewSign.html()}
+
     ${free ? '' : `<div class="card">
       <h2>How would you like to pay?</h2>
+      ${o.saved_card ? `
+      <label class="opt ${choice === 'saved' ? 'sel' : ''}" id="opt-saved">
+        <input type="radio" name="how" value="saved" ${choice === 'saved' ? 'checked' : ''}>
+        <span>
+          <span class="opt-title">Approve and pay ${money(o.dues_cents)} with my saved card</span>
+          <span class="opt-sub">One tap. The card you kept for renewals is charged once you approve.</span>
+        </span>
+      </label>` : ''}
       <label class="opt ${choice === 'full' ? 'sel' : ''}" id="opt-full">
         <input type="radio" name="how" value="full" ${choice === 'full' ? 'checked' : ''}>
         <span>
-          <span class="opt-title">Pay in full — ${money(o.dues_cents)}</span>
+          <span class="opt-title">${o.saved_card ? 'Pay in full with another card' : 'Pay in full'} — ${money(o.dues_cents)}</span>
           <span class="opt-sub">One payment today. Done for the season.</span>
         </span>
       </label>
@@ -207,8 +223,8 @@ function render() {
       <label class="toggle">
         <input type="checkbox" id="auto-renew" ${o.auto_renew ? 'checked' : ''}>
         <span>
-          <span class="opt-title">Renew me automatically each year</span>
-          <span class="opt-sub">Once a year, when ${o.year + 1} dues open, we'll charge this card for whatever your membership costs that season — your board sets it and it can change. We'll email you 14 days before, with the amount. It continues until you turn it off, which you can do any time under My family. Ticking this authorizes those charges.</span>
+          <span class="opt-title">Make next season's renewal one tap</span>
+          <span class="opt-sub">When ${o.year + 1} opens, we'll send you the new price and the club's policies to approve, with this card ready. Nothing is charged until you approve, and you can change how you pay then. Turn it off any time under My family.</span>
         </span>
       </label>
     </div>`}
@@ -220,7 +236,7 @@ function render() {
 
   document.querySelectorAll('input[name=how]').forEach(r => {
     r.addEventListener('change', () => {
-      choice = r.value;
+      choice = r.value; CHOSE = true;
       render();
     });
   });
@@ -232,6 +248,7 @@ function render() {
   if (codeIn) codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } });
   const codeToggle = document.getElementById('code-toggle');
   document.querySelectorAll('[data-fob-step]').forEach(b => b.addEventListener('click', () => fobStep(Number(b.dataset.fobStep))));
+  RenewSign.mount();
   if (codeToggle) codeToggle.addEventListener('click', e => {
     e.preventDefault();
     document.getElementById('code-box').style.display = '';
@@ -316,13 +333,28 @@ async function submit() {
   const btn = document.getElementById('go');
   const errEl = document.getElementById('err');
   errEl.innerHTML = '';
+  // Policies and signature first (PLAN.md R6).
+  const unsigned = RenewSign.problem();
+  if (unsigned) { errEl.innerHTML = `<div class="err">${esc(unsigned)}</div>`; document.getElementById('renew-sign-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   btn.disabled = true;
   btn.textContent = 'Setting up…';
   try {
     const ar = document.getElementById('auto-renew');
     const started = await callMember('renew_start', { ...(ar ? { auto_renew: ar.checked } : {}), discount_code: CODE, fob_extra: (OPTS.price && OPTS.price.fob_count) || 0 });
     if (!started.ok) throw new Error(started.error || 'Could not start your renewal');
+    if (!RenewSign.signed()) {
+      const sg = await callMember('renew_sign', { application_id: started.application_id, ...RenewSign.payload() });
+      if (!sg.ok) throw new Error(sg.error || 'Could not save your signature');
+      RenewSign.markSigned(sg.signed_at);
+    }
 
+    // One tap with the saved card (PLAN.md R7).
+    if (choice === 'saved' && started.amount_due_cents > 0) {
+      const ap = await callMember('renew_approve', { application_id: started.application_id });
+      if (!ap.ok) throw new Error(ap.error || 'Could not charge your saved card');
+      window.location.href = '/m/?renewed=1';
+      return;
+    }
     // Covered in full by a code or their referral credit (H5).
     if (started.amount_due_cents === 0) {
       const fr = await fetch(CHECKOUT_URL, {
@@ -355,7 +387,7 @@ async function submit() {
   } catch (e) {
     errEl.innerHTML = `<div class="err">${esc(e.message)}</div>`;
     btn.disabled = false;
-    btn.textContent = choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(OPTS.dues_cents);
+    btn.textContent = choice === 'plan' ? 'Start my payment plan' : choice === 'saved' ? 'Approve and pay ' + money(OPTS.dues_cents) : 'Pay ' + money(OPTS.dues_cents);
   }
 }
 
@@ -373,6 +405,7 @@ async function submit() {
 
     OPTS = await callMember('renewal_options');
     if (!OPTS.ok) throw new Error(OPTS.error || 'Could not load renewal details');
+    await RenewSign.init({ slug: me.tenant && me.tenant.slug, signerName: OPTS.signer_name, signedAt: OPTS.signed_at, canSign: OPTS.i_am_signer !== false });
     render();
   } catch (e) {
     shell(`<div class="card"><div class="err">${esc(e.message)}</div>

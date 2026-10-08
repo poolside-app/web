@@ -593,9 +593,47 @@
   // decorates the relevant tab(s). Hidden when no pending items so the
   // chrome stays quiet in normal state.
   //
-  // Tab → task-kind mapping:
-  //   Members  ← application.submitted, venmo.claim
-  //   Calendar ← party.requested
+  // Every top tab, and the sub-tab under it, shows how many tasks are
+  // waiting there (Doug, 10/8: on a computer, instead of pop-ups). A task
+  // belongs where its link goes; tasks without a page link go by kind. The
+  // Dashboard tab shows them all.
+  const TOP_HREF = { members: '/members.html', money: '/payments.html', calendar: '/events.html',
+    content: '/announcements.html', insights: '/audit.html', settings: '/settings.html' };
+  function taskSection(t) {
+    const S = window.AdminSections;
+    const link = String(t.link_url || '');
+    const file = (link.split('#')[0].split('?')[0].split('/').pop()) || '';
+    if (S && file && S.PAGE_SECTION[file]) {
+      const sec = S.PAGE_SECTION[file];
+      const items = S.SECTIONS[sec] || [];
+      const hit = items.find(i => i.href === link.split('?')[0]) || items.find(i => i.href.split('#')[0].endsWith('/' + file));
+      return { sec, sub: hit ? hit.key : null };
+    }
+    const k = String(t.kind || '');
+    if (/^keyfob\.|^plan\.fob_/.test(k)) return { sec: 'settings', sub: 'keyfobs' };
+    if (/^application\.(refund|dispute)|^plan\.|^payments?\.|^referral\.|^renewal\.|^dues\./.test(k)) return { sec: 'money', sub: 'payments' };
+    if (/^application\.|^venmo\./.test(k)) return { sec: 'members', sub: 'applications' };
+    if (/^household/.test(k)) return { sec: 'members', sub: 'households' };
+    if (/^party\./.test(k)) return { sec: 'calendar', sub: 'parties' };
+    if (/^photo\./.test(k)) return { sec: 'content', sub: 'photos' };
+    if (/^help/.test(k)) return { sec: 'content', sub: 'memberhelp' };
+    if (/meeting/.test(k)) return { sec: 'content', sub: 'meetings' };
+    if (/^gate\./.test(k)) return { sec: 'settings', sub: null };
+    return null;
+  }
+  let SUB_COUNTS = {};
+  function paintSubBadges() {
+    document.querySelectorAll('.admin-subtabs a[data-subtab]').forEach(a => {
+      const key = a.dataset.subtab;
+      if (key === 'applications') return;      // members.html keeps its own Pipeline count
+      const n = SUB_COUNTS[key] || 0;
+      let b = a.querySelector('.sub-badge');
+      if (n > 0) {
+        if (!b) { b = document.createElement('span'); b.className = 'badge sub-badge'; a.appendChild(b); }
+        b.textContent = String(n);
+      } else if (b) b.remove();
+    });
+  }
   function setNavBadge(hrefSubstr, n) {
     const links = document.querySelectorAll('nav.tabs a');
     for (const link of links) {
@@ -633,14 +671,37 @@
       const data = await r.json();
       if (!data.ok) return;
       const tasks = data.tasks || [];
-      const memberKinds = ['application.submitted', 'venmo.claim'];
-      const calKinds    = ['party.requested'];
-      setNavBadge('/members.html', tasks.filter(t => memberKinds.includes(t.kind)).length);
-      setNavBadge('/events.html',  tasks.filter(t => calKinds.includes(t.kind)).length);
+      const top = {};
+      SUB_COUNTS = {};
+      for (const t of tasks) {
+        const where = taskSection(t);
+        if (!where) continue;
+        top[where.sec] = (top[where.sec] || 0) + 1;
+        if (where.sub) SUB_COUNTS[where.sub] = (SUB_COUNTS[where.sub] || 0) + 1;
+      }
+      for (const [sec, href] of Object.entries(TOP_HREF)) setNavBadge(href, top[sec] || 0);
+      setDashBadge(tasks.length);
+      paintSubBadges();
     } catch (_) { /* badges best-effort — never break the page */ }
   }
 
-  window.PoolsideNav = { paintNavBadges, setNavBadge };
+  // The Dashboard tab's href is "/club/admin/", which every link contains.
+  function setDashBadge(n) {
+    const link = [...document.querySelectorAll('nav.tabs a')].find(a => /\/club\/admin\/$/.test(a.getAttribute('href') || ''));
+    if (!link) return;
+    let badge = link.querySelector('.nav-badge');
+    if (n > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge';
+        badge.style.cssText = 'background:var(--sun);color:#fff;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;margin-left:6px;min-width:18px;display:inline-block;text-align:center;line-height:1.4';
+        link.appendChild(badge);
+      }
+      badge.textContent = String(n);
+    } else if (badge) badge.remove();
+  }
+
+  window.PoolsideNav = { paintNavBadges, setNavBadge, paintSubBadges };
 
   // Defer until DOMContentLoaded if nav isn't rendered yet (admin-flags.js
   // loads in <head> on most pages, but a couple have it after nav.tabs).

@@ -53,7 +53,6 @@ PAGE_TO_TAB = {
     # Members — people and the paperwork that makes them members
     "members.html":        "members",
     "policies.html":       "members",
-    "application.html":    "members",
     "import.html":         "members",
     "migrate.html":        "members",
     "emails.html":         "members",

@@ -207,10 +207,11 @@ console.log('\nJ1–J8 · one place for each setting');
   check('J2: the Status page is gone', !exists('club/admin/health.html') && !exists('supabase/functions/admin_health'));
   const settings = read('club/admin/settings.html');
   check('J3: phone alerts are on the dashboard only', !/id="push-card"/.test(settings));
+  // J4's Apply form page was retired by PLAN.md R4 (10/8): its link and
+  // heading moved to Settings → Season, and the old address forwards there.
   const applyPage = read('club/admin/application.html');
-  check('J4: the Apply form page links instead of repeating editors',
-    !/g-season-open|g-memberships-frozen/.test(applyPage) && !/em-subject/.test(applyPage) && !/Edit policy/.test(applyPage)
-    && /policies\.html/.test(applyPage) && /emails\.html/.test(applyPage) && /settings\.html[^"]*season/.test(applyPage));
+  check('J4: the Apply form page forwards to Settings → Season',
+    /location\.replace\('\/club\/admin\/settings\.html\?focus=season#season'\)/.test(applyPage) && /id="apply-heading"/.test(settings));
   check('J5: Season has "next season goes on sale"', /id="renewal_opens_month"/.test(settings) && /renewal_opens_month/.test(between(settings, 'function collect', '\n}')));
   {
     const box = { console };

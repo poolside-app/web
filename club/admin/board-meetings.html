@@ -180,6 +180,15 @@
   .vote-btn.abstain { color: var(--muted); border-color: var(--border); background: #f8fafc; }
   .vote-btn.abstain:hover { background: #f1f5f9; border-color: #94a3b8; }
   .vote-btn .count.zero { opacity: .35; }
+  /* Take one back (Doug, 10/8: "what if I click too many yes?"). */
+  .vote-cell { display: flex; flex-direction: column; gap: 4px; }
+  .vote-minus {
+    align-self: center; min-width: 44px; padding: 4px 12px; border-radius: 999px;
+    border: 1.5px solid var(--border); background: #fff; color: var(--muted);
+    font: 600 14px/1 'Inter', sans-serif; cursor: pointer;
+  }
+  .vote-minus:hover { color: var(--text); border-color: #94a3b8; }
+  .vote-minus:disabled { opacity: .35; cursor: default; }
 
   .reset-row {
     margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end;
@@ -257,7 +266,6 @@
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
     <h1>Board minutes</h1>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-ghost" onclick="newMeeting()">Plan one for later</button>
       <button class="btn btn-primary" onclick="startNewMeeting()">▶ Start a meeting</button>
     </div>
   </div>
@@ -351,7 +359,7 @@
       <h3 style="margin:0">Motions &amp; votes</h3>
       <button class="btn btn-primary" onclick="addVote()" style="padding:8px 14px;font-size:13px">+ Add motion</button>
     </div>
-    <p class="lede" style="margin:0 0 10px">Each motion = one thing the board voted on. <b>Tap Yes / No / Abstain</b> to record vote counts. Click Pass / Fail / Tabled when the vote is decided.</p>
+    <p class="lede" style="margin:0 0 10px">Each motion = one thing the board voted on. <b>Tap Yes / No / Abstain</b> to count each vote, and − to take one back. Click Pass / Fail / Tabled when the vote is decided.</p>
     <div id="votes-host"></div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:22px 0 4px">
@@ -767,15 +775,6 @@ async function startNewMeeting() {
   } catch (e) { alert(e.message); }
 }
 
-async function newMeeting() {
-  try {
-    const r = await call('create');
-    if (!r.ok) throw new Error(r.error || 'Could not create');
-    openMeeting(r.meeting.id);
-    loadList();
-  } catch (e) { alert(e.message); }
-}
-
 // ── Modal open/close ───────────────────────────────────────────────────
 function openMeeting(id) {
   history.replaceState(null, '', '#m=' + encodeURIComponent(id));
@@ -1061,9 +1060,6 @@ function paintVotes() {
   }
   host.innerHTML = votes.map((v, i) => {
     const cls = v.outcome === 'passed' ? 'passed' : v.outcome === 'failed' ? 'failed' : '';
-    const yesCls = (v.yes || 0) === 0 ? 'zero' : '';
-    const noCls  = (v.no  || 0) === 0 ? 'zero' : '';
-    const absCls = (v.abstain || 0) === 0 ? 'zero' : '';
     return `
       <div class="vote-row ${cls}">
         <button class="x-row" onclick="removeVote(${i})" title="Remove" type="button">×</button>
@@ -1073,24 +1069,17 @@ function paintVotes() {
           <input placeholder="Seconded by" value="${escapeHtml(v.seconded_by || '')}" oninput="updateVote(${i}, 'seconded_by', this.value)">
         </div>
         <div class="vote-buttons">
-          <button type="button" class="vote-btn yes" onclick="bumpVote(${i}, 'yes', 1)">
-            <span class="label">👍 Yes</span>
-            <span class="count ${yesCls}">${v.yes || 0}</span>
-          </button>
-          <button type="button" class="vote-btn no" onclick="bumpVote(${i}, 'no', 1)">
-            <span class="label">👎 No</span>
-            <span class="count ${noCls}">${v.no || 0}</span>
-          </button>
-          <button type="button" class="vote-btn abstain" onclick="bumpVote(${i}, 'abstain', 1)">
-            <span class="label">🤷 Abstain</span>
-            <span class="count ${absCls}">${v.abstain || 0}</span>
-          </button>
+          ${[['yes', '👍 Yes'], ['no', '👎 No'], ['abstain', '🤷 Abstain']].map(([k, label]) => `
+          <div class="vote-cell">
+            <button type="button" class="vote-btn ${k}" onclick="bumpVote(${i}, '${k}', 1)" aria-label="Add one ${k}">
+              <span class="label">${label}</span>
+              <span class="count ${(v[k] || 0) === 0 ? 'zero' : ''}">${v[k] || 0}</span>
+            </button>
+            <button type="button" class="vote-minus" onclick="bumpVote(${i}, '${k}', -1)" ${(v[k] || 0) === 0 ? 'disabled' : ''} aria-label="Take one ${k} back">−</button>
+          </div>`).join('')}
         </div>
         <div class="reset-row">
-          <span>Tap each button to add 1.</span>
-          <button type="button" onclick="bumpVote(${i}, 'yes', -1)">Yes −1</button>
-          <button type="button" onclick="bumpVote(${i}, 'no', -1)">No −1</button>
-          <button type="button" onclick="bumpVote(${i}, 'abstain', -1)">Abstain −1</button>
+          <span>Tap to add 1, − to take one back.</span>
           <button type="button" onclick="resetVote(${i})">↺ Reset</button>
         </div>
         <div class="outcome-row">

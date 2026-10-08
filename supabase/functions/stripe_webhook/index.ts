@@ -62,8 +62,14 @@ async function rememberCardForAutoRenew(
   applicationId: string,
   customerId: string | null,
   paymentIntentId: string | null,
+  sessionId?: string | null,
 ): Promise<void> {
-  if (!customerId) return;
+  // A test payment (pay-test.html) has no Stripe customer. Keep a pretend
+  // card instead, so a club in test mode can try one-tap renewal approval
+  // (PLAN.md R7). Real charges never see a sim_ card: the charge treats it
+  // as paid only while the club's test payments are on.
+  const sim = !customerId && String(sessionId ?? '').startsWith('sim_');
+  if (!customerId && !sim) return;
   const { data: app } = await sb.from('applications')
     .select('household_id').eq('id', applicationId).maybeSingle();
   if (!app?.household_id) return;
@@ -72,6 +78,12 @@ async function rememberCardForAutoRenew(
   if (!hh?.auto_renew) return;
 
   let pmId: string | null = null;
+  if (sim) {
+    await sb.from('households').update({
+      auto_renew_customer_id: 'sim_cus_' + applicationId.slice(0, 8), auto_renew_pm_id: 'sim_pm_' + applicationId.slice(0, 8),
+    }).eq('id', hh.id);
+    return;
+  }
   if (paymentIntentId && STRIPE_KEY) {
     try {
       const { data: t } = await sb.from('tenants')
@@ -247,6 +259,7 @@ Deno.serve(async (req) => {
         sb, tenantId, md.application_id,
         (session.customer as string) || null,
         (session.payment_intent as string) || null,
+        (session.id as string) || null,
       );
 
       // Re-load household_id (approval just set it) and flip dues paid.

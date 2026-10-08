@@ -81,6 +81,17 @@ async function paymentsTestMode(sb: ReturnType<typeof createClient>, tenantId: s
   return pay?.test_mode === true;
 }
 
+/** A renewal is paid only once the policies are accepted and it's signed
+ *  (PLAN.md R6). Every way to pay a renewal starts here. */
+async function renewalUnsigned(sb: ReturnType<typeof createClient>, appId: string): Promise<Response | null> {
+  const { data } = await sb.from('applications').select('is_renewal, accepted_at, signature_primary').eq('id', appId).maybeSingle();
+  const { needsRenewalSignature } = await import('../_shared/renewal_sign.ts');
+  if (data && needsRenewalSignature(data)) {
+    return jsonResponse({ ok: false, code: 'needs_signature', error: 'Accept the club\'s policies and sign before paying.' }, 409);
+  }
+  return null;
+}
+
 type SimCheckout = {
   tid: string; sid: string; amt: number; name: string; desc: string;
   ok: string; no: string; md: Record<string, string>;
@@ -284,6 +295,8 @@ Deno.serve(async (req) => {
       .select('id, tenant_id, payment_status, is_renewal').eq('id', id).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    const unsignedFree = await renewalUnsigned(sb, app.id as string);
+    if (unsignedFree) return unsignedFree;
     const { data: tenant } = await sb.from('tenants').select('slug').eq('id', app.tenant_id).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
     const { priceApplication } = await import('../_shared/membership_price.ts');
@@ -304,6 +317,8 @@ Deno.serve(async (req) => {
       .eq('id', id).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    const unsigned = await renewalUnsigned(sb, app.id as string);
+    if (unsigned) return unsigned;
 
     const { data: tenant } = await sb.from('tenants')
       .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived, timezone').eq('id', app.tenant_id).maybeSingle();
@@ -404,6 +419,8 @@ Deno.serve(async (req) => {
       .eq('id', id).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
+    const unsignedPlan = await renewalUnsigned(sb, app.id as string);
+    if (unsignedPlan) return unsignedPlan;
 
     const { data: tenant } = await sb.from('tenants')
       .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived, timezone').eq('id', app.tenant_id).maybeSingle();

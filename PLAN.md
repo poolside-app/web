@@ -541,6 +541,26 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ Q5. In the app and on the desk:** a quantity on "Request another fob" and one payment for all of them; "Lost your fob? Order a new one"; "Fob broken? Ask the board" opens Member help; the board's "Swap broken fob" (free, or charge $15).
 - Notes: fobs bought at signup or renewal follow the club's card-fee rule for dues, since they're one charge; fobs bought later in the app always put the card fee on the member. The no-login renewal link (`/renew.html`) has no keyfob box yet; those families can add fobs in the app. `node scripts/test_keyfobs.mjs [--live]` (35 offline, 26 live checks).
 
+### R. Board notes from Doug's computer (10/8) — ✅ done 10/8
+Doug decided (10/8):
+- On a computer, no "turn on pop-ups on this phone" prompt. Instead, a number on the top tab (and sub-tab) wherever something is waiting.
+- The help page's copy button copies only the support email.
+- Votes stay as counts, with a minus to take one back. "Plan one for later" goes.
+- The Signup form tab goes: the signup link and heading move to Settings → Season.
+- The renewal message is one simple screen: email and/or text, a message box filled in ("click here to renew for the new season"), and a clear line saying which season and that it **only goes to last season's members** who haven't renewed. It goes to the person who created the account, with their own link.
+- Renewing (from the link or the app): everything filled in; the primary accepts the policies again and signs; then pays in full or by payment plan.
+- Auto-renew is reworked: instead of "we'll charge whatever the board sets", the family is sent the new season's price, policies and payment choice to approve, and nothing is charged until they do.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ R1.** Pop-up prompt hidden on computers; waiting-task numbers on every top tab and sub-tab (Keyfobs included).
+- **✅ R2.** Copy just support@poolsideapp.com.
+- **✅ R3.** Meeting votes: keep a new, empty motion while the meeting is open (the save was dropping it, so the buttons did nothing); a − on each count; remove "Plan one for later".
+- **✅ R4.** Remove the Signup form tab; the signup link (with Copy) and heading go to Settings → Season.
+- **✅ R5.** Renewal message screen: the season, who it reaches (last season's members not yet renewed, with the count), email and/or text, the message with each family's link added. Texts here are a new exception to the texting rule, on Doug's say-so.
+- **✅ R6.** Both renewal pages: policies and the primary's signature before paying; the keyfob box on the link page.
+- **✅ R7.** Auto-renew becomes "approve next season": when renewals open, auto-renew families get the price, policies and last season's payment choice; one tap signs and charges the saved card; a reminder after a week; no approval, no charge.
+- Notes: approving with the saved card charges it once, then runs the usual renewal approval (season forward, extra keyfobs). A family that used a payment plan last season starts on "Payment plan" (through checkout); one tap is for paying in full. In test mode, a test checkout keeps a pretend card (`sim_pm_`) so one-tap approval can be tried. `node scripts/test_board_notes.mjs [--live]` (26 offline, 10 live checks).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

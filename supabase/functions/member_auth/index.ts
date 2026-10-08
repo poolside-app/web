@@ -639,7 +639,7 @@ Deno.serve(async (req) => {
   // to work out whether their own plan clears the club's 75%-by-opening rule.
   if (action === 'renewal_options') {
     const { data: household } = await sb.from('households')
-      .select('id, family_name, tier, paid_until_year, auto_renew, active')
+      .select('id, family_name, tier, paid_until_year, auto_renew, auto_renew_pm_id, active')
       .eq('id', payload.hid as string).eq('tenant_id', payload.tid as string).maybeSingle();
     if (!household) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
 
@@ -680,6 +680,25 @@ Deno.serve(async (req) => {
       application_id: state.application_id,
       family_name: household.family_name,
       auto_renew: !!household.auto_renew,
+      // One tap with the card kept for auto-renew, and how they paid last
+      // season (PLAN.md R7).
+      saved_card: !!(household.auto_renew && household.auto_renew_pm_id),
+      last_plan: await (await import('../_shared/renewal_quote.ts')).usedPlanLastSeason(sb, household.id as string, quote.year),
+      // Policies and signature (PLAN.md R6): the person who opened the
+      // account signs, and whether this renewal already is.
+      ...(await (async () => {
+        const [{ data: prim }, { data: ren }] = await Promise.all([
+          sb.from('household_members').select('id, name').eq('household_id', household.id as string).eq('role', 'primary').eq('active', true).maybeSingle(),
+          state.application_id
+            ? sb.from('applications').select('accepted_at, signature_primary').eq('id', state.application_id as string).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+        return {
+          signer_name: prim?.name ?? null,
+          i_am_signer: prim?.id === payload.sub,
+          signed_at: ren?.accepted_at && ren?.signature_primary ? ren.accepted_at : null,
+        };
+      })()),
       // The keyfob box on the renewal page (PLAN.md Q).
       keyfobs: fobSet.enabled ? {
         fee_cents: fobSet.fee_cents, max_per_family: fobSet.max_per_family,
@@ -849,6 +868,37 @@ Deno.serve(async (req) => {
     const priced = await priceApplication(sb, created.id as string, code);
     return jsonResponse({ ok: true, application_id: created.id, membership_year: state.year, reused: false,
       amount_due_cents: priced?.amount_due_cents ?? null });
+  }
+
+  // ── renew_sign ─────────────────────────────────────────────────────────
+  // The family accepts the policies and signs its renewal before paying
+  // (PLAN.md R6). The renewal must be this household's.
+  if (action === 'renew_sign') {
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, household_id, is_renewal, payment_status, waivers_accepted')
+      .eq('id', String(body.application_id ?? '')).maybeSingle();
+    if (!app || app.household_id !== payload.hid || app.tenant_id !== payload.tid || !app.is_renewal) {
+      return jsonResponse({ ok: false, error: 'Renewal not found' }, 404);
+    }
+    const { signRenewal } = await import('../_shared/renewal_sign.ts');
+    const r = await signRenewal(sb, app as { id: string; tenant_id: string }, { accepted: body.accepted, signature: body.signature });
+    return jsonResponse(r, r.ok ? 200 : 400);
+  }
+
+  // ── renew_approve ──────────────────────────────────────────────────────
+  // "Approve and pay with my saved card" (PLAN.md R7): the renewal must be
+  // this household's and signed; payment_plans does the charging.
+  if (action === 'renew_approve') {
+    const { data: app } = await sb.from('applications')
+      .select('id, tenant_id, household_id, is_renewal').eq('id', String(body.application_id ?? '')).maybeSingle();
+    if (!app || app.household_id !== payload.hid || app.tenant_id !== payload.tid || !app.is_renewal) {
+      return jsonResponse({ ok: false, error: 'Renewal not found' }, 404);
+    }
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/payment_plans`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+      body: JSON.stringify({ action: 'renewal_charge_saved', application_id: app.id }),
+    }).then(x => x.json()).catch(() => ({ ok: false, error: 'Could not reach payments' }));
+    return jsonResponse(r, r.ok ? 200 : 409);
   }
 
   // ── list_my_parties ────────────────────────────────────────────────────

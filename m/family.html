@@ -712,7 +712,7 @@ async function loadAutoRenew() {
       <div class="card-eyebrow">Automatic renewal</div>
       <p style="font-size:15px;margin:0 0 10px;color:${on ? '#065f46' : 'var(--text)'}">
         ${on
-          ? `<b>On.</b> Your card will be charged when next season's dues open.`
+          ? `<b>On.</b> When next season opens, we'll send you the price and policies to approve. Nothing is charged until you approve.`
           : `<b>Off.</b> You'll renew by hand each season.`}
       </p>
       ${on ? `<ul style="margin:0 0 14px;padding-left:20px;font-size:13px;color:#065f46;line-height:1.7">
@@ -723,7 +723,7 @@ async function loadAutoRenew() {
       </button>
       <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
         ${on
-          ? `Turning it off stops the charge. It does not cancel your current membership.`
+          ? `Turning it off means you renew the usual way. It does not cancel your current membership.`
           : `You can turn this on when you next renew, or here. ${d.dues_cents ? `Dues are ${money(d.dues_cents)} this season.` : ''}`}
       </p>
       <div id="ar-msg" style="font-size:13px;margin-top:8px"></div>
@@ -733,7 +733,7 @@ async function loadAutoRenew() {
 async function toggleAutoRenew(turnOn) {
   // Confirm only when switching ON: that is the direction that authorizes a
   // future charge. Turning it off should never be made to feel risky.
-  if (turnOn && !confirm('Charge this card automatically when next season\'s dues open?\n\nYou can turn it off any time from this page.')) return;
+  if (turnOn && !confirm('When next season opens, we\'ll send you the price and policies to approve. Nothing is charged until you approve.\n\nYou can turn it off any time from this page.')) return;
   const btn = document.getElementById('ar-toggle');
   const msg = document.getElementById('ar-msg');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }

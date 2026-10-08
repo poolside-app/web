@@ -114,3 +114,17 @@ export async function quoteRenewal(
     },
   };
 }
+
+/**
+ * Did this family pay last season with a payment plan? Their renewal then
+ * starts on "Payment plan" (PLAN.md R7, Doug: auto-renew should repeat how
+ * they paid); they can still switch.
+ */
+export async function usedPlanLastSeason(sb: SupabaseClient, householdId: string, year: number): Promise<boolean> {
+  const { data: plans } = await sb.from('payment_plans').select('application_id').eq('household_id', householdId).limit(20);
+  const ids = (plans ?? []).map(p => p.application_id).filter(Boolean) as string[];
+  if (!ids.length) return false;
+  const { count } = await sb.from('applications').select('id', { count: 'exact', head: true })
+    .in('id', ids).eq('membership_year', year - 1);
+  return (count ?? 0) > 0;
+}

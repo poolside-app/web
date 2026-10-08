@@ -110,6 +110,16 @@ const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary
 // accepted here or the plan radio submits a "400 Invalid payment method".
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'stripe_plan', 'venmo']);
 
+/** The keyfob box on a renewal page (PLAN.md Q), when the club has fobs. */
+async function renewalFobInfo(sb: ReturnType<typeof createClient>, tenantId: string) {
+  const { data: sv } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+  const { fobSettings } = await import('../_shared/keyfobs.ts');
+  const k = fobSettings(sv?.value);
+  if (!k.enabled) return null;
+  const features = ((sv?.value as Record<string, unknown> | undefined)?.features as Record<string, unknown> | undefined) ?? {};
+  return { fee_cents: k.fee_cents, max_per_family: k.max_per_family, app_unlock: !!features.gate };
+}
+
 /** The price fields a family's screen needs (H5). */
 function publicPrice(p: import('../_shared/membership_price.ts').PriceResult) {
   return {
@@ -1162,9 +1172,31 @@ Deno.serve(async (req) => {
 
     const hash = await sha256Hex(token);
     const { data: app } = await sb.from('applications')
-      .select('id, household_id, membership_year, status, payment_status, family_name, tier_slug, is_renewal')
+      .select('id, tenant_id, household_id, membership_year, status, payment_status, family_name, tier_slug, is_renewal, claimed_at, primary_name, accepted_at, signature_primary, waivers_accepted')
       .eq('tenant_id', tenant.id).eq('claim_token_hash', hash).eq('is_renewal', true).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'This renewal link is invalid or has expired.' }, 404);
+
+    // Auto-renew on or off from the emailed link (PLAN.md R7).
+    if (body.set_auto_renew === true) {
+      const on = body.auto_renew === true;
+      await sb.from('households').update({ auto_renew: on, auto_renew_set_at: on ? new Date().toISOString() : null })
+        .eq('id', app.household_id as string).eq('tenant_id', tenant.id);
+      return jsonResponse({ ok: true, auto_renew: on });
+    }
+    // "Approve and pay with my saved card" (PLAN.md R7).
+    if (body.approve_saved === true) {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/payment_plans`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+        body: JSON.stringify({ action: 'renewal_charge_saved', application_id: app.id }),
+      }).then(x => x.json()).catch(() => ({ ok: false, error: 'Could not reach payments' }));
+      return jsonResponse(r, r.ok ? 200 : 409);
+    }
+    // "I accept the policies, here's my signature" (PLAN.md R6), before paying.
+    if (body.sign === true) {
+      const { signRenewal } = await import('../_shared/renewal_sign.ts');
+      const r = await signRenewal(sb, app as { id: string; tenant_id: string }, { accepted: body.accepted, signature: body.signature });
+      return jsonResponse(r, r.ok ? 200 : 400);
+    }
 
     if (app.payment_status === 'paid') {
       return jsonResponse({
@@ -1174,7 +1206,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: household } = await sb.from('households')
-      .select('tier, paid_until_year, active').eq('id', app.household_id as string).maybeSingle();
+      .select('tier, paid_until_year, active, auto_renew, auto_renew_pm_id').eq('id', app.household_id as string).maybeSingle();
     if (!household?.active) {
       return jsonResponse({ ok: false, error: 'This membership is no longer active. Please contact the club.' }, 409);
     }
@@ -1182,8 +1214,11 @@ Deno.serve(async (req) => {
     // Their price, with any code they typed ("Have a code?") and their
     // referral credit (H5). Stored on the renewal, which checkout reads.
     const { priceApplication } = await import('../_shared/membership_price.ts');
-    const priced = await priceApplication(sb, app.id as string,
-      body.discount_code !== undefined ? { code: String(body.discount_code ?? '') } : {});
+    const priced = await priceApplication(sb, app.id as string, {
+      ...(body.discount_code !== undefined ? { code: String(body.discount_code ?? '') } : {}),
+      // Extra keyfobs (PLAN.md Q, R6): the same box as the signed-in page.
+      ...(body.fob_extra !== undefined ? { fobExtra: Math.max(0, Math.trunc(Number(body.fob_extra) || 0)) } : {}),
+    });
     const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
     const quote = await quoteRenewal(sb, tenant.id as string, { ...household, id: app.household_id as string }, priced,
       { today_cents: body.plan_today_cents == null ? null : Number(body.plan_today_cents), payoff_month: strOrNull(body.plan_payoff_month) },
@@ -1205,6 +1240,13 @@ Deno.serve(async (req) => {
       application_id: app.id,
       family_name: app.family_name,
       tenant_name: tenant.display_name,
+      // Policies and signature (PLAN.md R6): who signs, and whether they have.
+      signer_name: app.primary_name ?? null,
+      auto_renew: !!household.auto_renew,
+      saved_card: !!(household.auto_renew && household.auto_renew_pm_id),
+      last_plan: await (await import('../_shared/renewal_quote.ts')).usedPlanLastSeason(sb, app.household_id as string, (app.membership_year as number) ?? quote.year),
+      signed_at: app.accepted_at && app.signature_primary ? app.accepted_at : null,
+      keyfobs: await renewalFobInfo(sb, tenant.id as string),
     });
   }
 

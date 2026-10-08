@@ -390,6 +390,16 @@
       <option value="10">October</option><option value="11">November</option><option value="12">December</option>
     </select>
     <p id="selling-note" style="font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5"></p>
+    <!-- PLAN.md R4 (Doug, 10/8): the signup link and heading, from the
+         retired Signup form tab. -->
+    <label style="margin-top:16px">Your signup page</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <a id="signup-link" href="/apply.html" target="_blank" rel="noopener" style="font-size:13.5px;overflow-wrap:anywhere"></a>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="copySignupLink()">Copy link</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Share it in emails, on flyers and in your neighborhood group.</p>
+    <label style="margin-top:12px">Signup page heading <span style="color:var(--muted);font-weight:500;font-size:11px">(replaces "Apply for membership"; leave blank for the default)</span></label>
+    <input type="text" id="apply-heading" placeholder="2027 Membership Application">
     </div>
   </details>
 
@@ -397,7 +407,7 @@
        (donations.html). It's a fundraising/content surface, not Settings. -->
 
   <!-- "Public page extras" card removed 2026-05-08 — clutter; defaults are fine.
-       Apply-page heading still editable on Members → Apply form > General. -->
+       The signup page heading is in the Season section (PLAN.md R4). -->
 
   <details class="set-section" data-focus="pool" id="pool">
     <summary><span class="chev">▶</span> 📍 Pool location &amp; hours <span class="sub">— map pin + open/close times</span></summary>
@@ -1055,6 +1065,7 @@ function populate(s) {
   setVal('season_open',           s.season?.open === false ? 'false' : 'true');
   setVal('memberships_frozen',    s.season?.memberships_frozen ? 'true' : 'false');
   setVal('season_closed_message', s.season?.closed_message);
+  setVal('apply-heading', s.apply?.heading_override);
   setVal('season_start_date',     s.season?.start_date);
   setVal('season_end_date',       s.season?.end_date);
   setVal('renewal_opens_month',   String(s.membership?.renewal_opens_month || 12));
@@ -1134,9 +1145,14 @@ function collect(prevSettings) {
       start_date:         val('season_start_date') || null,
       end_date:           val('season_end_date')   || null,
     },
-    // Fundraiser, public, apply, payments keys are all omitted — managed in
-    // their dedicated screens (Money > Donations, Members > Apply form,
-    // Money > Payments). Server-side shallow-merge leaves them untouched.
+    // The signup page heading (PLAN.md R4); the rest of `apply` is kept.
+    apply: {
+      ...(prevSettings?.apply ?? {}),
+      heading_override: val('apply-heading') || null,
+    },
+    // Fundraiser, public and payments keys are omitted — managed in their
+    // own screens (Money > Donations, Money > Payments). Server-side
+    // shallow-merge leaves them untouched.
     features: {
       programs:     !!document.getElementById('feat_programs').checked,
       parties:      !!document.getElementById('feat_parties').checked,
@@ -1187,6 +1203,19 @@ function collectDayHours() {
 
 // "Right now a payment buys the 2026 season." Mirrors sellingYear() in
 // _shared/membership_year.ts, in pool time.
+// The club's signup page, to share (PLAN.md R4).
+(function paintSignupLink() {
+  const a = document.getElementById('signup-link');
+  if (!a) return;
+  const url = `${window.location.protocol}//${window.location.host}/apply.html`;
+  a.textContent = url; a.href = url;
+})();
+async function copySignupLink() {
+  const url = document.getElementById('signup-link').href;
+  try { await navigator.clipboard.writeText(url); toast('Signup link copied.'); }
+  catch (_) { toast('Copy failed. Press and hold the link to copy it.', 'err'); }
+}
+
 function paintSellingNote() {
   const el = document.getElementById('selling-note');
   if (!el) return;

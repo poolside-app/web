@@ -40,16 +40,19 @@ const says = (name, text, re) => { const ok = re.test(text); ok ? pass++ : fail+
 
 const CLUB = 'Bishop Estates Cabana Club';
 
-console.log('— auto-renew says all four things —');
+// Auto-renew is "approve next season" since PLAN.md R7 (2026-10-08): the
+// card is kept, and charged once a season only when the family approves the
+// new price and policies.
+console.log('— auto-renew says what happens, and that nothing is charged without approval —');
 {
   const text = autoRenewTerms({ clubName: CLUB, currentDuesCents: 60000, year: 2027 }).join('\n');
-  says('who initiates the charge',   text, /Bishop Estates Cabana Club will charge/i);
-  says('timing and frequency',       text, /once a year/i);
-  says('when, specifically',         text, /2027 dues open/i);
-  says('how the amount is decided',  text, /whatever your membership costs that season/i);
-  says('and it can change',          text, /can change/i);
+  says('who sends it',               text, /Bishop Estates Cabana Club sends you the new price/i);
+  says('when, specifically',         text, /2027 renewals open/i);
+  says('the policies come too',      text, /policies to approve/i);
+  says('nothing without approval',   text, /Nothing is charged until you approve/i);
+  says('how often',                  text, /once, for that season/i);
   says('a concrete figure to anchor', text, /\$600/);
-  says('advance notice',             text, /14 days before/i);
+  says('a reminder, then nothing',   text, /remind you once/i);
   says('how to cancel',              text, /turn it off/i);
   says('and where',                  text, /My family/i);
 }
@@ -57,7 +60,7 @@ console.log('— auto-renew says all four things —');
 console.log('— a club with no price set still gets honest terms —');
 {
   const text = autoRenewTerms({ clubName: CLUB, currentDuesCents: 0 }).join('\n');
-  says('still says how the amount is decided', text, /whatever your membership costs/i);
+  says('still says nothing is charged without approval', text, /Nothing is charged until you approve/i);
   t('and invents no figure', /\$\d/.test(text), false);
   says('falls back to next season',           text, /next season/i);
 }
@@ -100,7 +103,7 @@ console.log('— what gets stored is what they saw —');
   const lines = autoRenewTerms({ clubName: CLUB, currentDuesCents: 60000, year: 2027 });
   const rec = termsRecord(lines, CLUB);
   for (const line of lines) says(`stored text keeps: "${line.slice(0, 34)}…"`, rec, new RegExp(line.slice(0, 30).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  says('and the agreement sentence', rec, /I authorize Bishop Estates Cabana Club to charge my saved card/);
+  says('and the agreement sentence', rec, /I authorize Bishop Estates Cabana Club to keep my card and charge it when I approve/);
   t('authorization names the club', authorizationSentence(CLUB).includes(CLUB), true);
   t('version is recorded', typeof TERMS_VERSION, 'number');
 }
@@ -113,11 +116,9 @@ console.log('— the screens say the same thing as the record —');
     // Collapse whitespace first: the disclosure wraps across several source
     // lines, and a browser renders it as one sentence regardless.
     const html = readFileSync(join(here, file), 'utf8').replace(/\s+/g, ' ');
-    says(`${label}: frequency`,  html, /once a year/i);
-    says(`${label}: amount rule`, html, /whatever your membership costs that season/i);
-    says(`${label}: notice`,      html, /14 days before/i);
+    says(`${label}: price and policies first`, html, /new price and the club's policies to approve/i);
+    says(`${label}: nothing without approval`, html, /Nothing is charged until you approve/i);
     says(`${label}: cancellation`, html, /My family/i);
-    says(`${label}: authorizes`,  html, /authorizes those charges/i);
   }
   const fam = readFileSync(join(here, '../m/family.html'), 'utf8');
   says('family page can actually turn it off', fam, /Turn off automatic renewal/);

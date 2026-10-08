@@ -152,7 +152,10 @@ function sanitizeAttendees(input: unknown): Array<Record<string, unknown>> {
   }).filter((x): x is Record<string, unknown> => !!x);
 }
 
-function sanitizeVotes(input: unknown): Array<Record<string, unknown>> {
+/** keepEmpty: while the meeting is open, a motion just added (nothing typed
+ *  or counted yet) stays. Dropping it made the page's vote buttons point at
+ *  a motion the server had thrown away, so they did nothing (Doug, 10/8). */
+function sanitizeVotes(input: unknown, keepEmpty = false): Array<Record<string, unknown>> {
   if (!Array.isArray(input)) return [];
   const VALID_OUT = new Set(['passed', 'failed', 'tabled', 'pending']);
   return input.slice(0, 100).map(raw => {
@@ -171,7 +174,7 @@ function sanitizeVotes(input: unknown): Array<Record<string, unknown>> {
     // user clicked + Add motion and then changed their mind).
     const hasAnyData = !!motion || yes > 0 || no > 0 || abstain > 0
       || (outcome !== 'pending' && outcome !== '') || !!notes || !!proposed_by || !!seconded_by;
-    if (!hasAnyData) return null;
+    if (!hasAnyData && !keepEmpty) return null;
     return {
       id: r.id ? String(r.id).slice(0, 40) : crypto.randomUUID(),
       motion,
@@ -217,7 +220,7 @@ function sanitizeFollowUps(input: unknown): Array<Record<string, unknown>> {
 
 // The fields a note-taker types, from an update or amend body. Anything not
 // sent is left alone.
-function contentPatch(body: Record<string, unknown>): { patch: Record<string, unknown>; bad?: Response } {
+function contentPatch(body: Record<string, unknown>, opts: { open?: boolean } = {}): { patch: Record<string, unknown>; bad?: Response } {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.title !== undefined) {
     const v = String(body.title).trim();
@@ -234,7 +237,7 @@ function contentPatch(body: Record<string, unknown>): { patch: Record<string, un
   }
   if (body.notes_md !== undefined)   patch.notes_md = String(body.notes_md ?? '').slice(0, 50000);
   if (body.attendees !== undefined)  patch.attendees_json  = sanitizeAttendees(body.attendees);
-  if (body.votes !== undefined)      patch.votes_json      = sanitizeVotes(body.votes);
+  if (body.votes !== undefined)      patch.votes_json      = sanitizeVotes(body.votes, !!opts.open);
   if (body.follow_ups !== undefined) patch.follow_ups_json = sanitizeFollowUps(body.follow_ups);
   if (body.visibility !== undefined) {
     const v = String(body.visibility);
@@ -712,7 +715,7 @@ Deno.serve(async (req) => {
     if (existing!.status === 'completed') {
       return jsonResponse({ ok: false, error: 'This meeting is closed. Use Save changes to fix it.' }, 409);
     }
-    const { patch, bad } = contentPatch(body);
+    const { patch, bad } = contentPatch(body, { open: true });
     if (bad) return bad;
 
     const { data, error } = await sb.from('board_meetings').update(patch)
@@ -754,6 +757,8 @@ Deno.serve(async (req) => {
       status: 'completed',
       ended_at: now,
       updated_at: now,
+      // Motions added but never used don't go in the minutes.
+      votes_json: sanitizeVotes(existing!.votes_json),
     }).eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     // Follow-ups for board members go on their dashboards now.

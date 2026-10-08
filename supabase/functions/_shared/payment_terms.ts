@@ -20,7 +20,7 @@
 // =============================================================================
 
 /** Bump when the wording changes. Old records keep their own text. */
-export const TERMS_VERSION = 1;
+export const TERMS_VERSION = 2;   // 2: "approve next season" (PLAN.md R7, 2026-10-08)
 
 export type AutoRenewTermsInput = {
   clubName: string;
@@ -38,10 +38,11 @@ export function autoRenewTerms(i: AutoRenewTermsInput): string[] {
   const amount = Number(i.currentDuesCents ?? 0) > 0
     ? `Right now that is $${Math.round(Number(i.currentDuesCents) / 100).toLocaleString('en-US')}.`
     : '';
+  void notice;   // kept in the input for old callers; there is no fixed notice period now
   return [
-    `${club} will charge this card once a year, when ${i.year ? `${i.year} ` : 'next season’s '}dues open.`,
-    `The amount is whatever your membership costs that season — your board sets it, and it can change. ${amount}`.trim(),
-    `We will email you ${notice} days before each charge, with the amount, so it is never a surprise.`,
+    `When ${i.year ? `${i.year} ` : 'next season’s '}renewals open, ${club} sends you the new price and the club's policies to approve, with this card ready. ${amount}`.trim(),
+    `Nothing is charged until you approve. Approving charges this card once, for that season, or you can change how you pay then.`,
+    `If you don't approve, nothing is charged. We remind you once, a week later.`,
     `It keeps going until you turn it off. You can do that any time under My family, or by asking the board.`,
   ];
 }
@@ -91,7 +92,7 @@ export function planTerms(i: PlanTermsInput): string[] {
 
 /** The single sentence the member ticks. Kept separate so it reads as consent. */
 export function authorizationSentence(clubName: string): string {
-  return `I authorize ${clubName || 'the club'} to charge my saved card on these terms.`;
+  return `I authorize ${clubName || 'the club'} to keep my card and charge it when I approve a season's renewal, on these terms.`;
 }
 
 /** Exactly what gets stored, so the record is the wording they saw. */

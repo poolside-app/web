@@ -329,7 +329,7 @@
 
     <div class="btn-row">
       <button class="btn btn-primary" id="email-support" type="button">📧 Email support</button>
-      <button class="btn btn-ghost" id="copy-support" type="button" title="Copy a pre-filled email if your computer doesn't open one automatically">📋 Copy email instead</button>
+      <button class="btn btn-ghost" id="copy-support" type="button" title="Copy support@poolsideapp.com">📋 Copy email address</button>
     </div>
     <div class="reassure" style="margin-top:10px;font-size:13px;color:var(--muted)">
       We reply within one business day. Your club name, your admin email, browser, and the page you came from are auto-attached so we can help quickly. <strong>No member info or passwords are sent.</strong>
@@ -926,19 +926,17 @@ document.getElementById('email-support').addEventListener('click', () => {
   window.location.href = href;
 });
 
-// Fallback for users whose computer doesn't open a mail app on mailto:.
-// Copies the recipient + subject + body to the clipboard as a single block.
+// For computers that don't open a mail app on mailto: just the address
+// (Doug, 10/8: the old version copied a whole pre-filled email).
 document.getElementById('copy-support').addEventListener('click', async () => {
   const lastViewed = document.querySelector('.article.open');
   helpTrack('support_email_clicked', {
     article_slug: lastViewed?.dataset?.slug || null,
   });
-  const { subject, body } = buildSupportEmail();
-  const blob = `To: support@poolsideapp.com\nSubject: ${subject}\n\n${body}`;
   const out = document.getElementById('copy-result');
   try {
-    await navigator.clipboard.writeText(blob);
-    out.textContent = 'Copied! Open your email and paste — the To: address and subject are at the top.';
+    await navigator.clipboard.writeText('support@poolsideapp.com');
+    out.textContent = 'Copied support@poolsideapp.com. Paste it into a new email.';
     out.style.display = '';
     setTimeout(() => { out.style.display = 'none'; }, 6000);
   } catch {

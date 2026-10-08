@@ -1524,38 +1524,37 @@ def dun_in_season_lapse_enforces():
                     where household_id = '{REN_HH_ID}';""")
 
 def auto_renew_warns_before_charging():
-    # The renewal page promises "we'll email you first". Verify the first pass
-    # only notices, and records which season it warned about.
-    # The suite runs against production on every deploy, so a real notice email
-    # to an @example.com address would bounce repeatedly and cost us sender
-    # reputation. Clearing the address skips the send; the stamping this test
-    # actually cares about happens either way.
+    # Auto-renew is "approve next season" (PLAN.md R7, 2026-10-08): the run
+    # asks the family to approve and records which season it asked about. It
+    # never charges. (Name kept so the suite's step list doesn't change.)
+    # A real email to an @example.com address would bounce on every deploy,
+    # so the address is cleared; the stamping happens either way.
     mgmt_query(f"""update public.household_members set email = null
                     where household_id = '{REN_HH_ID}';""")
     mgmt_query(f"""update public.households
                       set auto_renew = true, paid_until_year = {NEXT_YEAR - 1},
-                          auto_renew_notice_year = null, auto_renew_notice_sent_at = null,
+                          auto_renew_asked_year = null, auto_renew_asked_at = null, auto_renew_reminded_at = null,
                           auto_renew_customer_id = null, auto_renew_pm_id = null
                     where id = '{REN_HH_ID}';""")
     r = _post_cron('auto_renew_run')
     assert r.get('ok'), f'auto_renew_run: {r}'
-    rows = mgmt_query(f"""select auto_renew_notice_year, auto_renew_notice_sent_at
+    rows = mgmt_query(f"""select auto_renew_asked_year, auto_renew_asked_at, paid_until_year
                           from public.households where id = '{REN_HH_ID}';""")
-    assert rows[0]['auto_renew_notice_year'] == NEXT_YEAR, f'no notice stamped: {rows[0]}'
-    assert rows[0]['auto_renew_sent_at'] if False else rows[0]['auto_renew_notice_sent_at'], 'notice time not recorded'
+    assert rows[0]['auto_renew_asked_year'] == NEXT_YEAR, f'no approval request stamped: {rows[0]}'
+    assert rows[0]['auto_renew_asked_at'], 'request time not recorded'
+    assert rows[0]['paid_until_year'] == NEXT_YEAR - 1, 'the run charged without approval'
 
 def auto_renew_without_a_card_says_so():
-    # Opted in but no reusable card: the household must surface a reason a
-    # treasurer can act on, not be silently skipped forever.
+    # A week later, one reminder, and still nothing charged.
     mgmt_query(f"""update public.households
-                      set auto_renew_notice_sent_at = now() - interval '30 days'
+                      set auto_renew_asked_at = now() - interval '8 days'
                     where id = '{REN_HH_ID}';""")
     r = _post_cron('auto_renew_run')
     assert r.get('ok'), f'auto_renew_run: {r}'
-    rows = mgmt_query(f"""select auto_renew_last_error from public.households
+    rows = mgmt_query(f"""select auto_renew_reminded_at, paid_until_year from public.households
                           where id = '{REN_HH_ID}';""")
-    assert rows[0]['auto_renew_last_error'], 'no reason recorded for the skipped charge'
-    assert 'card' in rows[0]['auto_renew_last_error'].lower(), f"unhelpful reason: {rows[0]}"
+    assert rows[0]['auto_renew_reminded_at'], 'no reminder a week later'
+    assert rows[0]['paid_until_year'] == NEXT_YEAR - 1, 'the reminder charged without approval'
     mgmt_query(f"""update public.households set auto_renew = false where id = '{REN_HH_ID}';""")
 
 
@@ -1741,8 +1740,8 @@ step('auto-renew toggles and persists',             ren_auto_renew_toggles)
 step('already-paid households cannot re-renew',     ren_already_paid_is_refused)
 step('pre-season lapse keeps gate access',          dun_preseason_lapse_keeps_access)
 step('in-season lapse enforces access loss',        dun_in_season_lapse_enforces)
-step('auto-renew warns before it charges',          auto_renew_warns_before_charging)
-step('auto-renew without a card reports why',       auto_renew_without_a_card_says_so)
+step('auto-renew asks first, never charges',          auto_renew_warns_before_charging)
+step('auto-renew reminds once a week later',          auto_renew_without_a_card_says_so)
 step('auto-renew emails exist and render',          auto_renew_emails_are_registered)
 step('csv invites reach phone-only members',        csv_invites_reach_phone_only_members)
 step('csv invites can target individuals',          csv_invites_can_target_individuals)

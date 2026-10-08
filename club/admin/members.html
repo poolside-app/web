@@ -176,7 +176,7 @@
   <!-- ── Applications panel ───────────────────────────────────────────── -->
   <section class="panel" id="panel-applications">
     <div class="toolbar">
-      <h1>Application pipeline <span style="font-size:13px;font-weight:500;color:var(--muted);font-family:'Inter',sans-serif;letter-spacing:0;margin-left:6px">— review submissions. <a href="/club/admin/application.html">Edit the form →</a></span></h1>
+      <h1>Application pipeline <span style="font-size:13px;font-weight:500;color:var(--muted);font-family:'Inter',sans-serif;letter-spacing:0;margin-left:6px">— review submissions. <a href="/club/admin/settings.html?focus=season#season">Signup link →</a></span></h1>
       <input id="app-search" type="search" placeholder="🔍 Search applications…" oninput="App.applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
         <!-- "Needs attention" (Doug 2026-05-23) = pending submissions +
@@ -206,51 +206,32 @@
 
   <!-- ── Renew season / past-members blast panel (was "Renewals") ───────── -->
   <section class="panel" id="panel-renewals">
+    <!-- PLAN.md R5 (Doug, 10/8): one screen. Who it reaches, email and/or
+         text, and the message. Each family's own no-login link is added. -->
     <div class="toolbar">
-      <h1>Renew season</h1>
+      <h1>Renewal message</h1>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;max-width:680px">When your pool opens for a new season, blast your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues.</p>
+    <div class="card" style="padding:18px;max-width:680px">
+      <div id="ren-season" style="padding:14px;background:var(--bg-2);border-radius:10px;font-size:14px;line-height:1.6">Loading…</div>
+      <p style="font-size:12.5px;color:var(--muted);margin:10px 0 16px;line-height:1.5">This only goes to last season's members who haven't renewed yet, to the person who opened each account. Families who left before last season, and new families, don't get it.</p>
 
-    <div class="card" style="padding:18px;margin-bottom:14px">
-      <h2 style="margin-bottom:6px">Who gets this</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Pick the group to send to — the count updates as you toggle.</p>
-      <div class="filter-row" id="ren-audience" style="margin-bottom:14px">
-        <button class="on" data-audience="lapsed">Lapsed (unpaid this year)</button>
-        <button data-audience="last_season">Last season's members</button>
-        <button data-audience="all">All active households</button>
-      </div>
-      <div id="ren-summary" style="padding:14px;background:var(--bg-2);border-radius:10px;font-size:14px;line-height:1.6">Loading households…</div>
-    </div>
-
-    <div class="card" style="padding:18px">
-      <h2 style="margin-bottom:6px">Compose &amp; send</h2>
-      <label style="margin:0 0 6px">What the link does</label>
-      <div class="filter-row" id="ren-linktype" style="margin-bottom:10px">
-        <button class="on" data-linktype="pay">💳 Pay now — no login</button>
-        <button data-linktype="signin">🔑 Sign in first</button>
-      </div>
-      <p id="ren-linktype-note" style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.5">
-        Each household gets its own link straight to a pre-filled renewal — they tap, check it over, and pay.
-        No password, no app, nothing to remember. Best for reaching members who never sign in.</p>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <label style="margin:0 0 6px">Send by</label>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-email" checked><span>📧 Email</span></label>
-        <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-sms"><span>💬 SMS</span></label>
+        <label class="checkbox-row" style="margin:0"><input type="checkbox" id="ren-ch-sms"><span>💬 Text</span></label>
       </div>
-      <div id="ren-sms-meter" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--muted)"></div>
-      <label id="ren-message-label" style="display:none">Custom intro <span style="color:var(--muted);font-weight:500">(optional — overrides default body)</span></label>
-      <textarea id="ren-message" rows="3" style="display:none" placeholder="Memberships are open for the 2026 season. Sign in to your member home to see your membership level and pay your dues." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter'"></textarea>
-      <div style="display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap">
-        <button class="btn" id="ren-send" type="button" onclick="Renewals.send()">Send renewal links →</button>
+
+      <label for="ren-message" style="margin:0 0 6px">Message</label>
+      <textarea id="ren-message" rows="4" maxlength="600" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px/1.45 'Inter'"></textarea>
+      <p style="font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.5">Each family's own link goes after your message. It opens their renewal with everything filled in: they accept the policies, sign, and pay in full or with a payment plan.</p>
+
+      <div style="display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="ren-send" type="button" onclick="Renewals.send()">Send renewal message →</button>
         <span id="ren-result" style="font-size:13px;color:var(--muted)"></span>
       </div>
       <div class="err" id="ren-err" style="margin-top:10px"></div>
-      <div id="ren-dev-links" style="margin-top:12px"></div>
+      <p id="ren-last" style="font-size:12.5px;color:var(--muted);margin:12px 0 0"></p>
     </div>
-
-    <details class="card" style="padding:14px 18px;margin-top:14px">
-      <summary style="cursor:pointer;font-weight:600;font-size:14px;color:var(--blue);list-style:none">📜 Send history <span style="font-weight:400;color:var(--muted);font-size:12px">— last 20 blasts</span></summary>
-      <div id="ren-history" style="margin-top:12px"><div class="empty" style="padding:20px">Loading…</div></div>
-    </details>
   </section>
 
 </main>
@@ -1291,218 +1272,61 @@ const App = (() => {
 
 
 // ── Renewals namespace ────────────────────────────────────────────────
-// Season-open dues blast: picks audience, previews count, fires email/SMS
-// via the renewals edge function. The early-bird editor left on 2026-09-26
-// (J8); early bird is a discount code now (H7).
+// The renewal message (PLAN.md R5, Doug 10/8): which season, who it reaches
+// (last season's members not yet renewed), email and/or text, the board's
+// message. The renewals function picks the families and adds their links.
 const Renewals = (() => {
   const RENEWALS_URL = `${SUPABASE_URL}/functions/v1/renewals`;
-  // 'pay' sends a no-login link straight to a pre-filled renewal; 'signin'
-  // is the older sign-in-link blast. Pay is the default because the members
-  // hardest to collect from are precisely the ones who never sign in.
-  let LINK_TYPE = 'pay';
-  const LINK_NOTES = {
-    pay: 'Each household gets its own link straight to a pre-filled renewal — they tap, check it over, and pay. No password, no app, nothing to remember. Best for reaching members who never sign in.',
-    signin: 'Each household gets a 7-day single-use sign-in link. They land in their member home and pay from there. Use this when you also want them back in the app.',
-  };
-  let HOUSEHOLDS = [];
-  let CURRENT_AUDIENCE = 'lapsed';
-
-  async function loadHouseholds() {
-    const data = await call(HH_URL, 'list');
-    if (!data.ok) throw new Error(data.error || 'Household list failed');
-    HOUSEHOLDS = data.households || [];
-  }
-
-  function filterHouseholds(audience) {
-    const cy = +PoolTime.todayKey().slice(0, 4);
-    if (audience === 'lapsed')      return HOUSEHOLDS.filter(h => !h.dues_paid_for_year);
-    if (audience === 'last_season') return HOUSEHOLDS.filter(h => h.paid_until_year === cy - 1);
-    return HOUSEHOLDS.slice();
-  }
-  function paintSummary() {
-    const rows = filterHouseholds(CURRENT_AUDIENCE);
-    let withEmail = 0, withSms = 0, noContact = 0;
-    rows.forEach(h => {
-      const adults = (h.members || []).filter(m => (m.role || 'adult') === 'adult' && m.active !== false);
-      const hasEmail = adults.some(a => a.email);
-      const hasSms   = adults.some(a => a.phone_e164);
-      if (hasEmail) withEmail++;
-      if (hasSms) withSms++;
-      if (!hasEmail && !hasSms) noContact++;
-    });
-    const sample = rows.slice(0, 5).map(h => escapeHtml(h.family_name)).join(', ');
-    const more = rows.length > 5 ? ` (+${rows.length - 5} more)` : '';
-    document.getElementById('ren-summary').innerHTML = `
-      <div><b>${rows.length}</b> household${rows.length === 1 ? '' : 's'} match this audience.</div>
-      <div style="margin-top:6px;font-size:13px;color:var(--muted)">📧 ${withEmail} reachable by email · 💬 ${withSms} by SMS${noContact ? ` · ⚠ ${noContact} with no contact info` : ''}</div>
-      ${rows.length ? `<div style="margin-top:6px;font-size:12px;color:var(--muted)">${sample}${more}</div>` : ''}
-    `;
-  }
-
-  function bindAudience() {
-    document.querySelectorAll('#ren-linktype button').forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll('#ren-linktype button').forEach(x => x.classList.remove('on'));
-      b.classList.add('on');
-      LINK_TYPE = b.dataset.linktype;
-      document.getElementById('ren-linktype-note').textContent = LINK_NOTES[LINK_TYPE];
-      // The custom intro only applies to the sign-in blast — the pay link
-      // uses the "Renewal invite" email template, editable under Emails.
-      const showMsg = LINK_TYPE === 'signin';
-      document.getElementById('ren-message').style.display = showMsg ? '' : 'none';
-      document.getElementById('ren-message-label').style.display = showMsg ? '' : 'none';
-      document.getElementById('ren-send').textContent =
-        showMsg ? 'Send sign-in links →' : 'Send renewal links →';
-    });
-  });
-
-  document.querySelectorAll('#ren-audience button').forEach(b => {
-      b.onclick = () => {
-        document.querySelectorAll('#ren-audience button').forEach(x => x.classList.toggle('on', x === b));
-        CURRENT_AUDIENCE = b.dataset.audience;
-        paintSummary();
-      };
-    });
-  }
+  let AUD = null;
+  let TOUCHED = false;     // the board edited the message; don't refill it
 
   async function refresh() {
-    document.getElementById('ren-result').textContent = '';
-    document.getElementById('ren-err').classList.remove('show');
-    document.getElementById('ren-dev-links').innerHTML = '';
+    const box = document.getElementById('ren-season');
     try {
-      await loadHouseholds();
-      bindAudience();
-      paintSummary();
-      loadHistory();
-      loadSmsUsage();
-    } catch (e) {
-      const errEl = document.getElementById('ren-err');
-      errEl.textContent = e.message; errEl.classList.add('show');
-    }
-  }
-
-  async function loadSmsUsage() {
-    const box = document.getElementById('ren-sms-meter');
-    const smsCb = document.getElementById('ren-ch-sms');
-    // Only show the meter when SMS is checked OR cap is already breached
-    const update = (data) => {
-      const pct = data.cap > 0 ? Math.min(100, Math.round((data.used / data.cap) * 100)) : 0;
-      const color = data.blocked ? '#dc2626' : (pct >= 80 ? '#92400e' : 'var(--muted)');
-      const bg    = data.blocked ? '#fee2e2' : (pct >= 80 ? '#fef3c7' : 'var(--bg-2)');
-      box.style.background = bg;
-      box.style.color = color;
+      const d = await call(RENEWALS_URL, 'renewal_audience');
+      if (!d.ok) throw new Error(d.error || 'Could not load');
+      AUD = d;
+      const n = d.households;
       box.innerHTML = `
-        <b>SMS this month:</b> ${data.used} / ${data.cap} (${pct}%) on ${data.plan} plan · resets in ${data.days_until_reset} day${data.days_until_reset === 1 ? '' : 's'}
-        <div style="margin-top:6px;height:6px;background:#e5e7eb;border-radius:999px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:${data.blocked ? '#dc2626' : (pct >= 80 ? '#f59e0b' : 'var(--blue)')}"></div>
-        </div>
-        ${data.blocked ? '<div style="margin-top:6px;font-weight:600">⚠ Cap reached — SMS sends will be skipped until reset.</div>' : ''}
-      `;
-    };
-    try {
-      const data = await call(RENEWALS_URL, 'sms_usage');
-      if (!data.ok) return;
-      const show = () => { box.style.display = (smsCb.checked || data.blocked) ? 'block' : 'none'; };
-      update(data);
-      show();
-      smsCb.addEventListener('change', show);
-    } catch { /* meter is optional info; don't block the panel */ }
-  }
-
-  async function loadHistory() {
-    const box = document.getElementById('ren-history');
-    try {
-      const data = await call(RENEWALS_URL, 'list_history');
-      if (!data.ok) throw new Error(data.error || 'history load failed');
-      const blasts = data.blasts || [];
-      if (!blasts.length) {
-        box.innerHTML = `<div class="empty" style="padding:20px;color:var(--muted)">No blasts sent yet.</div>`;
-        return;
-      }
-      const audLabel = (a) => ({ all: 'All', lapsed: 'Lapsed', last_season: 'Last season' })[a] || a;
-      box.innerHTML = `
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:var(--bg-2)">
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">When</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Sent to</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Channels</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Email</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">SMS</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600">Failures</th>
-          </tr></thead>
-          <tbody>
-            ${blasts.map(b => {
-              const m = b.metadata || {};
-              const date = new Date(b.created_at);
-              const when = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' + date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-              return `<tr style="border-top:1px solid var(--border)">
-                <td style="padding:8px 10px">${escapeHtml(when)}</td>
-                <td style="padding:8px 10px">${escapeHtml(audLabel(m.audience || ''))}</td>
-                <td style="padding:8px 10px">${escapeHtml((m.channels || []).join(' + '))}</td>
-                <td style="padding:8px 10px">${m.email_sent ?? 0}</td>
-                <td style="padding:8px 10px">${m.sms_sent ?? 0}</td>
-                <td style="padding:8px 10px;color:${m.send_fail ? 'var(--red)' : 'var(--muted)'}">${m.send_fail ?? 0}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>`;
+        <div>Renewing for the <b>${d.year}</b> season.</div>
+        <div><b>${n}</b> famil${n === 1 ? 'y' : 'ies'} from ${d.last_year} ${n === 1 ? 'hasn\'t' : 'haven\'t'} renewed yet${n ? ':' : '.'} ${n ? `<span style="color:var(--muted)">${d.sample.map(escapeHtml).join(', ')}${n > d.sample.length ? ` and ${n - d.sample.length} more` : ''}</span>` : ''}</div>
+        ${n ? `<div style="margin-top:4px;font-size:13px;color:var(--muted)">📧 ${d.with_email} by email · 💬 ${d.with_phone} by text${d.no_contact ? ` · ⚠ ${d.no_contact} with no email or phone` : ''}</div>` : ''}`;
+      const msg = document.getElementById('ren-message');
+      if (!TOUCHED) msg.value = `It's time to sign up for the ${d.year} season! Click the link to renew. Your family's details are already filled in.`;
+      msg.oninput = () => { TOUCHED = true; };
+      document.getElementById('ren-send').disabled = !n;
+      document.getElementById('ren-last').textContent = d.last_sent
+        ? `Last sent ${new Date(d.last_sent.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${d.last_sent.summary}`
+        : '';
     } catch (e) {
-      box.innerHTML = `<div class="empty" style="padding:18px;color:var(--red)">${escapeHtml(e.message)}</div>`;
+      box.innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`;
     }
   }
 
   async function send() {
     const errEl = document.getElementById('ren-err');
     errEl.classList.remove('show');
-    document.getElementById('ren-dev-links').innerHTML = '';
     const channels = [];
     if (document.getElementById('ren-ch-email').checked) channels.push('email');
     if (document.getElementById('ren-ch-sms').checked)   channels.push('sms');
-    if (!channels.length) {
-      errEl.textContent = 'Pick at least one channel (email or SMS).'; errEl.classList.add('show'); return;
-    }
-    const rows = filterHouseholds(CURRENT_AUDIENCE);
-    if (!rows.length) {
-      errEl.textContent = 'No households match this audience — nothing to send.'; errEl.classList.add('show'); return;
-    }
-    const what = LINK_TYPE === 'pay'
-      ? `Send a pay-now renewal link to every household that hasn't paid for the coming season, via ${channels.join(' + ')}?`
-      : `Send a renewal blast to ${rows.length} household${rows.length === 1 ? '' : 's'} via ${channels.join(' + ')}?`;
-    if (!confirm(`${what}${channels.includes('sms') ? ' This counts against your monthly SMS cap.' : ''}`)) return;
+    if (!channels.length) { errEl.textContent = 'Pick email, text, or both.'; errEl.classList.add('show'); return; }
+    const message = document.getElementById('ren-message').value.trim();
+    if (!message) { errEl.textContent = 'Write a message first.'; errEl.classList.add('show'); return; }
+    if (!AUD || !AUD.households) { errEl.textContent = 'Nobody to send to.'; errEl.classList.add('show'); return; }
+    const how = channels.length === 2 ? 'email and text' : channels[0] === 'sms' ? 'text' : 'email';
+    if (!confirm(`Send the ${AUD.year} renewal message by ${how} to ${AUD.households} famil${AUD.households === 1 ? 'y' : 'ies'} from ${AUD.last_year}?`)) return;
 
     const btn = document.getElementById('ren-send');
     const orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Sending…';
     document.getElementById('ren-result').textContent = '';
     try {
-      if (LINK_TYPE === 'pay') {
-        const data = await call(RENEWALS_URL, 'send_renewal_links', { channels });
-        if (!data.ok) throw new Error(data.error || 'Send failed');
-        document.getElementById('ren-result').innerHTML =
-          `✓ Sent <b>${data.sent}</b> renewal link${data.sent === 1 ? '' : 's'} for the ${data.year} season` +
-          (data.reused ? ` · ${data.reused} refreshed an existing link` : '') +
-          (data.skipped ? ` · skipped ${data.skipped} (no email or phone on file)` : '');
-        return;
-      }
-      const message = document.getElementById('ren-message').value.trim();
-      const data = await call(RENEWALS_URL, 'send_blast', {
-        audience: CURRENT_AUDIENCE,
-        channels,
-        message: message || undefined,
-      });
+      const data = await call(RENEWALS_URL, 'send_renewal_links', { channels, message });
       if (!data.ok) throw new Error(data.error || 'Send failed');
-      const r = data.sent || { email: 0, sms: 0 };
-      const sk = data.skipped || { no_contact: 0, send_fail: 0 };
-      document.getElementById('ren-result').innerHTML = `✓ Sent <b>${r.email}</b> emails + <b>${r.sms}</b> SMS · skipped ${sk.no_contact} (no contact) · ${sk.send_fail} send failures`;
-      if (data.dev_links && data.dev_links.length) {
-        document.getElementById('ren-dev-links').innerHTML = `
-          <div style="padding:12px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:13px;color:#7c2d12">
-            <b>Provider not configured.</b> ${data.dev_links.length} sign-in link${data.dev_links.length === 1 ? '' : 's'} ready to copy:
-            <ul style="margin:8px 0 0;padding-left:18px;font-size:12px">
-              ${data.dev_links.map(d => `<li>${escapeHtml(d.household)} — <a href="${d.link}" target="_blank" rel="noopener">${escapeHtml(d.link)}</a></li>`).join('')}
-            </ul>
-          </div>`;
-      }
+      document.getElementById('ren-result').innerHTML =
+        `✓ Sent to <b>${data.sent}</b> famil${data.sent === 1 ? 'y' : 'ies'}` +
+        (data.skipped ? ` · ${data.skipped} not reached (no email or phone, or a send failed)` : '');
+      refresh();
     } catch (e) {
       errEl.textContent = e.message; errEl.classList.add('show');
     } finally {

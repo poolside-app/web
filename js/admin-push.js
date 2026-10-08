@@ -138,6 +138,15 @@
   function dismissed() { try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch (_) { return false; } }
   function dismiss() { try { localStorage.setItem(DISMISS_KEY, '1'); } catch (_) { /* private mode */ } }
 
+  // A laptop or desktop, not a phone or tablet. iPadOS reports itself as a
+  // Mac, so a Mac with a touch screen counts as a tablet.
+  function isComputer() {
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return false;
+    if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false;
+    return true;
+  }
+
   async function mountPrompt(el, opts = {}) {
     if (!el) return;
     const st = await status();
@@ -148,6 +157,16 @@
     const topics = (opts.mustFor || []).join(', ');
     const must = !!topics && !(opts.devices > 0);
     if (st.subscribed || (!must && (st.permission === 'denied' || dismissed()))) { el.style.display = 'none'; return; }
+    // On a computer the top tabs show what's waiting (Doug, 10/8): no
+    // "turn on pop-ups on this phone". A warning only if nobody would hear
+    // about their members' questions, pointing at the phone.
+    if (isComputer()) {
+      if (!must) { el.style.display = 'none'; return; }
+      const e2 = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      el.innerHTML = `<div style="background:linear-gradient(135deg,#fff7ed,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:14px 16px;color:#78350f">📲 <span style="font-size:13.5px;line-height:1.45">Members' <b>${e2(topics)}</b> questions come to you. Turn on pop-ups in the board app on your phone so you hear about them.</span></div>`;
+      el.style.display = '';
+      return;
+    }
 
     const btn = 'padding:8px 14px;border-radius:9px;font:600 13px Inter,sans-serif;cursor:pointer';
     const why = must
@@ -187,5 +206,5 @@
     });
   }
 
-  window.AdminPush = { status, subscribe, unsubscribe, test, mountPrompt };
+  window.AdminPush = { status, subscribe, unsubscribe, test, mountPrompt, isComputer };
 })();

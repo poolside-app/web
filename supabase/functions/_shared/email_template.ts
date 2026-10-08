@@ -420,23 +420,23 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
   // ─── Auto-renew ───────────────────────────────────────────────────────
   {
     key: 'auto_renew_notice',
-    label: 'Auto-renew — heads up before we charge',
-    description: 'Sent when the new season opens to households with auto-renew on, a set number of days BEFORE their card is charged. The whole point is that nobody is charged by surprise, so this fires before any money moves.',
+    label: 'Auto-renew — ready to approve',
+    description: 'Sent when renewals open to households with auto-renew on, and once more a week later if they haven\'t approved. Nothing is charged until they open it, accept the policies and approve (PLAN.md R7).',
     audience: 'member',
     variables: ['tenant_name', 'family_name', 'amount', 'season', 'charge_date', 'manage_url', 'club_url'],
-    default_subject: 'Heads up — renewing your {{tenant_name}} membership on {{charge_date}}',
+    default_subject: 'Your {{season}} {{tenant_name}} renewal is ready to approve',
     default_body_html: withShell(`
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🏊 Your {{season}} season is coming up</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — you asked us to renew your <b>{{tenant_name}}</b> membership automatically, so this is your heads up before anything happens.</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}}, your <b>{{tenant_name}}</b> renewal for {{season}} is ready. Everything is filled in from last season.</p>
       <div style="margin:18px 0;padding:16px 18px;background:#f7f3eb;border-radius:10px;color:#0a3b5c">
         <div style="font-size:26px;font-family:Georgia,serif;font-weight:600;line-height:1">{{amount}}</div>
-        <div style="font-size:13px;color:#475569;margin-top:6px">will be charged to your saved card on <b>{{charge_date}}</b> for the {{season}} season.</div>
+        <div style="font-size:13px;color:#475569;margin-top:6px">for the {{season}} season, with your saved card.</div>
       </div>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">You don't need to do anything — we'll take care of it and email you a receipt.</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Tap below to check it over, accept the club's policies and sign, and approve. You can also switch to a payment plan or another card. <b>Nothing is charged until you approve.</b></p>
       <p style="margin:24px 0">
-        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Review or turn off auto-renew</a>
+        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Review and approve</a>
       </p>
-      <p style="margin:0;color:#64748b;font-size:13px">Changed your mind, or need to update the card? Use the button above before {{charge_date}} and nothing will be charged.</p>
+      <p style="margin:0;color:#64748b;font-size:13px">Not coming back this season? Just ignore this. Nothing happens unless you approve.</p>
     `),
   },
   {
@@ -480,12 +480,13 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
     label: 'Renewal invite (no login needed)',
     description: 'Sent when the board sends renewal links. Contains a one-time link that opens a pre-filled renewal the member can pay without signing in — the path for households that never use the app.',
     audience: 'member',
-    variables: ['tenant_name', 'family_name', 'season', 'renew_link', 'club_url'],
+    variables: ['tenant_name', 'family_name', 'season', 'renew_link', 'club_url', 'message'],
     default_subject: 'Time to renew your {{tenant_name}} membership for {{season}}',
     default_body_html: withShell(`
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🏊 Renew for {{season}}</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — it's time to renew your <b>{{tenant_name}}</b> membership for the {{season}} season.</p>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Everything is already filled in. Tap below, check it over, and pay — <b>no password, no app, no signing in</b>.</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}},</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55;white-space:pre-line">{{message}}</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Tap below, check it over, accept the club's policies and sign, then pay. <b>No password, no app, no signing in.</b></p>
       <p style="margin:24px 0">
         <a href="{{renew_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:14px 26px;border-radius:10px;font-weight:600;display:inline-block;font-size:16px">Renew my membership</a>
       </p>
