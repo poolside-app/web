@@ -9,12 +9,16 @@
 //   { action: 'config_save', config }         → { ok }
 //   { action: 'list_plans', filter? }         → { ok, plans, installments }
 //   { action: 'reactivate', plan_id }         → { ok, url }   Stripe Checkout for balance + fee
+//   { action: 'simulate_charge', plan_id }    → { ok }        test payments only: the next payment
+//   { action: 'member_plan' } (member)        → { ok, plan }
+//   { action: 'member_cancel' } (member)      → { ok, plan }  no refund; treated like a lapse
 //   { action: 'mark_paid', installment_id, note? } → { ok }   manual override (e.g. cash/check)
-//   { action: 'cron_run' }                    → { ok, charged, reminded, lapsed, enforced }
+//   { action: 'cron_run' }                    → { ok, charged, retried, lapsed, past_deadline, reminded, enforced, ... }
 //   { action: 'auto_renew_run' }              → { ok, noticed, charged, failed, skipped }
 // =============================================================================
 
-import { platformFeeCents, feePolicyFromTenant, feePolicyFor, type FeePolicy } from '../_shared/fees.ts';
+import { platformFeeCents, feePolicyFromTenant, type FeePolicy } from '../_shared/fees.ts';
+import { poolDate } from '../_shared/pool_time.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
@@ -46,6 +50,17 @@ async function verifyAdmin(token: string): Promise<AdminPayload | null> {
     return p as unknown as AdminPayload;
   } catch { return null; }
 }
+type MemberPayload = { sub: string; tid: string; hid: string };
+async function verifyMember(token: string): Promise<MemberPayload | null> {
+  if (!JWT_SECRET) return null;
+  try {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+    const p = await verify(token, key) as Record<string, unknown>;
+    if (p.kind !== 'member' || !p.sub || !p.tid || !p.hid) return null;
+    return p as unknown as MemberPayload;
+  } catch { return null; }
+}
 function hasPaymentsScopeFromJwt(p: AdminPayload): boolean {
   if (p.is_super) return true;
   if (p.role_template === 'owner') return true;
@@ -63,53 +78,13 @@ async function hasPaymentsScope(sb: SupabaseClient, p: AdminPayload): Promise<bo
   return scopes.includes('payments');
 }
 
-// A plan finishing does NOT mean "paid for this calendar year" — the whole
-// point of installments is that the money arrives before (or across) the
-// season it buys. Ask the application the plan came from which season that is,
-// and only fall back to the clock when the plan predates the column.
-async function planMembershipYear(
-  sb: ReturnType<typeof createClient>,
-  plan: { application_id?: string | null } | null | undefined,
-): Promise<number> {
-  if (plan?.application_id) {
-    const { data: app } = await sb.from('applications')
-      .select('membership_year').eq('id', plan.application_id).maybeSingle();
-    const y = app?.membership_year as number | null | undefined;
-    if (typeof y === 'number' && y > 2000) return y;
-  }
-  return new Date().getUTCFullYear();
-}
-
-const DEFAULT_PLAN_CONFIG = {
-  enabled: false,
-  season_open_date: null as string | null,           // 'YYYY-MM-DD'
-  final_due_date: null as string | null,
-  first_installment_pct: 50,                          // 0-100
-  plan_signup_cutoff_date: null as string | null,    // last day a member can sign up for installments
-  reminder_days_before: [14, 7, 1] as number[],      // ping member at these milestones
-  lapse_grace_days: 14,                               // days from first failure before lapse
-  reactivation_fee_cents: 5000,                       // $50 default
-  auto_deactivate_keyfob: true,                       // flip can_unlock_gate=false on lapse
-};
-type PlanConfig = typeof DEFAULT_PLAN_CONFIG;
-
-// getPlanConfig merges over defaults, which drops keys the defaults do not
-// know about (milestones, enforce_from). The schedule helpers need the block
-// exactly as the club saved it.
-/** The plan config plus the month next season goes on sale, which decides
- *  whether a fall deadline belongs to the year before the season (H4). */
-async function rawPlanSettings(sb: SupabaseClient, tenantId: string): Promise<{ plan: Record<string, unknown>; opensMonth: number }> {
-  const { data } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
-  const payments = (data?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined;
-  const { opensMonthOf } = await import('../_shared/membership_year.ts');
-  return { plan: (payments?.plan as Record<string, unknown> | undefined) ?? {}, opensMonth: opensMonthOf(data?.value) };
-}
-
-async function getPlanConfig(sb: SupabaseClient, tenantId: string): Promise<PlanConfig> {
-  const { data } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
-  const raw = ((data?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined)?.plan as Partial<PlanConfig> | undefined;
-  return { ...DEFAULT_PLAN_CONFIG, ...(raw || {}) };
-}
+// The plan rules (when the gate opens, what a lapse does, how a family comes
+// back) live in _shared/plan_ops.ts, shared with checkout and the webhook.
+import {
+  PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor,
+  grantAccessIfReady, completeIfPaid, endPlan, enforceEnd, seasonStarted, rulesFor, planView,
+  memberPlanView, type PlanClub, type PlanConfig, type Inst,
+} from '../_shared/plan_ops.ts';
 
 // Stripe API helper — direct charges on Connect Standard, Stripe-Account header
 // scopes operations to the tenant's connected account.
@@ -117,6 +92,7 @@ async function stripe<T = Record<string, unknown>>(
   path: string,
   params: Record<string, string | number>,
   stripeAccount: string,
+  idempotencyKey?: string,
 ): Promise<{ ok: boolean; data?: T; error?: string; code?: string }> {
   if (!STRIPE_KEY) return { ok: false, error: 'STRIPE_SECRET_KEY not set' };
   const body = new URLSearchParams();
@@ -128,6 +104,7 @@ async function stripe<T = Record<string, unknown>>(
         'Authorization': `Bearer ${STRIPE_KEY}`,
         'Content-Type': 'application/x-www-form-urlencoded',
         'Stripe-Account': stripeAccount,
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       body: body.toString(),
     });
@@ -155,11 +132,10 @@ async function sendReminderEmail(args: {
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Payment due ${args.daysUntil === 1 ? 'tomorrow' : `in ${args.daysUntil} days`}</h2>
-      <p style="margin:0 0 16px;color:#64748b">Hi ${escHtml(args.familyName)} family — your next ${escHtml(args.tenantName)} dues installment of <b>$${dollars}</b> will be auto-charged on <b>${escHtml(args.dueDate)}</b> to the card you saved at sign-up.</p>
+      <p style="margin:0 0 16px;color:#64748b">Hi ${escHtml(args.familyName)} family — your next ${escHtml(args.tenantName)} payment of <b>$${dollars}</b> is charged on <b>${escHtml(args.dueDate)}</b> to the card on your plan.</p>
       <p style="margin:24px 0">
-        <a href="${args.signinLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to ${escHtml(args.tenantName)}</a>
+        <a href="${args.signinLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">See my plan</a>
       </p>
-      <p style="margin:0;color:#64748b;font-size:13px">If you need to update your card, sign in and contact the board.</p>
     </div>`;
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -171,218 +147,141 @@ async function sendReminderEmail(args: {
   } catch { return false; }
 }
 
-async function sendLapseAdminAlert(sb: SupabaseClient, tenantId: string, plan: Record<string, unknown>): Promise<void> {
-  // 1. Open admin task + push to subscribed admins.
-  const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-  await enqueueAdminTask(sb, {
-    tenant_id: tenantId,
-    target_scopes: ['payments', 'households'],
-    kind: 'plan.lapsed',
-    summary: `${plan.family_name}: payment plan lapsed — contact household and reactivate`,
-    link_url: '/club/admin/payments.html',
-    source_kind: 'payment_plan', source_id: plan.id as string,
-    push_title: `🚨 Payment plan lapsed: ${plan.family_name}`,
-    push_body: `Card retries exhausted. Their keyfobs auto-deactivated. Contact the household to reactivate.`,
-  });
-  // 2. Email admin owners (best-effort)
-  if (!RESEND_API_KEY) return;
-  const { data: owners } = await sb.from('admin_users')
-    .select('email, display_name')
-    .eq('tenant_id', tenantId).eq('active', true)
-    .or('role_template.eq.owner,role_template.eq.treasurer,role_template.eq.membership');
-  const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
-  if (!tenant || !owners?.length) return;
-  const html = `
-    <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px">
-      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">⚠ Payment plan lapsed</h2>
-      <p>The ${escHtml(plan.family_name as string)} family's payment plan has lapsed after exhausting card retries. Their keyfobs have been auto-deactivated.</p>
-      <p style="margin:24px 0"><a href="https://${tenant.slug}.poolsideapp.com/club/admin/payments.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Review &amp; reactivate →</a></p>
-    </div>`;
-  for (const o of owners) {
-    if (!o.email) continue;
-    try {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: RESEND_FROM, to: [o.email], subject: `[Action needed] ${plan.family_name} plan lapsed`, html }),
-      });
-    } catch { /* best-effort */ }
-  }
+/** Days from one pool date to another. */
+function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400_000);
 }
 
-// Charge a single installment via off-session PaymentIntent on the connected account.
+/** Whether a failed payment is due another try today: the club's retry days
+ *  count from the first failure (3, 7 and 14 days by default). */
+function retryDue(inst: Inst, cfg: PlanConfig, today: string, tz: string): boolean {
+  if (inst.status !== 'retrying') return true;
+  if (!inst.first_failed_at) return true;
+  const first = poolDate(inst.first_failed_at, tz);
+  const n = Math.max(1, Number(inst.attempt_count ?? 1));
+  const wait = cfg.retry_days[Math.min(n, cfg.retry_days.length) - 1] ?? 14;
+  return daysBetween(first, today) >= wait;
+}
+
+/**
+ * Charge one payment off-session on the club's Stripe account. Stripe's reply
+ * to our own call settles it: a charge we made cannot be faked, so there is
+ * nothing for a webhook to add. The idempotency key is per attempt, so a run
+ * retried within Stripe's 24 hours can never charge twice.
+ */
 async function chargeInstallment(
-  sb: SupabaseClient,
-  installment: Record<string, unknown>,
-  plan: Record<string, unknown>,
-  stripeAccount: string,
-  config: PlanConfig,
-  policy: FeePolicy,
-): Promise<{ paid: boolean; lapsed: boolean; error?: string }> {
-  const installmentId = installment.id as string;
-  // plan_fee_cents is stored on the row when the plan is created, so a plan
-  // that predates a waiver still carries a fee. Zero it at charge time, or
-  // the club's members keep paying a fee we have promised not to take.
-  const planFee = policy.waived ? 0 : Number(installment.plan_fee_cents ?? 0);
-  const idempotencyKey = `installment_${installmentId}_attempt_${(installment.attempt_count as number ?? 0) + 1}`;
-  const params: Record<string, string | number> = {
-    // Dues plus this installment's share of the plan fee. The club nets the
-    // dues either way — the fee is added to application_fee_amount below,
-    // so it comes to the platform rather than out of the club's money.
-    amount: (installment.amount_cents as number) + planFee,
+  sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>, inst: Inst, rows: Inst[],
+): Promise<{ paid: boolean; exhausted: boolean; error?: string }> {
+  const policy: FeePolicy = { waived: club.feesWaived };
+  // Never past the plan's total, whatever the rows say.
+  if (paidCents(rows) + inst.amount_cents > Number(plan.total_cents)) {
+    await sb.from('payment_plan_installments').update({ status: 'manual', last_error: 'Skipped: the plan total was already reached' }).eq('id', inst.id);
+    return { paid: false, exhausted: false, error: 'over total' };
+  }
+  const planFee = policy.waived ? 0 : Number(inst.plan_fee_cents ?? 0);
+  const amount = chargeFor(inst, policy.waived);
+  const attempts = Number(inst.attempt_count ?? 0) + 1;
+  const params: Record<string, string> = {
+    amount: String(amount),
     currency: 'usd',
-    customer: plan.stripe_customer_id as string,
-    payment_method: plan.stripe_payment_method_id as string,
+    customer: String(plan.stripe_customer_id),
+    payment_method: String(plan.stripe_payment_method_id),
     confirm: 'true',
     off_session: 'true',
-    'metadata[plan_id]': plan.id as string,
-    'metadata[installment_id]': installmentId,
-    'metadata[tenant_id]': plan.tenant_id as string,
+    'metadata[plan_id]': String(plan.id),
+    'metadata[installment_id]': inst.id,
+    'metadata[tenant_id]': club.tenantId,
     'metadata[kind]': 'payment_plan_installment',
     // Split recorded at charge time — application_fee_amount bundles the dues
     // cut with the member's plan fee and Stripe cannot separate them later.
     'metadata[fee_plan_cents]': String(planFee),
-    'metadata[fee_dues_cents]': String(policy.waived
-      ? 0
-      : platformFeeCents(installment.amount_cents as number, 'dues', policy)),
-    application_fee_amount: policy.waived
-      ? 0
-      : platformFeeCents(installment.amount_cents as number, 'dues', policy) + planFee,
+    'metadata[fee_dues_cents]': String(policy.waived ? 0 : platformFeeCents(inst.amount_cents, 'dues', policy)),
+    // The card fee (if the club passes it on) stays with the club, to cover
+    // what Stripe takes.
+    application_fee_amount: String(policy.waived ? 0 : platformFeeCents(inst.amount_cents, 'dues', policy) + planFee),
   };
-  // Idempotency-Key prevents double-charge if cron retries within Stripe's 24h dedup window
-  if (!STRIPE_KEY) return { paid: false, lapsed: false, error: 'STRIPE_SECRET_KEY not set' };
+  if (!STRIPE_KEY || !club.stripeAccount) return { paid: false, exhausted: false, error: 'Stripe not set up' };
   let res: Response;
   try {
-    res = await fetch(`https://api.stripe.com/v1/payment_intents`, {
+    res = await fetch('https://api.stripe.com/v1/payment_intents', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${STRIPE_KEY}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Stripe-Account': stripeAccount,
-        'Idempotency-Key': idempotencyKey,
+        'Stripe-Account': club.stripeAccount,
+        'Idempotency-Key': `installment_${inst.id}_attempt_${attempts}`,
       },
-      body: new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString(),
+      body: new URLSearchParams(params).toString(),
     });
   } catch (e) {
-    return { paid: false, lapsed: false, error: String(e) };
+    return { paid: false, exhausted: false, error: String(e) };
   }
   const data = await res.json();
-  const attempts = (installment.attempt_count as number ?? 0) + 1;
+  const now = new Date().toISOString();
   if (res.ok && data.status === 'succeeded') {
     await sb.from('payment_plan_installments').update({
-      status: 'paid', paid_at: new Date().toISOString(),
-      stripe_payment_intent_id: data.id,
-      attempt_count: attempts, last_attempt_at: new Date().toISOString(),
-      last_error: null,
-    }).eq('id', installmentId);
-    // Notify the member that an installment cleared. Best-effort.
-    if (plan.primary_email) {
-      try {
-        const { renderAndSend } = await import('../_shared/email_template.ts');
-        const dollars = '$' + ((installment.amount_cents as number) / 100).toFixed(2);
-        const seq = installment.sequence as number;
-        const { data: remaining } = await sb.from('payment_plan_installments')
-          .select('sequence, due_date, amount_cents').eq('plan_id', plan.id as string)
-          .neq('status', 'paid').neq('status', 'manual').order('sequence');
-        const nextOne = (remaining ?? []).find((r) => (r.sequence as number) > seq);
-        const isFinal = !nextOne;
-        await renderAndSend(sb, {
-          tenantId: plan.tenant_id as string,
-          templateKey: isFinal ? 'plan_installment_paid_final' : 'plan_installment_paid_partial',
-          to: plan.primary_email as string,
-          variables: {
-            family_name: plan.family_name as string,
-            amount: dollars,
-            sequence: String(seq),
-            next_amount:   nextOne ? '$' + ((nextOne.amount_cents as number) / 100).toFixed(2) : '',
-            next_due_date: nextOne ? (nextOne.due_date as string) : '',
-          },
-        });
-      } catch { /* never fail the charge cron because of an email */ }
-    }
-    return { paid: true, lapsed: false };
+      status: 'paid', paid_at: now, stripe_payment_intent_id: data.id,
+      attempt_count: attempts, last_attempt_at: now, last_error: null,
+    }).eq('id', inst.id);
+    inst.status = 'paid';
+    await sendReceipt(sb, club, plan, inst, rows, amount);
+    return { paid: true, exhausted: false };
   }
-  // Failed. Retry schedule: day 1, 3, 7 from first attempt; lapse at attempt > 4 OR past grace days.
-  const errorMsg = (data?.error?.message || `Stripe ${res.status}`).slice(0, 500);
-  const firstAttempt = (installment.last_attempt_at as string | null) || new Date().toISOString();
-  const daysSinceFirst = Math.floor((Date.now() - new Date(firstAttempt).getTime()) / 86400_000);
-  const exhausted = attempts >= 4 || daysSinceFirst >= config.lapse_grace_days;
+
+  // Declined: one email to the family on the first failure, then quiet
+  // retries on the club's retry days. Out of tries ends the plan.
+  const errorMsg = String(data?.error?.message || `Stripe ${res.status}`).slice(0, 500);
+  const exhausted = attempts > club.cfg.retry_days.length;
   await sb.from('payment_plan_installments').update({
     status: exhausted ? 'failed' : 'retrying',
-    attempt_count: attempts,
-    last_attempt_at: new Date().toISOString(),
-    last_error: errorMsg,
-  }).eq('id', installmentId);
-  // Email member ONLY on the FIRST failure — subsequent retries are silent.
+    attempt_count: attempts, last_attempt_at: now, last_error: errorMsg,
+    first_failed_at: inst.first_failed_at ?? now,
+  }).eq('id', inst.id);
   if (attempts === 1 && plan.primary_email) {
     try {
       const { renderAndSend } = await import('../_shared/email_template.ts');
       await renderAndSend(sb, {
-        tenantId: plan.tenant_id as string,
-        templateKey: 'plan_installment_failed',
-        to: plan.primary_email as string,
+        tenantId: club.tenantId, templateKey: 'plan_installment_failed', to: plan.primary_email as string,
         variables: {
           family_name: plan.family_name as string,
-          amount: '$' + ((installment.amount_cents as number) / 100).toFixed(2),
-          sequence: String(installment.sequence as number),
+          amount: '$' + (amount / 100).toFixed(2),
+          sequence: String(inst.sequence),
         },
       });
     } catch { /* best-effort */ }
   }
-  return { paid: false, lapsed: exhausted, error: errorMsg };
+  return { paid: false, exhausted, error: errorMsg };
 }
 
-// Strip a lapsed household's access. Split out from lapsePlan because it may
-// happen later than the lapse itself — see the seasonUnderway check there.
-async function enforceLapse(
-  sb: SupabaseClient,
-  plan: Record<string, unknown>,
-  config: PlanConfig,
+/** The family's receipt for one payment, naming the next one if any. */
+async function sendReceipt(
+  sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>, inst: Inst, rows: Inst[], amount: number,
 ): Promise<void> {
-  const tenantId = plan.tenant_id as string;
-  if (plan.household_id) {
-    await sb.from('households').update({ dues_paid_for_year: false }).eq('id', plan.household_id);
-    if (config.auto_deactivate_keyfob) {
-      // Adult + teen members lose gate access. Children unaffected (they don't have keyfobs).
-      await sb.from('household_members').update({ can_unlock_gate: false })
-        .eq('household_id', plan.household_id).eq('tenant_id', tenantId)
-        .in('role', ['primary', 'adult', 'teen']);
-    }
-  }
-  await sb.from('payment_plans').update({ enforced_at: new Date().toISOString() })
-    .eq('id', plan.id as string);
+  if (!plan.primary_email) return;
+  try {
+    const { renderAndSend } = await import('../_shared/email_template.ts');
+    const next = rows.find(r => r.sequence > inst.sequence && !isPaid(r));
+    await renderAndSend(sb, {
+      tenantId: club.tenantId,
+      templateKey: next ? 'plan_installment_paid_partial' : 'plan_installment_paid_final',
+      to: plan.primary_email as string,
+      variables: {
+        family_name: plan.family_name as string,
+        amount: '$' + (amount / 100).toFixed(2),
+        sequence: String(inst.sequence),
+        next_amount: next ? '$' + (chargeFor(next, club.feesWaived) / 100).toFixed(2) : '',
+        next_due_date: next ? next.due_date : '',
+      },
+    });
+  } catch { /* never fail the charge run because of an email */ }
 }
 
-// Mark plan lapsed: admin task + email always; access consequences only once
-// the season they paid for is actually underway.
-async function lapsePlan(sb: SupabaseClient, plan: Record<string, unknown>, config: PlanConfig): Promise<void> {
-  const planId = plan.id as string;
-  const tenantId = plan.tenant_id as string;
-  await sb.from('payment_plans').update({
-    status: 'lapsed', lapsed_at: new Date().toISOString(),
-  }).eq('id', planId);
-
-  // A card failing in January for the coming summer is a problem to chase, not
-  // a reason to switch off a keyfob nobody can use yet — and the switch-off
-  // would still be in force in June, long after the family sorted the card
-  // out. So record the lapse now, tell the board now, and let the enforcement
-  // sweep apply consequences if it is still unresolved when the pool opens.
-  const { seasonUnderway } = await import('../_shared/payment_schedule.ts');
-  const planYear = await planMembershipYear(sb, plan as { application_id?: string | null });
-  const planSet = await rawPlanSettings(sb, tenantId);
-  if (seasonUnderway(planSet.plan, planYear, undefined, planSet.opensMonth)) {
-    await enforceLapse(sb, plan, config);
-  }
-
-  await sendLapseAdminAlert(sb, tenantId, plan);
-  await sb.from('audit_log').insert({
-    tenant_id: tenantId,
-    kind: 'plan.lapsed',
-    entity_type: 'payment_plan', entity_id: planId,
-    summary: `Payment plan lapsed for ${plan.family_name}`,
-    actor_kind: 'system', actor_label: 'cron',
-    metadata: { reactivation_fee_cents: config.reactivation_fee_cents },
-  });
+/** After a payment lands: the gate if the rule is now met, and done if that
+ *  was the last one. */
+async function afterPayment(sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>): Promise<void> {
+  const rows = await installmentsOf(sb, plan.id as string);
+  await grantAccessIfReady(sb, club, plan, { announce: true, rows });
+  await completeIfPaid(sb, club, plan, rows);
 }
 
 Deno.serve(async (req) => {
@@ -557,7 +456,9 @@ Deno.serve(async (req) => {
           'metadata[application_id]': appId,
           'metadata[tenant_id]': String(tenant.id),
           application_fee_amount: platformFeeCents(amountCents, 'dues', feePolicyFromTenant(tenant)),
-        }, tenant.stripe_account_id as string);
+          // One try per renewal per day: a run retried the same day can never
+          // charge the family twice.
+        }, tenant.stripe_account_id as string, `autorenew_${appId}_${nowIso.slice(0, 10)}`);
 
         if (charge.ok && charge.data?.status === 'succeeded') {
           const now2 = new Date().toISOString();
@@ -642,99 +543,94 @@ Deno.serve(async (req) => {
     if (!CRON_SECRET || got !== CRON_SECRET) {
       return jsonResponse({ ok: false, error: 'Bad cron secret' }, 401);
     }
-    const today = new Date().toISOString().slice(0, 10);
+    // Every club's own "today" (pool time), loaded once per club.
+    const clubs = new Map<string, PlanClub | null>();
+    const clubFor = async (tid: string) => {
+      if (!clubs.has(tid)) clubs.set(tid, await loadPlanClub(sb, tid));
+      return clubs.get(tid) ?? null;
+    };
 
-    // 1. Charge installments due today (or earlier if pending/retrying)
-    const { data: dueInstallments } = await sb.from('payment_plan_installments')
-      .select('*').lte('due_date', today).in('status', ['pending', 'retrying']).limit(200);
-    let charged = 0, lapsed = 0;
-    for (const inst of (dueInstallments ?? [])) {
-      const { data: plan } = await sb.from('payment_plans').select('*').eq('id', inst.plan_id).maybeSingle();
-      if (!plan || plan.status !== 'active') continue;
+    // 1. Charge what's due today, and retry failed cards on their retry days.
+    //    A test-payment card (sim_) is never sent to Stripe; the board moves
+    //    those plans along with "Simulate the next payment".
+    let charged = 0, lapsed = 0, retried = 0;
+    const { data: activePlans } = await sb.from('payment_plans').select('*').eq('status', 'active').limit(500);
+    for (const plan of (activePlans ?? [])) {
+      const club = await clubFor(plan.tenant_id as string);
+      if (!club) continue;
+      const rows = await installmentsOf(sb, plan.id as string);
+      const due = rows.filter(r => (r.status === 'pending' || r.status === 'retrying') && r.due_date <= club.today);
+      if (!due.length) continue;
       if (!plan.stripe_customer_id || !plan.stripe_payment_method_id) continue;
-      const { data: tenant } = await sb.from('tenants').select('stripe_account_id, stripe_charges_enabled, platform_fees_waived')
-        .eq('id', plan.tenant_id).maybeSingle();
-      if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) continue;
-      const config = await getPlanConfig(sb, plan.tenant_id);
-      // One lookup per plan rather than per installment; the cron already
-      // has the tenant row for Stripe, so this only adds a column.
-      const policy = feePolicyFromTenant(tenant);
-      const result = await chargeInstallment(sb, inst, plan, tenant.stripe_account_id, config, policy);
-      if (result.paid) {
-        charged++;
-        // If all installments paid, complete the plan.
-        const { data: remaining } = await sb.from('payment_plan_installments').select('id', { count: 'exact', head: true })
-          .eq('plan_id', plan.id).neq('status', 'paid');
-        if ((remaining as unknown as { count?: number })?.count === 0) {
-          await sb.from('payment_plans').update({
-            status: 'completed', completed_at: new Date().toISOString(),
-          }).eq('id', plan.id);
-          if (plan.household_id) {
-            await sb.from('households').update({
-              dues_paid_for_year: true, paid_until_year: await planMembershipYear(sb, plan),
-            }).eq('id', plan.household_id);
-          }
+      if (String(plan.stripe_payment_method_id).startsWith('sim_')) continue;
+      if (!club.stripeAccount || !club.chargesEnabled) continue;
+      let anyPaid = false;
+      for (const inst of due) {
+        if (!retryDue(inst, club.cfg, club.today, club.tz)) break;
+        if (inst.status === 'retrying') retried++;
+        const r = await chargeInstallment(sb, club, plan, inst, rows);
+        if (r.paid) { charged++; anyPaid = true; continue; }
+        if (r.exhausted) {
+          await endPlan(sb, club, plan, 'card_failed');
+          lapsed++;
         }
+        break;   // one failure at a time; later payments wait for this one
       }
-      if (result.lapsed) {
-        lapsed++;
-        await lapsePlan(sb, plan, config);
-      }
+      if (anyPaid && plan.status === 'active') await afterPayment(sb, club, plan);
     }
 
-    // 2. Send reminders for upcoming installments (14, 7, 1 days out — config-driven)
+    // 2. The paid-in-full date: a plan still owing the day after it ends,
+    //    and the gate and fobs go off (Doug, 2026-10-07).
+    let past_deadline = 0;
+    const { data: stillActive } = await sb.from('payment_plans').select('*').eq('status', 'active').limit(500);
+    for (const plan of (stillActive ?? [])) {
+      const club = await clubFor(plan.tenant_id as string);
+      if (!club) continue;
+      const rules = rulesFor(club, await planYear(sb, plan));
+      const final = rules.milestones[rules.milestones.length - 1]?.date;
+      if (!final || club.today <= final) continue;
+      const rows = await installmentsOf(sb, plan.id as string);
+      if (rows.every(isPaid)) continue;
+      await endPlan(sb, club, plan, 'deadline');
+      past_deadline++;
+    }
+
+    // 3. Reminders before a charge, only for a club that turned them on.
     let reminded = 0;
-    const { data: planConfigs } = await sb.from('settings').select('tenant_id, value');
-    const tenantToConfig = new Map<string, PlanConfig>();
-    for (const row of (planConfigs ?? [])) {
-      const raw = ((row.value as Record<string, unknown>)?.payments as Record<string, unknown> | undefined)?.plan as Partial<PlanConfig> | undefined;
-      tenantToConfig.set(row.tenant_id as string, { ...DEFAULT_PLAN_CONFIG, ...(raw || {}) });
-    }
-    const todayMs = new Date(today + 'T00:00:00Z').getTime();
     const { data: upcoming } = await sb.from('payment_plan_installments')
-      .select('*').gt('due_date', today).eq('status', 'pending').limit(500);
+      .select('*').eq('status', 'pending').gt('due_date', new Date().toISOString().slice(0, 10)).limit(500);
     for (const inst of (upcoming ?? [])) {
-      const config = tenantToConfig.get(inst.tenant_id) ?? DEFAULT_PLAN_CONFIG;
-      const dueMs = new Date((inst.due_date as string) + 'T00:00:00Z').getTime();
-      const daysUntil = Math.round((dueMs - todayMs) / 86400_000);
-      const matchedMilestone = config.reminder_days_before.find(d => d === daysUntil);
-      if (matchedMilestone === undefined) continue;
+      const club = await clubFor(inst.tenant_id as string);
+      if (!club || !club.cfg.reminder_days_before.length) continue;
+      const daysUntil = daysBetween(club.today, inst.due_date as string);
+      const matched = club.cfg.reminder_days_before.find(d => d === daysUntil);
+      if (matched === undefined) continue;
       const sentMilestones = (inst.reminder_milestones_sent as string[]) ?? [];
-      if (sentMilestones.includes(String(matchedMilestone))) continue;
-
+      if (sentMilestones.includes(String(matched))) continue;
       const { data: plan } = await sb.from('payment_plans').select('*').eq('id', inst.plan_id).maybeSingle();
       if (!plan || plan.status !== 'active' || !plan.primary_email) continue;
-      const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', plan.tenant_id).maybeSingle();
-      if (!tenant) continue;
       const sent = await sendReminderEmail({
-        to: plan.primary_email,
-        tenantName: tenant.display_name as string,
-        familyName: plan.family_name as string,
-        amountCents: inst.amount_cents,
-        dueDate: inst.due_date as string,
-        daysUntil,
-        signinLink: `https://${tenant.slug}.poolsideapp.com/m/login.html`,
+        to: plan.primary_email, tenantName: club.name, familyName: plan.family_name as string,
+        amountCents: chargeFor(inst as Inst, club.feesWaived), dueDate: inst.due_date as string, daysUntil,
+        signinLink: `${club.clubUrl}/m/#plan`,
       });
       if (sent) {
         await sb.from('payment_plan_installments').update({
-          reminder_milestones_sent: [...sentMilestones, String(matchedMilestone)],
+          reminder_milestones_sent: [...sentMilestones, String(matched)],
         }).eq('id', inst.id);
         reminded++;
       }
     }
 
-    // 4. Enforcement sweep. Plans that lapsed before their season started are
-    //    still on the hook — apply the consequences the day the pool opens, not
-    //    the day the card bounced.
+    // 4. Plans that ended before the season started lose the gate the day it
+    //    starts, not the day the card bounced.
     let enforced = 0;
-    const { seasonUnderway } = await import('../_shared/payment_schedule.ts');
     const { data: pending } = await sb.from('payment_plans')
-      .select('*').eq('status', 'lapsed').is('enforced_at', null).limit(200);
+      .select('*').in('status', ['lapsed', 'cancelled']).is('enforced_at', null).limit(200);
     for (const plan of (pending ?? [])) {
-      const year = await planMembershipYear(sb, plan as { application_id?: string | null });
-      const raw = await rawPlanSettings(sb, plan.tenant_id as string);
-      if (!seasonUnderway(raw.plan, year, today, raw.opensMonth)) continue;
-      await enforceLapse(sb, plan, await getPlanConfig(sb, plan.tenant_id as string));
+      const club = await clubFor(plan.tenant_id as string);
+      if (!club || !(await seasonStarted(sb, club, plan))) continue;
+      await enforceEnd(sb, club, plan);
       enforced++;
     }
 
@@ -842,8 +738,13 @@ Deno.serve(async (req) => {
           .eq('active', true)
           .eq('dues_paid_for_year', false);
         if (!unpaid || !unpaid.length) continue;
+        // A family paying on a plan isn't late; its own dates decide that.
+        const { data: onPlan } = await sb.from('payment_plans').select('household_id')
+          .eq('tenant_id', c.id as string).eq('status', 'active').not('household_id', 'is', null);
+        const planned = new Set((onPlan ?? []).map(p => p.household_id as string));
 
         for (const h of unpaid) {
+          if (planned.has(h.id as string)) continue;
           const { error } = await sb.from('late_fees').insert({
             tenant_id:    c.id,
             household_id: h.id,
@@ -876,27 +777,53 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, charged, lapsed, reminded, enforced, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, charged, retried, lapsed, past_deadline, reminded, enforced, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+  }
+
+  const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+  const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
+
+  // ── A family's own plan (member token) ───────────────────────────────────
+  //   { action: 'member_plan' }    → { ok, plan }   what's paid, balance, next, schedule
+  //   { action: 'member_cancel' }  → { ok }         no refund; treated like a lapse
+  if (action === 'member_plan' || action === 'member_cancel') {
+    const m = tokRaw ? await verifyMember(tokRaw) : null;
+    if (!m) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
+    if (action === 'member_plan') {
+      return jsonResponse({ ok: true, plan: await memberPlanView(sb, m.tid, m.hid) });
+    }
+    const { data: plan } = await sb.from('payment_plans').select('*')
+      .eq('tenant_id', m.tid).eq('household_id', m.hid).eq('status', 'active')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (!plan) return jsonResponse({ ok: false, error: 'No active payment plan.' }, 404);
+    const club = await loadPlanClub(sb, m.tid);
+    if (!club) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    await endPlan(sb, club, plan, 'member_cancelled');
+    return jsonResponse({ ok: true, plan: await memberPlanView(sb, m.tid, m.hid) });
   }
 
   // ── Admin actions below — verify tenant admin ────────────────────────────
-  const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
-  const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = tokRaw ? await verifyAdmin(tokRaw) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
   if (!(await hasPaymentsScope(sb, payload))) return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
 
   if (action === 'config_get') {
-    const config = await getPlanConfig(sb, payload.tid);
-    return jsonResponse({ ok: true, config });
+    const { data } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const tiers = ((data?.value as Record<string, unknown> | undefined)?.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+    return jsonResponse({
+      ok: true, config: planConfig(data?.value),
+      tiers_available: tiers.map(t => ({ slug: t.slug, label: t.label })),
+    });
   }
 
   if (action === 'config_save') {
     const c = (body.config ?? {}) as Partial<PlanConfig>;
-    const merged: PlanConfig = { ...DEFAULT_PLAN_CONFIG, ...c };
     const { data: existing } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
     const value = (existing?.value as Record<string, unknown> | undefined) || {};
     const payments = (value.payments as Record<string, unknown> | undefined) || {};
+    // Saved over what the club already had, so a screen that does not know
+    // a setting cannot wipe it.
+    const merged = planConfig({ payments: { plan: { ...((payments.plan as Record<string, unknown>) ?? {}), ...c } } });
     const newValue = { ...value, payments: { ...payments, plan: merged } };
     if (existing) {
       const { error } = await sb.from('settings').update({ value: newValue }).eq('tenant_id', payload.tid);
@@ -905,22 +832,27 @@ Deno.serve(async (req) => {
       const { error } = await sb.from('settings').insert({ tenant_id: payload.tid, value: newValue });
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     }
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, config: merged });
   }
 
+  // The board's table: member, plan, paid, balance, next charge, status, fob.
   if (action === 'list_plans') {
-    const filter = String(body.filter ?? 'all');  // 'active' | 'lapsed' | 'completed' | 'all'
-    let q = sb.from('payment_plans').select('*').eq('tenant_id', payload.tid).order('created_at', { ascending: false }).limit(200);
-    if (filter !== 'all') q = q.eq('status', filter);
-    const { data: plans } = await q;
-    const planIds = (plans ?? []).map(p => p.id);
-    let installments: Record<string, unknown>[] = [];
-    if (planIds.length) {
-      const { data } = await sb.from('payment_plan_installments').select('*')
-        .in('plan_id', planIds).order('sequence');
-      installments = data ?? [];
+    const club = await loadPlanClub(sb, payload.tid);
+    if (!club) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const { data: plans } = await sb.from('payment_plans').select('*')
+      .eq('tenant_id', payload.tid).order('created_at', { ascending: false }).limit(300);
+    const ids = (plans ?? []).map(p => p.id);
+    const byPlan = new Map<string, Inst[]>();
+    if (ids.length) {
+      const { data } = await sb.from('payment_plan_installments').select('*').in('plan_id', ids).order('sequence');
+      for (const r of (data ?? []) as Inst[] & { plan_id: string }[]) {
+        const k = (r as unknown as { plan_id: string }).plan_id;
+        if (!byPlan.has(k)) byPlan.set(k, []);
+        byPlan.get(k)!.push(r as Inst);
+      }
     }
-    return jsonResponse({ ok: true, plans: plans ?? [], installments });
+    const views = (plans ?? []).map(p => planView(club, p, byPlan.get(p.id as string) ?? []));
+    return jsonResponse({ ok: true, plans: views, test_mode: club.testMode, today: club.today });
   }
 
   if (action === 'mark_paid') {
@@ -930,23 +862,33 @@ Deno.serve(async (req) => {
       .eq('id', id).eq('tenant_id', payload.tid).maybeSingle();
     if (!inst) return jsonResponse({ ok: false, error: 'Installment not found' }, 404);
     await sb.from('payment_plan_installments').update({
-      status: 'manual', paid_at: new Date().toISOString(),
-      last_error: null,
+      status: 'manual', paid_at: new Date().toISOString(), last_error: null,
     }).eq('id', id);
-    // If all installments now done, complete the plan.
-    const { data: rem } = await sb.from('payment_plan_installments').select('id', { count: 'exact', head: true })
-      .eq('plan_id', inst.plan_id).neq('status', 'paid').neq('status', 'manual');
-    if ((rem as unknown as { count?: number })?.count === 0) {
-      const { data: plan } = await sb.from('payment_plans').select('household_id, application_id').eq('id', inst.plan_id).maybeSingle();
-      await sb.from('payment_plans').update({
-        status: 'completed', completed_at: new Date().toISOString(),
-      }).eq('id', inst.plan_id);
-      if (plan?.household_id) {
-        await sb.from('households').update({
-          dues_paid_for_year: true, paid_until_year: await planMembershipYear(sb, plan),
-        }).eq('id', plan.household_id);
-      }
-    }
+    const club = await loadPlanClub(sb, payload.tid);
+    const { data: plan } = await sb.from('payment_plans').select('*').eq('id', inst.plan_id).maybeSingle();
+    if (club && plan) await afterPayment(sb, club, plan);
+    return jsonResponse({ ok: true });
+  }
+
+  // Test payments only: move a plan along without waiting a month. Marks
+  // the next payment paid exactly as a successful charge would, receipt and
+  // all, so the board can watch the gate open at half paid.
+  if (action === 'simulate_charge') {
+    const club = await loadPlanClub(sb, payload.tid);
+    if (!club?.testMode) return jsonResponse({ ok: false, error: 'Only while test payments are on.' }, 403);
+    const { data: plan } = await sb.from('payment_plans').select('*')
+      .eq('id', String(body.plan_id ?? '')).eq('tenant_id', payload.tid).maybeSingle();
+    if (!plan || plan.status !== 'active') return jsonResponse({ ok: false, error: 'No active plan.' }, 404);
+    const rows = await installmentsOf(sb, plan.id as string);
+    const next = rows.find(r => !isPaid(r));
+    if (!next) return jsonResponse({ ok: false, error: 'Already paid in full.' }, 409);
+    const now = new Date().toISOString();
+    await sb.from('payment_plan_installments').update({
+      status: 'paid', paid_at: now, stripe_payment_intent_id: `sim_pi_${crypto.randomUUID().slice(0, 8)}`, last_error: null,
+    }).eq('id', next.id);
+    next.status = 'paid';
+    await sendReceipt(sb, club, plan, next, rows, chargeFor(next, club.feesWaived));
+    await afterPayment(sb, club, plan);
     return jsonResponse({ ok: true });
   }
 
@@ -956,14 +898,15 @@ Deno.serve(async (req) => {
     if (!STRIPE_KEY) return jsonResponse({ ok: false, error: 'STRIPE_SECRET_KEY not set' }, 503);
     const { data: plan } = await sb.from('payment_plans').select('*').eq('id', planId).eq('tenant_id', payload.tid).maybeSingle();
     if (!plan) return jsonResponse({ ok: false, error: 'Plan not found' }, 404);
-    if (plan.status !== 'lapsed') return jsonResponse({ ok: false, error: 'Plan is not lapsed' }, 409);
+    if (plan.status !== 'lapsed' && plan.status !== 'cancelled') return jsonResponse({ ok: false, error: 'Plan is not lapsed' }, 409);
 
     const { data: tenant } = await sb.from('tenants').select('slug, stripe_account_id, stripe_charges_enabled, display_name, platform_fees_waived')
       .eq('id', payload.tid).maybeSingle();
     if (!tenant?.stripe_account_id || !tenant.stripe_charges_enabled) {
       return jsonResponse({ ok: false, error: 'Stripe not ready for this tenant' }, 503);
     }
-    const config = await getPlanConfig(sb, payload.tid);
+    const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const config = planConfig(settingsRow?.value);
 
     // Sum unpaid installments + reactivation fee
     const { data: outstanding } = await sb.from('payment_plan_installments').select('amount_cents, plan_fee_cents, id, sequence')
@@ -982,7 +925,7 @@ Deno.serve(async (req) => {
     if (total <= 0) return jsonResponse({ ok: false, error: 'Nothing owed' }, 400);
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    const params: Record<string, string> = {
+    const params: Record<string, string | number> = {
       mode: 'payment',
       success_url: `${clubUrl}/club/admin/payments.html?reactivated=1`,
       cancel_url:  `${clubUrl}/club/admin/payments.html?reactivated=0`,

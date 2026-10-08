@@ -103,8 +103,9 @@ console.log('H4 · payment plan deadlines (offline)');
     check('H4: the board can save "50% by Dec 1, the rest by May 1"', false, e.message);
   }
   const apply = read('apply.html');
-  check('H4: the signup form hides pay-in-two once its last deadline has passed',
-    /plan\.final_due_date > today/.test(apply), 'no final_due_date check');
+  // Since PLAN.md M the server's plan quote decides: none after the last deadline.
+  check('H4: the signup form hides the plan once its last deadline has passed',
+    /PLAN_QUOTE && PLAN_QUOTE\.available/.test(apply), 'plan option not tied to the quote');
 }
 
 // ── H5: the price after discounts (offline) ─────────────────────────────

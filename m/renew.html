@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Renew — Poolside</title>
 <script src="/js/pooltime.js"></script>
+<script src="/js/plan-picker.js"></script>
 <script src="/js/errors.js" defer></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
@@ -98,7 +99,7 @@ const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/stripe_checkout`;
 let OPTS = null;        // renewal_options response
 let CODE = '';          // "Have a code?" (H5, H7)
 let choice = 'full';    // 'full' | 'plan'
-let planCount = null;   // selected installment count
+let PLAN_SEL = {};      // the plan they picked: pay today, paid off by (PLAN.md M)
 
 function token() { return localStorage.getItem('poolside_member_token'); }
 function logout() {
@@ -163,7 +164,7 @@ function render() {
     return;
   }
 
-  const plansOn = !free && o.plans_enabled && (o.options || []).length > 0;
+  const plansOn = !free && !!(o.plan && o.plan.available);
   if (!plansOn) choice = 'full';
   const goLabel = free ? 'Confirm, nothing to pay' : choice === 'plan' ? 'Start my payment plan' : 'Pay ' + money(o.dues_cents);
 
@@ -176,7 +177,6 @@ function render() {
       <div class="amount-sub">${free ? 'Nothing to pay this season.' : o.pass_fee ? 'Includes the card processing fee.' : 'Total for the season.'}</div>
       ${priceLinesHtml(price)}
       ${codeHtml(price)}
-      ${plansOn && o.rules ? rulesHtml(o.rules) : ''}
     </div>
 
     ${free ? '' : `<div class="card">
@@ -192,11 +192,11 @@ function render() {
       <label class="opt ${choice === 'plan' ? 'sel' : ''}" id="opt-plan">
         <input type="radio" name="how" value="plan" ${choice === 'plan' ? 'checked' : ''}>
         <span>
-          <span class="opt-title">Spread it out</span>
-          <span class="opt-sub">Smaller payments, charged automatically to your card.</span>
+          <span class="opt-title">Payment plan</span>
+          <span class="opt-sub">Pay part today (or nothing) and the rest monthly, charged to your card.</span>
         </span>
       </label>` : ''}
-      <div id="plan-area">${choice === 'plan' ? planHtml() : ''}</div>
+      <div id="plan-area"></div>
     </div>`}
 
     ${free ? '' : `<div class="card">
@@ -217,18 +217,11 @@ function render() {
   document.querySelectorAll('input[name=how]').forEach(r => {
     r.addEventListener('change', () => {
       choice = r.value;
-      if (choice === 'plan' && planCount === null && OPTS.options.length) {
-        // Default to the option with the most payments — the smallest bite,
-        // which is the reason someone picked a plan in the first place.
-        planCount = OPTS.options[OPTS.options.length - 1].count;
-      }
       render();
     });
   });
-  document.querySelectorAll('.chip').forEach(c => {
-    c.addEventListener('click', () => { planCount = Number(c.dataset.count); render(); });
-  });
   document.getElementById('go').addEventListener('click', submit);
+  if (plansOn && choice === 'plan') PlanPicker.mount(document.getElementById('plan-area'), o.plan, onPlanChange);
   const codeBtn = document.getElementById('code-apply');
   if (codeBtn) codeBtn.addEventListener('click', applyCode);
   const codeIn = document.getElementById('code-in');
@@ -269,66 +262,21 @@ function codeHtml(p) {
 }
 async function applyCode() {
   CODE = document.getElementById('code-in').value.trim();
-  const next = await callMember('renewal_options', { discount_code: CODE });
+  const next = await callMember('renewal_options', { discount_code: CODE, ...planParams() });
   if (next.ok) OPTS = next;
   render();
 }
 
-function rulesHtml(rules) {
-  const ms = (rules.milestones || []).filter(m => m.min_pct < 100);
-  const last = (rules.milestones || []).find(m => m.min_pct >= 100);
-  if (!ms.length && !last) return '';
-  const parts = ms.map(m => `<b>${m.min_pct}%</b> by ${prettyDate(m.date)}${m.label ? ` (${esc(m.label)})` : ''}`);
-  if (last) parts.push(`<b>paid in full</b> by ${prettyDate(last.date)}`);
-  return `<div class="rules">Your club asks for ${parts.join(', and ')}.
-    Every plan below already does that — pick whichever suits you.</div>`;
+function planParams() {
+  return PLAN_SEL.payoff_month ? { plan_today_cents: PLAN_SEL.today_cents ?? 0, plan_payoff_month: PLAN_SEL.payoff_month } : {};
 }
-
-function planHtml() {
-  const o = OPTS;
-  const opts = o.options || [];
-  if (!opts.length) return '';
-  const sel = opts.find(x => x.count === planCount) || opts[opts.length - 1];
-  planCount = sel.count;
-
-  const msDates = new Set((o.rules?.milestones || []).map(m => m.date));
-  const msByDate = {};
-  (o.rules?.milestones || []).forEach(m => { msByDate[m.date] = m; });
-
-  // Show the amount the card is ACTUALLY charged — dues plus the plan fee.
-  // A schedule that lists $150 and then bills $154 is the kind of surprise
-  // that gets a board a phone call, and the fee is theirs to avoid by
-  // paying in full.
-  const feePer = Number(sel.plan_fee_per_payment_cents || 0);
-  const feeTotal = Number(sel.plan_fee_cents || 0);
-  const rows = sel.installments.map((inst, i) => {
-    const isMs = msDates.has(inst.due_date);
-    const note = isMs && msByDate[inst.due_date].label
-      ? `<div class="ms-note">${esc(msByDate[inst.due_date].label)}</div>` : '';
-    const when = i === 0
-      ? `Today<div class="first-note">Charged now</div>`
-      : `${prettyDate(inst.due_date)}${note}`;
-    return `<tr class="${isMs ? 'milestone' : ''}"><td>${when}</td><td class="amt">${money(inst.amount_cents + feePer)}</td></tr>`;
-  }).join('');
-  const feeNote = feeTotal > 0
-    ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Includes a ${money(feePer)} payment-plan fee per payment (${money(feeTotal)} in total). Paying in full avoids it.</div>`
-    : '';
-
-  return `
-    <div style="margin-top:16px">
-      <div style="font:600 11px 'Inter';letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">How many payments?</div>
-      <div class="chips">
-        ${opts.map(x => `<button class="chip ${x.count === sel.count ? 'sel' : ''}" data-count="${x.count}">${x.count}</button>`).join('')}
-      </div>
-      <table class="sched">
-        <thead><tr><th>When</th><th style="text-align:right">Amount</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      ${feeNote}
-      <p style="color:var(--muted);font-size:12.5px;margin:12px 0 0">
-        Payments after the first are charged automatically to the card you use today.
-        We'll email you before each one.</p>
-    </div>`;
+// The family changed "pay today" or "paid off by": the server prices it again.
+async function onPlanChange(sel) {
+  PLAN_SEL = sel;
+  try {
+    const next = await callMember('renewal_options', { discount_code: CODE, ...planParams() });
+    if (next.ok) { OPTS = next; PlanPicker.update(OPTS.plan); } else PlanPicker.failed();
+  } catch { PlanPicker.failed(); }
 }
 
 async function submit() {
@@ -353,8 +301,14 @@ async function submit() {
       return;
     }
 
+    let planChoice = null;
+    if (choice === 'plan') {
+      await PlanPicker.settled();
+      planChoice = PlanPicker.choice();
+      if (!planChoice) throw new Error(PlanPicker.error() || 'Choose how much to pay today and when to be paid off.');
+    }
     const payload = choice === 'plan'
-      ? { action: 'application_plan', application_id: started.application_id, installment_count: planCount }
+      ? { action: 'application_plan', ...planChoice, application_id: started.application_id }
       : { action: 'application',      application_id: started.application_id };
 
     const res = await fetch(CHECKOUT_URL, {
@@ -386,9 +340,6 @@ async function submit() {
 
     OPTS = await callMember('renewal_options');
     if (!OPTS.ok) throw new Error(OPTS.error || 'Could not load renewal details');
-    if (OPTS.plans_enabled && (OPTS.options || []).length) {
-      planCount = OPTS.options[OPTS.options.length - 1].count;
-    }
     render();
   } catch (e) {
     shell(`<div class="card"><div class="err">${esc(e.message)}</div>

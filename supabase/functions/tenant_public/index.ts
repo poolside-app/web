@@ -127,6 +127,9 @@ Deno.serve(async (req) => {
       first_installment_pct:    planTerms?.first_pct ?? 50,
       final_due_date:           planTerms?.final_due_date ?? null,
       plan_signup_cutoff_date:  ((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.plan_signup_cutoff_date as string | null) ?? null,
+      // Membership types that may use a plan; empty means all (PLAN.md M).
+      tiers: Array.isArray((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.tiers)
+        ? (v.payments as Record<string, Record<string, unknown>>).plan.tiers : [],
     },
     features: {
       swim_lessons:         !!v.features?.swim_lessons,

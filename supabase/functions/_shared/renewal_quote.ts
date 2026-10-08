@@ -10,11 +10,10 @@
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sellingYear, renewalOpen, isPaidThrough, opensMonthOf } from './membership_year.ts';
-import { resolveRules, generateSchedule, suggestedCounts } from './payment_schedule.ts';
-
-import { planFeeTotal, planFeeSchedule, feePolicyFor } from './fees.ts';
-import { poolToday, tenantTimeZone } from './pool_time.ts';
+import { feePolicyFor } from './fees.ts';
 import { priceFor, type PriceResult } from './membership_price.ts';
+import { loadPlanClub } from './plan_ops.ts';
+import { quotePlan, type PlanQuote } from './plan_quote.ts';
 
 export type RenewalQuote = {
   year: number;
@@ -24,8 +23,10 @@ export type RenewalQuote = {
   dues_cents: number;
   pass_fee: boolean;
   plans_enabled: boolean;
-  rules: unknown | null;
-  options: Array<{ count: number; installments: unknown[]; plan_fee_cents?: number; plan_fee_per_payment_cents?: number }>;
+  /** The payment plan on offer, with the family's choice priced (PLAN.md M). */
+  plan: PlanQuote | null;
+  /** Retired with count-based plans; kept empty so an old page offers none. */
+  options: never[];
   /** Before the card fee: the level's price, any code, their referral
    *  credit, and what's left (H5). What Venmo asks for. */
   price: {
@@ -40,6 +41,10 @@ export async function quoteRenewal(
   household: { id?: string | null; tier?: string | null; paid_until_year?: number | null },
   /** The renewal application's price, when there is one (priceApplication). */
   priced?: PriceResult | null,
+  /** What the family picked: pay today, paid off by. */
+  planChoice?: { today_cents?: number | null; payoff_month?: string | null },
+  /** The season, when a renewal link already fixed it. */
+  yearOverride?: number | null,
 ): Promise<RenewalQuote> {
   const { data: settings } = await sb.from('settings')
     .select('value').eq('tenant_id', tenantId).maybeSingle();
@@ -51,7 +56,7 @@ export async function quoteRenewal(
   // be charged would be a promise broken in the other direction.
   const feePolicy = await feePolicyFor(sb, tenantId);
 
-  const year = sellingYear(sv);
+  const year = yearOverride ?? sellingYear(sv);
 
   // Dues come from the household's tier — the same source the apply form uses,
   // so a renewal never quietly quotes a different number than joining would.
@@ -76,29 +81,17 @@ export async function quoteRenewal(
   const planCfg = (pay.plan as Record<string, unknown> | undefined) ?? {};
   const plansEnabled = !!planCfg.enabled;
 
-  let rules: unknown = null;
-  let options: Array<{ count: number; installments: unknown[] }> = [];
-  if (plansEnabled && duesCents > 0) {
-    const today = poolToday(await tenantTimeZone(sb, tenantId));
-    const r = resolveRules(planCfg, year, opensMonthOf(sv));
-    rules = {
-      milestones: r.milestones,
-      max_installments: r.maxInstallments,
-      min_installment_cents: r.minInstallmentCents,
-    };
-    // Each option carries its plan fee, so the signed-in renewal page and
-    // the no-login link quote the same number. This file exists precisely
-    // because those two once disagreed about price.
-    options = suggestedCounts(r, today).map(count => {
-      const gen = generateSchedule({ totalCents: duesCents, rules: r, count, startDate: today });
-      if (!gen.ok) return null;
-      return {
-        count,
-        installments: gen.installments,
-        plan_fee_cents: planFeeTotal(count, feePolicy),
-        plan_fee_per_payment_cents: planFeeSchedule(count, feePolicy)[1] ?? 0,
-      };
-    }).filter(Boolean) as Array<{ count: number; installments: unknown[] }>;
+  // The plan is spread over what they owe before the card fee; each payment
+  // carries its own card fee (plan_quote.ts).
+  let plan: PlanQuote | null = null;
+  if (plansEnabled && baseCents > 0) {
+    const club = await loadPlanClub(sb, tenantId);
+    if (club) {
+      plan = quotePlan(club, {
+        totalCents: baseCents, tierSlug: household.tier ?? null, year, policy: feePolicy,
+        todayCents: planChoice?.today_cents ?? null, payoffMonth: planChoice?.payoff_month ?? null,
+      });
+    }
   }
 
   return {
@@ -108,9 +101,9 @@ export async function quoteRenewal(
     tier_label: (tier?.label as string) ?? household.tier ?? 'Membership',
     dues_cents: duesCents,
     pass_fee: passFee,
-    plans_enabled: plansEnabled,
-    rules,
-    options,
+    plans_enabled: plansEnabled && !!plan?.available,
+    plan,
+    options: [],
     price: {
       base_cents: price.base_cents, discount_cents: price.discount_cents,
       credit_cents: price.credit_cents, amount_due_cents: price.amount_due_cents,

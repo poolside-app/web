@@ -287,7 +287,7 @@ Steps (each: failing test first, then the fix, then proof):
     - To the card the member paid their dues with, through Stripe, which sends a receipt automatically.
     - Or by Venmo or check, with the reference required.
     - The member is texted when it's approved and when it's sent.
-  - **Safety:** if the new family's payment is refunded or cancelled first, the reward is cancelled. Credit plus cash never adds up to more than the member's own membership.
+  - **Safety:** if the new family's payment is refunded or canceled first, the reward is canceled. Credit plus cash never adds up to more than the member's own membership.
   - **Tracking:** a Referral rewards list under Money: who referred whom, both payments, unlock date, approved by, paid by and how, reference, and totals (credit owed, cash paid this season). Every step is also in the audit log.
   - Also fixed: the "new to the club" check ran after the new family's own household existed, so every referral would have been rejected. "Approve & verify Venmo" never started the referral at all. Refunded and disputed card payments couldn't be recorded (the database refused the status), so a refund couldn't void anything.
 - **H7. ✅ Discount codes.**
@@ -393,6 +393,61 @@ Steps (each: failing test first, then the fix, then proof):
 - **✅ L2. Create agenda.** It uses the next planned meeting, or asks for the date, time and place and plans one; a meeting can now have a start time. It builds the agenda above, and "View agenda" shows it to any board member.
 - **✅ L3. Send to the board.** It goes to every board member by text or email (their own preference), plus a pop-up, with a link to the agenda. Only when someone presses the button. "Send again" is there if it changes.
 - **✅ L4. At the meeting.** The meeting's notes screen lists the agenda items to check off. When the meeting closes, anything not checked off goes back on the list for the next meeting, marked where it came from.
+
+### M. Flexible payment plans (Doug, 10/7)
+Doug's spec (10/7): a family pays in full, or picks how much to pay today (any amount, $0 included) and the month to be paid off by. The app splits the rest evenly by month, shows every date and amount before they commit, and charges the saved card on each date until it's paid. Everything is built and tested in Stripe test mode first.
+
+Doug decided (10/7):
+- Prices stay editable for each membership type. Keep the reactivation fee, with the amount editable.
+- Gate access and the key fob start once half is paid. If it isn't fully paid by the "paid in full by" date, the fob is shut off.
+- Bishop's deadlines: half by April 10, paid in full by July 15. The board can change them on the Payments page.
+- When a card keeps failing, the app turns off the fob and the gate unlock, and flags the family to the board. We use our own retries (4 tries over 2 weeks) rather than Stripe's invoicing.
+- A family that cancels partway through gets no refund. When a plan lapses, an email tells them their membership is canceled and how to pay the reactivation fee to come back.
+- Poolside takes the $4 per plan payment from every club. Bishop pays no fees at all until Doug switches them on.
+
+Decisions I made:
+- Monthly payments fall on the day of the month the family signs up, the 28th at most. The last payment is never later than the paid-in-full date.
+- Today's payment is $0, or at least the club's minimum payment.
+- When a club passes card fees on to members (Bishop does), each plan payment carries its own card fee, so the club pays nothing.
+- Members get a receipt for each payment and an email when one fails. The reminders 14, 7 and 1 days before each charge are turned off.
+- A monthly charge is marked paid from Stripe's direct answer to our charge. That's as sure as a webhook, since we made the call ourselves. Card setups and payments made on Stripe's page come in through the signed webhook.
+- Paying off early drops any plan fees that haven't been charged yet.
+
+Done 10/7: `node scripts/test_flex_plan.mjs` (offline, 61 checks; `--live` runs M8 on a throwaway club, about 40 calls) and `RENDER_ONLY=plans node scripts/test_screens.mjs --render`.
+Families only see a plan once the season on sale has deadlines still ahead. Bishop sells 2026 until next season goes on sale (December 1 by default, Settings → Season, C1), so the plan option appears then.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ M1. The calculator.** Given the price, today's amount and the payoff month, it works out every date and amount, and checks the half-paid and paid-in-full dates. When a plan misses the half rule, it gives the reason and the least the family must pay today. Tested on Doug's Members A, B and C, the rounding case, a late joiner after the half date, and signing up after the paid-in-full date (pay in full only).
+- **✅ M2. Club settings** (Payments page):
+  - Plans on or off.
+  - The deadlines: half by, paid in full by.
+  - Minimum payment.
+  - Reactivation fee.
+  - Which membership types can use a plan.
+  - When the gate and fob start: card saved, first payment, or half paid.
+
+  Bishop gets: on, half by April 10, full by July 15, half paid, $25 minimum, $50 reactivation.
+
+  The season's open and close dates stay in Settings → Season. "Turn things off when the pool opens" uses that start date.
+- **✅ M3. Choosing a plan** (joining, and renewing): "Pay in full" or "Payment plan", with "pay today" and "paid off by". The schedule shows before they commit, worked out by the server. If the plan misses a deadline, the screen says why and offers the least amount that works. With $0 today, the card is saved on Stripe's page without a charge. Also fixes C2: plan families were told to pay right after paying.
+- **✅ M4. Charging.**
+  - Each payment goes on its date and comes with a receipt. The plan stops at the total. Retries can't double-charge.
+  - A failed card gets one email to the family and up to 4 tries over 2 weeks.
+  - Once half is paid, the gate opens and the Facilities Director is told the fob can go on.
+  - If the card still fails, the plan lapses. The family is told their membership is canceled and how to come back. The Treasurer gets one email. Gate unlock goes off, and the Facilities Director is told to turn off the fob, starting when the season starts.
+  - The same happens to anyone not fully paid by the paid-in-full date.
+- **✅ M5. The family's plan in the app.**
+  - Shows what's paid, the balance, the next charge and the whole schedule.
+  - Update card: if a payment failed, the new card pays it at once.
+  - Pay off now.
+  - Cancel: no refund, and it works like a lapse.
+  - Reinstate: pay what's overdue plus the reactivation fee.
+- **✅ M6. The board's table** on Payments.
+  - Columns: member, plan, paid, balance, next charge, status (current, past due, paid in full, canceled) and fob (on, not yet, turn off).
+  - Past due shows in red.
+  - Tap a row for its payments, Mark paid and the reactivation link.
+- **✅ M7. Fees.** Turn on Bishop's existing "no Poolside fees" switch. The $4 plan fee stays for every other club.
+- **✅ M8. Live test** on a throwaway club with its own Stripe test account and Stripe's test cards. It covers a plan from start to finish, a declined card, a card updated after a failure, paying off early, canceling, a late joiner and the rounding. Then the club is deleted.
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).

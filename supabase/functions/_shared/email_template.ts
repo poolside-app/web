@@ -169,14 +169,14 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
   },
   {
     key: 'application_approved_plan_first',
-    label: 'Welcome — first installment paid (combined receipt + welcome)',
-    description: 'Sent when an applicant\'s first Stripe-plan installment clears. Single email confirms application received AND first installment paid AND second installment scheduled. The "application received" email is suppressed for plan paths. Legal-evidence PDF attached.',
+    label: 'Welcome — payment plan set up',
+    description: 'Sent when a family\'s payment plan is set up: their first payment cleared, or their card was saved with nothing due today. One email confirms the application and the plan. The "application received" email is suppressed for plan paths. Legal-evidence PDF attached.',
     audience: 'applicant',
     variables: ['tenant_name', 'primary_name', 'sign_in_link', 'club_url'],
     default_subject: 'You\'re in — welcome to {{tenant_name}}!',
     default_body_html: withShell(`
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">🎉 Welcome to {{tenant_name}}!</h2>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application <b>and</b> your first installment cleared. Your membership is active. Your second installment will auto-charge on the final due date and we'll email a reminder before then.</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{primary_name}} — we got your application and your payment plan is set up. Your card is charged on each date in your schedule, with a receipt each time. Sign in to see what's paid, your balance and your next payment.</p>
       <p style="margin:24px 0">
         <a href="{{sign_in_link}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to {{tenant_name}}</a>
       </p>
@@ -337,7 +337,7 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
     default_body_html: withShell(`
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">✓ Installment {{sequence}} cleared</h2>
       <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we charged <b>{{amount}}</b> on the card you saved at sign-up.</p>
-      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Your next installment of <b>{{next_amount}}</b> auto-charges on <b>{{next_due_date}}</b>. We'll send a reminder a few weeks before.</p>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Your next payment of <b>{{next_amount}}</b> is charged on <b>{{next_due_date}}</b>.</p>
       <p style="margin:24px 0">
         <a href="{{club_url}}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
       </p>
@@ -356,6 +356,25 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       <p style="margin:24px 0">
         <a href="{{club_url}}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to your member home</a>
       </p>
+    `),
+  },
+  {
+    key: 'plan_cancelled',
+    label: 'Payment plan ended — membership canceled',
+    description: 'Sent when a payment plan ends: the card kept failing, it was not paid in full by the club\'s deadline, or the family canceled. Nothing is refunded. Tells them how to come back: pay what is overdue plus the reactivation fee.',
+    audience: 'member',
+    variables: ['tenant_name', 'family_name', 'reason', 'paid', 'owed', 'fee', 'total', 'manage_url', 'club_url'],
+    default_subject: 'Your {{tenant_name}} membership is canceled',
+    default_body_html: withShell(`
+      <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">Your membership is canceled</h2>
+      <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — your <b>{{tenant_name}}</b> membership is canceled because {{reason}}. Your gate access and key fobs are off until you reinstate. The {{paid}} you've paid is not refunded.</p>
+      <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12;line-height:1.55">
+        <b>To come back:</b> pay what's overdue ({{owed}}) plus the {{fee}} reactivation fee, {{total}} in all. Your plan then carries on where it left off.
+      </div>
+      <p style="margin:24px 0">
+        <a href="{{manage_url}}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Reinstate my membership</a>
+      </p>
+      <p style="margin:0;color:#64748b;font-size:13px">Questions? Reply to this email to reach the board.</p>
     `),
   },
   // ─── Household roster ────────────────────────────────────────────────
@@ -389,10 +408,10 @@ export const EMAIL_REGISTRY: EmailTemplateDef[] = [
       <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">⚠ Card declined</h2>
       <p style="margin:0 0 12px;color:#475569;line-height:1.55">Hi {{family_name}} — we tried to charge <b>{{amount}}</b> for installment {{sequence}} of your <b>{{tenant_name}}</b> dues, but your card was declined.</p>
       <div style="margin:18px 0;padding:14px 16px;background:#fef3c7;border-radius:10px;font-size:13px;color:#7c2d12">
-        <b>What happens next:</b> we'll retry automatically over the next ~14 days. To avoid lapsing, please contact the board to update your payment method.
+        <b>What happens next:</b> we'll try the card again over the next two weeks. If it still can't be charged, your membership is canceled. Update your card in the app and the payment goes through right away.
       </div>
       <p style="margin:24px 0">
-        <a href="{{club_url}}/m/login.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to contact the board</a>
+        <a href="{{club_url}}/m/#plan" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Update my card</a>
       </p>
       <p style="margin:0;color:#64748b;font-size:13px">Common reasons: card expired, address changed, or daily limit reached. Replying to this email is the fastest way to reach us.</p>
     `),

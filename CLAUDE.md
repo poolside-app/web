@@ -20,7 +20,7 @@ node scripts/test_payments.mjs    # targeted: fake card + fake Venmo signup end 
 node scripts/test_screens.mjs [--live] [--render]   # member/board screens (D1–D13); offline by default
 ```
 
-Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas). `ONLY=<step>` limits the live part of the last three.
+Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas), `test_flex_plan` (payment plans; offline by default, `--live` uses a throwaway club with its own Stripe test account). `ONLY=<step>` limits the live part of the last four.
 
 All of these read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
 
@@ -77,6 +77,16 @@ The Free Forever tier was retired 2026-09; `plan='free'` survives only as a lega
 ### Board positions
 
 Each club has its own board positions (`board_positions`, `board_position_holders`), edited on Settings → Board (`board` function). A position has a job description, the alerts it gets (`notices`) and the screens it can use (`scopes`); holding it sets the person's `board_title`, role and scopes (`_shared/positions_db.ts` `syncLogins`). Positions replaced the old fixed role templates in the UI. Permission checks read the login's current role and scopes from the database, so a change applies on the next call. An empty position's alerts go to the President, then the Vice-President. `node scripts/test_positions.mjs [--offline]`.
+
+### Payment plans
+
+A family pays in full, or picks how much to pay today ($0 included) and the month to be paid off by (PLAN.md M). `_shared/flex_plan.ts` splits the rest evenly by month and checks the club's deadlines (`settings.payments.plan.milestones`, "half by April 10", "paid in full by July 15"). `_shared/plan_quote.ts` prices the offer for the join form, the renewal pages and checkout, so the family is charged exactly the schedule they saw. That includes the $4 plan fee (unless the club's fees are waived) and the card fee when the club passes card fees on. `_shared/plan_ops.ts` holds the rules everyone shares:
+- The gate opens once half is paid; the club can choose card saved or first payment instead.
+- A card is retried 3, 7 and 14 days after it is first declined.
+- A plan ends on the fourth decline, when the family cancels, or if it isn't paid by the paid-in-full date. Then the family is emailed that their membership is canceled, the Treasurer gets one email, and the gate goes off: from the season's start, or straight away at the deadline.
+- To reinstate, the family pays what's overdue plus the reactivation fee.
+
+The daily `payment_plans` cron charges with idempotency keys. Test-payment cards (`sim_pm_…`) are never sent to Stripe; the board uses "Simulate the next payment" instead. `node scripts/test_flex_plan.mjs [--live]`.
 
 ### Member help
 

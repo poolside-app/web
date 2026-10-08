@@ -785,7 +785,25 @@ Deno.serve(async (req) => {
       phone: rawPhone ? normalizePhoneE164(rawPhone) : null,
       code: body.code != null ? String(body.code) : null,
     });
-    return jsonResponse({ ok: true, price: publicPrice(q) });
+    // The payment plan on offer at this price, with what they picked
+    // (PLAN.md M). Worked out here so the form never does the math.
+    let plan: unknown = null;
+    try {
+      const { loadPlanClub } = await import('../_shared/plan_ops.ts');
+      const club = await loadPlanClub(sb, tenant.id as string);
+      if (club?.cfg.enabled) {
+        const { quotePlan } = await import('../_shared/plan_quote.ts');
+        const { sellingYear } = await import('../_shared/membership_year.ts');
+        const { feePolicyFor } = await import('../_shared/fees.ts');
+        plan = quotePlan(club, {
+          totalCents: q.amount_due_cents, tierSlug: strOrNull(body.tier_slug), year: sellingYear(club.sv),
+          policy: await feePolicyFor(sb, tenant.id as string),
+          todayCents: body.plan_today_cents == null ? null : Number(body.plan_today_cents),
+          payoffMonth: strOrNull(body.plan_payoff_month),
+        });
+      }
+    } catch (e) { console.error('plan quote:', (e as Error).message); }
+    return jsonResponse({ ok: true, price: publicPrice(q), plan });
   }
 
   // ── set_code — public: "Have a code?" on a renewal (H5, H7) ───────────
@@ -958,7 +976,9 @@ Deno.serve(async (req) => {
     const priced = await priceApplication(sb, app.id as string,
       body.discount_code !== undefined ? { code: String(body.discount_code ?? '') } : {});
     const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
-    const quote = await quoteRenewal(sb, tenant.id as string, { ...household, id: app.household_id as string }, priced);
+    const quote = await quoteRenewal(sb, tenant.id as string, { ...household, id: app.household_id as string }, priced,
+      { today_cents: body.plan_today_cents == null ? null : Number(body.plan_today_cents), payoff_month: strOrNull(body.plan_payoff_month) },
+      (app.membership_year as number | null) ?? null);
 
     // Stamp first use so a board can see who has opened their link — the
     // difference between "they are ignoring us" and "it never arrived".
@@ -1507,7 +1527,12 @@ Deno.serve(async (req) => {
       // "guest checkout" (no_app_member=true), append "_no_app" so they
       // get the warmer, magic-link-free copy.
       let templateKey = 'application_approved_other';
-      if (app.payment_status === 'paid') {
+      // A payment-plan family is set up, not owing: their plan charges the
+      // card on its dates (C2, PLAN.md M).
+      const onPlan = app.payment_method === 'stripe_plan';
+      if (onPlan) {
+        templateKey = 'application_approved_plan_first';
+      } else if (app.payment_status === 'paid') {
         if      (app.payment_method === 'stripe')      templateKey = 'application_approved_stripe_paid';
         else if (app.payment_method === 'venmo')       templateKey = 'application_approved_venmo_verified';
         else if (app.payment_method === 'stripe_plan') templateKey = 'application_approved_plan_first';
@@ -1525,7 +1550,7 @@ Deno.serve(async (req) => {
       // the legal-evidence PDF (frozen at submit time) here so it still
       // reaches the family.
       let welcomeAttachments: Array<{ filename: string; content: string; contentType?: string }> | undefined;
-      if (app.payment_status === 'paid' && (app.payment_method === 'stripe' || app.payment_method === 'stripe_plan')) {
+      if ((app.payment_status === 'paid' && app.payment_method === 'stripe') || onPlan) {
         try {
           const { loadApplicationForPdf } = await import('../_shared/sync_application.ts');
           const { renderApplicationPdf } = await import('../_shared/application_pdf.ts');
@@ -1576,8 +1601,10 @@ Deno.serve(async (req) => {
           const { sendSms } = await import('../_shared/send_sms.ts');
           const firstNm = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
           // GSM-7 only. One curly quote or dash doubles the segment count.
-          const owes = app.payment_status !== 'paid';
-          const body = owes
+          const owes = app.payment_status !== 'paid' && !onPlan;
+          const body = onPlan
+            ? `Hi ${firstNm}, your membership at ${clubName} is approved and your payment plan is set up. Tap to sign in and see your schedule: ${verifyLink}`
+            : owes
             ? `Hi ${firstNm}, your membership at ${clubName} is approved. Last step is your dues - tap to sign in and pay: ${verifyLink}`
             : `Hi ${firstNm}, you're all set - your membership at ${clubName} is approved and paid. Tap to sign in: ${verifyLink}`;
           const r = await sendSms({

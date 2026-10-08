@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apply for membership — Poolside</title>
 <script src="/js/pooltime.js"></script>
+<script src="/js/plan-picker.js"></script>
 <script src="/js/errors.js" defer></script>
 <!-- PWA wiring on the apply page so the icon + theme color match if a user
      adds it to their home screen mid-application. (We don't show an install
@@ -287,9 +288,12 @@
       </label>
       <label class="pay-opt" id="pay-opt-stripe-plan" style="display:none">
         <input type="radio" name="payment_method" value="stripe_plan" onchange="paintVenmoQR()">
-        🗓️ <b><span id="plan-label">Pay in 2 installments via Stripe</span></b>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Two card charges. Card saved for the second one.</div>
+        🗓️ <b>Payment plan</b>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Pay part today (or nothing) and the rest monthly, charged to your card.</div>
       </label>
+      <!-- "Pay today" and "Paid off by", and the whole schedule before they
+           commit. The server prices it (js/plan-picker.js, PLAN.md M). -->
+      <div id="plan-picker" style="display:none;padding:0 4px 12px"></div>
       <!-- Auto-renew, offered at the one moment the family is demonstrably
            willing to set up recurring payment: while they are already
            entering a card. Hidden for Venmo/offline, where there is no
@@ -352,29 +356,29 @@ const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
 let TENANT_PUBLIC = null;  // populated on boot from tenant_public
 
-// Paint the dynamic split-amount label on the Pay-in-2 radio. Triggered:
-//   - On boot once tenant_public returns
-//   - When user changes tier selection on Step 4 (re-paint with new $ split)
+// The payment plan option (PLAN.md M). Shown when the club takes cards, has
+// plans on, and the server says a plan works at this price and today's date.
+let PLAN_QUOTE = null;     // the plan on offer, priced by applications.quote
+let PLAN_SEL = {};         // what they picked: pay today, paid off by
+let PLAN_ALLOWED = false;  // card payments and plans are both on
 function paintPlanLabel() {
-  const plan = window.__POOLSIDE_PLAN__;
-  if (!plan) return;
-  const labelEl = document.getElementById('plan-label');
-  if (!labelEl) return;
-  const totalCents = dueCents();   // after any discount (H5)
-  if (totalCents > 0) {
-    const pct = Math.max(1, Math.min(99, Number(plan.first_installment_pct) || 50));
-    const first = Math.round(totalCents * pct / 100);
-    const second = totalCents - first;
-    const finalDue = String(plan.final_due_date || '').slice(0, 10);
-    // Disclose the convenience fee here, where the choice is actually made
-    // — not first at Stripe checkout, where it reads as a surprise.
-    const PLAN_FEE = 4;
-    labelEl.innerHTML = `Pay in 2 installments via Stripe — $${((first/100) + PLAN_FEE).toFixed(0)} now, $${((second/100) + PLAN_FEE).toFixed(0)} auto-charged on ${escapeHtml(finalDue)}`
-      + `<span style="display:block;font-weight:400;color:var(--muted);font-size:11.5px;margin-top:2px">Includes a $${PLAN_FEE}.00 payment-plan fee per payment. Paying in full avoids it.</span>`;
-  } else {
-    labelEl.textContent = 'Pay in 2 installments via Stripe';
+  const opt = document.getElementById('pay-opt-stripe-plan');
+  const box = document.getElementById('plan-picker');
+  if (!opt || !box) return;
+  const show = PLAN_ALLOWED && !isFree() && !!(PLAN_QUOTE && PLAN_QUOTE.available);
+  opt.style.display = show ? '' : 'none';
+  const radio = opt.querySelector('input');
+  if (!show && radio.checked) {
+    const card = document.querySelector('input[name="payment_method"][value="stripe"]');
+    if (card) card.checked = true;
   }
+  const on = show && radio.checked;
+  box.style.display = on ? '' : 'none';
+  if (!on) return;
+  if (box.dataset.mounted) PlanPicker.update(PLAN_QUOTE);
+  else { PlanPicker.mount(box, PLAN_QUOTE, onPlanChange); box.dataset.mounted = '1'; }
 }
+async function onPlanChange(sel) { PLAN_SEL = sel; await refreshQuote(); }
 // Re-paint when tier choice changes
 document.addEventListener('change', (e) => {
   if (e.target && e.target.name === 'tier_slug') { paintPlanLabel(); paintPaymentChoices(); refreshQuote(); }
@@ -409,11 +413,13 @@ async function refreshQuote() {
         referral_code: window.__POOLSIDE_REF_CODE__ || null,
         email: primary.email || document.getElementById('primary_email').value.trim() || null,
         phone: primary.phone || document.getElementById('primary_phone').value.trim() || null,
+        ...(PLAN_SEL.payoff_month ? { plan_today_cents: PLAN_SEL.today_cents ?? 0, plan_payoff_month: PLAN_SEL.payoff_month } : {}),
       }),
     }).then(x => x.json());
     if (seq !== QUOTE_SEQ) return;       // a newer quote is on its way
-    if (r.ok) PRICE = r.price;
-  } catch { /* keep the list price; submit and checkout price it anyway */ }
+    if (r.ok) { PRICE = r.price; PLAN_QUOTE = r.plan || null; }
+    else if (window.PlanPicker) PlanPicker.failed();
+  } catch { if (window.PlanPicker) PlanPicker.failed(); /* keep the list price; submit and checkout price it anyway */ }
   paintPrice(); paintPaymentChoices(); paintPlanLabel(); paintVenmoQR();
 }
 function paintPrice() {
@@ -531,6 +537,7 @@ function syncAutoRenewOpt() {
 
 function paintVenmoQR() {
   syncAutoRenewOpt();
+  paintPlanLabel();
   const block = document.getElementById('venmo-block');
   const method = document.querySelector('input[name="payment_method"]:checked')?.value || '';
   const handle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
@@ -1055,6 +1062,13 @@ async function submitApplication() {
   const slug = getSlug();
   if (!slug) return show('No club detected from URL');
   const errEl = document.getElementById('err'); errEl.classList.remove('show');
+  // A payment plan has to work before the application goes in (PLAN.md M).
+  let planChoice = null;
+  if (!isFree() && (document.querySelector('input[name="payment_method"]:checked')?.value || '') === 'stripe_plan') {
+    await PlanPicker.settled();
+    planChoice = PlanPicker.choice();
+    if (!planChoice) return show(PlanPicker.error() || 'Choose how much to pay today and when to be paid off.');
+  }
   const adults = collectAdults();
   const children = collectChildren();
 
@@ -1212,6 +1226,7 @@ async function submitApplication() {
           body: JSON.stringify({
             action: isStripePlan ? 'application_plan' : 'application',
             application_id: appId,
+            ...(isStripePlan ? planChoice : {}),
           }),
         }).then(r => r.json());
         if (!cr.ok) throw new Error(cr.error || 'Checkout failed');
@@ -1492,7 +1507,7 @@ async function prefillFromClaim(token) {
       const appId = params.get('app_id');
       await renderPostPaymentSuccess(
         '✓ You\'re in!',
-        'First installment paid. Your second installment auto-charges on the final due date — we\'ll email reminders before each charge.',
+        'Your payment plan is set up. Each payment is charged to your card on its date, with a receipt. Sign in to see your schedule.',
         appId,
       );
       appendAdminContinueIfNeeded();
@@ -1535,25 +1550,9 @@ async function prefillFromClaim(token) {
         if (d.tenant.stripe_charges_enabled || testMode) {
           const opt = document.getElementById('pay-opt-stripe');
           if (opt) opt.style.display = '';
-          // Pay-in-2 option requires (a) plan enabled in club settings,
-          // (b) we're before the signup cutoff date and the last deadline.
+          // The payment plan option follows the server's quote (paintPlanLabel).
           const plan = d.public_settings && d.public_settings.payment_plan;
-          if (plan && plan.enabled && plan.final_due_date) {
-            const today = PoolTime.todayKey();
-            const cutoffOk = !plan.plan_signup_cutoff_date || today <= plan.plan_signup_cutoff_date;
-            // Nothing left to spread a payment over once the last deadline
-            // has passed.
-            const windowOpen = plan.final_due_date > today;
-            if (cutoffOk && windowOpen) {
-              const planOpt = document.getElementById('pay-opt-stripe-plan');
-              if (planOpt) {
-                planOpt.style.display = '';
-                // Update the label dynamically once tier price is known.
-                window.__POOLSIDE_PLAN__ = plan;  // used by paintPlanLabel()
-                paintPlanLabel();
-              }
-            }
-          }
+          PLAN_ALLOWED = !!(plan && plan.enabled);   // the price step asks for the quote
         }
         const logoUrl = d.public_settings && d.public_settings.branding && d.public_settings.branding.logo_url;
         // Cache so the next page-load paints the right name synchronously (no flicker).

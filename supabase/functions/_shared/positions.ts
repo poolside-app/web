@@ -66,6 +66,10 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'application.refund': 'payments',
   'application.dispute': 'payments',
   'plan.lapsed': 'payments',
+  'plan.cancelled': 'payments',
+  // The fobs themselves are the Facilities Director's (PLAN.md M).
+  'plan.fob_on': 'gate',
+  'plan.fob_off': 'gate',
   'renewal.auto_renew_failed': 'payments',
   'referral.reward_request': 'referrals',
   'party.requested': 'rentals',

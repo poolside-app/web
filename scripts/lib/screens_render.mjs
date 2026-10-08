@@ -6,7 +6,7 @@ import { makeTempMember, purgeTestFamilies } from './testdata.mjs';
 
 const HOST = 'https://bishopestates.poolsideapp.com';
 const LOCAL = {
-  '/apply.html': 'apply.html',
+  '/apply.html': 'apply.html', '/js/plan-picker.js': 'js/plan-picker.js', '/renew.html': 'renew.html',
   '/m/': 'm/index.html', '/m/index.html': 'm/index.html', '/m/login.html': 'm/login.html',
   '/club/admin/members.html': 'club/admin/members.html',
   '/': 'club/index.html', '/index.html': 'club/index.html',
@@ -49,7 +49,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
         return (async () => {
           const res = await fetch(r.url(), { method: 'POST', headers: r.headers(), body: r.postData() });
           let json = await res.json().catch(() => null);
-          try { json = rewrite(JSON.parse(r.postData() || '{}').action, json) ?? json; } catch { /* leave it */ }
+          try { const body = JSON.parse(r.postData() || '{}'); json = rewrite(body.action, json, body) ?? json; } catch { /* leave it */ }
           r.respond({ status: res.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(json) });
         })();
       }
@@ -379,6 +379,90 @@ export async function renderChecks({ check, read, sql, jwt }) {
     const again = await h.$eval('.hero-card .sub', el => el.textContent.trim());
     check('D3: the next visit says "Welcome back"', /^Welcome back to /.test(again), again);
     check('member home: no page errors or browser pop-ups', h.errs.length === 0, h.errs.join(' | '));
+    }
+
+    if (want('plans')) {
+    // PLAN.md M: the plan picker, the family's plan card and the board's
+    // table. Bishop sells the 2026 season until December, so a 2027 plan is
+    // put in the server's answers for the render, priced by the real code.
+    const { importTs } = await import('./importts.mjs');
+    const pq = await importTs(new URL('../../supabase/functions/_shared/plan_quote.ts', import.meta.url));
+    const ops = await importTs(new URL('../../supabase/functions/_shared/plan_ops.ts', import.meta.url));
+    const [{ today }] = await sql(`select to_char(now() at time zone 'America/Los_Angeles', 'YYYY-MM-DD') as today`);
+    const fake = {
+      tenantId: club.id, slug: 'bishopestates', name: 'Bishop Estates', tz: 'America/Los_Angeles', today, sv: {}, opensMonth: 12,
+      cfg: ops.planConfig({ payments: { plan: { enabled: true, access_when: 'half_paid',
+        milestones: [{ date: '04-10', min_pct: 50, label: 'Half paid' }, { date: '07-15', min_pct: 100, label: 'Paid in full' }] } } }),
+      passFee: true, pct: 0.029, fixed: 30, stripeAccount: null, chargesEnabled: false, feesWaived: true, testMode: true, clubUrl: HOST,
+    };
+    const quote = body => pq.quotePlan(fake, { totalCents: 60000, tierSlug: 'family', year: 2027, policy: { waived: true },
+      todayCents: body?.plan_today_cents ?? null, payoffMonth: body?.plan_payoff_month ?? null });
+
+    const ap = await open('/apply.html', {}, (action, json, body) => {
+      if (json && json.public_settings) return { ...json, public_settings: { ...json.public_settings, payment_plan: { ...(json.public_settings.payment_plan || {}), enabled: true } } };
+      if (action === 'quote' && json) return { ...json, plan: quote(body) };
+      return json;
+    });
+    await ap.evaluate(async () => { showStep(4); await refreshQuote(); });
+    await wait(500);
+    const opt = await ap.evaluate(() => getComputedStyle(document.getElementById('pay-opt-stripe-plan')).display);
+    check('M3: the join form offers "Payment plan"', opt !== 'none', opt);
+    await ap.evaluate(() => { const r = document.querySelector('input[name="payment_method"][value="stripe_plan"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); });
+    await ap.waitForSelector('#pp-result table', { timeout: 15000 }).catch(() => {});
+    const pick1 = await ap.evaluate(() => ({ text: document.getElementById('plan-picker').innerText.replace(/\s+/g, ' '), months: document.querySelectorAll('#pp-month option').length }));
+    check('M3: "Pay today" and "Paid off by", then every date and amount', /Pay today/i.test(pick1.text) && /Paid off by/i.test(pick1.text) && /Total \$\d/i.test(pick1.text) && pick1.months >= 6, pick1.text.slice(0, 240));
+    await ap.evaluate(() => { const t = document.getElementById('pp-today'); t.value = '5'; t.dispatchEvent(new Event('input')); });
+    await ap.waitForFunction(() => /at least \$25/.test(document.getElementById('pp-result').innerText), { timeout: 15000 }).catch(() => {});
+    const small = await ap.$eval('#pp-result', el => el.innerText.replace(/\s+/g, ' '));
+    check('M3: $5 today is refused with the reason', /\$0 today, or at least \$25/.test(small), small.slice(0, 160));
+    await ap.evaluate(() => { const t = document.getElementById('pp-today'); t.value = '100'; t.dispatchEvent(new Event('input')); });
+    await ap.waitForFunction(() => /Today/.test(document.getElementById('pp-result').innerText), { timeout: 15000 }).catch(() => {});
+    const ok100 = await ap.evaluate(() => ({ text: document.getElementById('pp-result').innerText.replace(/\s+/g, ' '), choice: PlanPicker.choice(),
+      wide: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
+    check('M3: $100 today shows today first, then monthly; checkout gets that choice', /Today \$\d/.test(ok100.text) && ok100.choice?.today_cents === 10000 && !!ok100.choice?.payoff_month, JSON.stringify(ok100).slice(0, 240));
+    check('M3: fits a phone', ok100.wide <= 1, String(ok100.wide));
+    check('M3: join form has no page errors', ap.errs.length === 0, ap.errs.join(' | '));
+    await ap.evaluate(() => document.getElementById('plan-picker').scrollIntoView());
+    await ap.screenshot({ path: '/tmp/poolside-plan-picker.png' });
+
+    // The family's own plan on the member home: past due, then lapsed.
+    const rows = [1, 2, 3, 4, 5, 6].map(i => ({ id: 'i' + i, sequence: i, due_date: `2027-0${i}-07`, amount_cents: 10000, plan_fee_cents: 0, card_fee_cents: 330, status: i === 1 ? 'paid' : i === 2 ? 'retrying' : 'pending', last_error: i === 2 ? 'Your card was declined.' : null }));
+    const view = (status) => ({ ...ops.planView({ ...fake, today: '2027-02-10' }, { id: 'p1', status, total_cents: 60000, family_name: FAMILY, stripe_payment_method_id: 'pm_x', ended_reason: status === 'active' ? null : 'card_failed' }, rows), year: 2027 });
+    const memTok2 = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
+    let planStatus = 'active';
+    const hp = await open('/m/#plan', { poolside_member_token: memTok2 }, (action, json) => action === 'me' && json ? { ...json, plan: view(planStatus) } : json);
+    await hp.waitForSelector('#plan', { timeout: 30000 }).catch(() => {});
+    const card = await hp.evaluate(() => document.getElementById('plan')?.innerText.replace(/\s+/g, ' ') || '');
+    check('M5: the family sees paid, balance, next payment', /\$100\.00 paid of \$600\.00/.test(card) && /\$500\.00 left/.test(card) && /Next payment/.test(card), card.slice(0, 200));
+    check('M5: past due says so, with Update card and pay now, Pay off, Cancel', /didn't go through/.test(card) && /Update card and pay now/i.test(card) && /Pay off \$515\.\d\d/i.test(card) && /Cancel plan/i.test(card), card.slice(0, 300));
+    check('M5: gate and fob wait for half', /start once half is paid/.test(card), card.slice(0, 300));
+    await hp.evaluate(() => document.getElementById('plan')?.scrollIntoView());
+    await hp.screenshot({ path: '/tmp/poolside-my-plan.png' });
+    planStatus = 'lapsed';
+    await hp.reload({ waitUntil: 'networkidle2' });
+    await hp.waitForSelector('#plan', { timeout: 30000 }).catch(() => {});
+    const gone = await hp.evaluate(() => document.getElementById('plan')?.innerText.replace(/\s+/g, ' ') || '');
+    check('M5: lapsed: membership canceled, Reinstate with the amount', /membership is canceled/.test(gone) && /Reinstate: pay \$\d/i.test(gone) && /\$50\.00 reactivation fee/.test(gone), gone.slice(0, 300));
+    check('M5: member home has no page errors', hp.errs.length === 0, hp.errs.join(' | '));
+
+    // The board's table and settings.
+    const ownerTok2 = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+    const listed = ['active', 'lapsed'].map(st => ({ ...view(st), id: 'p-' + st, primary_email: 'x@example.com' }));
+    const pay = await open('/club/admin/payments.html', { poolside_tenant_token: ownerTok2 }, (action, json) =>
+      action === 'list_plans' && json ? { ...json, plans: listed, test_mode: true } : json);
+    await pay.waitForSelector('#plans-list table', { timeout: 30000 }).catch(() => {});
+    await pay.waitForSelector('#plan-tiers input', { timeout: 15000 }).catch(() => {});
+    const tbl = await pay.evaluate(() => ({
+      head: [...document.querySelectorAll('#plans-list th')].map(t => t.textContent).join('|'),
+      body: document.querySelector('#plans-list tbody')?.textContent.replace(/\s+/g, ' ') || '',
+      access: document.getElementById('plan-access')?.value, tiers: document.querySelectorAll('#plan-tiers input').length,
+    }));
+    check('M6: the board table: member, plan, paid, balance, next charge, status, fob', tbl.head === 'Member|Plan|Paid|Balance|Next charge|Status|Fob', tbl.head);
+    check('M6: past due and lapsed rows say so', /Past due/i.test(tbl.body) && /Lapsed/i.test(tbl.body), tbl.body.slice(0, 200));
+    check('M2: Bishop\'s settings: gate at half paid, a box per membership type', tbl.access === 'half_paid' && tbl.tiers >= 2, JSON.stringify(tbl).slice(0, 160));
+    check('M6: payments page has no page errors', pay.errs.length === 0, pay.errs.join(' | '));
+    await pay.evaluate(() => { const d = document.getElementById('plans')?.closest('details'); if (d) d.open = true; document.getElementById('plans')?.scrollIntoView(); });
+    await pay.screenshot({ path: '/tmp/poolside-plans-table.png' });
     }
   } finally {
     await purgeTestFamilies(sql, club.id, `${FAMILY}%`);

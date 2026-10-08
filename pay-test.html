@@ -75,6 +75,11 @@ if (!c) {
   document.getElementById('name').textContent = c.name || 'Test checkout';
   document.getElementById('desc').textContent = c.desc || '';
   document.getElementById('amount').textContent = '$' + (Number(c.amt || 0) / 100).toFixed(2);
+  // $0: a payment plan saving the card for later payments (PLAN.md M).
+  if (!Number(c.amt)) {
+    document.getElementById('amount').textContent = 'No charge today';
+    document.getElementById('pay').textContent = 'Save card (simulated)';
+  }
   document.getElementById('cancel').onclick = () => { location.href = sameOrigin(c.no); };
   document.getElementById('pay').onclick = async (e) => {
     const btn = e.currentTarget;
@@ -88,7 +93,7 @@ if (!c) {
       location.href = sameOrigin(r.redirect);
     } catch (err) {
       showErr(err.message);
-      btn.disabled = false; btn.textContent = 'Pay (simulated)';
+      btn.disabled = false; btn.textContent = Number(c.amt) ? 'Pay (simulated)' : 'Save card (simulated)';
     }
   };
 }

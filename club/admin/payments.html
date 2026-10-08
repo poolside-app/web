@@ -51,6 +51,17 @@
   .pill.application { background: #ddd6fe; color: #5b21b6; }
   .pill.program    { background: #dbeafe; color: #1e3a8a; }
   .pill.aged       { background: #fee2e2; color: #7f1d1d; }
+  /* Phones: each payment plan becomes a small card, like Members (D12). */
+  @media (max-width: 640px) {
+    #plans-list table, #plans-list tbody, #plans-list tr, #plans-list td { display: block; width: 100%; }
+    #plans-list thead { display: none; }
+    #plans-list tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    #plans-list tr.plan-detail[style*="none"] { display: none !important; }
+    #plans-list td { padding: 0; border: 0; font-size: 13.5px; }
+    #plans-list td::before { content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    #plans-list td[data-label="Member"], #plans-list tr.plan-detail td { grid-column: 1 / -1; font-size: 15px; }
+    #plans-list td[data-label="Member"]::before, #plans-list tr.plan-detail td::before { display: none; }
+  }
   .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
 
   .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; box-shadow: var(--shadow); margin-bottom:14px; }
@@ -213,7 +224,7 @@
 
       <div class="card" id="plans-card">
         <h2>🗓️ Payment plans</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Let members spread dues over several Stripe payments instead of one hit. You set the deadlines; members choose how many payments they want, and Poolside only offers schedules that meet your deadlines. Auto-charges the saved card on each due date, and auto-deactivates keyfobs on chronic failure.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Families pay in full, or choose how much to pay today ($0 is fine) and the month to be paid off by. Poolside splits the rest evenly by month, only accepts plans that meet your deadlines, and charges the saved card on each date. A card that keeps failing, or a plan not paid in full by your last deadline, cancels the membership until the family reinstates.</p>
         <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="plan-enabled"><span>Enable payment plans</span></label>
         <label style="margin-top:6px">Payment deadlines</label>
         <p style="font-size:12px;color:var(--muted);margin:0 0 8px">
@@ -230,27 +241,36 @@
           <div><label>Smallest payment ($)</label><input type="number" id="plan-min" min="1" step="1"></div>
         </div>
         <div class="row3" style="gap:10px;margin-top:8px">
-          <div><label>Lapse grace (days)</label><input type="number" id="plan-grace" min="1" max="60"></div>
+          <div><label>Gate and key fob start</label>
+            <select id="plan-access">
+              <option value="half_paid">Once half is paid</option>
+              <option value="first_payment">After the first payment</option>
+              <option value="card">As soon as a card is saved</option>
+            </select></div>
           <div><label>Reactivation fee ($)</label><input type="number" id="plan-fee" min="0" step="0.01"></div>
           <div></div>
         </div>
-        <label class="checkbox-row" style="margin:8px 0 0"><input type="checkbox" id="plan-deactivate"><span>Auto-deactivate keyfobs on lapse (re-enabled on reactivation)</span></label>
+        <label style="margin-top:12px">Membership types that can use a plan</label>
+        <div id="plan-tiers" style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px"></div>
+        <label class="checkbox-row" style="margin:8px 0 0"><input type="checkbox" id="plan-deactivate"><span>When a plan lapses, turn off the family's gate access and ask the Facilities Director to turn off their key fobs (both come back when they reinstate)</span></label>
+        <p style="font-size:12px;color:var(--muted);margin:6px 0 0">A declined card is tried again 3, 7 and 14 days later. The family gets one email when it first fails; the Treasurer gets one email if it still hasn't gone through.</p>
         <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
           <button class="btn btn-primary" id="plan-save" type="button" onclick="savePlanConfig()" style="background:var(--blue)">Save plan config</button>
           <span class="saved" id="plan-saved" style="display:none">✓ Saved</span>
         </div>
         <div class="err" id="plan-err"></div>
-        <h3 style="margin:18px 0 8px;font-size:14px">Active plans</h3>
+        <h3 style="margin:18px 0 8px;font-size:14px" id="plans">Payment plans</h3>
         <div id="plans-list" style="font-size:13px"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
 
         <div class="email-callout">
           <div class="ec-title">📧 Emails members get from this setup</div>
           <ul>
             <li><a href="/club/admin/emails.html#tpl=application_received_stripe_plan">Application received — Stripe payment plan</a> <span class="ec-when">at submit time</span></li>
-            <li><a href="/club/admin/emails.html#tpl=application_approved_plan_first">Welcome — first installment paid</a> <span class="ec-when">when their first half clears</span></li>
+            <li><a href="/club/admin/emails.html#tpl=application_approved_plan_first">Welcome — payment plan set up</a> <span class="ec-when">when their plan starts</span></li>
             <li><a href="/club/admin/emails.html#tpl=plan_installment_paid_partial">Installment cleared (more to go)</a> <span class="ec-when">when an auto-charge succeeds with installments left</span></li>
             <li><a href="/club/admin/emails.html#tpl=plan_installment_paid_final">Installment cleared (paid in full)</a> <span class="ec-when">when the final auto-charge succeeds</span></li>
             <li><a href="/club/admin/emails.html#tpl=plan_installment_failed">Installment failed (card declined)</a> <span class="ec-when">when an auto-charge declines</span></li>
+            <li><a href="/club/admin/emails.html#tpl=plan_cancelled">Payment plan ended — membership canceled</a> <span class="ec-when">when a plan lapses or the family cancels</span></li>
           </ul>
           <a class="ec-all" href="/club/admin/emails.html">All email templates →</a>
         </div>
@@ -938,7 +958,11 @@ async function loadPlanConfig() {
     document.getElementById('plan-cutoff').value   = c.plan_signup_cutoff_date || '';
     document.getElementById('plan-max').value      = (c.max_installments ?? 12);
     document.getElementById('plan-min').value      = Math.round((c.min_installment_cents ?? 2500) / 100);
-    document.getElementById('plan-grace').value    = (c.lapse_grace_days      ?? 14);
+    document.getElementById('plan-access').value   = c.access_when || 'half_paid';
+    const allowed = Array.isArray(c.tiers) ? c.tiers : [];
+    document.getElementById('plan-tiers').innerHTML = (r.tiers_available || []).map(t =>
+      `<label class="checkbox-row" style="margin:0"><input type="checkbox" data-tier="${escapeHtml(t.slug)}" ${!allowed.length || allowed.includes(t.slug) ? 'checked' : ''}><span>${escapeHtml(t.label || t.slug)}</span></label>`
+    ).join('') || '<span style="color:var(--muted)">Set up membership types first.</span>';
     document.getElementById('plan-fee').value      = ((c.reactivation_fee_cents ?? 5000) / 100).toFixed(2);
     document.getElementById('plan-deactivate').checked = c.auto_deactivate_keyfob !== false;
 
@@ -999,7 +1023,13 @@ async function savePlanConfig() {
       plan_signup_cutoff_date: document.getElementById('plan-cutoff').value || null,
       max_installments:        Number(document.getElementById('plan-max').value) || 12,
       min_installment_cents:   Math.round((Number(document.getElementById('plan-min').value) || 25) * 100),
-      lapse_grace_days:      Number(document.getElementById('plan-grace').value) || 14,
+      access_when: document.getElementById('plan-access').value,
+      // Every type ticked is stored as "all", so a type added later is included.
+      tiers: (() => {
+        const boxes = [...document.querySelectorAll('#plan-tiers input[data-tier]')];
+        const on = boxes.filter(b => b.checked).map(b => b.dataset.tier);
+        return on.length === boxes.length ? [] : on;
+      })(),
       reactivation_fee_cents: Math.round((parseFloat(document.getElementById('plan-fee').value) || 0) * 100),
       auto_deactivate_keyfob: document.getElementById('plan-deactivate').checked,
     };
@@ -1014,56 +1044,74 @@ async function savePlanConfig() {
     btn.disabled = false; btn.textContent = orig;
   }
 }
+// One table (PLAN.md M): member, plan, paid, balance, next charge, status
+// and what to do about the fobs. Past due in red. Tap a row for its payments.
 async function loadPlansList() {
   const box = document.getElementById('plans-list');
   try {
     const r = await api(PLANS_URL, 'list_plans');
     if (!r.ok) throw new Error(r.error || 'list failed');
     const plans = r.plans || [];
-    const installments = r.installments || [];
     if (!plans.length) {
-      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No plans yet. They'll appear as members choose to spread their dues over several payments.</div>`;
+      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No plans yet. They'll appear here as families choose a payment plan.</div>`;
       return;
     }
-    const byPlan = {};
-    installments.forEach(i => { (byPlan[i.plan_id] = byPlan[i.plan_id] || []).push(i); });
-    const fmtMoney = c => '$' + (c / 100).toFixed(2);
-    const statusPill = s => {
-      const map = { active: ['#dcfce7','#14532d'], completed: ['#dbeafe','#1e3a8a'], lapsed: ['#fee2e2','#7f1d1d'], cancelled: ['#f3f4f6','#374151'] };
-      const [bg, fg] = map[s] || map.cancelled;
-      return `<span style="background:${bg};color:${fg};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(s)}</span>`;
+    const m = c => '$' + (Number(c || 0) / 100).toFixed(2);
+    const d = k => PoolTime.fmtDay(k, { month: 'short', day: 'numeric' });
+    const STATUS = {
+      current: ['Current', '#dcfce7', '#14532d'], past_due: ['Past due', '#fee2e2', '#7f1d1d'],
+      paid_in_full: ['Paid in full', '#dbeafe', '#1e3a8a'], lapsed: ['Lapsed', '#fee2e2', '#7f1d1d'],
+      cancelled: ['Canceled', '#f3f4f6', '#374151'],
     };
-    box.innerHTML = plans.map(p => {
-      const ins = (byPlan[p.id] || []).sort((a,b) => a.sequence - b.sequence);
-      const insRows = ins.map(i => {
-        const stPill = statusPill(i.status);
-        const dueOrPaid = i.status === 'paid' || i.status === 'manual'
-          ? `paid ${new Date(i.paid_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-          : `due ${i.due_date}`;
-        const errLine = i.last_error ? `<div style="color:#7f1d1d;font-size:11px;margin-top:2px">⚠ ${escapeHtml(i.last_error)}</div>` : '';
-        const markPaidBtn = (i.status !== 'paid' && i.status !== 'manual')
-          ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-left:6px" onclick="markPlanInstallmentPaid('${i.id}')">Mark paid</button>`
-          : '';
-        return `<div style="padding:6px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div><b>#${i.sequence}</b> ${fmtMoney(i.amount_cents)} · ${dueOrPaid} ${stPill}${errLine}</div>
-          <div>${markPaidBtn}</div>
+    const FOB = { on: '✓ On', not_yet: 'Not yet', off: 'Off', turn_off: '<b style="color:#b91c1c">Turn off</b>' };
+    const pill = s => { const [t, bg, fg] = STATUS[s] || STATUS.cancelled; return `<span class="pill" style="background:${bg};color:${fg}">${t}</span>`; };
+    const rows = plans.map(p => {
+      const bad = p.status === 'past_due' || p.status === 'lapsed';
+      const shape = `${p.today_cents ? m(p.today_cents) + ' + ' : ''}${p.payments - (p.today_cents ? 1 : 0)} monthly`;
+      const detail = (p.schedule || []).map(i => {
+        const paid = i.status === 'paid' || i.status === 'manual';
+        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--border)">
+          <span>${escapeHtml(d(i.due_date))} · ${m(i.charge_cents)} ${paid ? '<span style="color:#15803d">paid</span>' : i.status === 'retrying' || i.status === 'failed' ? `<span style="color:#b91c1c">declined</span>` : ''}
+            ${i.last_error && !paid ? `<div style="color:#7f1d1d;font-size:11px">${escapeHtml(i.last_error)}</div>` : ''}</span>
+          ${paid ? '' : `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="markPlanInstallmentPaid('${i.id}')">Mark paid</button>`}
         </div>`;
       }).join('');
-      const reactivateBtn = p.status === 'lapsed'
-        ? `<button class="btn btn-primary" style="background:var(--blue);font-size:12px;margin-top:6px" onclick="reactivatePlan('${p.id}')">Send reactivation link →</button>`
-        : '';
-      return `<div style="margin-bottom:14px;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div><b>${escapeHtml(p.family_name || '—')}</b> · ${fmtMoney(p.total_cents)} ${statusPill(p.status)}</div>
-          <div style="font-size:11px;color:var(--muted)">${escapeHtml(p.primary_email || '')}</div>
-        </div>
-        <div style="margin-top:6px">${insRows}</div>
-        ${reactivateBtn}
-      </div>`;
+      const extra = [
+        p.status === 'lapsed' || p.status === 'cancelled' ? `<button class="btn btn-primary" style="background:var(--blue);font-size:12px" onclick="reactivatePlan('${p.id}')">Send reactivation link</button>` : '',
+        r.test_mode && p.status !== 'lapsed' && p.status !== 'cancelled' && p.status !== 'paid_in_full' ? `<button class="btn" style="font-size:12px" onclick="simulatePlanCharge('${p.id}')">🧪 Simulate the next payment</button>` : '',
+      ].filter(Boolean).join(' ');
+      return `<tr style="cursor:pointer;${bad ? 'background:#fff1f2' : ''}" onclick="togglePlanRow('${p.id}')">
+          <td data-label="Member"><b>${escapeHtml(p.family_name || '—')}</b></td>
+          <td data-label="Plan">${escapeHtml(shape)}</td>
+          <td data-label="Paid">${m(p.paid_cents)}</td>
+          <td data-label="Balance">${m(p.balance_cents)}</td>
+          <td data-label="Next charge">${p.next ? `${m(p.next.charge_cents)} · ${escapeHtml(d(p.next.date))}` : '—'}</td>
+          <td data-label="Status">${pill(p.status)}</td>
+          <td data-label="Fob">${FOB[p.fob] || '—'}</td>
+        </tr>
+        <tr id="plan-row-${p.id}" class="plan-detail" style="display:none"><td colspan="7" style="background:var(--bg-2)">
+          <div style="font-size:12.5px">${escapeHtml(p.primary_email || '')}</div>
+          ${detail}
+          ${extra ? `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${extra}</div>` : ''}
+        </td></tr>`;
     }).join('');
+    box.innerHTML = `<div><table>
+      <thead><tr><th>Member</th><th>Plan</th><th>Paid</th><th>Balance</th><th>Next charge</th><th>Status</th><th>Fob</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
   } catch (e) {
     box.innerHTML = `<div style="color:var(--red);font-size:12px">${escapeHtml(e.message)}</div>`;
   }
+}
+function togglePlanRow(id) {
+  const row = document.getElementById('plan-row-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+async function simulatePlanCharge(planId) {
+  try {
+    const r = await api(PLANS_URL, 'simulate_charge', { plan_id: planId });
+    if (!r.ok) throw new Error(r.error || 'failed');
+    await loadPlansList();
+  } catch (e) { alert(e.message); }
 }
 async function markPlanInstallmentPaid(installmentId) {
   if (!confirm('Mark this installment paid? Use this only if the money has actually arrived (e.g. cash/check).')) return;

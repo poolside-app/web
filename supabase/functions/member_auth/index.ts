@@ -565,12 +565,25 @@ Deno.serve(async (req) => {
       is_board_member = !!adminRow;
     } catch { /* cosmetic link only — never block sign-in over it */ }
 
+    // Their payment plan, if they have one (PLAN.md M): what's paid, the
+    // balance and the next charge, on first paint. A family on a plan for
+    // the season on sale is not asked to renew for it.
+    let plan: Record<string, unknown> | null = null;
+    try {
+      const { memberPlanView } = await import('../_shared/plan_ops.ts');
+      plan = await memberPlanView(sb, payload.tid as string, payload.hid as string);
+      if (plan && plan.year === renewal.year && plan.status !== 'paid_in_full') {
+        (renewal as RenewalState & { on_plan?: boolean }).on_plan = true;
+      }
+    } catch (e) { console.error('member plan:', (e as Error).message); }
+
     return jsonResponse({
       ok: true,
       user: member,
       tenant,
       household: { ...household, members: housemates ?? [] },
       renewal,
+      plan,
       is_board_member,
       refreshed_token,
     });
@@ -603,7 +616,10 @@ Deno.serve(async (req) => {
       });
     }
     const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
-    const quote = await quoteRenewal(sb, payload.tid as string, household, priced);
+    const quote = await quoteRenewal(sb, payload.tid as string, household, priced, {
+      today_cents: body.plan_today_cents == null ? null : Number(body.plan_today_cents),
+      payoff_month: body.plan_payoff_month ? String(body.plan_payoff_month) : null,
+    });
 
     return jsonResponse({
       ok: true,

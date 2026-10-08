@@ -286,102 +286,140 @@ Deno.serve(async (req) => {
       } catch { /* never blocks the webhook */ }
     }
 
-    // ── Payment plan: first installment paid via Checkout. Save the customer
-    // + payment_method on the plan so the cron can charge installment 2 later.
-    if (kind === 'payment_plan_first' && md.plan_id && md.application_id) {
+    // ── Payment plans (PLAN.md M) ────────────────────────────────────────
+    // payment_plan_first: today's payment cleared on Stripe's page and the
+    //   card was kept. payment_plan_setup: $0 today, Stripe's page only saved
+    //   the card. Either way the family is approved and the plan is live;
+    //   the gate waits for the club's rule (half paid, for Bishop).
+    // payment_plan_card: a new card, nothing overdue.
+    // payment_plan_catchup: overdue payments paid with a new card, and with
+    //   md.reinstate the reactivation fee too, which brings a lapsed or
+    //   canceled plan back.
+    // payment_plan_payoff: the rest of the plan, paid at once.
+    if (kind && kind.startsWith('payment_plan_') && kind !== 'payment_plan_reactivation' && md.plan_id) {
+      const ops = await import('../_shared/plan_ops.ts');
+      const club = await ops.loadPlanClub(sb, tenantId);
+      const { data: plan } = await sb.from('payment_plans').select('*').eq('id', md.plan_id).eq('tenant_id', tenantId).maybeSingle();
+      if (!club || !plan) return new Response('Plan not found', { status: 200 });
       const sessionId = String(session.id || '');
       const piId = (session.payment_intent as string) || null;
-      const customerId = (session.customer as string) || null;
       const now = new Date().toISOString();
+      const sim = sessionId.startsWith('sim_') || sessionId.startsWith('free_');
 
-      // Pull payment_method off the PaymentIntent (Checkout doesn't return it directly)
-      let paymentMethodId: string | null = null;
-      if (piId && STRIPE_KEY) {
-        try {
-          const r = await fetch(`https://api.stripe.com/v1/payment_intents/${piId}`, {
-            headers: {
-              Authorization: `Bearer ${STRIPE_KEY}`,
-              'Stripe-Account': await sb.from('tenants').select('stripe_account_id').eq('id', tenantId).maybeSingle()
-                .then(({ data }) => (data?.stripe_account_id as string) || ''),
-            },
-          });
-          if (r.ok) {
-            const piData = await r.json();
-            paymentMethodId = piData.payment_method || null;
-          }
-        } catch { /* fallback: leave null, second charge will fail visibly */ }
-      }
-
-      // The first payment cleared: the code use and credit count from now.
-      try {
-        const { recordDiscountUse } = await import('../_shared/membership_price.ts');
-        await recordDiscountUse(sb, md.application_id);
-      } catch (e) { console.error('discount record failed:', (e as Error).message); }
-
-      // Mark installment 1 paid
-      await sb.from('payment_plan_installments').update({
-        status: 'paid', paid_at: now,
-        stripe_payment_intent_id: piId, stripe_session_id: sessionId,
-        last_error: null,
-      }).eq('plan_id', md.plan_id).eq('sequence', 1);
-
-      // Save customer + saved payment method on the plan for off-session re-charges
-      await sb.from('payment_plans').update({
-        stripe_customer_id: customerId,
-        stripe_payment_method_id: paymentMethodId,
-      }).eq('id', md.plan_id);
-
-      // Same card serves next season if they also asked for auto-renew. The PM
-      // is already in hand here, so no second round trip to Stripe.
-      if (md.application_id && customerId) {
-        const { data: planApp } = await sb.from('applications')
-          .select('household_id').eq('id', md.application_id).maybeSingle();
-        if (planApp?.household_id) {
-          const { data: hh } = await sb.from('households')
-            .select('id, auto_renew').eq('id', planApp.household_id).maybeSingle();
-          if (hh?.auto_renew) {
-            await sb.from('households').update({
-              auto_renew_customer_id: customerId,
-              auto_renew_pm_id: paymentMethodId,
-            }).eq('id', hh.id);
-          }
+      // The card Stripe kept: on the PaymentIntent for a payment, on the
+      // SetupIntent when only a card was saved. Test payments have neither.
+      let customerId = (session.customer as string) || (plan.stripe_customer_id as string) || null;
+      let pmId: string | null = null;
+      if (sim) {
+        if (sessionId.startsWith('sim_') && kind !== 'payment_plan_payoff') {
+          pmId = `sim_pm_${sessionId.slice(4, 20)}`; customerId = customerId || 'sim_cus';
+        }
+      } else if (STRIPE_KEY && club.stripeAccount) {
+        const path = piId ? `payment_intents/${piId}` : session.setup_intent ? `setup_intents/${session.setup_intent}` : null;
+        if (path) {
+          try {
+            const r = await fetch(`https://api.stripe.com/v1/${path}`, {
+              headers: { Authorization: `Bearer ${STRIPE_KEY}`, 'Stripe-Account': club.stripeAccount },
+            });
+            if (r.ok) {
+              const obj = await r.json();
+              pmId = (obj.payment_method as string) || null;
+              customerId = (obj.customer as string) || customerId;
+            }
+          } catch { /* leave the old card; the next charge reports it */ }
         }
       }
-
-      // Mark the application paid (status 'pending' for payment_status until BOTH
-      // installments collected — but treat first-installment as 'pending' rather
-      // than 'paid' since dues aren't fully settled yet)
-      await sb.from('applications').update({
-        payment_status: 'pending', payment_method: 'stripe',
-        stripe_session_id: sessionId,
-        stripe_payment_intent_id: piId,
-      }).eq('id', md.application_id).eq('tenant_id', tenantId);
-
-      // Auto-approve: applicant put a card on file + paid first half = they're a member.
-      const { data: app } = await sb.from('applications').select('id, status').eq('id', md.application_id).maybeSingle();
-      if (app?.status === 'pending') {
-        try {
-          await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
-            body: JSON.stringify({ action: 'approve', id: md.application_id, tenant_id: tenantId }),
-          });
-        } catch (e) { console.error('plan auto-approve failed:', (e as Error).message); }
+      if (pmId && kind !== 'payment_plan_payoff') {
+        await sb.from('payment_plans').update({ stripe_customer_id: customerId, stripe_payment_method_id: pmId }).eq('id', plan.id);
+        plan.stripe_customer_id = customerId; plan.stripe_payment_method_id = pmId;
       }
 
-      // Link plan to household now that approval may have created one,
-      // AND flip dues_paid_for_year. Per the dunning model, putting a card
-      // on file + paying the first installment activates the family — they
-      // get gate access immediately. Failing the second charge starts the
-      // retry/lapse flow, NOT a "they were never paid" state.
-      const { data: appAfter } = await sb.from('applications')
-        .select('household_id, membership_year').eq('id', md.application_id).maybeSingle();
-      if (appAfter?.household_id) {
-        await sb.from('payment_plans').update({ household_id: appAfter.household_id }).eq('id', md.plan_id);
-        await sb.from('households').update({
-          dues_paid_for_year: true,
-          paid_until_year: appAfter.membership_year ?? new Date().getUTCFullYear(),
-        }).eq('id', appAfter.household_id);
+      if (kind === 'payment_plan_first' || kind === 'payment_plan_setup') {
+        if (kind === 'payment_plan_first') {
+          await sb.from('payment_plan_installments').update({
+            status: 'paid', paid_at: now, stripe_payment_intent_id: piId, stripe_session_id: sessionId, last_error: null,
+          }).eq('plan_id', plan.id).eq('sequence', 1);
+        }
+        // The code use and credit count once the plan is under way.
+        if (md.application_id) {
+          try {
+            const { recordDiscountUse } = await import('../_shared/membership_price.ts');
+            await recordDiscountUse(sb, md.application_id);
+          } catch (e) { console.error('discount record failed:', (e as Error).message); }
+          await sb.from('applications').update({
+            payment_status: 'pending', payment_method: 'stripe_plan', stripe_session_id: sessionId,
+            stripe_payment_intent_id: piId,
+          }).eq('id', md.application_id).eq('tenant_id', tenantId);
+          const { data: app } = await sb.from('applications').select('id, status').eq('id', md.application_id).maybeSingle();
+          if (app?.status === 'pending') {
+            try {
+              await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
+                body: JSON.stringify({ action: 'approve', id: md.application_id, tenant_id: tenantId }),
+              });
+            } catch (e) { console.error('plan auto-approve failed:', (e as Error).message); }
+          }
+          const { data: appAfter } = await sb.from('applications').select('household_id').eq('id', md.application_id).maybeSingle();
+          if (appAfter?.household_id) {
+            await sb.from('payment_plans').update({ household_id: appAfter.household_id }).eq('id', plan.id);
+            plan.household_id = appAfter.household_id;
+            // Approval may have marked the household paid; a plan family gets
+            // the gate under the club's rule instead.
+            if (!plan.access_at) {
+              await sb.from('households').update({ dues_paid_for_year: false }).eq('id', appAfter.household_id);
+            }
+            // Same card for next season, if they asked for auto-renew.
+            if (pmId && customerId) {
+              await sb.from('households').update({ auto_renew_customer_id: customerId, auto_renew_pm_id: pmId })
+                .eq('id', appAfter.household_id).eq('auto_renew', true);
+            }
+          }
+          await sb.from('admin_tasks').update({ completed_at: now })
+            .eq('source_kind', 'application').eq('source_id', md.application_id).is('completed_at', null);
+        }
+        await ops.grantAccessIfReady(sb, club, plan, { announce: false });
+        await ops.completeIfPaid(sb, club, plan);
+      }
+
+      if (kind === 'payment_plan_catchup' || kind === 'payment_plan_payoff') {
+        const ids = String(md.installment_ids ?? '').split(',').filter(Boolean);
+        if (ids.length) {
+          await sb.from('payment_plan_installments').update({
+            status: 'paid', paid_at: now, stripe_payment_intent_id: piId, stripe_session_id: sessionId,
+            last_error: null,
+            // Paying off early drops the plan fees on payments not yet made.
+            ...(kind === 'payment_plan_payoff' ? { plan_fee_cents: 0, card_fee_cents: 0 } : {}),
+          }).eq('plan_id', plan.id).in('id', ids).not('status', 'in', '("paid","manual")');
+        }
+        if (md.reinstate === '1' && plan.status !== 'active') {
+          await sb.from('payment_plans').update({
+            status: 'active', reactivated_at: now, ended_reason: null, lapsed_at: null, cancelled_at: null,
+          }).eq('id', plan.id);
+          plan.status = 'active';
+          // Failed payments that were not part of what they paid start over.
+          await sb.from('payment_plan_installments').update({ status: 'pending', attempt_count: 0, first_failed_at: null })
+            .eq('plan_id', plan.id).eq('status', 'failed');
+          await sb.from('admin_tasks').update({ completed_at: now })
+            .eq('source_kind', 'payment_plan').eq('source_id', plan.id).is('completed_at', null)
+            .in('kind', ['plan.lapsed', 'plan.cancelled', 'plan.fob_off']);
+          await sb.from('audit_log').insert({
+            tenant_id: tenantId, kind: 'plan.reinstated', entity_type: 'payment_plan', entity_id: plan.id,
+            summary: `${plan.family_name} reinstated their membership`, actor_kind: 'member', actor_label: 'member',
+          });
+        }
+        const rows = await ops.installmentsOf(sb, plan.id as string);
+        await ops.grantAccessIfReady(sb, club, plan, { announce: true, rows });
+        await ops.completeIfPaid(sb, club, plan, rows);
+        if (plan.primary_email && kind === 'payment_plan_payoff') {
+          try {
+            const { renderAndSend } = await import('../_shared/email_template.ts');
+            await renderAndSend(sb, {
+              tenantId, templateKey: 'plan_installment_paid_final', to: plan.primary_email as string,
+              variables: { family_name: plan.family_name as string, amount: `$${((Number(session.amount_total) || 0) / 100).toFixed(2)}` },
+            });
+          } catch { /* the payment is recorded either way */ }
+        }
       }
     }
 
@@ -670,7 +708,7 @@ Deno.serve(async (req) => {
     return new Response('ok', { status: 200 });
   }
 
-  // ── customer.subscription.deleted — tenant cancelled their subscription
+  // ── customer.subscription.deleted — tenant canceled their subscription
   //    (either via Stripe billing portal or admin tools). Demote them back
   //    to Free Forever; the next renewal cycle won't bill. Grace period is
   //    handled by Stripe (subscription stays active until current_period_end).

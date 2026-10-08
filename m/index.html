@@ -445,7 +445,7 @@
 
       <!-- Fine print -->
       <div style="margin-top:18px;padding:10px 12px;background:#fafaf8;border-radius:8px;font-size:11.5px;color:var(--muted);line-height:1.55">
-        Only for families who have never been members here. If their payment is refunded, the reward is cancelled.
+        Only for families who have never been members here. If their payment is refunded, the reward is canceled.
       </div>
     </div>
 
@@ -1583,11 +1583,85 @@ function renderSponsorStrip(sponsors) {
     </div>`;
 }
 
+// ── My payment plan (PLAN.md M) ───────────────────────────────────────────
+// What's paid, the balance, the next charge and the whole schedule, with a
+// new card, paying it off, canceling, and coming back after a lapse.
+function renderPlanCard(plan) {
+  if (!plan || plan.status === 'paid_in_full') return '';
+  const m = c => '$' + (Number(c || 0) / 100).toFixed(2);
+  const d = k => PoolTime.fmtDay(k, { month: 'short', day: 'numeric' });
+  const ended = plan.status === 'lapsed' || plan.status === 'cancelled';
+  const pct = plan.total_cents ? Math.min(100, Math.round(plan.paid_cents / plan.total_cents * 100)) : 0;
+  const head = ended
+    ? `<div style="padding:12px 14px;border-radius:12px;background:#fee2e2;color:#7f1d1d;font-size:13.5px;line-height:1.5;margin-bottom:12px">
+         <b>Your membership is canceled</b> because ${plan.ended_reason === 'member_cancelled' ? 'you canceled your payment plan' : plan.ended_reason === 'deadline' ? "your dues weren't paid in full by the club's deadline" : 'your card could not be charged'}.
+         Your gate access and key fobs are off until you reinstate. Nothing you've paid is refunded.
+       </div>`
+    : plan.status === 'past_due'
+    ? `<div style="padding:12px 14px;border-radius:12px;background:#fef3c7;color:#7c2d12;font-size:13.5px;line-height:1.5;margin-bottom:12px">
+         <b>A payment didn't go through.</b> We'll try your card again, but updating it pays what's due right away.
+       </div>`
+    : '';
+  const access = plan.fob === 'on' ? '✓ Gate access and key fobs are on.'
+    : plan.fob === 'not_yet' ? (plan.access_when === 'half_paid' ? 'Gate access and key fobs start once half is paid.' : plan.access_when === 'first_payment' ? 'Gate access and key fobs start with your first payment.' : '')
+    : '';
+  const rows = (plan.schedule || []).map(r => {
+    const paid = r.status === 'paid' || r.status === 'manual';
+    const late = !paid && (r.status === 'retrying' || r.status === 'failed');
+    return `<tr>
+      <td style="padding:6px 0;border-top:1px solid var(--border)">${escapeHtml(d(r.due_date))}</td>
+      <td style="padding:6px 0;border-top:1px solid var(--border);text-align:right">${m(r.charge_cents)}</td>
+      <td style="padding:6px 0 6px 10px;border-top:1px solid var(--border);text-align:right;font-size:12px;color:${paid ? '#15803d' : late ? '#b91c1c' : 'var(--muted)'}">${paid ? 'Paid' : late ? 'Declined' : 'Scheduled'}</td>
+    </tr>`;
+  }).join('');
+  const btn = (label, onclick, primary) => `<button class="btn ${primary ? '' : 'btn-ghost'}" style="margin:6px 6px 0 0;${primary ? 'background:var(--blue);color:#fff' : ''}" onclick="${onclick}">${label}</button>`;
+  const actions = ended
+    ? btn(`Reinstate: pay ${m(plan.reinstate?.charge_cents ?? plan.reinstate?.total_cents)}`, "planAction('plan_reinstate')", true)
+      + `<div style="font-size:12px;color:var(--muted);margin-top:6px">${m(plan.reinstate?.dues_cents + (plan.reinstate?.plan_fee_cents || 0))} overdue${plan.reinstate?.fee_cents ? ` plus the ${m(plan.reinstate.fee_cents)} reactivation fee` : ''}${(plan.reinstate?.charge_cents || 0) > (plan.reinstate?.total_cents || 0) ? ', plus the card fee' : ''}. Your plan then carries on.</div>`
+    : btn(plan.status === 'past_due' ? 'Update card and pay now' : 'Update card', "planAction('plan_card')", plan.status === 'past_due')
+      + btn(`Pay off ${m(plan.payoff_charge_cents ?? plan.balance_cents)}`, "planAction('plan_payoff')")
+      + btn('Cancel plan', 'planCancel()');
+  return `
+    <div class="card" id="plan">
+      <h2>🗓️ My payment plan</h2>
+      ${head}
+      <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px"><span><b>${m(plan.paid_cents)}</b> paid of ${m(plan.total_cents)}</span><span>${m(plan.balance_cents)} left</span></div>
+      <div style="height:8px;border-radius:999px;background:var(--border);overflow:hidden"><div style="height:100%;width:${pct}%;background:#16a34a"></div></div>
+      ${plan.next ? `<div style="margin-top:10px;font-size:14px">Next payment: <b>${m(plan.next.charge_cents)}</b> on <b>${escapeHtml(d(plan.next.date))}</b></div>` : ''}
+      ${access ? `<div style="margin-top:6px;font-size:13px;color:var(--muted)">${escapeHtml(access)}</div>` : ''}
+      <details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;font-weight:600">All payments</summary>
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px">${rows}</table>
+      </details>
+      <div style="margin-top:8px">${actions}</div>
+    </div>`;
+}
+async function planAction(action) {
+  try {
+    const r = await callMember(action, {}, '/functions/v1/stripe_checkout');
+    if (!r.ok || !r.url) throw new Error(r.error || 'Could not open checkout');
+    location.href = r.url;
+  } catch (e) { notify(e.message, 'err'); }
+}
+async function planCancel() {
+  const ok = await ask({
+    text: 'Cancel your payment plan? Nothing you have paid is refunded, your membership is canceled, and your gate access and key fobs stop. To come back later you pay what is overdue plus the reactivation fee.',
+    yes: 'Cancel my plan', no: 'Keep my plan',
+  });
+  if (!ok) return;
+  try {
+    const r = await callMember('member_cancel', {}, '/functions/v1/payment_plans');
+    if (!r.ok) throw new Error(r.error || 'Could not cancel');
+    const el = document.getElementById('plan');
+    if (el) el.outerHTML = renderPlanCard(r.plan);
+    notify('Your plan is canceled.');
+  } catch (e) { notify(e.message, 'err'); }
+}
+
 function renderRenewalCard(renewal, tenant) {
   // Only speak up when there is something to do. A member who has already
   // paid, or whose club has not opened renewals, should never see this — the
   // fastest way to make people ignore a prompt is to show it when it is moot.
-  if (!renewal || !renewal.open || renewal.already_paid) return '';
+  if (!renewal || !renewal.open || renewal.already_paid || renewal.on_plan) return '';
 
   const started = !!renewal.application_id;
   const heading = started ? 'Finish renewing' : `Renew for ${renewal.year}`;
@@ -2264,8 +2338,10 @@ async function submitProfile() {
       pill.style.background = '#dc2626';
     }
   }
+  const onPlan = me.plan && (me.plan.status === 'current' || me.plan.status === 'past_due');
   const dueText = household.dues_paid_for_year
     ? `<span class="pill paid">Dues paid${household.paid_until_year ? ' · ' + household.paid_until_year : ''}</span>`
+    : onPlan ? `<span class="pill" style="background:#e0f2fe;color:#075985">Payment plan</span>`
     : `<span class="pill unpaid">Dues unpaid</span>`;
 
   // Discount codes the board marked for the member home (H7), e.g. early
@@ -2389,6 +2465,7 @@ async function submitProfile() {
       <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
     </a>
 
+    ${renderPlanCard(me.plan)}
     ${renderRenewalCard(me.renewal, tenant)}
 
     <!-- Today at the pool — hours + today's events + check-in counter -->
@@ -2463,6 +2540,17 @@ async function submitProfile() {
 
   `;
   loadHelpList();
+  // Back from Stripe after a plan change (PLAN.md M).
+  {
+    const q = new URLSearchParams(location.search);
+    const msg = { card: 'Your card is updated.', paid: 'Paid in full. Thank you!', back: 'Welcome back. Your membership is reinstated.' }[q.get('plan')];
+    if (msg) {
+      notify(msg);
+      q.delete('plan');
+      history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    }
+    if (location.hash === '#plan') document.getElementById('plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   // Opened from the link in a reply text (possibly before signing in).
   const helpId = takeHelpLink();
   if (helpId) openHelpThread(helpId);
