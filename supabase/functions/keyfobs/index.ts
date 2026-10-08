@@ -174,8 +174,10 @@ Deno.serve(async (req) => {
       return j({ ok: true, replacement, card_total_cents: cardTotal(settings.fee_cents) });
     }
 
-    // "I sent it by Venmo" for one or several unpaid fobs: one task per fob,
-    // so the board confirms each as it issues them.
+    // "I sent it by Venmo" for one or several unpaid fobs (Doug, 10/8,
+    // PLAN.md U1): straight to the board to make the fob, one task per fob.
+    // The board checks the Venmo arrived when it issues the fob; issuing it
+    // marks it paid. No separate confirm step.
     if (action === 'claim_venmo') {
       const ids = (Array.isArray(body.ids) ? body.ids : [body.id]).map(String).filter(Boolean).slice(0, 20);
       const { data: fobs } = await sb.from('keyfobs').select(FIELDS).eq('household_id', hid).in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']).eq('payment_status', 'unpaid');
@@ -183,8 +185,8 @@ Deno.serve(async (req) => {
       const total = fobs.reduce((n, f) => n + Number(f.price_cents), 0);
       await sb.from('keyfobs').update({ payment_status: 'pending_verify', payment_method: 'venmo' }).in('id', fobs.map(f => f.id));
       for (const f of fobs) {
-        await task(sb, TID, 'keyfob.venmo', f.id as string,
-          `The ${hh.family_name} say they sent $${(total / 100).toFixed(2)} by Venmo for ${fobs.length === 1 ? 'a keyfob' : fobs.length + ' keyfobs'}. Confirm it, then issue the fob.`, 'Keyfob Venmo to confirm');
+        await task(sb, TID, 'keyfob.issue', f.id as string,
+          `Issue ${fobs.length === 1 ? 'a keyfob' : 'keyfobs'} to the ${hh.family_name}: they say they sent $${(total / 100).toFixed(2)} by Venmo. Check it came in before you hand it over.`, 'Keyfob to issue');
       }
       return j({ ok: true, count: fobs.length });
     }
@@ -254,15 +256,19 @@ Deno.serve(async (req) => {
   if (action === 'issue') {
     const f = await one(body.id);
     if (!f || f.status !== 'requested') return j({ ok: false, error: 'That request isn\'t waiting to be issued.' }, 404);
-    if (!f.included && !['paid', 'none'].includes(String(f.payment_status))) {
-      return j({ ok: false, error: f.payment_status === 'pending_verify' ? 'Confirm their Venmo first.' : 'This fob isn\'t paid for yet.' }, 409);
+    // A Venmo the family says they sent counts: the board checks it when it
+    // hands the fob over, and issuing marks it paid (PLAN.md U1).
+    if (!f.included && !['paid', 'none', 'pending_verify'].includes(String(f.payment_status))) {
+      return j({ ok: false, error: 'This fob isn\'t paid for yet.' }, 409);
     }
     const parsed = parseFobNumber(body.number);
     if (!parsed.ok) return j({ ok: false, error: parsed.error }, 400);
     const owner = await taken(parsed.number);
     if (owner) return j({ ok: false, error: `Fob ${fobTail(parsed.number)} already belongs to the ${owner}.` }, 409);
+    const nowIso = new Date().toISOString();
     const { data, error } = await sb.from('keyfobs').update({
-      status: 'active', card_number: parsed.number, issued_at: new Date().toISOString(), issued_by: me.id,
+      status: 'active', card_number: parsed.number, issued_at: nowIso, issued_by: me.id,
+      ...(f.payment_status === 'pending_verify' ? { payment_status: 'paid', paid_at: nowIso } : {}),
     }).eq('id', f.id).select(FIELDS).single();
     if (error) return j({ ok: false, error: /duplicate|unique/i.test(error.message) ? 'That number is already on another fob.' : error.message }, 409);
     await closeTasks(sb, f.id as string, me.id, f.household_id as string);

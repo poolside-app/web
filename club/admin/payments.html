@@ -119,6 +119,7 @@
        into the collapsible sections, so the page had no heading at all and
        screen readers announced no title for it. -->
   <h1>Payments</h1>
+  <p id="season-banner" style="margin:6px 0 16px;font-size:14px;color:var(--muted)">Money for the <b class="season-year">current</b> season.</p>
 
   <!-- Page order:
        1. Pending payments (open; what the treasurer uses day to day)
@@ -173,13 +174,23 @@
         <button class="btn btn-primary" id="stripe-connect-btn" type="button" onclick="connectStripe()" style="display:none;background:var(--blue)">Connect Stripe</button>
         <button class="btn btn-ghost" id="stripe-resume-btn" type="button" onclick="connectStripe()" style="display:none">Resume onboarding</button>
         <button class="btn btn-ghost" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
+      </div>
 
-        <div class="email-callout">
-          <div class="ec-title">📧 Emails members get from this setup</div>
-          <ul>
-            <li><a href="/club/admin/emails.html#tpl=welcome">Welcome email</a> <span class="ec-when">as soon as their card payment clears</span></li>
-          </ul>
-          <a class="ec-all" href="/club/admin/emails.html">All emails →</a>
+      <!-- PLAN.md U1 (Doug, 10/8): the card fee belongs with Stripe, not
+           Venmo. Not owner-only, so the Treasurer can change it too. -->
+      <div class="card" data-focus="card-fee">
+        <h2>Card fees</h2>
+        
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">When on, members who pay by card see a slightly higher total that covers Stripe's processing fee (~2.9% + 30¢). Venmo / check / cash pricing stays exactly the base price. Disclosure is shown to the member at checkout so the choice is explicit.</p>
+        <label class="checkbox-row" style="margin:0 0 6px;display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="pass_stripe_fee">
+          <span>Pass the Stripe processing fee to members who pay by card</span>
+        </label>
+        <p style="font-size:11.5px;color:var(--muted);margin:0">On a $600 dues bill, members would see <b>$618.23</b> for card vs <b>$600.00</b> for Venmo. The exact pass-through is computed from the rates Stripe charges your club.</p>
+
+        <div style="margin-top:14px;display:flex;align-items:center">
+          <button class="btn btn-primary" id="fee-save" type="button" onclick="savePaymentMethods('fee')" style="background:var(--blue)">Save</button>
+          <span class="saved" id="fee-saved" style="display:none">✓ Saved</span>
         </div>
       </div>
 
@@ -196,46 +207,47 @@
         <label>Verify offline payments within <span class="opt">(business days)</span></label>
         <input type="number" id="offline_verify_window_days" min="1" max="30" step="1" placeholder="3" style="width:120px">
 
-        <h3 style="margin:22px 0 6px;font-size:14px;font-family:'Fraunces',serif;font-weight:600">Card-processing surcharge</h3>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">When on, members who pay by card see a slightly higher total that covers Stripe's processing fee (~2.9% + 30¢). Venmo / check / cash pricing stays exactly the base price. Disclosure is shown to the member at checkout so the choice is explicit.</p>
-        <label class="checkbox-row" style="margin:0 0 6px;display:flex;gap:8px;align-items:center;cursor:pointer">
-          <input type="checkbox" id="pass_stripe_fee">
-          <span>Pass the Stripe processing fee to members who pay by card</span>
-        </label>
-        <p style="font-size:11.5px;color:var(--muted);margin:0">On a $600 dues bill, members would see <b>$618.23</b> for card vs <b>$600.00</b> for Venmo. The exact pass-through is computed from the rates Stripe charges your club.</p>
-
         <div style="margin-top:14px;display:flex;align-items:center">
           <button class="btn btn-primary" id="pm-save" type="button" onclick="savePaymentMethods()" style="background:var(--blue)">Save</button>
           <span class="saved" id="pm-saved" style="display:none">✓ Saved</span>
         </div>
         <div class="err" id="pm-err"></div>
-
-        <div class="email-callout">
-          <div class="ec-title">📧 Emails members get from this setup</div>
-          <ul>
-            <li><a href="/club/admin/emails.html#tpl=application_received">Application received</a> <span class="ec-when">with how to send the Venmo</span></li>
-            <li><a href="/club/admin/emails.html#tpl=welcome">Welcome email</a> <span class="ec-when">when you approve them, saying whether the Venmo is still to come</span></li>
-            <li><a href="/club/admin/emails.html#tpl=payment_verified_venmo">Venmo payment verified</a> <span class="ec-when">when you verify a Venmo after approving</span></li>
-          </ul>
-          <a class="ec-all" href="/club/admin/emails.html">All emails →</a>
-        </div>
       </div>
 
       <div class="card" id="plans-card">
         <h2>🗓️ Payment plans</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Families pay in full, or choose how much to pay today ($0 is fine) and the month to be paid off by. Poolside splits the rest evenly by month, only accepts plans that meet your deadlines, and charges the saved card on each date. A card that keeps failing, or a plan not paid in full by your last deadline, cancels the membership until the family reinstates.</p>
         <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="plan-enabled"><span>Enable payment plans</span></label>
-        <label style="margin-top:6px">Payment deadlines</label>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 8px">
-          How much of the season's dues you need in hand, and by when. Month and day only —
-          these repeat every season, so you set them once. Most clubs want a chunk by the day
-          they open and the rest a couple of months later.</p>
-        <div id="ms-rows"></div>
-        <button class="btn" type="button" onclick="addMilestone()" style="font-size:12px;padding:6px 12px;margin-top:2px">+ Add a deadline</button>
+        <!-- PLAN.md U1 (Doug, 10/8): two fixed deadlines, with their years.
+             Stored as month-day so they carry over to each new season. -->
+        <label style="margin-top:6px">Payment deadlines for the <span class="season-year">this</span> season</label>
+        <div class="row3" style="gap:10px;margin-bottom:8px;align-items:end">
+          <div>
+            <label>First deadline</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="ms-first-month" style="flex:2"></select>
+              <input type="number" id="ms-first-day" min="1" max="31" style="flex:1">
+              <span id="ms-first-year" style="font-size:13px;font-weight:600;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div><label>Paid by then (%)</label><input type="number" id="ms-first-pct" min="1" max="99" value="50"></div>
+          <div></div>
+        </div>
+        <div class="row3" style="gap:10px;margin-bottom:8px;align-items:end">
+          <div>
+            <label>Paid in full by</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="ms-final-month" style="flex:2"></select>
+              <input type="number" id="ms-final-day" min="1" max="31" style="flex:1">
+              <span id="ms-final-year" style="font-size:13px;font-weight:600;white-space:nowrap"></span>
+            </div>
+          </div>
+          <div></div><div></div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5">A family who signs up after the first deadline pays at least that share the day they sign up; Poolside works out the amount. Plans are offered until a month before the paid-in-full date. After that, it's pay in full.</p>
         <div class="err" id="ms-err" style="margin-top:8px"></div>
 
         <div class="row3" style="gap:10px;margin-top:14px">
-          <div><label>Plan-signup cutoff</label><input type="date" id="plan-cutoff"></div>
           <div><label>Most payments allowed</label><input type="number" id="plan-max" min="2" max="24"></div>
           <div><label>Smallest payment ($)</label><input type="number" id="plan-min" min="1" step="1"></div>
           <!-- PLAN.md S1: every plan payment on one day, so the board approves
@@ -261,19 +273,8 @@
           <span class="saved" id="plan-saved" style="display:none">✓ Saved</span>
         </div>
         <div class="err" id="plan-err"></div>
-        <h3 style="margin:18px 0 8px;font-size:14px" id="plans">Payment plans</h3>
+        <h3 style="margin:18px 0 8px;font-size:14px" id="plans">Families on a payment plan</h3>
         <div id="plans-list" style="font-size:13px"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
-
-        <div class="email-callout">
-          <div class="ec-title">📧 Emails members get from this setup</div>
-          <ul>
-            <li><a href="/club/admin/emails.html#tpl=welcome">Welcome email</a> <span class="ec-when">when their plan is set up</span></li>
-            <li><a href="/club/admin/emails.html#tpl=plan_payment_received">Plan payment received</a> <span class="ec-when">each time a payment goes through</span></li>
-            <li><a href="/club/admin/emails.html#tpl=plan_payment_failed">Plan payment declined</a> <span class="ec-when">when a card is declined</span></li>
-            <li><a href="/club/admin/emails.html#tpl=plan_cancelled">Plan ended, membership canceled</a> <span class="ec-when">when a plan lapses or the family cancels</span></li>
-          </ul>
-          <a class="ec-all" href="/club/admin/emails.html">All emails →</a>
-        </div>
       </div>
 
       <!-- H7 (2026-09-26): discount codes. Early bird is one of these now.
@@ -631,7 +632,8 @@ async function loadPaymentMethods() {
     const ms = r.settings?.membership || {};
     OPENS_MONTH = Math.min(12, Math.max(1, Number(ms.renewal_opens_month) || 12));
     window.__PINNED_YEAR__ = Number(ms.year) > 2000 ? Number(ms.year) : null;
-    if (MILESTONES.length) renderMilestones();
+    renderMilestones();
+    paintSeason();
     Tiers.paint(Array.isArray(r.settings?.membership_tiers) ? r.settings.membership_tiers : null);
     const refs = r.settings?.referrals || {};
     document.getElementById('ref-reward').value = ((refs.reward_cents ?? 10000) / 100);
@@ -879,74 +881,51 @@ function legacyToMilestones(c) {
   if (c.final_due_date) out.push({ date: monthDay(c.final_due_date), min_pct: 100, label: 'Paid in full' });
   return out.filter(m => m.date);
 }
+// The season these settings are for (same rule as membership_year.ts).
+function seasonYear() {
+  const today = PoolTime.todayKey();
+  return window.__PINNED_YEAR__ || (Number(today.slice(5, 7)) >= OPENS_MONTH ? Number(today.slice(0, 4)) + 1 : Number(today.slice(0, 4)));
+}
+function paintSeason() {
+  document.querySelectorAll('.season-year').forEach(el => { el.textContent = String(seasonYear()); });
+}
+// Two fixed deadlines (PLAN.md U1): the first one's share, and paid in full.
+const MONTH_OPTIONS = MONTHS.map((name, k) => `<option value="${String(k + 1).padStart(2, '0')}">${name}</option>`).join('');
+function fixedMilestones(list) {
+  const sorted = seasonSorted(list || []);
+  const first = sorted.length >= 2 ? sorted[0] : { date: '04-10', min_pct: 50, label: 'Half paid' };
+  const final = sorted.length ? sorted[sorted.length - 1] : { date: '07-15', min_pct: 100, label: 'Paid in full' };
+  return [{ ...first, label: first.label || 'Half paid' }, { ...final, min_pct: 100, label: final.label || 'Paid in full' }];
+}
 function renderMilestones() {
-  const host = document.getElementById('ms-rows');
-  if (!MILESTONES.length) {
-    host.innerHTML = '<p style="font-size:12px;color:var(--muted);margin:0 0 8px">No deadlines set yet — add one below.</p>';
-    return;
+  MILESTONES = fixedMilestones(MILESTONES);
+  const [f, l] = MILESTONES;
+  for (const [id, m] of [['first', f], ['final', l]]) {
+    const sel = document.getElementById(`ms-${id}-month`);
+    if (!sel.options.length) sel.innerHTML = MONTH_OPTIONS;
+    sel.value = m.date.slice(0, 2);
+    document.getElementById(`ms-${id}-day`).value = Number(m.date.slice(3, 5)) || 1;
+    document.getElementById(`ms-${id}-year`).textContent = ', ' + (beforeSeason(m.date) ? seasonYear() - 1 : seasonYear());
   }
-  MILESTONES = seasonSorted(MILESTONES);
-  host.innerHTML = MILESTONES.map((m, i) => {
-    const [mm, dd] = (m.date || '--').split('-');
-    const isLast = i === MILESTONES.length - 1;
-    const pct = isLast
-      ? `<div><label>% paid by then</label><div style="padding:9px 0;font-size:13px;font-weight:600">The rest (100%)</div></div>`
-      : `<div><label>% paid by then</label><input type="number" data-ms="${i}" data-f="pct" min="1" max="99" value="${m.min_pct}"></div>`;
-    return `<div class="row3" style="gap:10px;margin-bottom:8px;align-items:end">
-      <div>
-        <label>Deadline</label>
-        <div style="display:flex;gap:6px">
-          <select data-ms="${i}" data-f="month" onchange="readMilestones();renderMilestones()" style="flex:2">
-            ${MONTHS.map((name, k) => `<option value="${String(k+1).padStart(2,'0')}" ${String(k+1).padStart(2,'0') === mm ? 'selected' : ''}>${name}</option>`).join('')}
-          </select>
-          <input type="number" data-ms="${i}" data-f="day" min="1" max="31" value="${Number(dd) || 1}" onchange="readMilestones();renderMilestones()" style="flex:1">
-        </div>
-      </div>
-      ${pct}
-      <div style="display:flex;gap:6px;align-items:end">
-        <div style="flex:1"><label>Label (optional)</label><input type="text" data-ms="${i}" data-f="label" value="${String(m.label || '').replace(/"/g,'&quot;')}" placeholder="${isLast ? 'Paid in full' : 'Pool opens'}"></div>
-        <button class="btn" type="button" onclick="removeMilestone(${i})" style="font-size:12px;padding:9px 11px" title="Remove">✕</button>
-      </div>
-    </div>`;
-  }).join('');
+  document.getElementById('ms-first-pct').value = f.min_pct;
+  paintSeason();
 }
 function readMilestones() {
-  document.querySelectorAll('#ms-rows [data-ms]').forEach(el => {
-    const i = Number(el.dataset.ms), f = el.dataset.f;
-    if (!MILESTONES[i]) return;
-    if (f === 'month' || f === 'day') {
-      const [mm, dd] = (MILESTONES[i].date || '01-01').split('-');
-      const month = f === 'month' ? el.value : mm;
-      const day = String(Math.min(31, Math.max(1, Number(f === 'day' ? el.value : dd) || 1))).padStart(2, '0');
-      MILESTONES[i].date = `${month}-${day}`;
-    } else if (f === 'pct') {
-      MILESTONES[i].min_pct = Math.min(99, Math.max(1, Number(el.value) || 1));
-    } else {
-      MILESTONES[i].label = el.value.trim();
-    }
-  });
+  const md = id => `${document.getElementById(`ms-${id}-month`).value || '01'}-${String(Math.min(31, Math.max(1, Number(document.getElementById(`ms-${id}-day`).value) || 1))).padStart(2, '0')}`;
+  MILESTONES = [
+    { date: md('first'), min_pct: Math.min(99, Math.max(1, Number(document.getElementById('ms-first-pct').value) || 50)), label: 'Half paid' },
+    { date: md('final'), min_pct: 100, label: 'Paid in full' },
+  ];
 }
+['first', 'final'].forEach(id => ['month', 'day'].forEach(k => {
+  document.addEventListener('change', e => { if (e.target && e.target.id === `ms-${id}-${k}`) { readMilestones(); renderMilestones(); } });
+}));
 function milestoneProblem() {
   if (!document.getElementById('plan-enabled').checked) return '';
-  if (!MILESTONES.length) return 'Add at least one payment deadline.';
-  const sorted = seasonSorted(MILESTONES);
-  for (let i = 1; i < sorted.length; i++) {
-    if (seasonKey(sorted[i].date) === seasonKey(sorted[i - 1].date)) {
-      return 'Two deadlines are on the same day. Remove one.';
-    }
-    if (sorted[i].min_pct <= sorted[i - 1].min_pct) {
-      return 'Each deadline has to ask for more than the one before it.';
-    }
-  }
+  const [f, l] = MILESTONES;
+  if (seasonKey(f.date) >= seasonKey(l.date)) return 'The first deadline has to come before the paid-in-full date.';
   return '';
 }
-function addMilestone() {
-  readMilestones();
-  MILESTONES.push(MILESTONES.length ? { date: '07-01', min_pct: 100, label: 'Paid in full' }
-                                    : { date: '04-01', min_pct: 75,  label: 'Pool opens' });
-  renderMilestones();
-}
-function removeMilestone(i) { readMilestones(); MILESTONES.splice(i, 1); renderMilestones(); }
 
 // ── Setup: Payment plans ────────────────────────────────────────────────
 async function loadPlanConfig() {
@@ -955,7 +934,6 @@ async function loadPlanConfig() {
     if (!r.ok) throw new Error(r.error || 'config load failed');
     const c = r.config || {};
     document.getElementById('plan-enabled').checked = !!c.enabled;
-    document.getElementById('plan-cutoff').value   = c.plan_signup_cutoff_date || '';
     document.getElementById('plan-max').value      = (c.max_installments ?? 12);
     document.getElementById('plan-min').value      = Math.round((c.min_installment_cents ?? 2500) / 100);
     document.getElementById('plan-billing-day').value = (c.billing_day ?? 1);
@@ -1021,7 +999,9 @@ async function savePlanConfig() {
       season_open_date:        first ? dated(first) : null,
       final_due_date:          last  ? dated(last)  : null,
       first_installment_pct:   first ? first.min_pct : 50,
-      plan_signup_cutoff_date: document.getElementById('plan-cutoff').value || null,
+      // No signup cutoff (PLAN.md U1): plans run until a month before the
+      // paid-in-full date.
+      plan_signup_cutoff_date: null,
       max_installments:        Number(document.getElementById('plan-max').value) || 12,
       min_installment_cents:   Math.round((Number(document.getElementById('plan-min').value) || 25) * 100),
       billing_day:             Math.min(28, Math.max(1, Math.trunc(Number(document.getElementById('plan-billing-day').value) || 1))),
@@ -1055,7 +1035,7 @@ async function loadPlansList() {
     if (!r.ok) throw new Error(r.error || 'list failed');
     const plans = r.plans || [];
     if (!plans.length) {
-      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No plans yet. They'll appear here as families choose a payment plan.</div>`;
+      box.innerHTML = `<div class="empty" style="padding:14px;border:none;color:var(--muted)">No families are on a payment plan yet. Your plan settings above are saved; a family shows up here once they pick a plan when they sign up or renew.</div>`;
       return;
     }
     const m = c => '$' + (Number(c || 0) / 100).toFixed(2);
@@ -1135,10 +1115,13 @@ async function reactivatePlan(planId) {
 
 // Drive backup functions moved to /club/admin/settings.html on 2026-05-21.
 
-async function savePaymentMethods() {
-  const btn = document.getElementById('pm-save');
+// Saves Venmo, PayPal, the verify window and the card fee together; the
+// Card fees card has its own Save button (PLAN.md U1).
+async function savePaymentMethods(which) {
+  const fee = which === 'fee';
+  const btn = document.getElementById(fee ? 'fee-save' : 'pm-save');
   const errEl = document.getElementById('pm-err');
-  const savedEl = document.getElementById('pm-saved');
+  const savedEl = document.getElementById(fee ? 'fee-saved' : 'pm-saved');
   errEl.classList.remove('show');
   savedEl.style.display = 'none';
   btn.disabled = true;

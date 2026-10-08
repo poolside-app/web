@@ -1468,7 +1468,7 @@ function renderGatePending(panel) {
     invoiceHtml = `
       <div style="margin-top:12px;padding:16px 18px;background:#fffbeb;border:1.5px solid #fbbf24;border-radius:10px">
         <div style="font-weight:700;color:#92400e;font-size:13.5px">💸 Invoice received — ${escapeHtml(dollars)}</div>
-        <div style="font-size:12.5px;color:#78350f;margin-top:6px;line-height:1.5">Doug sent this on ${new Date(panel.invoice_sent_at).toLocaleDateString()}. Check your email for payment instructions (or reply to <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>).${panel.invoice_note ? `<br><br><i style="color:#92400e">${escapeHtml(panel.invoice_note)}</i>` : ''}</div>
+        <div style="font-size:12.5px;color:#78350f;margin-top:6px;line-height:1.5">Poolside sent this on ${new Date(panel.invoice_sent_at).toLocaleDateString()}. Check your email for payment instructions (or reply to <a href="mailto:support@poolsideapp.com">support@poolsideapp.com</a>).${panel.invoice_note ? `<br><br><i style="color:#92400e">${escapeHtml(panel.invoice_note)}</i>` : ''}</div>
       </div>
     `;
   } else if (panel.invoice_sent_at && panel.invoice_paid_at) {
@@ -1483,7 +1483,7 @@ function renderGatePending(panel) {
     <div style="padding:14px 16px;background:var(--blue-l);border-radius:10px;font-size:13px;line-height:1.55">
       <b style="color:var(--blue)">${labels[panel.status] || panel.status}</b>
       <p style="margin:8px 0 0">Requested on ${new Date(panel.requested_at).toLocaleDateString()}. ${subs[panel.status] || ''}</p>
-      <p style="margin:10px 0 0;font-size:12px;color:var(--muted)">Need to add details or change something? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
+      <p style="margin:10px 0 0;font-size:12px;color:var(--muted)">Need to add details or change something? Email <a href="mailto:support@poolsideapp.com">support@poolsideapp.com</a>.</p>
     </div>
     ${invoiceHtml}
   `;
@@ -1539,7 +1539,7 @@ function renderGateActive(panel, health) {
         <li><b>Reboot the Pi.</b> Unplug power for <b>10 seconds</b>, plug back in, wait <b>60 seconds</b>. The bridge phones home automatically once the network is back.</li>
       </ol>
       <p style="margin:14px 0 0;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12.5px;color:#166534"><b>If the bridge comes back online while you're troubleshooting</b>, this banner turns green within a couple minutes — no need to do anything else.</p>
-      <p style="margin:12px 0 0;font-size:12.5px;color:#7c2d12">Tried all three and still offline? Email <a href="mailto:doug@poolsideapp.com?subject=Gate%20bridge%20still%20offline" style="color:#7c2d12;font-weight:600">doug@poolsideapp.com</a> with: club name, when it went down, and what you tried.</p>
+      <p style="margin:12px 0 0;font-size:12.5px;color:#7c2d12">Tried all three and still offline? Email <a href="mailto:support@poolsideapp.com?subject=Gate%20bridge%20still%20offline" style="color:#7c2d12;font-weight:600">support@poolsideapp.com</a> with: club name, when it went down, and what you tried.</p>
     </div>
   ` : '';
 
@@ -1552,7 +1552,7 @@ function renderGateActive(panel, health) {
     <p style="margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.55">
       Members with paid dues see an <b>"Unlock gate"</b> button on their home page. Each tap is logged below.
       Panel configuration is managed by Poolside support —
-      <a href="mailto:doug@poolsideapp.com?subject=Gate%20panel%20question" style="color:var(--blue);font-weight:600">email Doug</a>
+      <a href="mailto:support@poolsideapp.com?subject=Gate%20panel%20question" style="color:var(--blue);font-weight:600">email support</a>
       if you need anything beyond the steps above.
     </p>
     <!-- Test unlock — admin-side button that fires a real unlock command at

@@ -80,8 +80,18 @@
     return r.ok ? { ok: true } : { ok: false, error: r.error || 'Could not save it. Try again.' };
   }
 
+  // A laptop or desktop: no "turn on notifications" there (Doug, 10/8,
+  // PLAN.md U1). iPadOS reports itself as a Mac, so a touch Mac is a tablet.
+  function isComputer() {
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return false;
+    if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false;
+    return true;
+  }
+
   async function mountPrompt(el) {
     if (!el) return;
+    if (isComputer()) { el.style.display = 'none'; return; }
     const st = await status();
     // Already on in this browser: make sure it's registered for this member.
     if (st.subscribed) {

@@ -591,6 +591,24 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ T3.** Settings → Emails, and the help pages that mention it.
 - Notes: emails now carry the club's logo (Settings → branding). A real welcome email was sent to Resend's test inbox and read back. The one-tap renewal "card declined" email was retired with R7 (nothing sends it). `node scripts/test_emails.mjs [--live]` (22 offline, 4 live checks).
 
+### U. Doug's notes from the board and member pages (10/8)
+Doug decided (10/8):
+- In-app board messages say support@poolsideapp.com, not doug@ (both go through Porkbun forwarding; Doug checks support@ is set up there).
+- Payments: the card-fee checkbox moves into the Stripe section; the "Emails members get" boxes go; the page says which season it's about; "Current payment plans" becomes "Families on a payment plan" (a saved plan setting isn't a plan).
+- Plan deadlines: **two fixed deadlines** with years ("Half paid by", "Paid in full by"), no "add a deadline", no signup cutoff. A late joiner still has to pay enough today to meet the half deadline (already how the plan picker works).
+- Member app on a computer: no "turn on notifications" and no "Add to Home Screen".
+- Ask the board: solved questions go under "Past questions".
+- Keyfobs: "I sent it by Venmo" goes straight to the board to make the fob (check the Venmo when handing it over). No separate approval.
+- **Seasons:** a button, "Close 2026 and start 2027", on Settings → Season, replacing "next season goes on sale in". Every page labels the current season. A checklist follows: 2027 prices, deadlines, the renewal message, policies, opening day.
+- **From January 1 of the new season,** a family that hasn't paid (and isn't on a plan for it) isn't a member: they can sign in, see "Pay for 2027 to use everything", and use only My family, the calendar, Ask the board and renewing. No photos, gate, parties, keyfobs or news. A family on a plan counts as a member.
+- **Member app tabs:** Home (unlock the gate, anything to pay or approve, the fundraiser, today at the pool, news), Calendar (plus parties, programs, volunteering), Photos, Ask the board (questions and past ones), My family (people, keyfobs, payment plan, one-tap renewal, settings).
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **U1.** Quick fixes: support@, the payments page, two fixed deadlines, no prompts on computers, Past questions, keyfob Venmo in one step.
+- **U2.** Seasons: the current season everywhere, the close-out button and checklist.
+- **U3.** The January 1 rule: who's a member, what an unpaid family can use, enforced on the server too.
+- **U4.** The member app tabs.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

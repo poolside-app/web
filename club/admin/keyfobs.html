@@ -205,8 +205,10 @@ async function load() {
 
 function paint() {
   const req = DATA.fobs.filter(f => f.status === 'requested');
-  const ready = req.filter(f => f.included || f.payment_status === 'paid' || f.payment_status === 'none');
-  const venmo = req.filter(f => !f.included && f.payment_status === 'pending_verify');
+  // A Venmo the family says they sent is ready to issue: check it came in
+  // when you hand the fob over (PLAN.md U1).
+  const ready = req.filter(f => f.included || ['paid', 'none', 'pending_verify'].includes(f.payment_status));
+  const venmo = [];
   const unpaid = req.filter(f => !f.included && f.payment_status === 'unpaid');
   const lost = DATA.fobs.filter(f => f.status === 'lost');
 
@@ -223,6 +225,7 @@ function paint() {
       <div class="t">${who(f)} ${payChip(f)}</div>
       <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · asked ${escapeHtml(day(f.requested_at))}</div>
       ${f.check_note ? `<div class="note">⚠ ${escapeHtml(f.check_note)}</div>` : ''}
+      ${f.payment_status === 'pending_verify' ? `<div class="note">They say they sent ${escapeHtml(money(f.price_cents))} by Venmo. Check it came in before you hand it over; issuing it marks it paid.</div>` : ''}
       <div class="issue-row">
         <input id="n-${escapeAttr(f.id)}" inputmode="numeric" autocomplete="off" placeholder="Number on the fob" aria-label="Number on the fob">
         <button class="btn btn-sm btn-success" onclick="issue('${escapeAttr(f.id)}')">Issue</button>

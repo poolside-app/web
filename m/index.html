@@ -1586,10 +1586,18 @@ async function claimReward(referralId, rewardType) {
 // iOS we explain Share → Add to Home Screen (Safari has no programmatic
 // install API). On Android Chrome we expose a one-tap button that fires
 // the deferred beforeinstallprompt event.
+// A laptop or desktop: "Add to Home Screen" is for phones and tablets (Doug,
+// 10/8, PLAN.md U1). iPadOS reports itself as a Mac with a touch screen.
+function isComputer() {
+  const ua = navigator.userAgent || '';
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return false;
+  if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false;
+  return true;
+}
 function renderInstallCard() {
   const host = document.getElementById('install-card-host');
   if (!host || !window.Pwa) return;
-  if (window.Pwa.isStandalone()) { host.innerHTML = ''; return; }
+  if (window.Pwa.isStandalone() || isComputer()) { host.innerHTML = ''; return; }
   // The shared guide (js/pwa.js) knows Safari, Chrome on iPhone and Android;
   // this card used to show Safari's steps to everyone on an iPhone.
   host.innerHTML = `
@@ -1781,7 +1789,7 @@ function renderFobCard(kf) {
       line = `<b>Fob ${escapeHtml(f.tail)}</b> <span style="color:#b91c1c;font-size:12.5px;font-weight:600">· Reported lost</span><div style="font-size:12.5px;color:var(--muted)">The board is turning it off so it can't open the gate.</div>`;
     } else {
       const what = f.reason === 'replacement' ? 'Replacement fob' : f.reason === 'new_member' ? 'Your free new-member fob' : 'New fob';
-      const state = f.payment_status === 'pending_verify' ? 'Waiting for the board to see your Venmo.' : 'The board will set it up and let you know.';
+      const state = f.payment_status === 'pending_verify' ? 'Thanks for the Venmo. The board will set it up and let you know.' : 'The board will set it up and let you know.';
       line = `<b>${what}</b><div style="font-size:12.5px;color:var(--muted)">${state}</div>`;
     }
     return `<div style="padding:10px 0;border-top:1px solid var(--border);font-size:14px">${line}</div>`;
@@ -1872,7 +1880,7 @@ async function claimFobVenmo() {
     const r = await callMember('claim_venmo', { ids }, '/functions/v1/keyfobs');
     if (!r.ok) throw new Error(r.error || 'Could not record it');
     await refreshFobs();
-    notify('Thanks. The board will check your Venmo.');
+    notify('Thanks. The board will set up your fob and let you know.');
   } catch (e) { notify(e.message, 'err'); }
 }
 
@@ -2192,7 +2200,7 @@ function renderHelpCard() {
         🙋 Questions for the board
         <button class="btn btn-ghost" onclick="openHelp()" style="font-size:12px;padding:6px 12px">Ask the board</button>
       </h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0">Keyfob not working? Question about dues or a party? It goes to the board member who handles it, and they text you back.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0">Keyfob not working? Question about dues or a party? It goes to the board member who handles it, and their reply pops up here.</p>
       <div id="help-list"></div>
     </div>`;
 }
@@ -2203,7 +2211,8 @@ async function loadHelpList() {
   try {
     const r = await callHelp('mine');
     const rows = (r && r.ok && r.requests) || [];
-    host.innerHTML = rows.map(q => {
+    // Solved questions don't stack up: they go under "Past questions" (U1).
+    const row = q => {
       const fresh = q.last_from_board && q.status !== 'solved';
       return `
         <button class="help-row" onclick="openHelpThread('${escapeAttr(q.id)}')">
@@ -2213,7 +2222,13 @@ async function loadHelpList() {
           </div>
           <span class="help-chip ${fresh ? 'new' : escapeAttr(q.status)}">${fresh ? 'New reply' : escapeHtml(HELP_STATUS[q.status] || q.status)}</span>
         </button>`;
-    }).join('');
+    };
+    const open = rows.filter(q => q.status !== 'solved'), done = rows.filter(q => q.status === 'solved');
+    host.innerHTML = open.map(row).join('') + (done.length ? `
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--blue)">Past questions (${done.length})</summary>
+        ${done.map(row).join('')}
+      </details>` : '');
   } catch (_) { host.innerHTML = ''; }
 }
 
