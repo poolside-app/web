@@ -91,6 +91,21 @@ window.addManifestLink = function (href) {
   .who a { cursor: pointer; }
 
   main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
+  /* The app tabs (PLAN.md U4): a bar at the bottom on a phone, across the
+     top on a computer. */
+  .mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9000; display: flex; background: #fff; border-top: 1px solid var(--border); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); }
+  .mtabs button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; background: none; border: 0; font: 600 10.5px 'Inter', sans-serif; color: var(--muted); cursor: pointer; border-radius: 10px; }
+  .mtabs button .ti { font-size: 20px; line-height: 1.1; }
+  .mtabs button.on { color: var(--blue); background: var(--blue-l, #e6eef5); }
+  body.has-tabs main { padding-bottom: 96px; }
+  body.has-tabs #pool-pass-fab { bottom: calc(84px + env(safe-area-inset-bottom)) !important; }
+  @media (min-width: 760px) {
+    .mtabs { position: sticky; top: 0; bottom: auto; justify-content: center; gap: 4px; border-top: 0; border-bottom: 1px solid var(--border); box-shadow: none; margin: -28px -22px 20px; padding: 6px 12px; border-radius: 0; }
+    .mtabs button { flex: 0 0 auto; flex-direction: row; gap: 6px; font-size: 14px; padding: 9px 14px; }
+    .mtabs button .ti { font-size: 16px; }
+    body.has-tabs main { padding-bottom: 28px; }
+    body.has-tabs #pool-pass-fab { bottom: 22px !important; }
+  }
 
   .hero-card {
     background: linear-gradient(135deg, var(--blue), var(--blue-2));
@@ -1813,7 +1828,7 @@ function renderFobCard(kf) {
       <h2>🔑 Keyfobs</h2>
       ${rows || (unpaid.length ? '' : '<div style="font-size:13.5px;color:var(--muted)">No fobs on your membership yet.</div>')}
       ${payBox}
-      ${kf.room > 0 ? `<button class="btn btn-ghost" style="margin-top:10px" onclick="requestFob()">Request another fob (${fee})</button>` : `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">You have ${kf.max_per_family} fobs, the most a family can have.</div>`}
+      ${(kf.room ?? 1) > 0 ? `<button class="btn btn-ghost" style="margin-top:10px" onclick="requestFob()">Request another fob (${fee})</button>` : `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">You have ${kf.max_per_family || 5} fobs, the most a family can have.</div>`}
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
         ${hasActive ? link('Lost your fob? Order a new one', 'reportLostFob()') : ''}
         ${hasActive ? link('Fob broken? Ask the board', 'brokenFob()') : ''}
@@ -1882,6 +1897,25 @@ async function claimFobVenmo() {
     await refreshFobs();
     notify('Thanks. The board will set up your fob and let you know.');
   } catch (e) { notify(e.message, 'err'); }
+}
+
+// ── The app tabs (PLAN.md U4) ────────────────────────────────────────────
+// Old links still land in the right place: #parties on Calendar, #plan and
+// #keyfobs on My family, #help=<id> on Ask the board.
+const TAB_FOR = { home: 'home', calendar: 'calendar', parties: 'calendar', photos: 'photos', help: 'help', family: 'family', plan: 'family', keyfobs: 'family' };
+function tabForHash(h) {
+  const key = String(h || '').replace(/^#/, '').split('=')[0];
+  return TAB_FOR[key] || 'home';
+}
+function showTab(tab, scrollTo, first) {
+  if ((window.__LOCKED_TABS__ || []).includes(tab)) tab = 'home';
+  document.querySelectorAll('[data-pane]').forEach(p => { p.style.display = p.dataset.pane === tab ? '' : 'none'; });
+  document.querySelectorAll('#mtabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  // Keep a #help=<id> link as it is; otherwise the address shows the tab.
+  if (!/^#help=/.test(location.hash) || !first) history.replaceState(null, '', location.pathname + location.search + '#' + (scrollTo && scrollTo !== tab && TAB_FOR[scrollTo] ? scrollTo : tab));
+  const target = scrollTo && scrollTo !== tab && document.getElementById(scrollTo === 'parties' ? 'parties-card' : scrollTo);
+  if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), first ? 300 : 30);
+  else if (!first) window.scrollTo({ top: 0 });
 }
 
 function renderRenewalCard(renewal, tenant) {
@@ -2630,9 +2664,7 @@ async function submitProfile() {
   // Refer a friend gets the bright treatment — it's the growth lever.
   const referReward = Number(publicData.public_settings?.referrals?.reward_cents ?? 10000);
   heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, earn $${(referReward / 100).toFixed(referReward % 100 ? 2 : 0)}</button>`);
-  if (user.can_book_parties) heroActions.push(`<button class="btn btn-ghost" onclick="openPartyModal()">🎉 Request a party</button>`);
-  heroActions.push(`<button class="btn btn-ghost" onclick="openPhotoUpload()">📸 Upload a photo</button>`);
-  heroActions.push(`<button class="btn btn-ghost" onclick="openHelp()">🙋 Ask the board</button>`);
+  // Parties, photos and Ask the board have their own tabs now (PLAN.md U4).
   // "Edit my info" + "Add a household member" both moved to /m/family.html
   // — the household card below is the link in. Hero stays focused on
   // engagement actions, not chores.
@@ -2700,110 +2732,129 @@ async function submitProfile() {
     `).join('')
     : '<div class="empty">No announcements yet.</div>';
 
+  // ── The app tabs (PLAN.md U4, Doug 10/8) ─────────────────────────────
+  // Home: the gate, anything to pay or approve, the fundraiser, today, news.
+  // Calendar: the calendar plus parties, programs and volunteering. Photos.
+  // Ask the board. My family: people, keyfobs, payment plan, settings.
+  // A family that isn't a member for the season (from January 1, U3) sees
+  // "Pay for <season>" and only My family, the calendar and Ask the board.
+  const acc = me.access || { member: true };
+  const lockedTabs = acc.member ? [] : ['photos'];
+  const payNow = acc.member ? '' : `
+    <div class="card" style="background:#fef3c7;border-color:#fcd34d">
+      <h2 style="color:#7c2d12">Pay for ${escapeHtml(String(acc.season))} to use everything</h2>
+      <p style="font-size:14px;color:#7c2d12;margin:0 0 12px;line-height:1.5">Renew for the ${escapeHtml(String(acc.season))} season to use the gate, photos, parties, keyfobs and news again. Until then you can see the calendar, ask the board, and update your family.</p>
+      <a class="btn" href="/m/renew.html" style="background:var(--blue);color:#fff;display:inline-block">Renew for ${escapeHtml(String(acc.season))}</a>
+    </div>`;
+  // Things to do, on Home. A plan that needs attention shows here; otherwise
+  // it lives on My family.
+  const planNeedsYou = !!(me.plan && ['past_due', 'lapsed', 'cancelled'].includes(me.plan.status));
+  const fobsToPay = (me.keyfobs?.fobs || []).filter(f => f.status === 'requested' && !f.included && f.payment_status === 'unpaid').length;
+  const todo = [
+    acc.member ? renderRenewalCard(me.renewal, tenant) : '',
+    planNeedsYou ? renderPlanCard(me.plan) : '',
+    fobsToPay ? `<button type="button" class="card" onclick="showTab('family', 'keyfobs')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;cursor:pointer;background:#fef3c7;border-color:#fcd34d">
+        <span>🔑 <b>${fobsToPay === 1 ? 'A keyfob' : fobsToPay + ' keyfobs'} to pay for</b><br><span style="font-size:13px;color:var(--muted)">The board sets them up once they're paid.</span></span>
+        <span style="color:var(--blue);font-weight:600;font-size:13px">Pay →</span></button>` : '',
+    earlyBirdBanner,
+  ].join('');
+  const tab = (id, icon, label) => lockedTabs.includes(id) ? ''
+    : `<button type="button" data-tab="${id}" onclick="showTab('${id}')"><span class="ti">${icon}</span><span>${label}</span></button>`;
+
   document.getElementById('main').innerHTML = `
-    ${renderSponsorStrip(publicData.sponsors || [])}
-    ${renderSeasonClosedBanner(publicData.public_settings?.season)}
-    <div class="hero-card">
-      <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
-      <p class="sub">${firstVisit ? 'Welcome to' : 'Welcome back to'} ${escapeHtml(tenant.display_name)}.</p>
-      <div class="actions">${heroActions.join('')}</div>
-    </div>
+    <nav class="mtabs" id="mtabs" aria-label="Sections">
+      ${tab('home', '🏠', 'Home')}${tab('calendar', '📅', 'Calendar')}${tab('photos', '📸', 'Photos')}${tab('help', '🙋', 'Ask the board')}${tab('family', '👨‍👩‍👧', 'My family')}
+    </nav>
 
-    <!-- Household summary card, near the top: "are we paid up, and who's
-         on our membership" is the first thing a family checks (D8).
-         Drilldown for adding/removing members,
-         editing household info, and transferring the primary role lives
-         on /m/family.html — this card is just a glance. -->
-    <a href="/m/family.html" class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:inherit">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
-          <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
-          ${dueText}
-        </div>
-        <div style="font-size:12.5px;color:var(--muted)">
-          ${(household.members || []).filter(m => m.active).map(m => escapeHtml(m.name.split(' ')[0])).join(' · ') || 'No members on file'}
-        </div>
+    <section data-pane="home">
+      ${renderSponsorStrip(publicData.sponsors || [])}
+      ${renderSeasonClosedBanner(publicData.public_settings?.season)}
+      <div class="hero-card">
+        <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
+        <p class="sub">${firstVisit ? 'Welcome to' : 'Welcome back to'} ${escapeHtml(tenant.display_name)}.</p>
+        ${acc.member ? `<div class="actions">${heroActions.join('')}</div>` : ''}
       </div>
-      <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
-    </a>
+      ${payNow}
+      ${acc.member ? `
+      <!-- Gate unlock first (Doug: "remote unlock should be pretty high up").
+           Hidden until loadGateCard() finds the club and family can use it. -->
+      <div class="card" id="gate-card" style="display:none;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff;text-align:center;padding:24px 22px">
+        <div id="gate-card-body"></div>
+      </div>
+      <div id="todo-host">${todo}</div>
+      <div id="push-prompt" style="display:none"></div>
+      ${renderFundraiserCard(publicData.public_settings?.fundraiser, publicData.public_settings?.payments, publicData.tenant)}
+      <div id="today-block"></div>
+      <div class="card">
+        <h2>📰 Latest news</h2>
+        ${postsHtml}
+      </div>
+      <div id="install-card-host"></div>` : ''}
+    </section>
 
-    <div id="push-prompt" style="display:none"></div>
-    ${renderPlanCard(me.plan)}
-    ${renderFobCard(me.keyfobs)}
-    ${renderRenewalCard(me.renewal, tenant)}
+    <section data-pane="calendar" style="display:none">
+      ${acc.member && user.can_book_parties ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><button class="btn" onclick="openPartyModal()" style="background:var(--blue);color:#fff">🎉 Book a party</button></div>` : ''}
+      <div class="card">
+        <h2>📅 Coming up</h2>
+        <div id="coming-up">${eventsHtml}</div>
+      </div>
+      <div class="card">
+        <h2>Calendar</h2>
+        <div id="member-calendar"></div>
+      </div>
+      ${acc.member ? `
+      <div class="card" id="parties-card">
+        <h2>Your party requests</h2>
+        <div class="empty">Loading…</div>
+      </div>
+      <div class="card" id="programs-card">
+        <h2>Programs &amp; sign-ups</h2>
+        <div class="empty">Loading…</div>
+      </div>
+      <div class="card" id="volunteer-card" style="display:none">
+        <h2>Volunteer</h2>
+        <div id="volunteer-body" class="empty">Loading…</div>
+      </div>` : ''}
+    </section>
 
-    <!-- Today at the pool — hours + today's events + check-in counter -->
-    <div id="today-block"></div>
+    <section data-pane="photos" style="display:none">
+      ${acc.member ? `
+      <div class="card">
+        <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          📸 Photos
+          <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Add a photo</button>
+        </h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Snapshots from the club. The board approves each one before it shows here and on the club's page.</p>
+        ${photosHtml}
+      </div>` : ''}
+    </section>
 
-    <!-- "Add to home screen" install card — populated by renderInstallCard()
-         after Pwa.setup runs. Hidden by default; revealed on iOS/Android
-         non-standalone. -->
-    <div id="install-card-host"></div>
+    <section data-pane="help" style="display:none">
+      ${renderHelpCard()}
+    </section>
 
-    ${renderFundraiserCard(publicData.public_settings?.fundraiser, publicData.public_settings?.payments, publicData.tenant)}
-
-    <!-- Gate-unlock card. Hidden by default; loadGateCard() flips it visible
-         + enables/disables the button based on tenant + member eligibility. -->
-    <div class="card" id="gate-card" style="display:none;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff;text-align:center;padding:24px 22px">
-      <div id="gate-card-body"></div>
-    </div>
-
-    ${earlyBirdBanner}
-
-    <!-- Photos / Snapshots: high prominence. Members can upload (admin
-         approves before showing). Same approved set drives the public
-         landing page carousel — see club/index.html. -->
-    <div class="card">
-      <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        📸 Photos
-        <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Upload a photo</button>
-      </h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Snapshots from the club. Anyone can upload — admin approves before they show up here and on the public page.</p>
-      ${photosHtml}
-    </div>
-
-    <!-- News (announcements) — board posts members should see -->
-    <div class="card">
-      <h2>📰 Latest news</h2>
-      ${postsHtml}
-    </div>
-
-    <!-- Coming up (next 3-5 events) — short list, scannable -->
-    <div class="card">
-      <h2>📅 Coming up</h2>
-      <div id="coming-up">${eventsHtml}</div>
-    </div>
-
-    <!-- Full calendar grid -->
-    <div class="card">
-      <h2>Calendar</h2>
-      <div id="member-calendar"></div>
-    </div>
-
-    <!-- Activities: parties, programs, volunteer, passes, documents -->
-    <div class="card" id="parties-card">
-      <h2>Your party requests</h2>
-      <div class="empty">Loading…</div>
-    </div>
-
-    <div class="card" id="programs-card">
-      <h2>Programs &amp; sign-ups</h2>
-      <div class="empty">Loading…</div>
-    </div>
-
-    <div class="card" id="volunteer-card" style="display:none">
-      <h2>Volunteer</h2>
-      <div id="volunteer-body" class="empty">Loading…</div>
-    </div>
-
-
-    <!-- Documents feature removed 2026-05-21. -->
-
-
-    ${renderHelpCard()}
-
+    <section data-pane="family" style="display:none">
+      ${payNow}
+      <a href="/m/family.html" class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:inherit">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--text)">${escapeHtml(household.family_name || 'Your household')}</span>
+            ${dueText}
+          </div>
+          <div style="font-size:12.5px;color:var(--muted)">
+            ${(household.members || []).filter(m => m.active).map(m => escapeHtml(m.name.split(' ')[0])).join(' · ') || 'No members on file'}
+          </div>
+        </div>
+        <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Family &amp; settings →</span>
+      </a>
+      ${planNeedsYou ? '' : renderPlanCard(me.plan)}
+      ${acc.member ? renderFobCard(me.keyfobs) : ''}
+    </section>
   `;
   loadHelpList();
+  document.body.classList.add('has-tabs');
+  window.__LOCKED_TABS__ = lockedTabs;
+  showTab(tabForHash(location.hash), location.hash.slice(1).split('=')[0] || null, true);
   if (window.MemberPush) MemberPush.mountPrompt(document.getElementById('push-prompt'));
   // Back from Stripe after a plan change (PLAN.md M).
   {
@@ -2816,7 +2867,7 @@ async function submitProfile() {
       q.delete('plan'); q.delete('paid');
       history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
     }
-    if (location.hash === '#plan' || location.hash === '#keyfobs') document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // #plan, #keyfobs and #parties open their tab (showTab above) and scroll there.
   }
   // Opened from the link in a reply text (possibly before signing in).
   const helpId = takeHelpLink();
@@ -2962,9 +3013,11 @@ async function submitProfile() {
     start();
   })();
 
-  refreshPrograms();
-  refreshVolunteer();
-  loadGateCard();
+  if (acc.member) {
+    refreshPrograms();
+    refreshVolunteer();
+    loadGateCard();
+  }
   loadDonationsLeaderboard();
   // Populate the "Add to Home Screen" instruction card now that its host
   // div exists in the DOM (it lives inside the main innerHTML block above).
@@ -2976,7 +3029,9 @@ async function submitProfile() {
     history.replaceState(null, '', window.location.pathname);
   }
 
-  if (user.can_book_parties) {
+  if (!acc.member) {
+    // Not a member for the season: nothing to load (PLAN.md U3).
+  } else if (user.can_book_parties) {
     refreshParties();
   } else {
     const card = document.getElementById('parties-card');

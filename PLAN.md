@@ -591,7 +591,7 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ T3.** Settings → Emails, and the help pages that mention it.
 - Notes: emails now carry the club's logo (Settings → branding). A real welcome email was sent to Resend's test inbox and read back. The one-tap renewal "card declined" email was retired with R7 (nothing sends it). `node scripts/test_emails.mjs [--live]` (22 offline, 4 live checks).
 
-### U. Doug's notes from the board and member pages (10/8)
+### U. Doug's notes from the board and member pages (10/8) — ✅ done 10/8
 Doug decided (10/8):
 - In-app board messages say support@poolsideapp.com, not doug@ (both go through Porkbun forwarding; Doug checks support@ is set up there).
 - Payments: the card-fee checkbox moves into the Stripe section; the "Emails members get" boxes go; the page says which season it's about; "Current payment plans" becomes "Families on a payment plan" (a saved plan setting isn't a plan).
@@ -604,10 +604,11 @@ Doug decided (10/8):
 - **Member app tabs:** Home (unlock the gate, anything to pay or approve, the fundraiser, today at the pool, news), Calendar (plus parties, programs, volunteering), Photos, Ask the board (questions and past ones), My family (people, keyfobs, payment plan, one-tap renewal, settings).
 
 Steps (each one: a failing test first, then the fix, then proof):
-- **U1.** Quick fixes: support@, the payments page, two fixed deadlines, no prompts on computers, Past questions, keyfob Venmo in one step.
-- **U2.** Seasons: the current season everywhere, the close-out button and checklist.
-- **U3.** The January 1 rule: who's a member, what an unpaid family can use, enforced on the server too.
-- **U4.** The member app tabs.
+- **✅ U1.** Quick fixes: support@, the payments page, two fixed deadlines, no prompts on computers, Past questions, keyfob Venmo in one step.
+- **✅ U2.** Seasons: the current season everywhere, the close-out button and checklist.
+- **✅ U3.** The January 1 rule: who's a member, what an unpaid family can use, enforced on the server too.
+- **✅ U4.** The member app tabs.
+- Notes: Bishop's current season is **2027**: it went on sale 10/7 when Doug asked to start the next season, and is now fixed (it changes only on the button). Families paid for 2026 stay members until Jan 1, 2027. `node scripts/test_season_home.mjs [--live]` (27 offline, 3 live checks).
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).

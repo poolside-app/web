@@ -71,7 +71,7 @@ console.log('U4 · the member app tabs (offline)');
 {
   const home = read('m/index.html');
   const tabs = ['home', 'calendar', 'photos', 'help', 'family'];
-  check('five tabs: Home, Calendar, Photos, Ask the board, My family', tabs.every(t => new RegExp(`data-tab="${t}"`).test(home)));
+  check('five tabs: Home, Calendar, Photos, Ask the board, My family', /data-tab="\$\{id\}"/.test(home) && tabs.every(t => new RegExp(`tab\\('${t}',`).test(home)));
   check('each part of the page belongs to a tab', /data-pane="home"/.test(home) && /data-pane="calendar"/.test(home) && /data-pane="photos"/.test(home) && /data-pane="help"/.test(home) && /data-pane="family"/.test(home));
   check('Home starts with the gate, then anything to do, then the fundraiser', (() => {
     const pane = home.slice(home.indexOf('data-pane="home"'));

@@ -82,7 +82,11 @@ console.log('\nD8 · family and dues near the top of the member home');
   const start = member.indexOf('${renderSponsorStrip(publicData.sponsors');
   const tpl = start < 0 ? '' : member.slice(start, start + 9000);
   const fam = tpl.indexOf('/m/family.html'), today = tpl.indexOf('today-block');
-  check('the family card comes before Today and the photos', fam > 0 && today > 0 && fam < today, `family at ${fam}, today at ${today}`);
+  // Since PLAN.md U4 (10/8) the family card is the first thing on the My
+  // family tab, not on Home.
+  const famPane = member.indexOf('data-pane="family"');
+  const famCard = member.indexOf('/m/family.html', famPane);
+  check('the family card leads the My family tab', famPane > 0 && famCard > famPane && famCard - famPane < 600, `family card at ${famCard}, its tab at ${famPane}`);
 }
 
 console.log('\nD9 · "Coming up" includes calendar-feed events');
@@ -212,7 +216,9 @@ console.log('\nJ1–J8 · one place for each setting');
   const applyPage = read('club/admin/application.html');
   check('J4: the Apply form page forwards to Settings → Season',
     /location\.replace\('\/club\/admin\/settings\.html\?focus=season#season'\)/.test(applyPage) && /id="apply-heading"/.test(settings));
-  check('J5: Season has "next season goes on sale"', /id="renewal_opens_month"/.test(settings) && /renewal_opens_month/.test(between(settings, 'function collect', '\n}')));
+  // J5's "next season goes on sale in" was replaced by the season button
+  // (PLAN.md U2, 10/8).
+  check('J5: Season shows the current season and the button that starts the next', /id="season-current"/.test(settings) && /closeSeason\(/.test(settings));
   {
     const box = { console };
     box.globalThis = box; box.window = box;
