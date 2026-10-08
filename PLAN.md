@@ -524,6 +524,23 @@ Steps (each one: a failing test first, then the fix, then proof):
 - Not yet: the CSV import (Doug isn't uploading it yet). When it goes in, a claimed family's fob numbers from the list become active fobs when their membership is approved.
 - **P5. Later (after closing, with the panel connected):** typing the number turns the fob on at the gate. Renewals extend it, lapses switch it off, and a lost fob goes off at once. Per the keyfob automation design (memory) this starts with the read-only panel check.
 
+### Q. Keyfobs at checkout (Doug, 10/8) — ✅ done 10/8
+Doug decided (10/8):
+- No "new or returning" choice up front: Poolside keeps deciding who is new, and a new family gets 1 free fob.
+- At checkout, a family can add extra fobs at $15 each with a quantity box. That covers new families, families joining from the club's list, and renewals. New families see "New members get 1 keyfob free" next to it.
+- **5 fobs per family in total**, counting the free one. Lost and turned-off fobs don't count. The board can change the 5.
+- Extra fobs are **part of the membership total**: one card charge or one Venmo amount, spread with the dues on a payment plan. The board is asked to issue them all at approval, in one task.
+- When the club has app unlock on, the checkout just says app unlock is available. Doug doesn't want families thinking they need to buy more fobs.
+- In the app: "Lost your fob? Order a new one" ($15). A **broken** fob goes through Member help; the board swaps it free by default, or charges $15 if it looks like damage.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ Q1. Price:** extra fobs on the application (`fob_extra_count`), priced with the membership (`fob_cents`), so card, Venmo, plans and "nothing to pay" all include them. The 5-fob limit is a club setting.
+- **✅ Q2. Signup checkout:** the keyfob box moves from page 1 to the payment page: the free fob (new families only, ticked by default), the quantity box, the price lines, and the app-unlock line.
+- **✅ Q3. Renewal checkout:** the same quantity box on the renewal page.
+- **✅ Q4. Approval:** one helper creates the free fob, the paid extras and the list fobs, with one task for the board, for new families and renewals alike.
+- **✅ Q5. In the app and on the desk:** a quantity on "Request another fob" and one payment for all of them; "Lost your fob? Order a new one"; "Fob broken? Ask the board" opens Member help; the board's "Swap broken fob" (free, or charge $15).
+- Notes: fobs bought at signup or renewal follow the club's card-fee rule for dues, since they're one charge; fobs bought later in the app always put the card fee on the member. The no-login renewal link (`/renew.html`) has no keyfob box yet; those families can add fobs in the app. `node scripts/test_keyfobs.mjs [--live]` (35 offline, 26 live checks).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

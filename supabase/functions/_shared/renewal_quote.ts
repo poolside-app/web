@@ -32,6 +32,8 @@ export type RenewalQuote = {
   price: {
     base_cents: number; discount_cents: number; credit_cents: number; amount_due_cents: number;
     code: string | null; code_label: string | null; code_problem: string | null; note: string | null;
+    /** Extra keyfobs, already in amount_due_cents (PLAN.md Q). */
+    fob_count: number; fob_cents: number; fob_fee_cents: number; fob_room: number;
   };
 };
 
@@ -108,6 +110,7 @@ export async function quoteRenewal(
       base_cents: price.base_cents, discount_cents: price.discount_cents,
       credit_cents: price.credit_cents, amount_due_cents: price.amount_due_cents,
       code: price.code, code_label: price.code_label, code_problem: price.code_problem, note: price.note,
+      fob_count: price.fob_count ?? 0, fob_cents: price.fob_cents ?? 0, fob_fee_cents: price.fob_fee_cents ?? 0, fob_room: price.fob_room ?? 0,
     },
   };
 }

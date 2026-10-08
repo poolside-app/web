@@ -606,10 +606,14 @@ Deno.serve(async (req) => {
         const { data: fobs } = await sb.from('keyfobs')
           .select('id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, requested_at, issued_at, lost_at')
           .eq('household_id', payload.hid as string).neq('status', 'off').order('requested_at');
+        const live = (fobs ?? []).filter(f => f.status === 'requested' || f.status === 'active').length;
         keyfobs = {
           fobs: (fobs ?? []).map(f => ({ ...f, card_number: undefined, tail: kf.fobTail(f.card_number as number | null) })),
           fee_cents: set.fee_cents,
+          max_per_family: set.max_per_family, room: Math.max(0, set.max_per_family - live),
           card_total_cents: kf.fobCardTotal(set.fee_cents, Number(pay.stripe_pct ?? 2.9) / 100, Number(pay.stripe_fixed_cents ?? 30)),
+          // So the app can show the card total for several fobs at once.
+          card_pct: Number(pay.stripe_pct ?? 2.9), card_fixed_cents: Number(pay.stripe_fixed_cents ?? 30),
           venmo_handle: (pay.venmo_handle as string | undefined) ?? null,
         };
       }
@@ -643,15 +647,22 @@ Deno.serve(async (req) => {
     // Their price, with a code they typed and their referral credit (H5).
     // With a renewal already started, the price is stored on it.
     const code = body.discount_code !== undefined ? String(body.discount_code ?? '') : undefined;
+    // Extra keyfobs (PLAN.md Q): their fobs count toward the family limit.
+    const fobExtra = body.fob_extra !== undefined ? Math.max(0, Math.trunc(Number(body.fob_extra) || 0)) : undefined;
+    const kf = await import('../_shared/keyfobs.ts');
+    const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+    const fobSet = kf.fobSettings(settingsRow?.value);
     let priced: import('../_shared/membership_price.ts').PriceResult | null = null;
     if (state.application_id) {
       const { priceApplication } = await import('../_shared/membership_price.ts');
-      priced = await priceApplication(sb, state.application_id as string, code !== undefined ? { code } : {});
-    } else if (code) {
+      priced = await priceApplication(sb, state.application_id as string, {
+        ...(code !== undefined ? { code } : {}), ...(fobExtra !== undefined ? { fobExtra } : {}) });
+    } else {
       const { priceFor } = await import('../_shared/membership_price.ts');
-      const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
       priced = await priceFor(sb, payload.tid as string, settingsRow?.value, {
-        tierSlug: household.tier as string | null, householdId: household.id as string, isRenewal: true, code,
+        tierSlug: household.tier as string | null, householdId: household.id as string, isRenewal: true,
+        ...(code ? { code } : {}),
+        fobExtra: fobExtra ?? 0, fobHave: fobSet.enabled ? await kf.liveFobCount(sb, household.id as string) : 0, fobFree: 0,
       });
     }
     const { quoteRenewal } = await import('../_shared/renewal_quote.ts');
@@ -669,6 +680,11 @@ Deno.serve(async (req) => {
       application_id: state.application_id,
       family_name: household.family_name,
       auto_renew: !!household.auto_renew,
+      // The keyfob box on the renewal page (PLAN.md Q).
+      keyfobs: fobSet.enabled ? {
+        fee_cents: fobSet.fee_cents, max_per_family: fobSet.max_per_family,
+        app_unlock: !!((settingsRow?.value as Record<string, unknown> | undefined)?.features as Record<string, unknown> | undefined)?.gate,
+      } : null,
     });
   }
 
@@ -784,8 +800,10 @@ Deno.serve(async (req) => {
     // returns the same row rather than littering the admin queue with
     // duplicates. The partial unique index backstops this at the DB level.
     const { priceApplication } = await import('../_shared/membership_price.ts');
-    const code = body.discount_code !== undefined && String(body.discount_code ?? '').trim()
+    const code: { code?: string; fobExtra?: number } = body.discount_code !== undefined && String(body.discount_code ?? '').trim()
       ? { code: String(body.discount_code) } : {};
+    // Extra keyfobs from the renewal page (PLAN.md Q), priced with the dues.
+    if (body.fob_extra !== undefined) code.fobExtra = Math.max(0, Math.trunc(Number(body.fob_extra) || 0));
     if (state.application_id) {
       const priced = await priceApplication(sb, state.application_id as string, code);
       return jsonResponse({ ok: true, application_id: state.application_id, membership_year: state.year, reused: true,

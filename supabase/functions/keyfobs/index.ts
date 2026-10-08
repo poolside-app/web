@@ -10,9 +10,9 @@
 //
 // Member actions (member JWT):
 //   { action: 'mine' }                          → { ok, enabled, fobs, fee_cents, card_total_cents }
-//   { action: 'request', member_id? }           → { ok, fob }   another fob, at the fee
+//   { action: 'request', count? }               → { ok, fobs }  more fobs, at the fee, up to the family limit
 //   { action: 'report_lost', id, replace? }     → { ok, replacement? }
-//   { action: 'claim_venmo', id }               → { ok }        "I paid by Venmo"
+//   { action: 'claim_venmo', ids }              → { ok }        "I paid by Venmo" for the unpaid ones
 //
 // Board actions (tenant admin; the keyfobs or households screen):
 //   { action: 'list' }                          → { ok, fobs, households, settings }
@@ -21,14 +21,15 @@
 //   { action: 'turned_off', id }                → { ok }        done at the panel
 //   { action: 'require_payment', id }           → { ok }        a flagged free fob: charge instead
 //   { action: 'confirm_venmo', id }             → { ok }
-//   { action: 'settings_get' } / { action: 'settings_save', included_free?, fee_cents? }
+//   { action: 'swap', id, number?, charge? }    → { ok }        a broken fob: a free one now, or $15 first (PLAN.md Q5)
+//   { action: 'settings_get' } / { action: 'settings_save', included_free?, fee_cents?, max_per_family? }
 // Card payments go through stripe_checkout ('keyfob') and stripe_webhook.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, type AdminPayload } from '../_shared/auth.ts';
-import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs } from '../_shared/keyfobs.ts';
+import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs, liveFobCount } from '../_shared/keyfobs.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -73,9 +74,20 @@ async function task(sb: Sb, tenantId: string, kind: string, fobId: string, summa
     push_title: '🔑 ' + push, push_body: summary,
   });
 }
-async function closeTasks(sb: Sb, fobId: string, by: string | null) {
-  await sb.from('admin_tasks').update({ completed_at: new Date().toISOString(), completed_by: by })
+async function closeTasks(sb: Sb, fobId: string, by: string | null, householdId?: string) {
+  const now = new Date().toISOString();
+  await sb.from('admin_tasks').update({ completed_at: now, completed_by: by })
     .eq('source_kind', 'keyfob').eq('source_id', fobId).is('completed_at', null);
+  // The one task for a family's fobs at approval (PLAN.md Q4) closes when
+  // none of them are left to issue.
+  if (householdId) {
+    const { data: left } = await sb.from('keyfobs').select('id, included, payment_status')
+      .eq('household_id', householdId).eq('status', 'requested');
+    if (!(left ?? []).some(f => f.included || f.payment_status === 'paid' || f.payment_status === 'none')) {
+      await sb.from('admin_tasks').update({ completed_at: now, completed_by: by })
+        .eq('source_kind', 'keyfob_household').eq('source_id', householdId).is('completed_at', null);
+    }
+  }
 }
 async function popFamily(tenantId: string, householdId: string, title: string, body: string) {
   try {
@@ -114,22 +126,32 @@ Deno.serve(async (req) => {
 
     if (action === 'mine') {
       const { data } = await sb.from('keyfobs').select(FIELDS).eq('household_id', hid).neq('status', 'off').order('requested_at');
-      return j({ ok: true, enabled: true, fobs: (data ?? []).map(shape), fee_cents: settings.fee_cents, card_total_cents: cardTotal(settings.fee_cents) });
+      const live = (data ?? []).filter(f => f.status === 'requested' || f.status === 'active').length;
+      return j({ ok: true, enabled: true, fobs: (data ?? []).map(shape), fee_cents: settings.fee_cents, card_total_cents: cardTotal(settings.fee_cents),
+        max_per_family: settings.max_per_family, room: Math.max(0, settings.max_per_family - live) });
     }
 
+    // More fobs (PLAN.md Q5): up to the family limit, counting working fobs
+    // and ones on their way. Lost and turned-off fobs don't count.
     if (action === 'request') {
-      const { count } = await sb.from('keyfobs').select('id', { count: 'exact', head: true })
-        .eq('household_id', hid).eq('status', 'requested');
-      if ((count ?? 0) >= 3) return j({ ok: false, error: 'You already have fobs waiting. Pay for or finish those first.' }, 409);
+      const want = Math.trunc(Number(body.count ?? 1));
+      if (!Number.isFinite(want) || want < 1) return j({ ok: false, error: 'How many fobs?' }, 400);
+      const room = settings.max_per_family - await liveFobCount(sb, hid);
+      if (want > room) {
+        return j({ ok: false, error: room <= 0
+          ? `You have ${settings.max_per_family} fobs already, the most a family can have. Report a lost one to replace it.`
+          : `You can add ${room} more (${settings.max_per_family} per family).` }, 409);
+      }
       const free = settings.fee_cents <= 0;
-      const { data, error } = await sb.from('keyfobs').insert({
+      const rows = Array.from({ length: want }, () => ({
         tenant_id: TID, household_id: hid, member_id: body.member_id ? String(body.member_id) : null,
         status: 'requested', reason: 'extra', included: false, price_cents: settings.fee_cents,
         payment_status: free ? 'none' : 'unpaid',
-      }).select(FIELDS).single();
-      if (error) return j({ ok: false, error: error.message }, 500);
-      if (free) await task(sb, TID, 'keyfob.issue', data.id as string, `Issue another keyfob to the ${hh.family_name}`, 'Keyfob to issue');
-      return j({ ok: true, fob: shape(data), card_total_cents: cardTotal(settings.fee_cents) });
+      }));
+      const { data, error } = await sb.from('keyfobs').insert(rows).select(FIELDS);
+      if (error || !data?.length) return j({ ok: false, error: error?.message || 'Could not request fobs' }, 500);
+      if (free) for (const f of data) await task(sb, TID, 'keyfob.issue', f.id as string, `Issue another keyfob to the ${hh.family_name}`, 'Keyfob to issue');
+      return j({ ok: true, fobs: data.map(shape), fob: shape(data[0]), card_total_cents: cardTotal(settings.fee_cents * want) });
     }
 
     if (action === 'report_lost') {
@@ -152,13 +174,19 @@ Deno.serve(async (req) => {
       return j({ ok: true, replacement, card_total_cents: cardTotal(settings.fee_cents) });
     }
 
+    // "I sent it by Venmo" for one or several unpaid fobs: one task per fob,
+    // so the board confirms each as it issues them.
     if (action === 'claim_venmo') {
-      const f = await own(body.id);
-      if (!f || f.payment_status !== 'unpaid') return j({ ok: false, error: 'Nothing to pay on that fob.' }, 409);
-      await sb.from('keyfobs').update({ payment_status: 'pending_verify', payment_method: 'venmo' }).eq('id', f.id);
-      await task(sb, TID, 'keyfob.venmo', f.id as string,
-        `The ${hh.family_name} say they sent $${(Number(f.price_cents) / 100).toFixed(2)} by Venmo for a keyfob. Confirm it, then issue the fob.`, 'Keyfob Venmo to confirm');
-      return j({ ok: true });
+      const ids = (Array.isArray(body.ids) ? body.ids : [body.id]).map(String).filter(Boolean).slice(0, 20);
+      const { data: fobs } = await sb.from('keyfobs').select(FIELDS).eq('household_id', hid).in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']).eq('payment_status', 'unpaid');
+      if (!fobs?.length) return j({ ok: false, error: 'Nothing to pay on those fobs.' }, 409);
+      const total = fobs.reduce((n, f) => n + Number(f.price_cents), 0);
+      await sb.from('keyfobs').update({ payment_status: 'pending_verify', payment_method: 'venmo' }).in('id', fobs.map(f => f.id));
+      for (const f of fobs) {
+        await task(sb, TID, 'keyfob.venmo', f.id as string,
+          `The ${hh.family_name} say they sent $${(total / 100).toFixed(2)} by Venmo for ${fobs.length === 1 ? 'a keyfob' : fobs.length + ' keyfobs'}. Confirm it, then issue the fob.`, 'Keyfob Venmo to confirm');
+      }
+      return j({ ok: true, count: fobs.length });
     }
     return j({ ok: false, error: `Unknown action: ${action}` }, 400);
   }
@@ -190,6 +218,11 @@ Deno.serve(async (req) => {
       const n = Number(body.included_free);
       if (!Number.isInteger(n) || n < 0 || n > 6) return j({ ok: false, error: 'Included fobs: 0 to 6.' }, 400);
       k.included_free = n;
+    }
+    if (body.max_per_family !== undefined) {
+      const m = Number(body.max_per_family);
+      if (!Number.isInteger(m) || m < 1 || m > 20) return j({ ok: false, error: 'Fobs per family: 1 to 20.' }, 400);
+      k.max_per_family = m;
     }
     if (body.fee_cents !== undefined) {
       const c = Number(body.fee_cents);
@@ -232,7 +265,7 @@ Deno.serve(async (req) => {
       status: 'active', card_number: parsed.number, issued_at: new Date().toISOString(), issued_by: me.id,
     }).eq('id', f.id).select(FIELDS).single();
     if (error) return j({ ok: false, error: /duplicate|unique/i.test(error.message) ? 'That number is already on another fob.' : error.message }, 409);
-    await closeTasks(sb, f.id as string, me.id);
+    await closeTasks(sb, f.id as string, me.id, f.household_id as string);
     await syncHouseholdFobs(sb, f.household_id as string);
     await popFamily(TID, f.household_id as string, '🔑 Your keyfob is ready', `Fob ${fobTail(parsed.number)} is set up. Pick it up from the board.`);
     return j({ ok: true, fob: shape(data) });
@@ -270,10 +303,41 @@ Deno.serve(async (req) => {
     if (!f || f.status !== 'requested' || !f.included) return j({ ok: false, error: 'Only a free new-member fob can be switched to paid.' }, 409);
     await sb.from('keyfobs').update({ included: false, price_cents: settings.fee_cents, payment_status: settings.fee_cents > 0 ? 'unpaid' : 'none',
       check_note: `${f.check_note ? f.check_note + ' ' : ''}${me.name} asked for payment instead.` }).eq('id', f.id);
-    await closeTasks(sb, f.id as string, me.id);
+    await closeTasks(sb, f.id as string, me.id, f.household_id as string);
     await popFamily(TID, f.household_id as string, '🔑 Your keyfob',
       `The board asked for the $${(settings.fee_cents / 100).toFixed(2)} fob fee. Pay it in the app and they'll issue your fob.`);
     return j({ ok: true });
+  }
+
+  // A broken fob, reported through Member help (Doug, 10/8). Free by
+  // default: the old one goes off and the new number is on now. Or the board
+  // charges the fee: the old one goes off and the family pays in the app.
+  if (action === 'swap') {
+    const f = await one(body.id);
+    if (!f || f.status !== 'active') return j({ ok: false, error: 'Only a working fob can be swapped.' }, 409);
+    const now = new Date().toISOString();
+    if (body.charge === true) {
+      await sb.from('keyfobs').update({ status: 'off', turned_off_at: now, check_note: `Broken; ${me.name} asked for the fee.` }).eq('id', f.id);
+      const free = settings.fee_cents <= 0;
+      await sb.from('keyfobs').insert({ tenant_id: TID, household_id: f.household_id, member_id: f.member_id ?? null, status: 'requested',
+        reason: 'replacement', included: false, price_cents: settings.fee_cents, payment_status: free ? 'none' : 'unpaid', replaces_id: f.id });
+      await syncHouseholdFobs(sb, f.household_id as string);
+      await popFamily(TID, f.household_id as string, '🔑 Your new keyfob',
+        free ? 'The board will set up a new fob for you.' : `Pay the $${(settings.fee_cents / 100).toFixed(2)} fob fee in the app and the board will set up your new fob.`);
+      return j({ ok: true, charged: !free });
+    }
+    const parsed = parseFobNumber(body.number);
+    if (!parsed.ok) return j({ ok: false, error: parsed.error }, 400);
+    const owner = await taken(parsed.number, f.id as string);
+    if (owner) return j({ ok: false, error: `Fob ${fobTail(parsed.number)} already belongs to the ${owner}.` }, 409);
+    await sb.from('keyfobs').update({ status: 'off', turned_off_at: now, check_note: 'Broken; swapped free.' }).eq('id', f.id);
+    const { data, error } = await sb.from('keyfobs').insert({ tenant_id: TID, household_id: f.household_id, member_id: f.member_id ?? null,
+      card_number: parsed.number, status: 'active', reason: 'replacement', included: false, price_cents: 0, payment_status: 'none',
+      replaces_id: f.id, issued_at: now, issued_by: me.id }).select(FIELDS).single();
+    if (error) return j({ ok: false, error: /duplicate|unique/i.test(error.message) ? 'That number is already on another fob.' : error.message }, 409);
+    await syncHouseholdFobs(sb, f.household_id as string);
+    await popFamily(TID, f.household_id as string, '🔑 Your new keyfob is ready', `Fob ${fobTail(parsed.number)} replaces your broken one. Pick it up from the board.`);
+    return j({ ok: true, fob: shape(data) });
   }
 
   if (action === 'confirm_venmo') {

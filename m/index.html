@@ -1761,44 +1761,61 @@ async function planCancel() {
   } catch (e) { notify(e.message, 'err'); }
 }
 
-// ── Keyfobs (PLAN.md P) ─────────────────────────────────────────────────
-// The family's fobs, from `me`. Another fob or a replacement is paid here
-// (card, or Venmo the board confirms) before the board issues it.
+// ── Keyfobs (PLAN.md P, Q) ──────────────────────────────────────────────
+// The family's fobs, from `me`. More fobs, or a replacement for a lost one,
+// are paid here (card, or Venmo the board confirms), all at once, before the
+// board issues them. A broken fob goes to Member help.
 let FOBS = null;
 function renderFobCard(kf) {
   if (kf) FOBS = kf;
   kf = FOBS;
   if (!kf) return '';
-  const fee = usd(kf.fee_cents), cardTotal = usd(kf.card_total_cents);
-  const rows = (kf.fobs || []).map(f => {
-    let line, btns = '';
+  const fee = usd(kf.fee_cents);
+  const fobs = kf.fobs || [];
+  const unpaid = fobs.filter(f => f.status === 'requested' && !f.included && f.payment_status === 'unpaid');
+  const rows = fobs.filter(f => !unpaid.includes(f)).map(f => {
+    let line;
     if (f.status === 'active') {
       line = `<b>Fob ${escapeHtml(f.tail)}</b> <span style="color:#15803d;font-size:12.5px;font-weight:600">· On</span>`;
-      btns = `<button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="reportLostFob('${escapeHtml(f.id)}')">Report lost</button>`;
     } else if (f.status === 'lost') {
       line = `<b>Fob ${escapeHtml(f.tail)}</b> <span style="color:#b91c1c;font-size:12.5px;font-weight:600">· Reported lost</span><div style="font-size:12.5px;color:var(--muted)">The board is turning it off so it can't open the gate.</div>`;
     } else {
-      const what = f.reason === 'replacement' ? 'Replacement fob' : f.reason === 'new_member' ? 'Your new-member fob' : 'New fob';
-      const state = f.included || f.payment_status === 'none' ? 'Free. The board will set it up and let you know.'
-        : f.payment_status === 'paid' ? 'Paid. The board will set it up and let you know.'
-        : f.payment_status === 'pending_verify' ? 'Waiting for the board to see your Venmo.'
-        : `${fee} to pay before the board sets it up.`;
+      const what = f.reason === 'replacement' ? 'Replacement fob' : f.reason === 'new_member' ? 'Your free new-member fob' : 'New fob';
+      const state = f.payment_status === 'pending_verify' ? 'Waiting for the board to see your Venmo.' : 'The board will set it up and let you know.';
       line = `<b>${what}</b><div style="font-size:12.5px;color:var(--muted)">${state}</div>`;
-      if (!f.included && f.payment_status === 'unpaid') {
-        btns = `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="payFobCard('${escapeHtml(f.id)}')">Pay ${cardTotal} by card</button>`
-          + (kf.venmo_handle ? ` <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="claimFobVenmo('${escapeHtml(f.id)}')">I sent ${fee} by Venmo</button>` : '');
-      }
     }
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--border)">
-      <div style="font-size:14px;min-width:0">${line}</div><div>${btns}</div></div>`;
+    return `<div style="padding:10px 0;border-top:1px solid var(--border);font-size:14px">${line}</div>`;
   }).join('');
+  const due = unpaid.reduce((n, f) => n + Number(f.price_cents || 0), 0);
+  const cardTotal = unpaid.length ? fobCardTotal(due) : 0;
+  const payBox = unpaid.length ? `
+    <div style="padding:12px;border-radius:12px;background:#fef3c7;margin:10px 0 4px;font-size:14px">
+      <b>${unpaid.length === 1 ? (unpaid[0].reason === 'replacement' ? 'Replacement fob' : '1 new fob') : unpaid.length + ' new fobs'}: ${usd(due)} to pay</b>
+      <div style="font-size:12.5px;color:#7c2d12;margin-top:2px">The board sets them up once they're paid.</div>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12.5px;padding:7px 12px;background:var(--blue);color:#fff;margin:0 6px 6px 0" onclick="payFobCard()">Pay ${usd(cardTotal)} by card</button>
+        ${kf.venmo_handle ? `<button class="btn btn-ghost" style="font-size:12.5px;padding:7px 12px;margin:0 0 6px" onclick="claimFobVenmo()">I sent ${usd(due)} by Venmo</button>` : ''}
+      </div>
+      ${kf.venmo_handle ? `<div style="font-size:12px;color:#7c2d12">Venmo: @${escapeHtml(String(kf.venmo_handle).replace(/^@/, ''))}. Card adds the card fee.</div>` : ''}
+    </div>` : '';
+  const hasActive = fobs.some(f => f.status === 'active');
+  const link = (label, fn) => `<button type="button" onclick="${fn}" style="background:none;border:0;padding:0;font:600 13px 'Inter';color:var(--blue);cursor:pointer;text-align:left">${label}</button>`;
   return `
     <div class="card" id="keyfobs">
       <h2>🔑 Keyfobs</h2>
-      ${rows || '<div style="font-size:13.5px;color:var(--muted)">No fobs on your membership yet.</div>'}
-      ${kf.venmo_handle ? `<div style="font-size:12px;color:var(--muted);margin-top:8px">Venmo: @${escapeHtml(String(kf.venmo_handle).replace(/^@/, ''))}. Card adds the card fee.</div>` : ''}
-      <button class="btn btn-ghost" style="margin-top:10px" onclick="requestFob()">Request another fob (${fee})</button>
+      ${rows || (unpaid.length ? '' : '<div style="font-size:13.5px;color:var(--muted)">No fobs on your membership yet.</div>')}
+      ${payBox}
+      ${kf.room > 0 ? `<button class="btn btn-ghost" style="margin-top:10px" onclick="requestFob()">Request another fob (${fee})</button>` : `<div style="font-size:12.5px;color:var(--muted);margin-top:10px">You have ${kf.max_per_family} fobs, the most a family can have.</div>`}
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+        ${hasActive ? link('Lost your fob? Order a new one', 'reportLostFob()') : ''}
+        ${hasActive ? link('Fob broken? Ask the board', 'brokenFob()') : ''}
+      </div>
     </div>`;
+}
+// The card fee is the member's: the same rule as the server's fobCardTotal.
+function fobCardTotal(cents) {
+  const pct = Number(FOBS?.card_pct ?? 2.9) / 100, fixed = Number(FOBS?.card_fixed_cents ?? 30);
+  return cents > 0 ? Math.ceil((cents + fixed) / (1 - pct)) : 0;
 }
 function repaintFobs(kf) {
   const el = document.getElementById('keyfobs');
@@ -1806,39 +1823,53 @@ function repaintFobs(kf) {
 }
 async function refreshFobs() {
   const r = await callMember('mine', {}, '/functions/v1/keyfobs');
-  if (r.ok && r.enabled) repaintFobs({ ...FOBS, fobs: r.fobs, fee_cents: r.fee_cents, card_total_cents: r.card_total_cents });
+  if (r.ok && r.enabled) repaintFobs({ ...FOBS, fobs: r.fobs, fee_cents: r.fee_cents, max_per_family: r.max_per_family, room: r.room });
 }
 async function requestFob() {
-  if (!(await askConfirm(`Request another keyfob? It's ${usd(FOBS.fee_cents)}, paid in the app. The board sets it up once it's paid.`, 'Request it'))) return;
+  const room = Math.max(1, FOBS.room || 1);
+  const opts = Array.from({ length: room }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  const extra = room > 1 ? `<label style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:10px;font-size:14px">How many? <select id="fob-count" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;font:15px 'Inter'">${opts}</select></label>` : '';
+  if (!(await ask({ text: `New fobs are ${usd(FOBS.fee_cents)} each, paid in the app. The board sets them up once they're paid.`, yes: 'Request', no: 'Cancel', extra }))) return;
+  const count = Number(document.getElementById('fob-count')?.value || 1);
   try {
-    const r = await callMember('request', {}, '/functions/v1/keyfobs');
-    if (!r.ok) throw new Error(r.error || 'Could not request a fob');
+    const r = await callMember('request', { count }, '/functions/v1/keyfobs');
+    if (!r.ok) throw new Error(r.error || 'Could not request fobs');
     await refreshFobs();
-    if (r.fob.payment_status === 'unpaid') notify('Requested. Pay for it below and the board will set it up.');
-    else notify('Requested. The board will let you know when it\'s ready.');
+    notify(r.fob.payment_status === 'unpaid' ? 'Requested. Pay for them below and the board will set them up.' : 'Requested. The board will let you know when they\'re ready.');
   } catch (e) { notify(e.message, 'err'); }
 }
-async function reportLostFob(id) {
-  if (!(await askConfirm('Report this fob lost? The board turns it off so nobody can use it to open the gate.', 'Report lost'))) return;
-  const replace = await ask({ text: `Do you want a replacement? It's ${usd(FOBS.fee_cents)}, paid in the app.`, yes: 'Yes, replace it', no: 'Not now' });
+async function reportLostFob() {
+  const active = (FOBS.fobs || []).filter(f => f.status === 'active');
+  if (!active.length) return;
+  const extra = active.length > 1 ? `<label style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:10px;font-size:14px">Which one? <select id="lost-fob" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;font:15px 'Inter'">${active.map(f => `<option value="${escapeHtml(f.id)}">Fob ${escapeHtml(f.tail)}</option>`).join('')}</select></label>` : '';
+  if (!(await ask({ text: `Report your fob lost? The board turns it off so nobody can use it to open the gate. A new one is ${usd(FOBS.fee_cents)}.`, yes: 'Report it', no: 'Cancel', extra }))) return;
+  const id = document.getElementById('lost-fob')?.value || active[0].id;
+  const replace = await ask({ text: `Order a new fob now? It's ${usd(FOBS.fee_cents)}, paid in the app.`, yes: 'Yes, order one', no: 'Not now' });
   try {
     const r = await callMember('report_lost', { id, replace }, '/functions/v1/keyfobs');
     if (!r.ok) throw new Error(r.error || 'Could not report it');
     await refreshFobs();
-    notify(r.replacement ? 'Reported. Pay for the replacement below.' : 'Reported. The board will turn it off.');
+    notify(r.replacement ? 'Reported. Pay for the new one below.' : 'Reported. The board will turn it off.');
   } catch (e) { notify(e.message, 'err'); }
 }
-async function payFobCard(id) {
+function brokenFob() {
+  const active = (FOBS.fobs || []).filter(f => f.status === 'active');
+  openHelp('keyfob', active.length === 1 ? `My fob ${active[0].tail} stopped working.` : 'One of our fobs stopped working.');
+}
+const unpaidFobIds = () => (FOBS.fobs || []).filter(f => f.status === 'requested' && !f.included && f.payment_status === 'unpaid').map(f => f.id);
+async function payFobCard() {
   try {
-    const r = await callMember('keyfob', { keyfob_id: id }, '/functions/v1/stripe_checkout');
+    const r = await callMember('keyfob', { keyfob_ids: unpaidFobIds() }, '/functions/v1/stripe_checkout');
     if (!r.ok || !r.url) throw new Error(r.error || 'Could not open the card page');
     location.href = r.url;
   } catch (e) { notify(e.message, 'err'); }
 }
-async function claimFobVenmo(id) {
-  if (!(await askConfirm(`Did you send ${usd(FOBS.fee_cents)} to the club's Venmo? The board checks it, then sets up your fob.`, 'Yes, I sent it'))) return;
+async function claimFobVenmo() {
+  const ids = unpaidFobIds();
+  const due = (FOBS.fobs || []).filter(f => ids.includes(f.id)).reduce((n, f) => n + Number(f.price_cents || 0), 0);
+  if (!(await askConfirm(`Did you send ${usd(due)} to the club's Venmo? The board checks it, then sets up your fobs.`, 'Yes, I sent it'))) return;
   try {
-    const r = await callMember('claim_venmo', { id }, '/functions/v1/keyfobs');
+    const r = await callMember('claim_venmo', { ids }, '/functions/v1/keyfobs');
     if (!r.ok) throw new Error(r.error || 'Could not record it');
     await refreshFobs();
     notify('Thanks. The board will check your Venmo.');

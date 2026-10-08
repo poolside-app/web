@@ -101,6 +101,7 @@ let OPTS = null;        // renewal_options response
 let CODE = '';          // "Have a code?" (H5, H7)
 let choice = 'full';    // 'full' | 'plan'
 let PLAN_SEL = {};      // the plan they picked: pay today, paid off by (PLAN.md M)
+let FOB_EXTRA = null;   // extra keyfobs (PLAN.md Q); null until the first quote says
 
 function token() { return localStorage.getItem('poolside_member_token'); }
 function logout() {
@@ -180,6 +181,8 @@ function render() {
       ${codeHtml(price)}
     </div>
 
+    ${fobCardHtml(price)}
+
     ${free ? '' : `<div class="card">
       <h2>How would you like to pay?</h2>
       <label class="opt ${choice === 'full' ? 'sel' : ''}" id="opt-full">
@@ -228,6 +231,7 @@ function render() {
   const codeIn = document.getElementById('code-in');
   if (codeIn) codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } });
   const codeToggle = document.getElementById('code-toggle');
+  document.querySelectorAll('[data-fob-step]').forEach(b => b.addEventListener('click', () => fobStep(Number(b.dataset.fobStep))));
   if (codeToggle) codeToggle.addEventListener('click', e => {
     e.preventDefault();
     document.getElementById('code-box').style.display = '';
@@ -238,14 +242,42 @@ function render() {
 // The breakdown under the amount: the level's price, any code, their
 // referral credit (H5).
 function priceLinesHtml(p) {
-  if (!p || !(p.discount_cents || p.credit_cents)) return '';
+  if (!p || !(p.discount_cents || p.credit_cents || p.fob_count)) return '';
   const row = (label, cents, green) => `<div style="display:flex;justify-content:space-between;${green ? 'color:#15803d' : ''}"><span>${label}</span><span>${cents < 0 ? '−' : ''}${money(Math.abs(cents))}</span></div>`;
   return `<div style="margin-top:14px;font-size:13.5px;line-height:1.7;border-top:1px solid var(--border);padding-top:10px">
     ${row(esc(OPTS.tier_label || 'Membership'), p.base_cents)}
     ${p.discount_cents ? row(`Code ${esc(p.code || '')}${p.code_label ? ' (' + esc(p.code_label) + ')' : ''}`, -p.discount_cents, true) : ''}
     ${p.credit_cents ? row('Your referral credit', -p.credit_cents, true) : ''}
+    ${p.fob_count ? row(`${p.fob_count} extra keyfob${p.fob_count === 1 ? '' : 's'}`, p.fob_cents) : ''}
   </div>`;
 }
+
+// Extra keyfobs (PLAN.md Q): bought with the renewal, priced with the dues,
+// up to the family limit counting the fobs they have.
+function fobCardHtml(p) {
+  const k = OPTS && OPTS.keyfobs;
+  if (!k) return '';
+  const btn = (d, label) => `<button type="button" data-fob-step="${d}" aria-label="${label}" style="width:34px;height:34px;border-radius:50%;border:1.5px solid var(--border);background:#fff;font:600 18px 'Inter';cursor:pointer;color:var(--blue)">${d < 0 ? '−' : '+'}</button>`;
+  return `<div class="card">
+    <h2>Keyfobs</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span><span class="opt-title">Extra keyfobs</span> <span style="color:var(--muted)">${money(k.fee_cents)} each</span>
+        <span class="opt-sub">Up to ${k.max_per_family} per family, counting the fobs you have.${(p.fob_room ?? 0) === 0 && !p.fob_count ? ' You have the most already.' : ''}</span></span>
+      <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">${btn(-1, 'One fewer keyfob')}<b id="fob-qty" aria-live="polite">${p.fob_count || 0}</b>${btn(1, 'One more keyfob')}</span>
+    </div>
+    ${k.app_unlock ? '<div class="opt-sub" style="margin-top:8px">🔓 You can also unlock the gate from the app.</div>' : ''}
+  </div>`;
+}
+async function fobStep(d) {
+  const p = OPTS.price || {};
+  const next = Math.max(0, Math.min(p.fob_room ?? 0, (p.fob_count || 0) + d));
+  if (next === (p.fob_count || 0)) return;
+  FOB_EXTRA = next;
+  const again = await callMember('renewal_options', { discount_code: CODE, ...planParams(), fob_extra: FOB_EXTRA });
+  if (again.ok) OPTS = again;
+  render();
+}
+const fobParam = () => FOB_EXTRA === null ? {} : { fob_extra: FOB_EXTRA };
 function codeHtml(p) {
   const msg = CODE && p ? (p.code_problem
     ? `<div style="color:var(--red);font-size:12.5px;margin-top:6px">${esc(p.code_problem)}</div>`
@@ -263,7 +295,7 @@ function codeHtml(p) {
 }
 async function applyCode() {
   CODE = document.getElementById('code-in').value.trim();
-  const next = await callMember('renewal_options', { discount_code: CODE, ...planParams() });
+  const next = await callMember('renewal_options', { discount_code: CODE, ...planParams(), ...fobParam() });
   if (next.ok) OPTS = next;
   render();
 }
@@ -275,7 +307,7 @@ function planParams() {
 async function onPlanChange(sel) {
   PLAN_SEL = sel;
   try {
-    const next = await callMember('renewal_options', { discount_code: CODE, ...planParams() });
+    const next = await callMember('renewal_options', { discount_code: CODE, ...planParams(), ...fobParam() });
     if (next.ok) { OPTS = next; PlanPicker.update(OPTS.plan); } else PlanPicker.failed();
   } catch { PlanPicker.failed(); }
 }
@@ -288,7 +320,7 @@ async function submit() {
   btn.textContent = 'Setting up…';
   try {
     const ar = document.getElementById('auto-renew');
-    const started = await callMember('renew_start', ar ? { auto_renew: ar.checked, discount_code: CODE } : { discount_code: CODE });
+    const started = await callMember('renew_start', { ...(ar ? { auto_renew: ar.checked } : {}), discount_code: CODE, fob_extra: (OPTS.price && OPTS.price.fob_count) || 0 });
     if (!started.ok) throw new Error(started.error || 'Could not start your renewal');
 
     // Covered in full by a code or their referral credit (H5).

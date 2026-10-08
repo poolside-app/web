@@ -104,7 +104,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, fob_review_note, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, fob_review_note, fob_extra_count, fob_cents, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
 
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
@@ -117,6 +117,8 @@ function publicPrice(p: import('../_shared/membership_price.ts').PriceResult) {
     credit_cents: p.credit_cents, amount_due_cents: p.amount_due_cents,
     code: p.code, code_label: p.code_label, code_problem: p.code_problem,
     referral_family: p.referral_family, note: p.note, tier_label: p.tier_label,
+    // Extra keyfobs, already in amount_due_cents (PLAN.md Q).
+    fob_count: p.fob_count, fob_cents: p.fob_cents, fob_fee_cents: p.fob_fee_cents, fob_room: p.fob_room,
   };
 }
 
@@ -715,6 +717,9 @@ Deno.serve(async (req) => {
       // A new family at the address of a past member: the board takes a
       // second look before a free fob goes out (houses do change hands).
       fob_review_note: claimAppId ? null : await addressMatch(sb, tenant.id as string, strOrNull(body.address)),
+      // Extra keyfobs from the payment page (PLAN.md Q); pricing holds them
+      // to the family limit.
+      fob_extra_count: Math.max(0, Math.min(20, Math.trunc(Number(body.fob_extra) || 0))),
       alt_email:        body.alt_email ? String(body.alt_email).trim().toLowerCase() : null,
       adults_json,
       children_json,
@@ -970,7 +975,19 @@ Deno.serve(async (req) => {
     const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', tenant.id).maybeSingle();
     const { priceFor } = await import('../_shared/membership_price.ts');
     const rawPhone = String(body.phone ?? '').trim();
+    // Keyfobs (PLAN.md Q): a family from the club's list brings the fobs on
+    // it; a new family's free one doesn't cost anything but counts.
+    const { fobSettings, listFobNumbers } = await import('../_shared/keyfobs.ts');
+    let fobHave = 0, fobFree = body.need_new_fob === true ? fobSettings(settingsRow?.value).included_free : 0;
+    const claimTok = String(body.claim_token ?? '').trim();
+    if (claimTok) {
+      const { data: claimed } = await sb.from('applications').select('prior_fob_number')
+        .eq('tenant_id', tenant.id).eq('claim_token_hash', await sha256Hex(claimTok)).maybeSingle();
+      fobHave = listFobNumbers(claimed?.prior_fob_number).length;
+      fobFree = 0;
+    }
     const q = await priceFor(sb, tenant.id as string, settingsRow?.value, {
+      fobExtra: body.fob_extra ?? 0, fobHave, fobFree,
       tierSlug: strOrNull(body.tier_slug),
       referralCode: strOrNull(body.referral_code),
       email: strOrNull(body.email)?.toLowerCase() ?? null,
@@ -1467,6 +1484,12 @@ Deno.serve(async (req) => {
         }).eq('id', hh.id).eq('tenant_id', TID);
       }
 
+      // Extra keyfobs bought with the renewal (PLAN.md Q). Never a free one.
+      try {
+        const { fobsAtApproval } = await import('../_shared/keyfobs.ts');
+        await fobsAtApproval(sb, { tenantId: TID, householdId: app.household_id as string, isNew: false, app });
+      } catch (e) { console.error('keyfobs at renewal (non-fatal):', (e as Error).message); }
+
       await sb.from('application_actions').insert({
         application_id: id, tenant_id: TID,
         kind: 'renewal_approved',
@@ -1632,36 +1655,12 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq('id', id);
 
-    // ── Keyfobs (PLAN.md P) ─────────────────────────────────────────────
-    // A family from the club's list brings the fob number on that list. A
-    // new family who asked for one gets the club's included fob, waiting for
-    // the board to issue it (with a note if they share a past member's
-    // address). Only when the club has keyfobs.
+    // ── Keyfobs (PLAN.md P, Q) ──────────────────────────────────────────
+    // The list's fob numbers, the free fob for a new family that wants it,
+    // and extras paid with the membership, with one task for the board.
     try {
-      const { fobSettings, parseFobNumber, includedUsed, syncHouseholdFobs } = await import('../_shared/keyfobs.ts');
-      const { data: fs } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
-      const fobs = fobSettings(fs?.value);
-      if (fobs.enabled) {
-        for (const part of String(app.prior_fob_number ?? '').split(/[;\n]|,(?=\s*\d{4,})/)) {
-          const parsed = parseFobNumber(part);
-          if (!parsed.ok) continue;
-          await sb.from('keyfobs').insert({ tenant_id: TID, household_id: hh.id, card_number: parsed.number,
-            status: 'active', reason: 'imported', issued_at: new Date().toISOString() });
-        }
-        if (app.is_new_member !== false && app.need_new_fob === true
-            && fobs.included_free > 0 && (await includedUsed(sb, hh.id as string)) < fobs.included_free) {
-          const { data: fob } = await sb.from('keyfobs').insert({ tenant_id: TID, household_id: hh.id, status: 'requested',
-            reason: 'new_member', included: true, payment_status: 'none', check_note: app.fob_review_note ?? null }).select('id').single();
-          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
-          await enqueueAdminTask(sb, {
-            tenant_id: TID, target_scopes: ['keyfobs'], kind: 'keyfob.issue',
-            summary: `Issue a keyfob to the ${app.family_name} (included with their new membership)${app.fob_review_note ? ' · check: ' + app.fob_review_note : ''}`,
-            link_url: '/club/admin/keyfobs.html', source_kind: 'keyfob', source_id: fob?.id,
-            push_title: '🔑 New member keyfob', push_body: `The ${app.family_name} need a keyfob.`,
-          });
-        }
-        await syncHouseholdFobs(sb, hh.id as string);
-      }
+      const { fobsAtApproval } = await import('../_shared/keyfobs.ts');
+      await fobsAtApproval(sb, { tenantId: TID, householdId: hh.id as string, isNew: app.is_new_member !== false, app });
     } catch (e) { console.error('keyfobs at approval (non-fatal):', (e as Error).message); }
 
     // ── Welcome email + magic-link token ────────────────────────────────

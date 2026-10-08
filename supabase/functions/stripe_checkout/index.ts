@@ -361,7 +361,8 @@ Deno.serve(async (req) => {
       tenantStripeAccount: tenant.stripe_account_id,
       amountCents,
       productName: `${tenant.display_name} — Annual membership (${(tier?.label as string) || 'family'})${
-        priced && priced.discount_cents + priced.credit_cents > 0 ? ', after discount' : ''}${passFee ? ' + processing fee' : ''}`,
+        priced && priced.discount_cents + priced.credit_cents > 0 ? ', after discount' : ''}${
+        priced?.fob_count ? ` + ${priced.fob_count} keyfob${priced.fob_count === 1 ? '' : 's'}` : ''}${passFee ? ' + processing fee' : ''}`,
       description: `Application from ${app.family_name} (${app.primary_name})`,
       // app_id in the success URL lets the success page issue a fresh
       // magic-link sign-in token immediately (instead of "watch for email").
@@ -740,35 +741,39 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, url: session.url });
   }
 
-  // ── A keyfob the family asked for (PLAN.md P): another fob, or one to
-  // replace a lost one. The card fee is the member's, like parties.
+  // ── Keyfobs the family asked for (PLAN.md P, Q5): more fobs, or one to
+  // replace a lost one, all paid at once. The card fee is the member's,
+  // like parties.
   if (action === 'keyfob') {
     if (payload.kind !== 'member' || !payload.hid) return jsonResponse({ ok: false, error: 'Members only' }, 403);
-    const { data: fob } = await sb.from('keyfobs')
+    const ids = (Array.isArray(body.keyfob_ids) ? body.keyfob_ids : [body.keyfob_id]).map(String).filter(Boolean).slice(0, 20);
+    const { data: fobs } = await sb.from('keyfobs')
       .select('id, tenant_id, household_id, reason, status, payment_status, price_cents')
-      .eq('id', String(body.keyfob_id ?? '')).maybeSingle();
-    if (!fob || fob.tenant_id !== TID || fob.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Keyfob not found' }, 404);
-    if (fob.status !== 'requested' || fob.payment_status !== 'unpaid') return jsonResponse({ ok: false, error: 'Nothing to pay on that fob' }, 409);
-    const feeCents = Number(fob.price_cents) || 0;
-    if (feeCents <= 0) return jsonResponse({ ok: false, error: 'Nothing to pay on that fob' }, 409);
+      .in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
+    const mine = (fobs ?? []).filter(f => f.tenant_id === TID && f.household_id === payload.hid);
+    if (!mine.length) return jsonResponse({ ok: false, error: 'Keyfob not found' }, 404);
+    const due = mine.filter(f => f.status === 'requested' && f.payment_status === 'unpaid' && Number(f.price_cents) > 0);
+    if (!due.length) return jsonResponse({ ok: false, error: 'Nothing to pay on that fob' }, 409);
+    const feeCents = due.reduce((n, f) => n + Number(f.price_cents), 0);
     const { data: payRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
     const pay = ((payRow?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined) ?? {};
     const { fobCardTotal } = await import('../_shared/keyfobs.ts');
     const amountCents = fobCardTotal(feeCents, Number(pay.stripe_pct ?? 2.9) / 100, Number(pay.stripe_fixed_cents ?? 30));
+    const n = due.length;
     const session = await stripeCheckout({
       tenantStripeAccount: tenant.stripe_account_id,
       amountCents,
-      productName: fob.reason === 'replacement' ? 'Replacement keyfob' : 'Keyfob',
-      description: `$${(feeCents / 100).toFixed(2)} keyfob + $${((amountCents - feeCents) / 100).toFixed(2)} card fee`,
+      productName: n > 1 ? `${n} keyfobs` : due[0].reason === 'replacement' ? 'Replacement keyfob' : 'Keyfob',
+      description: `$${(feeCents / 100).toFixed(2)} for ${n === 1 ? 'the keyfob' : n + ' keyfobs'} + $${((amountCents - feeCents) / 100).toFixed(2)} card fee`,
       successUrl: `${clubUrl}/m/index.html?paid=1#keyfobs`,
       cancelUrl: `${clubUrl}/m/index.html?paid=0#keyfobs`,
-      metadata: { kind: 'keyfob', keyfob_id: fob.id, tenant_id: TID },
+      metadata: { kind: 'keyfob', keyfob_ids: due.map(f => f.id).join(','), tenant_id: TID },
       feeBps: FEE_BPS_PROGRAMS,
       policy: feePolicyFromTenant(tenant),
       simulate: testMode,
     });
     if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
-    await sb.from('keyfobs').update({ stripe_session_id: session.session_id }).eq('id', fob.id);
+    await sb.from('keyfobs').update({ stripe_session_id: session.session_id }).in('id', due.map(f => f.id));
     return jsonResponse({ ok: true, url: session.url });
   }
 

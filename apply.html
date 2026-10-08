@@ -68,6 +68,10 @@
   .check-row.done { border-color: var(--green); background: #f0fdf4; }
 
   .pay-opt { display:flex; align-items:center; gap:8px; font-size:14px; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; cursor:pointer; margin: 6px 0; }
+  /* Payment choices: the notes under a choice go on their own line, not in
+     a squeezed column beside it (the card fee note was cut off at 390px). */
+  .pay-opt:has(> input[name="payment_method"]) { flex-wrap:wrap; }
+  .pay-opt:has(> input[name="payment_method"]) > div { flex-basis:100%; padding-left:26px; }
   .pay-opt:has(input:checked) { border-color: var(--blue); background: var(--blue-l); }
   .pay-opt input { width:auto; margin:0; }
 
@@ -199,15 +203,6 @@
 
       <label>Emergency contact phone *</label>
       <input id="emergency_phone" type="tel" placeholder="(555) 555-9999" oninput="formatPhoneInput(this)" autocomplete="tel">
-
-      <!-- Keyfobs (PLAN.md P): only for a club that uses them, and never on a
-           claim link. Poolside decides who is new; this only asks if they
-           want the fob. -->
-      <label class="pay-opt" id="fob-opt" style="display:none;margin-top:14px">
-        <input type="checkbox" id="need_new_fob">
-        🔑 <b>I need a keyfob</b>
-        <div id="fob-opt-note" style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400"></div>
-      </label>
     </div>
 
     <!-- Step 2 — Adults + children -->
@@ -278,6 +273,27 @@
           </div>
           <div id="code-msg" style="font-size:12.5px;margin-top:6px"></div>
         </div>
+      </div>
+
+      <!-- Keyfobs (PLAN.md P, Q): only for a club that uses them. A new
+           family's free fob (Poolside already checked they're new), and
+           extras at the club's fee, priced with the membership. A family
+           joining from the club's list gets no free one; its fobs carry over. -->
+      <div id="fob-box" style="display:none;margin-top:24px">
+        <h2>Keyfobs</h2>
+        <label id="fob-free-opt" style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;margin:8px 0;cursor:pointer;font-size:14px">
+          <input type="checkbox" id="need_new_fob" checked onchange="fobChanged()" style="margin-top:3px">
+          <span>🔑 <b>My free keyfob</b><span id="fob-free-note" style="display:block;font-size:12.5px;color:var(--muted);margin-top:2px">New members get 1 keyfob free.</span></span>
+        </label>
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;margin:8px 0;font-size:14px">
+          <span><b>Extra keyfobs</b> <span id="fob-fee-label" style="color:var(--muted)"></span><span id="fob-room-note" style="display:block;font-size:12.5px;color:var(--muted);margin-top:2px"></span></span>
+          <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <button type="button" onclick="fobStep(-1)" aria-label="One fewer keyfob" style="width:34px;height:34px;border-radius:50%;border:1.5px solid var(--border);background:#fff;font:600 18px Inter,sans-serif;cursor:pointer;color:var(--blue)">−</button>
+            <span id="fob-qty" aria-live="polite" style="min-width:16px;text-align:center;font-weight:700">0</span>
+            <button type="button" onclick="fobStep(1)" aria-label="One more keyfob" style="width:34px;height:34px;border-radius:50%;border:1.5px solid var(--border);background:#fff;font:600 18px Inter,sans-serif;cursor:pointer;color:var(--blue)">+</button>
+          </span>
+        </div>
+        <div id="fob-unlock-note" style="display:none;font-size:12.5px;color:var(--muted);margin-top:4px">🔓 You can also unlock the gate from the app.</div>
       </div>
 
       <h2 style="margin-top:24px">Payment</h2>
@@ -424,13 +440,45 @@ async function refreshQuote() {
         email: primary.email || document.getElementById('primary_email').value.trim() || null,
         phone: primary.phone || document.getElementById('primary_phone').value.trim() || null,
         ...(PLAN_SEL.payoff_month ? { plan_today_cents: PLAN_SEL.today_cents ?? 0, plan_payoff_month: PLAN_SEL.payoff_month } : {}),
+        fob_extra: FOB_EXTRA, need_new_fob: wantsFreeFob(), claim_token: window.__POOLSIDE_CLAIM_TOKEN__ || null,
       }),
     }).then(x => x.json());
     if (seq !== QUOTE_SEQ) return;       // a newer quote is on its way
-    if (r.ok) { PRICE = r.price; PLAN_QUOTE = r.plan || null; }
+    if (r.ok) {
+      PRICE = r.price; PLAN_QUOTE = r.plan || null;
+      // The server holds extras to the family limit.
+      if (PRICE && typeof PRICE.fob_count === 'number' && PRICE.fob_count !== FOB_EXTRA) FOB_EXTRA = PRICE.fob_count;
+    }
     else if (window.PlanPicker) PlanPicker.failed();
   } catch { if (window.PlanPicker) PlanPicker.failed(); /* keep the list price; submit and checkout price it anyway */ }
-  paintPrice(); paintPaymentChoices(); paintPlanLabel(); paintVenmoQR();
+  paintPrice(); paintPaymentChoices(); paintPlanLabel(); paintVenmoQR(); paintFobs();
+}
+
+// ── Keyfobs (PLAN.md Q) ────────────────────────────────────────────────
+let FOB_EXTRA = 0;
+const fobOn = () => !!TENANT_PUBLIC?.public_settings?.features?.keyfobs;
+const wantsFreeFob = () => fobOn() && !window.__POOLSIDE_CLAIM_TOKEN__ && !!document.getElementById('need_new_fob')?.checked;
+function fobRoom() {
+  if (PRICE && typeof PRICE.fob_room === 'number') return PRICE.fob_room;
+  const k = TENANT_PUBLIC?.public_settings?.keyfobs || {};
+  return Math.max(0, Number(k.max_per_family ?? 5) - (wantsFreeFob() ? Number(k.included_free ?? 1) : 0));
+}
+function fobStep(d) {
+  const next = Math.max(0, Math.min(fobRoom(), FOB_EXTRA + d));
+  if (next === FOB_EXTRA) return;
+  FOB_EXTRA = next; paintFobs(); refreshQuote();
+}
+function fobChanged() { refreshQuote(); }
+function paintFobs() {
+  if (!fobOn()) return;
+  const k = TENANT_PUBLIC.public_settings.keyfobs || {};
+  const fee = Number(k.fee_cents ?? 1500), max = Number(k.max_per_family ?? 5);
+  const fmt = c => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
+  document.getElementById('fob-qty').textContent = String(FOB_EXTRA);
+  document.getElementById('fob-fee-label').textContent = `${fmt(fee)} each`;
+  document.getElementById('fob-room-note').textContent = window.__POOLSIDE_CLAIM_TOKEN__
+    ? `Fobs you already have carry over. Up to ${max} per family.`
+    : `Up to ${max} per family, counting the free one.`;
 }
 function paintPrice() {
   const box = document.getElementById('price-box');
@@ -441,13 +489,14 @@ function paintPrice() {
     msg.style.color = PRICE.code_problem ? 'var(--red, #dc2626)' : '#15803d';
     msg.textContent = PRICE.code_problem || (PRICE.code ? `Code ${PRICE.code} applied.` : '');
   } else { msg.textContent = ''; }
-  if (!PRICE.discount_cents) { box.style.display = 'none'; return; }
+  if (!PRICE.discount_cents && !PRICE.fob_count) { box.style.display = 'none'; return; }
   const why = PRICE.discount_kind === 'code'
     ? `Code ${escapeHtml(PRICE.code || '')}${PRICE.code_label ? ' (' + escapeHtml(PRICE.code_label) + ')' : ''}`
     : `Referral discount${PRICE.referral_family ? ' — invited by the ' + escapeHtml(PRICE.referral_family) : ''}`;
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between"><span>${escapeHtml(PRICE.tier_label || 'Membership')}</span><span>${fmt(PRICE.base_cents)}</span></div>
-    <div style="display:flex;justify-content:space-between;color:#15803d"><span>${why}</span><span>−${fmt(PRICE.discount_cents)}</span></div>
+    ${PRICE.discount_cents ? `<div style="display:flex;justify-content:space-between;color:#15803d"><span>${why}</span><span>−${fmt(PRICE.discount_cents)}</span></div>` : ''}
+    ${PRICE.fob_count ? `<div style="display:flex;justify-content:space-between"><span>${PRICE.fob_count} extra keyfob${PRICE.fob_count === 1 ? '' : 's'}</span><span>${fmt(PRICE.fob_cents)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>You pay</span><span>${fmt(PRICE.amount_due_cents)}</span></div>
     ${PRICE.note ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${escapeHtml(PRICE.note)}</div>` : ''}`;
   box.style.display = '';
@@ -1186,7 +1235,8 @@ async function submitApplication() {
     // storing it, so a stale checkbox can never enable auto-renew on a
     // Venmo application.
     wants_auto_renew: !!document.getElementById('wants_auto_renew')?.checked,
-    need_new_fob: !window.__POOLSIDE_CLAIM_TOKEN__ && !!document.getElementById('need_new_fob')?.checked,
+    need_new_fob: wantsFreeFob(),
+    fob_extra: FOB_EXTRA,
   };
 
   const btn = document.getElementById('next-btn');
@@ -1505,7 +1555,7 @@ async function prefillFromClaim(token) {
     return;
   }
   window.__POOLSIDE_CLAIM_TOKEN__ = token;
-  { const fo = document.getElementById('fob-opt'); if (fo) fo.style.display = 'none'; }
+  { const fo = document.getElementById('fob-free-opt'); if (fo) fo.style.display = 'none'; }
   const a = d.application || {};
   const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
   const fnEl = document.getElementById('family_name');
@@ -1624,14 +1674,16 @@ async function prefillFromClaim(token) {
         // the family into an error at checkout (D5, 2026-09-25).
         const testMode = !!d.public_settings?.payments?.test_mode;
         if (testMode) document.getElementById('test-mode-banner').style.display = '';
-        // Keyfob checkbox (PLAN.md P). A claim link hides it again below.
-        if (d.public_settings?.features?.keyfobs && !window.__POOLSIDE_CLAIM_TOKEN__) {
-          const k = d.public_settings.keyfobs || {};
-          const inc = Number(k.included_free ?? 1), fee = Number(k.fee_cents ?? 0);
-          document.getElementById('fob-opt-note').textContent = inc > 0
-            ? `New members get ${inc === 1 ? 'one fob' : inc + ' fobs'} free. More are ${'$' + (fee / 100).toFixed(fee % 100 ? 2 : 0)} each, from the app.`
-            : `Fobs are ${'$' + (fee / 100).toFixed(fee % 100 ? 2 : 0)} each. You pay for it in the app after you join.`;
-          document.getElementById('fob-opt').style.display = '';
+        // Keyfobs on the payment page (PLAN.md P, Q). A claim link hides the
+        // free one (prefillFromClaim).
+        if (d.public_settings?.features?.keyfobs) {
+          const inc = Number(d.public_settings.keyfobs?.included_free ?? 1);
+          document.getElementById('fob-free-note').textContent = `New members get ${inc === 1 ? '1 keyfob' : inc + ' keyfobs'} free.`;
+          if (inc <= 0 || window.__POOLSIDE_CLAIM_TOKEN__) document.getElementById('fob-free-opt').style.display = 'none';
+          // App unlock is an option, not a reason to buy fewer or more fobs.
+          if (d.public_settings?.features?.gate) document.getElementById('fob-unlock-note').style.display = '';
+          document.getElementById('fob-box').style.display = '';
+          paintFobs();
         }
         if (d.tenant.stripe_charges_enabled || testMode) {
           const opt = document.getElementById('pay-opt-stripe');

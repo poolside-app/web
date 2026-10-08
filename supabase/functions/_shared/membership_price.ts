@@ -17,6 +17,7 @@ import {
   type DiscountCode, type Price,
 } from './pricing.ts';
 import { poolToday, tenantTimeZone } from './pool_time.ts';
+import { fobSettings, fobExtras, liveFobCount, listFobNumbers } from './keyfobs.ts';
 
 // deno-lint-ignore no-explicit-any
 type SB = SupabaseClient<any, any, any>;
@@ -29,6 +30,12 @@ export type PriceResult = Price & {
   code_problem: string | null;
   /** "The Smiths" when the referral discount applied. */
   referral_family: string | null;
+  /** Extra keyfobs bought with the membership (PLAN.md Q), already in amount_due_cents. */
+  fob_count: number;
+  fob_cents: number;
+  fob_fee_cents: number;
+  /** How many more they could add (the family limit, less what they have). */
+  fob_room: number;
 };
 
 const CODE_FIELDS = 'id, code, label, amount_cents, percent_off, expires_on, max_uses, active';
@@ -105,6 +112,10 @@ export type PriceInput = {
   /** A code already on the application. */
   codeId?: string | null;
   exceptAppId?: string | null;
+  /** Extra keyfobs asked for, the fobs they have, and the free ones coming. */
+  fobExtra?: unknown;
+  fobHave?: number;
+  fobFree?: number;
 };
 
 export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown, input: PriceInput): Promise<PriceResult> {
@@ -134,8 +145,13 @@ export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown,
   }
 
   const price = priceMembership({ baseCents: base, code, referralOffCents: ref.cents, creditCents: credit });
+  // Extra keyfobs are added after discounts and credit, which are for dues.
+  const fs = fobSettings(sv);
+  const fx = fs.enabled ? fobExtras(fs, { requested: input.fobExtra ?? 0, have: input.fobHave ?? 0, free: input.fobFree ?? 0 }) : { count: 0, cents: 0, room: 0 };
   return {
     ...price,
+    amount_due_cents: price.amount_due_cents + fx.cents,
+    fob_count: fx.count, fob_cents: fx.cents, fob_fee_cents: fs.enabled ? fs.fee_cents : 0, fob_room: fx.room,
     tier_label: (tier?.label as string) || 'Membership',
     code: code?.code ?? null,
     code_label: code?.label ?? null,
@@ -145,7 +161,8 @@ export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown,
 }
 
 const APP_PRICE_FIELDS = 'id, tenant_id, tier_slug, household_id, is_renewal, referral_code, primary_email, primary_phone, payment_status, '
-  + 'discount_code_id, discount_recorded_at, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents';
+  + 'discount_code_id, discount_recorded_at, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, '
+  + 'fob_extra_count, fob_cents, need_new_fob, is_new_member, prior_fob_number';
 
 /**
  * Work out an application's price and store it. `code` is what the family
@@ -154,13 +171,20 @@ const APP_PRICE_FIELDS = 'id, tenant_id, tier_slug, household_id, is_renewal, re
  * payment has cleared, the stored price stands.
  */
 export async function priceApplication(
-  sb: SB, appId: string, opts: { code?: string | null } = {},
+  sb: SB, appId: string, opts: { code?: string | null; fobExtra?: number } = {},
 ): Promise<(PriceResult & { application_id: string }) | null> {
   const { data: app } = await sb.from('applications').select(APP_PRICE_FIELDS).eq('id', appId).maybeSingle();
   if (!app) return null;
 
   const { data: settings } = await sb.from('settings').select('value').eq('tenant_id', app.tenant_id).maybeSingle();
+  // Keyfobs (PLAN.md Q): a renewing family's fobs count toward the limit;
+  // a family from the club's list brings the fobs on it; a new family's
+  // free fobs are coming.
+  const fs = fobSettings(settings?.value);
+  const fobHave = app.household_id ? await liveFobCount(sb, app.household_id as string) : listFobNumbers(app.prior_fob_number).length;
+  const fobFree = !app.household_id && app.is_new_member !== false && app.need_new_fob === true ? fs.included_free : 0;
   const input: PriceInput = {
+    fobExtra: opts.fobExtra ?? app.fob_extra_count ?? 0, fobHave, fobFree,
     tierSlug: app.tier_slug as string | null,
     householdId: app.household_id as string | null,
     isRenewal: !!app.is_renewal,
@@ -180,6 +204,7 @@ export async function priceApplication(
       discount_code_id: (app.discount_code_id as string | null) ?? null,
       credit_cents: Number(app.credit_cents ?? 0),
       amount_due_cents: Number(app.amount_due_cents ?? stored.amount_due_cents),
+      fob_count: Number(app.fob_extra_count ?? 0), fob_cents: Number(app.fob_cents ?? 0),
       note: null, code_problem: null,
       application_id: app.id as string,
     };
@@ -202,6 +227,8 @@ export async function priceApplication(
     discount_code_id: res.discount_code_id,
     credit_cents: res.credit_cents,
     amount_due_cents: res.amount_due_cents,
+    fob_extra_count: res.fob_count,
+    fob_cents: res.fob_cents,
   }).eq('id', app.id);
 
   return { ...res, application_id: app.id as string };

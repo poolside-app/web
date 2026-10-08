@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     // unpaid party holds its time (PLAN.md O).
     parties: (() => { const p = partySettings(v); return { fee_cents: p.fee_cents, auto_approve: p.auto_approve, hold_days: p.hold_days }; })(),
     // Free fobs for a new family and the fee for another (PLAN.md P).
-    keyfobs: (() => { const k = fobSettings(v); return { included_free: k.included_free, fee_cents: k.fee_cents }; })(),
+    keyfobs: (() => { const k = fobSettings(v); return { included_free: k.included_free, fee_cents: k.fee_cents, max_per_family: k.max_per_family }; })(),
     features: {
       swim_lessons:         !!v.features?.swim_lessons,
       parties:              !!v.features?.parties,

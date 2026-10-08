@@ -67,7 +67,7 @@
     .hide-sm { display:none; }
   }
   label.f { display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:4px; }
-  .set-grid { display:grid; grid-template-columns: 1fr 1fr auto; gap:8px; align-items:end; }
+  .set-grid { display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end; }
   @media (max-width: 560px) { .set-grid { grid-template-columns: 1fr; } }
   .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px 'Inter'; opacity:0; transition:.22s; pointer-events:none; z-index:300; }
   .toast.show { opacity:1; }
@@ -127,9 +127,10 @@
     <div class="set-grid">
       <div><label class="f" for="set-included">Free fobs for a new family</label><input id="set-included" type="number" min="0" max="6" step="1"></div>
       <div><label class="f" for="set-fee">Fee for another fob ($)</label><input id="set-fee" type="number" min="0" max="200" step="1"></div>
+      <div><label class="f" for="set-max">Most fobs per family</label><input id="set-max" type="number" min="1" max="20" step="1"></div>
       <button class="btn" onclick="saveSettings()">Save</button>
     </div>
-    <div class="m" style="margin-top:8px">Paying by card adds the card fee for the member, so the club keeps the whole fee. Families renewing never get a free fob.</div>
+    <div class="m" style="margin-top:8px">Paying by card in the app adds the card fee for the member, so the club keeps the whole fee. Fobs added at signup or renewal are paid with the dues. Families renewing never get a free fob. The most per family counts the free one; lost and turned-off fobs don't count.</div>
   </div>
 </main>
 
@@ -180,7 +181,7 @@ const money = c => '$' + (Number(c || 0) / 100).toFixed(c % 100 ? 2 : 0);
 const day = iso => iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
 const who = f => `${escapeHtml(f.family_name || 'Family')}${f.member_name ? ` <span style="font-weight:400;color:var(--muted)">· ${escapeHtml(f.member_name)}</span>` : ''}`;
 const payChip = f => f.included ? '<span class="chip free">Free</span>'
-  : f.payment_status && f.payment_status !== 'none' ? `<span class="chip ${escapeAttr(f.payment_status)}">${escapeHtml(PAY[f.payment_status])}${f.payment_status === 'paid' && f.payment_method ? ' · ' + escapeHtml(f.payment_method === 'stripe' ? 'card' : f.payment_method) : ''}</span>` : '';
+  : f.payment_status && f.payment_status !== 'none' ? `<span class="chip ${escapeAttr(f.payment_status)}">${escapeHtml(PAY[f.payment_status])}${f.payment_status === 'paid' && f.payment_method ? ' · ' + escapeHtml(f.payment_method === 'stripe' ? 'card' : f.payment_method === 'with_dues' ? 'with dues' : f.payment_method) : ''}</span>` : '';
 
 async function load() {
   try {
@@ -194,6 +195,7 @@ async function load() {
     fam.value = keep;
     document.getElementById('set-included').value = r.settings.included_free;
     document.getElementById('set-fee').value = (r.settings.fee_cents / 100);
+    document.getElementById('set-max').value = r.settings.max_per_family;
     paint();
   } catch (e) {
     document.getElementById('issue-list').innerHTML = `<div class="empty" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
@@ -254,7 +256,7 @@ function paintAll() {
       <td>${who(f)}</td>
       <td>${escapeHtml(String(f.card_number ?? ''))}${f.status === 'off' ? ' <span class="chip lost">Off</span>' : ''}</td>
       <td class="hide-sm">${escapeHtml(REASON[f.reason] || f.reason)}${f.issued_at ? ' · ' + escapeHtml(day(f.issued_at)) : ''}</td>
-      <td style="text-align:right">${f.status === 'active' ? `<button class="btn btn-sm btn-ghost" onclick="turnedOff('${escapeAttr(f.id)}', true)">Turn off</button>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap">${f.status === 'active' ? `<button class="btn btn-sm btn-ghost" onclick="swapFob('${escapeAttr(f.id)}')">Broken</button> <button class="btn btn-sm btn-ghost" onclick="turnedOff('${escapeAttr(f.id)}', true)">Turn off</button>` : ''}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -272,6 +274,18 @@ async function turnedOff(id, ask) {
   const r = await call('turned_off', { id });
   if (!r.ok) { toast(r.error || 'Could not update', 'err'); return; }
   toast('Marked off.');
+  load();
+}
+// A broken fob the family reported through Member help (PLAN.md Q5): free
+// by default, or the fee if it looks like damage.
+async function swapFob(id) {
+  const fee = money(DATA.settings.fee_cents);
+  const number = prompt(`Broken fob. Type the number on the new fob to swap it free.\n\nOr leave it blank to charge the family ${fee} first.`);
+  if (number === null) return;
+  if (!number.trim() && !confirm(`Turn this fob off and ask the family to pay ${fee} for a new one? They get a pop-up to pay in the app.`)) return;
+  const r = await call('swap', number.trim() ? { id, number: number.trim() } : { id, charge: true });
+  if (!r.ok) { toast(r.error || 'Could not swap', 'err'); return; }
+  toast(number.trim() ? `Swapped to fob ${r.fob.tail}. The family got a pop-up.` : 'Asked them to pay for a new one.');
   load();
 }
 async function requirePayment(id) {
@@ -304,7 +318,8 @@ async function addFob() {
 async function saveSettings() {
   const included_free = Number(document.getElementById('set-included').value);
   const fee_cents = Math.round(Number(document.getElementById('set-fee').value) * 100);
-  const r = await call('settings_save', { included_free, fee_cents });
+  const max_per_family = Number(document.getElementById('set-max').value);
+  const r = await call('settings_save', { included_free, fee_cents, max_per_family });
   if (!r.ok) { toast(r.error || 'Could not save', 'err'); return; }
   toast('Saved.');
   load();
