@@ -173,6 +173,99 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true });
   }
 
+  // ── Seasons (PLAN.md U2, Doug 2026-10-08) ──────────────────────────────
+  // One current season for the whole club, changed only by the board's
+  // "Close 2026 and start 2027" button (it replaced "next season goes on
+  // sale in"). The checklist after closing has items the board ticks and a
+  // few Poolside can see for itself.
+  const SEASON_ITEMS = [
+    { id: 'prices', label: 'Check the membership prices', link: '/club/admin/payments.html?focus=prices' },
+    { id: 'deadlines', label: 'Check the payment plan deadlines', link: '/club/admin/payments.html#plans' },
+    { id: 'policies', label: 'Review the policies and waiver', link: '/club/admin/policies.html' },
+    { id: 'opening', label: 'Set opening and closing day', link: '/club/admin/settings.html?focus=season#season', auto: true },
+    { id: 'renewal', label: 'Send the renewal message to last season\'s members', link: '/club/admin/members.html#renewals', auto: true },
+  ];
+  async function seasonStatus() {
+    const { data: row } = await sb.from('settings').select('value').eq('tenant_id', payload!.tid).maybeSingle();
+    const sv = (row?.value ?? {}) as Record<string, unknown>;
+    const { sellingYear } = await import('../_shared/membership_year.ts');
+    const season = sellingYear(sv);
+    const membership = (sv.membership ?? {}) as Record<string, unknown>;
+    const [{ count: paid }, { count: lastPaid }, { data: sent }] = await Promise.all([
+      sb.from('households').select('id', { count: 'exact', head: true }).eq('tenant_id', payload!.tid).eq('active', true).gte('paid_until_year', season),
+      sb.from('households').select('id', { count: 'exact', head: true }).eq('tenant_id', payload!.tid).eq('active', true).eq('paid_until_year', season - 1),
+      sb.from('audit_log').select('id').eq('tenant_id', payload!.tid).eq('kind', 'renewals.send_blast').contains('metadata', { year: season }).limit(1),
+    ]);
+    const ticks = (((sv.season_checklist ?? {}) as Record<string, Record<string, boolean>>)[String(season)]) ?? {};
+    const seasonInfo = (sv.season ?? {}) as Record<string, unknown>;
+    const autoDone: Record<string, boolean> = {
+      opening: String(seasonInfo.start_date ?? '').startsWith(String(season)),
+      renewal: (sent ?? []).length > 0,
+    };
+    return {
+      season, pinned: Number(membership.year) > 2000, next: season + 1,
+      paid: paid ?? 0, last_season_paid: lastPaid ?? 0,
+      checklist: SEASON_ITEMS.map(i => ({ ...i, done: !!(ticks[i.id] || autoDone[i.id]) })),
+      history: Array.isArray(sv.season_history) ? sv.season_history : [],
+    };
+  }
+
+  if (action === 'season_status') {
+    const st = await seasonStatus();
+    // A club that never pressed the button had its season worked out from a
+    // month; fix it now, so the season only ever changes on the button.
+    if (!st.pinned) {
+      const { data: row } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
+      const sv = (row?.value ?? {}) as Record<string, unknown>;
+      await sb.from('settings').update({ value: { ...sv, membership: { ...((sv.membership ?? {}) as Record<string, unknown>), year: st.season } } }).eq('tenant_id', payload.tid);
+      st.pinned = true;
+    }
+    return jsonResponse({ ok: true, ...st });
+  }
+
+  // Tick (or untick) a checklist item for the current season.
+  if (action === 'season_check') {
+    if (!(await requireOwner(sb, payload as never))) return jsonResponse({ ok: false, error: 'Only owners can change the season checklist' }, 403);
+    const item = String(body.item ?? '');
+    if (!SEASON_ITEMS.some(i => i.id === item)) return jsonResponse({ ok: false, error: 'Unknown item' }, 400);
+    const st = await seasonStatus();
+    const { data: row } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const sv = (row?.value ?? {}) as Record<string, unknown>;
+    const all = { ...((sv.season_checklist ?? {}) as Record<string, Record<string, boolean>>) };
+    all[String(st.season)] = { ...(all[String(st.season)] ?? {}), [item]: body.done !== false };
+    const { error } = await sb.from('settings').update({ value: { ...sv, season_checklist: all } }).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, ...(await seasonStatus()) });
+  }
+
+  // "Close 2026 and start 2027". `from` must be the current season, so a
+  // second tap (or a stale page) can't skip a year. Families paid for the old
+  // season stay members until January 1 of the new one (PLAN.md U3).
+  if (action === 'close_season') {
+    if (!(await requireOwner(sb, payload as never))) return jsonResponse({ ok: false, error: 'Only owners can start a new season' }, 403);
+    const st = await seasonStatus();
+    if (Number(body.from) !== st.season) return jsonResponse({ ok: false, error: `The current season is ${st.season}. Reload the page.` }, 409);
+    const { data: row } = await sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const sv = (row?.value ?? {}) as Record<string, unknown>;
+    const nowIso = new Date().toISOString();
+    const history = [...(Array.isArray(sv.season_history) ? sv.season_history : []),
+      { year: st.season, paid: st.paid, closed_at: nowIso, closed_by: payload.sub }].slice(-20);
+    const next = {
+      ...sv,
+      membership: { ...((sv.membership ?? {}) as Record<string, unknown>), year: st.season + 1 },
+      season_history: history,
+    };
+    const { error } = await sb.from('settings').update({ value: next }).eq('tenant_id', payload.tid);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await sb.from('audit_log').insert({
+      tenant_id: payload.tid, kind: 'season.closed', entity_type: 'tenant', entity_id: payload.tid,
+      summary: `Closed the ${st.season} season (${st.paid} paid) and started ${st.season + 1}`,
+      actor_id: payload.sub, actor_kind: 'tenant_admin', actor_label: payload.sub,
+      metadata: { from: st.season, to: st.season + 1, paid: st.paid },
+    });
+    return jsonResponse({ ok: true, ...(await seasonStatus()) });
+  }
+
   // ── setup_status ───────────────────────────────────────────────────────
   // THE setup checklist (J1, 2026-09-26). It replaced the setup wizard, the
   // "Finish setting up" page, a second dashboard checklist and the "are you

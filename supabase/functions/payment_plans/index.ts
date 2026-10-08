@@ -640,6 +640,15 @@ Deno.serve(async (req) => {
       if (anyPaid && plan.status === 'active') await afterPayment(sb, club, plan);
     }
 
+    // 1b. January 1 of a new season (PLAN.md U3): a family that didn't
+    //     renew (and isn't on a plan for it) stops being a member, so the
+    //     dues-paid flag the gate, check-in and Members list read goes off.
+    let season_cutoffs = 0;
+    try {
+      const { membershipCutoffs } = await import('../_shared/membership_status.ts');
+      season_cutoffs = await membershipCutoffs(sb);
+    } catch (e) { console.error('season cutoff:', (e as Error).message); }
+
     // 2. The paid-in-full date: a plan still owing the day after it ends,
     //    and the gate and fobs go off (Doug, 2026-10-07).
     let past_deadline = 0;
@@ -877,7 +886,7 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, approval, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, approval, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';

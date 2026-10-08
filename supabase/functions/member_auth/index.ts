@@ -76,6 +76,15 @@ type RenewalState = {
   payment_status: string | null;
 };
 
+/** A family that isn't a member for the current season can't do this
+ *  (PLAN.md U3: from January 1, unpaid families keep only My family, the
+ *  calendar, Ask the board and renewing). Returns the refusal, or null. */
+async function requireCurrentMember(sb: ReturnType<typeof createClient>, tid: string, hid: string): Promise<Response | null> {
+  const { householdStatus, NOT_A_MEMBER } = await import('../_shared/membership_status.ts');
+  const st = await householdStatus(sb as never, tid, hid);
+  return st.member ? null : jsonResponse({ ok: false, code: 'not_member', error: NOT_A_MEMBER(st.season) }, 403);
+}
+
 async function renewalStateFor(
   sb: ReturnType<typeof createClient>,
   tenantId: string,
@@ -619,6 +628,15 @@ Deno.serve(async (req) => {
       }
     } catch (e) { console.error('member keyfobs:', (e as Error).message); }
 
+    // Is this family a member for the current season (PLAN.md U3)? The app
+    // shows an unpaid family only what they can still use.
+    let access: Record<string, unknown> | null = null;
+    try {
+      const ms = await import('../_shared/membership_status.ts');
+      const st = await ms.householdStatus(sb as never, payload.tid as string, payload.hid as string);
+      access = { ...st, can_use: st.member ? null : ms.UNPAID_CAN_USE };
+    } catch (e) { console.error('member access:', (e as Error).message); }
+
     return jsonResponse({
       ok: true,
       user: member,
@@ -627,6 +645,7 @@ Deno.serve(async (req) => {
       renewal,
       plan,
       keyfobs,
+      access,
       is_board_member,
       refreshed_token,
     });
@@ -922,6 +941,8 @@ Deno.serve(async (req) => {
   //   • Enqueues an admin task so the board sees a "party.requested" item
   //   • Emails the member confirming the request was received
   if (action === 'request_party') {
+    const refused = await requireCurrentMember(sb, payload.tid as string, payload.hid as string);
+    if (refused) return refused;
     const { data: member } = await sb.from('household_members')
       .select('id, name, email, can_book_parties, household_id, active')
       .eq('id', payload.sub as string).maybeSingle();
@@ -1647,6 +1668,8 @@ Deno.serve(async (req) => {
   // it appears in the public/member gallery carousel.
   // Body: { content_type, base64, caption? }
   if (action === 'submit_photo') {
+    const notMember = await requireCurrentMember(sb, payload.tid as string, payload.hid as string);
+    if (notMember) return notMember;
     const content_type = String(body.content_type ?? '').trim();
     const base64       = String(body.base64 ?? '');
     const caption      = String(body.caption ?? '').trim().slice(0, 200) || null;

@@ -357,6 +357,24 @@
   <details class="set-section" data-focus="season" id="season">
     <summary><span class="chev">▶</span> 📅 Season <span class="sub">— dates, signups open or closed, when next season goes on sale</span></summary>
     <div class="card">
+    <!-- PLAN.md U2 (Doug, 10/8): one current season for the whole club,
+         changed only by this button. It replaced "next season goes on sale in". -->
+    <div id="season-box" style="padding:14px 16px;background:var(--bg-2);border-radius:12px;margin:0 0 16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12.5px;color:var(--muted)">Current season</div>
+          <div id="season-current" style="font:600 30px 'Fraunces',Georgia,serif;color:var(--blue);line-height:1.15">…</div>
+          <div id="season-paid" style="font-size:13px;color:var(--muted);margin-top:2px"></div>
+        </div>
+        <button class="btn" type="button" id="season-close-btn" onclick="closeSeason()" data-owner-only>Close and start next season</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0;line-height:1.5">Every page, payment and renewal uses this season. When you close it, families paid for it stay members until January 1 of the next season; after that, anyone who hasn't paid for the new season (or isn't on a plan) can only use My family, the calendar and Ask the board.</p>
+      <div id="season-checklist" style="margin-top:14px"></div>
+      <details id="season-history" style="margin-top:10px;display:none">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--blue)">Past seasons</summary>
+        <div id="season-history-list" style="font-size:13px;margin-top:6px"></div>
+      </details>
+    </div>
     <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Toggle the season open/closed banner and freeze new applications for the off-season. Photo uploads + member features stay available either way.</p>
     <div class="row2">
       <div>
@@ -377,19 +395,9 @@
     <label style="margin-top:12px">Closed-banner message <span style="color:var(--muted);font-weight:500;font-size:11px">(shown when the season is closed)</span></label>
     <input type="text" id="season_closed_message" placeholder="See you next May! Pool is closed for the season.">
     <div class="row2" style="margin-top:12px">
-      <div><label>Season start <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="date" id="season_start_date"></div>
-      <div><label>Season end <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="date" id="season_end_date"></div>
+      <div><label>Opening day</label><input type="date" id="season_start_date"></div>
+      <div><label>Closing day</label><input type="date" id="season_end_date"></div>
     </div>
-    <!-- J5 (2026-09-26): decides which season a payment buys. There was no
-         screen for it; it silently defaulted to December. -->
-    <label style="margin-top:12px">Next season goes on sale in</label>
-    <select id="renewal_opens_month" onchange="paintSellingNote()">
-      <option value="1">January</option><option value="2">February</option><option value="3">March</option>
-      <option value="4">April</option><option value="5">May</option><option value="6">June</option>
-      <option value="7">July</option><option value="8">August</option><option value="9">September</option>
-      <option value="10">October</option><option value="11">November</option><option value="12">December</option>
-    </select>
-    <p id="selling-note" style="font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5"></p>
     <!-- PLAN.md R4 (Doug, 10/8): the signup link and heading, from the
          retired Signup form tab. -->
     <label style="margin-top:16px">Your signup page</label>
@@ -1068,9 +1076,8 @@ function populate(s) {
   setVal('apply-heading', s.apply?.heading_override);
   setVal('season_start_date',     s.season?.start_date);
   setVal('season_end_date',       s.season?.end_date);
-  setVal('renewal_opens_month',   String(s.membership?.renewal_opens_month || 12));
   window.__PINNED_YEAR__ = Number(s.membership?.year) || null;
-  paintSellingNote();
+  loadSeason();
 
   // Fundraiser thermometer
   // Fundraiser fields removed from settings.html — managed in donations.html.
@@ -1133,11 +1140,8 @@ function collect(prevSettings) {
       fob_activation_day: val('fob_activation_day') || null,
       hours_by_day:       collectDayHours(),
     },
-    // Which season a payment buys (same rule as _shared/membership_year.ts).
-    membership: {
-      ...(prevSettings?.membership ?? {}),
-      renewal_opens_month: Number(val('renewal_opens_month')) || 12,
-    },
+    // The current season is changed only by "Close and start next season"
+    // (PLAN.md U2), so this page leaves membership as it is.
     season: {
       open:               val('season_open') !== 'false',
       memberships_frozen: val('memberships_frozen') === 'true',
@@ -1216,17 +1220,55 @@ async function copySignupLink() {
   catch (_) { toast('Copy failed. Press and hold the link to copy it.', 'err'); }
 }
 
-function paintSellingNote() {
-  const el = document.getElementById('selling-note');
-  if (!el) return;
-  const opens = Number(val('renewal_opens_month')) || 12;
-  const today = window.PoolTime ? PoolTime.todayKey() : new Date().toISOString().slice(0, 10);
-  const year = Number(today.slice(0, 4)), month = Number(today.slice(5, 7));
-  const selling = window.__PINNED_YEAR__ || (month >= opens ? year + 1 : year);
-  const monthName = new Date(Date.UTC(2000, opens - 1, 15)).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
-  el.textContent = window.__PINNED_YEAR__
-    ? `Payments are pinned to the ${selling} season.`
-    : `From ${monthName} on, a payment buys next season. Right now a payment buys the ${selling} season.`;
+// ── The current season (PLAN.md U2) ──────────────────────────────────
+let SEASON = null;
+async function loadSeason() {
+  try {
+    const r = await call(SETTINGS_URL, 'season_status');
+    if (!r.ok) return;
+    SEASON = r;
+    paintSeasonBox();
+  } catch (_) { /* the rest of the page still works */ }
+}
+function paintSeasonBox() {
+  const d = SEASON;
+  document.getElementById('season-current').textContent = String(d.season);
+  document.getElementById('season-paid').textContent =
+    `${d.paid} famil${d.paid === 1 ? 'y' : 'ies'} paid for ${d.season} · ${d.last_season_paid} ${d.last_season_paid === 1 ? 'was a member' : 'were members'} in ${d.season - 1}`;
+  const btn = document.getElementById('season-close-btn');
+  btn.textContent = `Close ${d.season} and start ${d.next}`;
+  const left = d.checklist.filter(i => !i.done).length;
+  document.getElementById('season-checklist').innerHTML = `
+    <div style="font-weight:600;font-size:13.5px;margin-bottom:6px">Getting ${d.season} ready${left ? ` <span style="font-weight:500;color:var(--muted)">(${left} to do)</span>` : ' ✓'}</div>
+    ${d.checklist.map(i => `<label class="checkbox-row" style="margin:4px 0;align-items:flex-start">
+      <input type="checkbox" ${i.done ? 'checked' : ''} ${i.auto ? 'disabled' : ''} onchange="tickSeason('${i.id}', this.checked)" style="margin-top:3px">
+      <span><a href="${i.link}">${escapeHtml(i.label)}</a>${i.auto ? ' <span style="color:var(--muted);font-size:12px">(Poolside checks this)</span>' : ''}</span>
+    </label>`).join('')}`;
+  const hist = d.history || [];
+  document.getElementById('season-history').style.display = hist.length ? '' : 'none';
+  document.getElementById('season-history-list').innerHTML = hist.slice().reverse().map(h =>
+    `<div>${h.year}: ${h.paid} famil${h.paid === 1 ? 'y' : 'ies'} paid · closed ${new Date(h.closed_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</div>`).join('');
+}
+async function tickSeason(item, done) {
+  const r = await call(SETTINGS_URL, 'season_check', { item, done });
+  if (!r.ok) { toast(r.error || 'Could not save that', 'err'); return; }
+  SEASON = r; paintSeasonBox();
+}
+async function closeSeason() {
+  const d = SEASON;
+  if (!d) return;
+  if (!confirm(`Close the ${d.season} season and start ${d.next}?\n\n` +
+    `• Every page, payment and renewal switches to ${d.next}.\n` +
+    `• Families paid for ${d.season} stay members until January 1, ${d.next}. After that, anyone not paid for ${d.next} (or on a plan) can only use My family, the calendar and Ask the board.\n` +
+    `• You'll get a checklist: prices, deadlines, policies, opening day and the renewal message.`)) return;
+  const typed = prompt(`To be sure, type ${d.next} to start the ${d.next} season.`);
+  if (String(typed || '').trim() !== String(d.next)) { toast('Not started. Nothing changed.'); return; }
+  const r = await call(SETTINGS_URL, 'close_season', { from: d.season });
+  if (!r.ok) { toast(r.error || 'Could not start the new season', 'err'); return; }
+  SEASON = r;
+  window.__PINNED_YEAR__ = r.season;
+  paintSeasonBox();
+  toast(`The ${r.season} season has started.`);
 }
 
 async function save() {

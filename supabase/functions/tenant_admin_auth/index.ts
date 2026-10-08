@@ -625,9 +625,13 @@ Deno.serve(async (req) => {
     try {
       const { testPaidHouseholds } = await import('../_shared/test_payments.ts');
       const testIds = await testPaidHouseholds(sb, payload.tid);
+      // Paid for the current season (PLAN.md U2), so the bar never mixes
+      // last season's families into this one's.
+      const { sellingYear } = await import('../_shared/membership_year.ts');
+      const season = sellingYear(settingsValue);
       const { data: hh } = await sb.from('households')
         .select('id, tier')
-        .eq('tenant_id', payload.tid).eq('active', true).eq('dues_paid_for_year', true);
+        .eq('tenant_id', payload.tid).eq('active', true).gte('paid_until_year', season);
       const tiers = (settingsValue.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
       const priceOf = (slug: string | null | undefined) => {
         const t = tiers.find(x => x.slug === slug) ?? tiers[0];
@@ -636,6 +640,7 @@ Deno.serve(async (req) => {
       const all = hh ?? [];
       const rows = all.filter(r => !testIds.has(r.id as string));
       (usage as Record<string, unknown>).dues = {
+        season,
         paid: rows.length,
         collected_cents: rows.reduce((n, r) => n + priceOf(r.tier as string), 0),
         test_paid: all.length - rows.length,

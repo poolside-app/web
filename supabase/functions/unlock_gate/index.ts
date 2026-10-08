@@ -73,6 +73,10 @@ async function checkEligibility(
     .eq('id', member.household_id).maybeSingle();
   if (!hh?.active)               return { can_unlock: false, reason: 'household_inactive', tenant_active: true };
   if (!hh?.dues_paid_for_year)   return { can_unlock: false, reason: 'dues_unpaid', tenant_active: true };
+  // Not a member for the current season (from January 1 of it, PLAN.md U3).
+  const { householdStatus } = await import('../_shared/membership_status.ts');
+  const status = await householdStatus(sb as never, payload.tid, member.household_id as string);
+  if (!status.member) return { can_unlock: false, reason: 'dues_unpaid', tenant_active: true };
   // Checked last, so a member who also owes dues is told about the dues.
   if (!bridgeOnline(panel?.bridge_last_seen_at as string | null)) {
     return { can_unlock: false, reason: 'gate_offline', tenant_active: true };

@@ -361,7 +361,10 @@
       padding:13px 16px; background:#ecfdf5; border-bottom:1px solid #a7f3d0;
       color:#065f46; text-decoration:none;
     `;
+    // Which season these numbers are for (PLAN.md U2).
+    const season = Number(dues.season) || null;
     el.innerHTML = `
+      ${season ? `<span style="font-size:13px; font-weight:700; opacity:.85; white-space:nowrap">${season} season</span>` : ''}
       <span style="white-space:nowrap">
         <span style="font-size:24px; font-weight:800; line-height:1">${paid.toLocaleString()}</span>
         <span style="font-size:14px; font-weight:600; opacity:.8"> member${paid === 1 ? '' : 's'} paid</span>

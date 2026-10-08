@@ -134,6 +134,10 @@ Deno.serve(async (req) => {
     // More fobs (PLAN.md Q5): up to the family limit, counting working fobs
     // and ones on their way. Lost and turned-off fobs don't count.
     if (action === 'request') {
+      // Members only (PLAN.md U3).
+      const { householdStatus, NOT_A_MEMBER } = await import('../_shared/membership_status.ts');
+      const st = await householdStatus(sb as never, TID, hid);
+      if (!st.member) return j({ ok: false, code: 'not_member', error: NOT_A_MEMBER(st.season) }, 403);
       const want = Math.trunc(Number(body.count ?? 1));
       if (!Number.isFinite(want) || want < 1) return j({ ok: false, error: 'How many fobs?' }, 400);
       const room = settings.max_per_family - await liveFobCount(sb, hid);

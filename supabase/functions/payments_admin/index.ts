@@ -85,6 +85,12 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   if (action === 'list') {
+    // The current season (PLAN.md U2): a family owes dues for it only if
+    // they're a member for it but haven't paid. Families who didn't renew
+    // aren't open balances; the Renewals screen is for them.
+    const { data: svRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const { sellingYear } = await import('../_shared/membership_year.ts');
+    const season = sellingYear(svRow?.value ?? {});
     // Fetch everything in parallel — none of these depends on the others.
     const [
       { data: dueHouseholds },
@@ -93,7 +99,7 @@ Deno.serve(async (req) => {
     ] = await Promise.all([
       sb.from('households')
         .select('id, family_name, paid_until_year, decided_at:created_at')
-        .eq('tenant_id', TID).eq('active', true).eq('dues_paid_for_year', false),
+        .eq('tenant_id', TID).eq('active', true).eq('dues_paid_for_year', false).gte('paid_until_year', season),
       sb.from('applications')
         .select('id, family_name, household_id, payment_method, decided_at, created_at, amount_due_cents')
         .eq('tenant_id', TID).eq('status', 'approved')
@@ -138,7 +144,7 @@ Deno.serve(async (req) => {
         household_id: h.id,
         family_name: h.family_name,
         kind: 'Annual dues',
-        label: `Dues for ${h.paid_until_year ?? new Date().getFullYear()}`,
+        label: `Dues for ${season}`,
         amount_cents: null,        // dues amount is set by tier on the household, not here
         age_days: null,
       });
