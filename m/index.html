@@ -10,22 +10,41 @@
 <!-- PWA / "Add to Home Screen" wiring. Manifest is per-tenant via Vercel
      rewrite; apple-touch-icon + theme-color get set by /js/pwa.js once the
      branding lands from tenant_public. -->
-<link rel="manifest" href="/manifest.webmanifest">
 <script>
-// iPhone Home Screen sign-in (PLAN.md N2). iPhone starts an added app at the
-// page's own address, so the one-time sign-in goes in the address as well as
-// the manifest, as early as possible. Only the Home Screen app ever uses it.
+// The app manifest, and the iPhone Home Screen sign-in (PLAN.md N2).
+// iPhone reads the first manifest it sees, when it sees it, and ignores a
+// later change, and an added app starts at that manifest's start_url. So on
+// an iPhone that hasn't added the app, the manifest link is only put in once
+// it can carry the one-time sign-in: now, if this phone already has one, or
+// as soon as the member home has asked for one (prepareHandoff).
 (function () {
+  var link = '/manifest.webmanifest', wait = false;
   try {
     var standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-    if (!/iPad|iPhone|iPod/.test(navigator.userAgent) || standalone) return;
-    var c = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null');
-    if (!c || !(c.exp > Date.now() + 3600000)) return;
-    document.querySelector('link[rel="manifest"]').href = '/manifest.webmanifest?h=' + encodeURIComponent(c.token);
-    var u = new URL(location.href);
-    if (u.searchParams.get('h') !== c.token) { u.searchParams.set('h', c.token); history.replaceState(null, '', u.pathname + u.search + u.hash); }
-  } catch (e) { /* the app asks them to sign in once */ }
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !standalone && localStorage.getItem('poolside_member_token')) {
+      var c = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null');
+      // Only the sign-in of whoever is signed in on this phone now.
+      var me = JSON.parse(atob(localStorage.getItem('poolside_member_token').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+      if (c && c.member === me && c.exp > Date.now() + 3600000) {
+        link += '?h=' + encodeURIComponent(c.token);
+        var u = new URL(location.href);
+        if (u.searchParams.get('h') !== c.token) { u.searchParams.set('h', c.token); history.replaceState(null, '', u.pathname + u.search + u.hash); }
+      } else wait = true;
+    }
+  } catch (e) { /* plain manifest */ }
+  window.__manifestHref = link;
+  if (wait) {
+    // A sign-in is on its way; if it isn't here in 8 seconds, use the plain one.
+    window.__manifestTimer = setTimeout(function () { window.addManifestLink(link); }, 8000);
+  } else document.write('<link rel="manifest" href="' + link + '">');
 })();
+window.addManifestLink = function (href) {
+  clearTimeout(window.__manifestTimer);
+  var l = document.querySelector('link[rel="manifest"]');
+  if (l) { l.href = href; return; }
+  l = document.createElement('link'); l.rel = 'manifest'; l.href = href;
+  document.head.appendChild(l);
+};
 </script>
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
@@ -1555,8 +1574,7 @@ async function prepareHandoff() {
       }
     } catch (_) { /* the app falls back to signing in */ }
   }
-  const link = document.querySelector('link[rel="manifest"]');
-  if (h && link) link.href = '/manifest.webmanifest?h=' + encodeURIComponent(h);
+  window.addManifestLink(h ? '/manifest.webmanifest?h=' + encodeURIComponent(h) : '/manifest.webmanifest');
   // iPhone starts the added app at the page's own address, so it goes there too.
   if (h) {
     const u = new URL(location.href);

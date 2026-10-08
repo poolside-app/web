@@ -504,7 +504,16 @@ export async function renderChecks({ check, read, sql, jwt }) {
     // On an iPhone in Chrome: Chrome's steps, and the Home Screen app's
     // start address carries a one-time sign-in.
     const IPHONE_CHROME = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.6478.54 Mobile/15E148 Safari/604.1';
-    const ic = await open('/m/', { poolside_member_token: memTok3 }, null, IPHONE_CHROME);
+    // Opened twice, like a member coming back: the second time the manifest
+    // carries the sign-in from the very first moment.
+    const ic0 = await open('/m/', { poolside_member_token: memTok3 }, null, IPHONE_CHROME);
+    await ic0.waitForFunction(() => /\?h=/.test(document.querySelector('link[rel="manifest"]')?.getAttribute('href') || ''), { timeout: 20000 }).catch(() => {});
+    const first = await ic0.evaluate(() => ({ links: document.querySelectorAll('link[rel="manifest"]').length, href: document.querySelector('link[rel="manifest"]')?.getAttribute('href') || '' }));
+    check('N2: first visit: one manifest link, added once the sign-in is ready', first.links === 1 && /\?h=/.test(first.href), JSON.stringify(first));
+    const handoffCache = await ic0.evaluate(() => localStorage.getItem('poolside_member_handoff'));
+    const ic = await open('/m/', { poolside_member_token: memTok3, poolside_member_handoff: handoffCache }, null, IPHONE_CHROME);
+    const atParse = await ic.evaluate(() => document.querySelector('link[rel="manifest"]')?.getAttribute('href') || '');
+    check('N2: coming back: the manifest has the sign-in from the start', /\?h=/.test(atParse), atParse);
     await ic.waitForSelector('#install-guide', { timeout: 30000 }).catch(() => {});
     await ic.waitForFunction(() => /\?h=/.test(document.querySelector('link[rel="manifest"]')?.getAttribute('href') || ''), { timeout: 15000 }).catch(() => {});
     const guide = await ic.evaluate(() => ({
