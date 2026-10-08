@@ -20,7 +20,7 @@ node scripts/test_payments.mjs    # targeted: fake card + fake Venmo signup end 
 node scripts/test_screens.mjs [--live] [--render]   # member/board screens (D1–D13); offline by default
 ```
 
-Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas), `test_flex_plan` (payment plans; offline by default, `--live` uses a throwaway club with its own Stripe test account), `test_signup_notes` (signup checks, Home Screen sign-in, parties, pop-ups). `ONLY=<step>` limits the live part of `test_money`, `test_positions`, `test_agenda` and `test_flex_plan`. `node scripts/check_phone_width.mjs [page]` opens every page and pop-up at iPhone width (about 2 calls a page).
+Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas), `test_flex_plan` (payment plans; offline by default, `--live` uses a throwaway club with its own Stripe test account), `test_signup_notes` (signup checks, Home Screen sign-in, parties, pop-ups), `test_keyfobs` (fob requests, payments, issuing; offline by default). `test_task_routing` has no offline mode: it always makes its 4 live calls. `ONLY=<step>` limits the live part of `test_money`, `test_positions`, `test_agenda` and `test_flex_plan`. `node scripts/check_phone_width.mjs [page]` opens every page and pop-up at iPhone width (about 2 calls a page).
 
 All of these read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
 
@@ -102,6 +102,10 @@ Members pick a date and start time; every party runs the club's length (`_shared
 - Card totals: the card fee is always the member's.
 
 Card payment books the party in the webhook. Venmo waits for the board's `verify_payment`.
+
+### Keyfobs
+
+When a club has keyfobs on (`features.keyfobs`), each fob is a row in `keyfobs` (PLAN.md P). `_shared/keyfobs.ts` holds the rules: the free count and fee (`settings.keyfobs`, 1 and $15 at Bishop), the two printed number formats, and the card total. A new family's free fob is requested at approval when they ticked "I need a keyfob". Poolside, not the form, decides who is new: a claim link or a renewal never gets one, imported families are sent to their personal link, and a signup at a past member's address carries a warning for the board. Extra and replacement fobs are paid in the app first, by card (`stripe_checkout` `keyfob`) or Venmo the board confirms. The board issues fobs on Settings → Keyfobs, and every fob task is the "gate" alert (Facilities Director). `households.fob_number` mirrors the active fobs. Switching fobs at the panel comes later (P5). `node scripts/test_keyfobs.mjs [--live]`.
 
 ### Member help
 

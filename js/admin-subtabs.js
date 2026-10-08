@@ -71,6 +71,7 @@
     settings: [
       { key: 'settings', label: 'Settings', href: '/club/admin/settings.html', scope: 'settings' },
       { key: 'board',    label: 'Board',    href: '/club/admin/board.html',    scope: ''         },  // every board member reads it; the president edits
+      { key: 'keyfobs',  label: 'Keyfobs',  href: '/club/admin/keyfobs.html',  scope: 'keyfobs', feature: 'keyfobs' },
       { key: 'plan',     label: 'Plan',     href: '/club/admin/billing.html',  scope: 'settings' },
     ],
   };
@@ -87,7 +88,7 @@
     'announcements.html': 'content', 'photos.html': 'content',
     'board-meetings.html': 'content', 'member-help.html': 'content',
     'audit.html': 'insights',
-    'settings.html': 'settings', 'board.html': 'settings', 'billing.html': 'settings',
+    'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'settings', 'billing.html': 'settings',
   };
 
   const file = (window.location.pathname.split('/').pop() || 'index.html');
@@ -145,7 +146,7 @@
     if (!el) return;
     const active = activeKey();
     el.innerHTML = `<div class="admin-subtabs-wrap"><div class="admin-subtabs">${items.map(t => `
-      <a href="${t.href}" class="${active === t.key ? 'on' : ''}" data-scope="${t.scope}" data-subtab="${t.key}">${t.label}${t.key === 'applications' ? ' <span class="badge zero" id="apps-badge">0</span>' : ''}</a>
+      <a href="${t.href}" class="${active === t.key ? 'on' : ''}" data-scope="${t.scope}"${t.feature ? ` data-feature="${t.feature}"` : ''} data-subtab="${t.key}">${t.label}${t.key === 'applications' ? ' <span class="badge zero" id="apps-badge">0</span>' : ''}</a>
     `).join('')}</div></div>`;
 
     // Show the edge fades only when there is genuinely more to see, and

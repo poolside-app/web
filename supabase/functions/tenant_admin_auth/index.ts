@@ -237,6 +237,7 @@ const ALL_SCOPES = [
   'meetings',
   'check_in',
   'shifts',
+  'keyfobs',
 ];
 
 function templateScopes(name: string): string[] {

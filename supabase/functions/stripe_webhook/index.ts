@@ -459,6 +459,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Keyfob (PLAN.md P): paid, so it goes to the board to issue.
+    // Idempotent: a re-delivery finds it already paid.
+    if (kind === 'keyfob' && md.keyfob_id && tenantId) {
+      const { data: fob } = await sb.from('keyfobs').select('id, household_id, reason, payment_status')
+        .eq('id', md.keyfob_id).eq('tenant_id', tenantId).maybeSingle();
+      if (fob && fob.payment_status !== 'paid') {
+        await sb.from('keyfobs').update({ payment_status: 'paid', payment_method: 'stripe', paid_at: new Date().toISOString() }).eq('id', fob.id);
+        const { data: hh } = await sb.from('households').select('family_name').eq('id', fob.household_id as string).maybeSingle();
+        try {
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          const what = fob.reason === 'replacement' ? 'a replacement keyfob' : 'a keyfob';
+          await enqueueAdminTask(sb, {
+            tenant_id: tenantId, target_scopes: ['keyfobs'], kind: 'keyfob.issue',
+            summary: `Issue ${what} to the ${hh?.family_name ?? 'family'} (paid by card)`,
+            link_url: '/club/admin/keyfobs.html', source_kind: 'keyfob', source_id: fob.id as string,
+            push_title: '🔑 Keyfob to issue', push_body: `The ${hh?.family_name ?? 'family'} paid for ${what}.`,
+          });
+          const { pushMembers } = await import('../_shared/member_notify.ts');
+          await pushMembers({ tenant_id: tenantId, household_ids: [fob.household_id as string],
+            title: '🔑 Keyfob paid', body: 'Thanks. The board will set up your fob and let you know when it\'s ready.', url: '/m/#keyfobs', tag: 'keyfob' });
+        } catch { /* best-effort */ }
+      }
+    }
+
     if (kind === 'program_booking' && md.booking_id) {
       await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString() })
         .eq('id', md.booking_id).eq('tenant_id', tenantId);

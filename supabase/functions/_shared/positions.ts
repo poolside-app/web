@@ -25,7 +25,7 @@ export const NOTICES: Record<string, { label: string; needs: string[] }> = {
   referrals:       { label: 'Referral rewards to approve', needs: ['payments'] },
   rentals:         { label: 'Party and rental requests and their payments', needs: ['parties'] },
   photos:          { label: 'Member photos to approve', needs: ['photos'] },
-  gate:            { label: 'Gate and keyfob alerts', needs: [] },
+  gate:            { label: 'Gate and keyfob alerts', needs: ['keyfobs'] },
   help_keyfob:     { label: 'Member help: keyfob & gate', needs: [] },
   help_membership: { label: 'Member help: membership & dues', needs: [] },
   help_parties:    { label: 'Member help: parties & events', needs: [] },
@@ -54,6 +54,7 @@ export const SCREENS: Record<string, string> = {
   meetings: 'Board minutes',
   check_in: 'Gate check-in',
   shifts: 'Lifeguard shifts',
+  keyfobs: 'Keyfobs: issue, turn off, fees',
 };
 
 /** Which alert each kind of dashboard task belongs to. Tasks not listed here
@@ -70,6 +71,10 @@ export const TASK_NOTICE: Record<string, Notice> = {
   // The fobs themselves are the Facilities Director's (PLAN.md M).
   'plan.fob_on': 'gate',
   'plan.fob_off': 'gate',
+  // Fob requests, lost fobs and fob Venmo (PLAN.md P).
+  'keyfob.issue': 'gate',
+  'keyfob.off': 'gate',
+  'keyfob.venmo': 'gate',
   'renewal.auto_renew_failed': 'payments',
   'referral.reward_request': 'referrals',
   'party.requested': 'rentals',
@@ -223,7 +228,7 @@ export const STARTER_POSITIONS: Array<{
   },
   {
     slug: 'facilities', title: 'Facilities Director',
-    scopes: ['check_in', 'shifts'], notices: ['gate', 'help_keyfob', 'help_facility'],
+    scopes: ['check_in', 'shifts', 'keyfobs'], notices: ['gate', 'help_keyfob', 'help_facility'],
     purpose: 'Keep the pool, equipment and buildings safe, working and passing inspection.',
     description: [
       'Every week in season: Walk the property with a checklist: gates and latches, safety equipment, lights, leaks, pool equipment. Confirm the pool tech showed up.',

@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
+<title>Keyfobs — Poolside</title>
+<script src="/js/pooltime.js"></script>
+<script src="/js/errors.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  a { color: var(--blue); }
+  h1, h2, h3 { font-family:'Fraunces',Georgia,serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 19px; margin:26px 0 10px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+  header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor:pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+  main { flex:1; padding:28px 22px; max-width:880px; width:100%; margin:0 auto; }
+  .lede { font-size:13.5px; color:var(--muted); margin:6px 0 16px; line-height:1.55; }
+  .btn { padding:10px 18px; border-radius:var(--r-md); font:600 13px 'Inter'; cursor:pointer; border:1.5px solid transparent; background:var(--blue); color:#fff; }
+  .btn:hover { background:var(--blue-2); }
+  .btn:disabled { opacity:.6; cursor:default; }
+  .btn-ghost { background:transparent; color:var(--blue); border-color:var(--border); }
+  .btn-ghost:hover { background:var(--blue-l); }
+  .btn-success { background:var(--green); }
+  .btn-sm { padding:6px 12px; font-size:12px; }
+  input, select { font:14px/1.4 'Inter'; border:1.5px solid var(--border); border-radius:10px; padding:9px 11px; background:#fff; color:var(--text); width:100%; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding:14px 16px; margin-bottom:10px; box-shadow:var(--shadow); }
+  .card .t { font-weight:600; font-size:14.5px; }
+  .card .m { font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .note { margin-top:8px; padding:8px 10px; font-size:13px; background:#fef3c7; color:#92400e; border-radius:10px; }
+  .issue-row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+  .issue-row input { flex:1; min-width:170px; width:auto; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:999px; font:700 10.5px 'Inter'; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; background:var(--blue-l); color:var(--blue); }
+  .chip.free { background:#dcfce7; color:#15803d; }
+  .chip.unpaid { background:#fee2e2; color:#7f1d1d; }
+  .chip.pending_verify { background:#fef3c7; color:#92400e; }
+  .chip.lost { background:#fee2e2; color:#7f1d1d; }
+  .empty { padding:22px; text-align:center; color:var(--muted); border:2px dashed var(--border); border-radius:var(--r-md); font-size:14px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13.5px; background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); }
+  th { font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); background:var(--bg-2); }
+  tr:last-child td { border-bottom:0; }
+  .tools { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .tools input { flex:1; min-width:160px; width:auto; }
+  .add-grid { display:grid; grid-template-columns: 1fr 1fr auto; gap:8px; align-items:end; }
+  @media (max-width: 560px) {
+    .add-grid { grid-template-columns: 1fr; }
+    .hide-sm { display:none; }
+  }
+  label.f { display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:4px; }
+  .set-grid { display:grid; grid-template-columns: 1fr 1fr auto; gap:8px; align-items:end; }
+  @media (max-width: 560px) { .set-grid { grid-template-columns: 1fr; } }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px 'Inter'; opacity:0; transition:.22s; pointer-events:none; z-index:300; }
+  .toast.show { opacity:1; }
+  footer { padding:20px; text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <a href="/club/admin/" class="logo"><span class="logo-dot"></span> Poolside Admin</a>
+  <div class="who"><span id="whoami">Loading…</span><a id="signout" tabindex="0" role="button">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/payments.html">Money</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/audit.html">Insights</a>
+  <a href="/club/admin/settings.html" class="on">Settings</a>
+</nav>
+<div id="admin-subtabs"></div>
+<script src="/js/admin-subtabs.js"></script>
+<script src="/js/admin-flags.js"></script>
+
+<main>
+  <h1>Keyfobs</h1>
+  <p class="lede">Families ask for fobs in the app. A new family's first fob is free; another fob, or a replacement, is paid for in the app before it shows up here. To issue one, program it at the panel, then type the number printed on it. When a fob is lost, turn it off at the panel and tap "Turned off".</p>
+
+  <div id="off-wrap" style="display:none">
+    <h2>🚫 Lost fobs to turn off</h2>
+    <div id="off-list"></div>
+  </div>
+
+  <h2>🔑 Fobs to issue</h2>
+  <div id="issue-list"><div class="empty">Loading…</div></div>
+
+  <div id="wait-wrap" style="display:none">
+    <h2>⏳ Waiting on payment</h2>
+    <div id="wait-list"></div>
+  </div>
+
+  <h2>All fobs</h2>
+  <div class="card">
+    <div class="t">Add a fob a family already has</div>
+    <div class="m" style="margin-bottom:10px">For fobs handed out before Poolside. It's on right away.</div>
+    <div class="add-grid">
+      <div><label class="f" for="add-family">Family</label><select id="add-family"><option value="">Pick a family</option></select></div>
+      <div><label class="f" for="add-number">Number on the fob</label><input id="add-number" inputmode="numeric" autocomplete="off" placeholder="0000786777 or 012,00345"></div>
+      <button class="btn" id="add-btn" onclick="addFob()">Add</button>
+    </div>
+  </div>
+  <div class="tools"><input id="search" type="search" placeholder="Search family or number" oninput="paintAll()"></div>
+  <div id="all-list"><div class="empty">Loading…</div></div>
+
+  <h2>Settings</h2>
+  <div class="card">
+    <div class="set-grid">
+      <div><label class="f" for="set-included">Free fobs for a new family</label><input id="set-included" type="number" min="0" max="6" step="1"></div>
+      <div><label class="f" for="set-fee">Fee for another fob ($)</label><input id="set-fee" type="number" min="0" max="200" step="1"></div>
+      <button class="btn" onclick="saveSettings()">Save</button>
+    </div>
+    <div class="m" style="margin-top:8px">Paying by card adds the card fee for the member, so the club keeps the whole fee. Families renewing never get a free fob.</div>
+  </div>
+</main>
+
+<div class="toast" id="toast">Saved.</div>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
+
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const FOB_URL = `${SUPABASE_URL}/functions/v1/keyfobs`;
+const ME_URL  = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+const REASON = { new_member: 'New family', extra: 'Another fob', replacement: 'Replacement', imported: 'From the club list', board: 'Added by the board' };
+const PAY = { none: '', unpaid: 'Not paid', pending_verify: 'Venmo to confirm', paid: 'Paid' };
+
+let DATA = { fobs: [], households: [], settings: {} };
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s ?? '').replace(/["'<>&]/g, c => ({'"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.background = kind === 'err' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2600);
+}
+async function logout() {
+  // Only sign out when the token is really bad, not on a network blip.
+  try {
+    const t = token();
+    if (t) {
+      const vr = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` }, body: JSON.stringify({ action: 'me' }) });
+      if (vr.status !== 401) return;
+    }
+  } catch (_) { return; }
+  ['poolside_tenant_token', 'poolside_tenant_user', 'poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function call(action, extra = {}) {
+  const t = token(); if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(FOB_URL, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${t}` },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+const money = c => '$' + (Number(c || 0) / 100).toFixed(c % 100 ? 2 : 0);
+const day = iso => iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+const who = f => `${escapeHtml(f.family_name || 'Family')}${f.member_name ? ` <span style="font-weight:400;color:var(--muted)">· ${escapeHtml(f.member_name)}</span>` : ''}`;
+const payChip = f => f.included ? '<span class="chip free">Free</span>'
+  : f.payment_status && f.payment_status !== 'none' ? `<span class="chip ${escapeAttr(f.payment_status)}">${escapeHtml(PAY[f.payment_status])}${f.payment_status === 'paid' && f.payment_method ? ' · ' + escapeHtml(f.payment_method === 'stripe' ? 'card' : f.payment_method) : ''}</span>` : '';
+
+async function load() {
+  try {
+    const r = await call('list');
+    if (!r.ok) throw new Error(r.error || 'Could not load');
+    DATA = r;
+    const fam = document.getElementById('add-family');
+    const keep = fam.value;
+    fam.innerHTML = '<option value="">Pick a family</option>' + r.households.map(h =>
+      `<option value="${escapeAttr(h.id)}">${escapeHtml(h.family_name)}${h.address ? ' · ' + escapeHtml(h.address) : ''}</option>`).join('');
+    fam.value = keep;
+    document.getElementById('set-included').value = r.settings.included_free;
+    document.getElementById('set-fee').value = (r.settings.fee_cents / 100);
+    paint();
+  } catch (e) {
+    document.getElementById('issue-list').innerHTML = `<div class="empty" style="color:var(--red)">${escapeHtml(e.message)}</div>`;
+    document.getElementById('all-list').innerHTML = '';
+  }
+}
+
+function paint() {
+  const req = DATA.fobs.filter(f => f.status === 'requested');
+  const ready = req.filter(f => f.included || f.payment_status === 'paid' || f.payment_status === 'none');
+  const venmo = req.filter(f => !f.included && f.payment_status === 'pending_verify');
+  const unpaid = req.filter(f => !f.included && f.payment_status === 'unpaid');
+  const lost = DATA.fobs.filter(f => f.status === 'lost');
+
+  document.getElementById('off-wrap').style.display = lost.length ? '' : 'none';
+  document.getElementById('off-list').innerHTML = lost.map(f => `
+    <div class="card">
+      <div class="t">${who(f)} · fob ${escapeHtml(f.tail)}</div>
+      <div class="m">Reported lost ${escapeHtml(day(f.lost_at))}. Turn it off at the panel so it can't open the gate.</div>
+      <div class="issue-row"><button class="btn btn-sm" onclick="turnedOff('${escapeAttr(f.id)}')">Turned off</button></div>
+    </div>`).join('');
+
+  const issueCard = f => `
+    <div class="card">
+      <div class="t">${who(f)} ${payChip(f)}</div>
+      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · asked ${escapeHtml(day(f.requested_at))}</div>
+      ${f.check_note ? `<div class="note">⚠ ${escapeHtml(f.check_note)}</div>` : ''}
+      <div class="issue-row">
+        <input id="n-${escapeAttr(f.id)}" inputmode="numeric" autocomplete="off" placeholder="Number on the fob" aria-label="Number on the fob">
+        <button class="btn btn-sm btn-success" onclick="issue('${escapeAttr(f.id)}')">Issue</button>
+        ${f.included ? `<button class="btn btn-sm btn-ghost" onclick="requirePayment('${escapeAttr(f.id)}')">Ask them to pay ${escapeHtml(money(DATA.settings.fee_cents))}</button>` : ''}
+      </div>
+    </div>`;
+  const venmoCard = f => `
+    <div class="card">
+      <div class="t">${who(f)} ${payChip(f)}</div>
+      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · says they sent ${escapeHtml(money(f.price_cents))} by Venmo. Check the club's Venmo, then confirm.</div>
+      <div class="issue-row"><button class="btn btn-sm" onclick="confirmVenmo('${escapeAttr(f.id)}')">Confirm Venmo</button></div>
+    </div>`;
+  const list = [...venmo.map(venmoCard), ...ready.map(issueCard)];
+  document.getElementById('issue-list').innerHTML = list.length ? list.join('') : '<div class="empty">Nothing to issue. Requests from the app show up here once they\'re paid.</div>';
+
+  document.getElementById('wait-wrap').style.display = unpaid.length ? '' : 'none';
+  document.getElementById('wait-list').innerHTML = unpaid.map(f => `
+    <div class="card"><div class="t">${who(f)} ${payChip(f)}</div>
+      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(money(f.price_cents))} · asked ${escapeHtml(day(f.requested_at))}. They pay in the app.</div></div>`).join('');
+  paintAll();
+}
+
+function paintAll() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const rows = DATA.fobs.filter(f => f.status === 'active' || f.status === 'off')
+    .filter(f => !q || (f.family_name || '').toLowerCase().includes(q) || String(f.card_number || '').includes(q));
+  const host = document.getElementById('all-list');
+  if (!rows.length) { host.innerHTML = `<div class="empty">${q ? 'No match.' : 'No fobs yet.'}</div>`; return; }
+  host.innerHTML = `<table><thead><tr><th>Family</th><th>Number</th><th class="hide-sm">How</th><th></th></tr></thead><tbody>${rows.map(f => `
+    <tr${f.status === 'off' ? ' style="opacity:.55"' : ''}>
+      <td>${who(f)}</td>
+      <td>${escapeHtml(String(f.card_number ?? ''))}${f.status === 'off' ? ' <span class="chip lost">Off</span>' : ''}</td>
+      <td class="hide-sm">${escapeHtml(REASON[f.reason] || f.reason)}${f.issued_at ? ' · ' + escapeHtml(day(f.issued_at)) : ''}</td>
+      <td style="text-align:right">${f.status === 'active' ? `<button class="btn btn-sm btn-ghost" onclick="turnedOff('${escapeAttr(f.id)}', true)">Turn off</button>` : ''}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function issue(id) {
+  const box = document.getElementById('n-' + id);
+  const number = box.value.trim();
+  if (!number) { box.focus(); toast('Type the number printed on the fob.', 'err'); return; }
+  const r = await call('issue', { id, number });
+  if (!r.ok) { toast(r.error || 'Could not issue', 'err'); return; }
+  toast(`Issued fob ${r.fob.tail}. The family got a pop-up.`);
+  load();
+}
+async function turnedOff(id, ask) {
+  if (ask && !confirm('Mark this fob off? Turn it off at the panel too, so it stops opening the gate.')) return;
+  const r = await call('turned_off', { id });
+  if (!r.ok) { toast(r.error || 'Could not update', 'err'); return; }
+  toast('Marked off.');
+  load();
+}
+async function requirePayment(id) {
+  if (!confirm(`Charge the ${money(DATA.settings.fee_cents)} fee instead of giving this fob free? The family gets a pop-up to pay in the app.`)) return;
+  const r = await call('require_payment', { id });
+  if (!r.ok) { toast(r.error || 'Could not update', 'err'); return; }
+  toast('Asked them to pay.');
+  load();
+}
+async function confirmVenmo(id) {
+  const r = await call('confirm_venmo', { id });
+  if (!r.ok) { toast(r.error || 'Could not confirm', 'err'); return; }
+  toast('Venmo confirmed. Issue the fob when it\'s ready.');
+  load();
+}
+async function addFob() {
+  const household_id = document.getElementById('add-family').value;
+  const number = document.getElementById('add-number').value.trim();
+  if (!household_id) { toast('Pick a family.', 'err'); return; }
+  if (!number) { toast('Type the number printed on the fob.', 'err'); return; }
+  const btn = document.getElementById('add-btn'); btn.disabled = true;
+  try {
+    const r = await call('add', { household_id, number });
+    if (!r.ok) { toast(r.error || 'Could not add', 'err'); return; }
+    document.getElementById('add-number').value = '';
+    toast(`Added fob ${r.fob.tail}.`);
+    load();
+  } finally { btn.disabled = false; }
+}
+async function saveSettings() {
+  const included_free = Number(document.getElementById('set-included').value);
+  const fee_cents = Math.round(Number(document.getElementById('set-fee').value) * 100);
+  const r = await call('settings_save', { included_free, fee_cents });
+  if (!r.ok) { toast(r.error || 'Could not save', 'err'); return; }
+  toast('Saved.');
+  load();
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────
+(async () => {
+  if (!token()) { logout(); return; }
+  try {
+    const r = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` }, body: JSON.stringify({ action: 'me' }) });
+    const d = await r.json();
+    if (!d.ok) { logout(); return; }
+    document.getElementById('whoami').textContent = d.user.display_name || d.user.email;
+    if (window.PoolTime) PoolTime.setZone(d.tenant && d.tenant.timezone);
+    if (window.PoolsideFlags) PoolsideFlags.apply(d.tenant.features || {}, d.user, d.tenant, d.usage);
+    if (d.tenant && d.tenant.features && d.tenant.features.keyfobs === false) {
+      document.querySelector('main').innerHTML = '<h1>Keyfobs</h1><p class="lede">Keyfobs are turned off for this club. Turn them on in Settings.</p>';
+      return;
+    }
+  } catch (_) { /* keep going */ }
+  load();
+})();
+</script>
+</body>
+</html>

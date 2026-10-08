@@ -504,6 +504,26 @@ Done:
 - The daily run releases unpaid times.
 - `node scripts/test_signup_notes.mjs --live` checks all of it.
 
+### P. Keyfob requests in the app (Doug, 10/8) — ✅ P1–P4 done 10/8; P5 after closing
+Doug decided (10/8):
+- A new membership comes with fobs included: **1 per family at Bishop** (Doug changed it from 2 on 10/8). An extra or replacement fob is **$15**, and the board can change both.
+- Poolside decides who's new, not a checkbox (Doug asked how an existing member is kept from signing up as "new" for a free fob):
+  - A renewal comes from an existing family, so it is never offered one.
+  - The signup form's first-page check matches phone, email and **street address** against current members, families imported from the CSV, and anyone who paid for an earlier season. A match is sent to sign in or use their personal link, and is never treated as new.
+  - The free fob is counted per family, once ever, so renewing doesn't reset it.
+  - The board member who issues the fob sees "included (new family)" or "paid", plus a warning if the name or address matches a past member, so they can charge instead.
+  - P2 closed the gap: the first-page check and the final submit turn away imported (prefilled) families and offer "Send me my link". A street address that matches a past or imported family doesn't block (houses change hands); it puts a warning on the free fob for the board.
+- Only when the club has keyfobs turned on (`features.keyfobs`, Doug's provider switch).
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ P1. A fob list.** One row per fob: family, person (optional), number, status (requested, active, lost, off), and whether it was included or paid. The board's family record shows them, and so does the family's app.
+- **✅ P2. Signup:** "Do you need a keyfob? (1 included)" for new families only, with the first-page check widened to imported families and street addresses. Once paid, the Facilities Director gets a pop-up and a task: "Issue a fob to the Smith family".
+- **✅ P3. In the app:** a Keyfobs card with the family's fobs, "Request another fob ($15)" and "Report a lost fob ($15 replacement)". The member pays by card first (card fee on the member), or by Venmo with board confirmation. A lost fob is flagged to be turned off right away.
+- **✅ P4. Issuing a fob:** the board member types the fob number into a simple form. Both printed formats are accepted and converted (decimal, or facility,card). A number already given to someone else is refused, and the last digits are shown back to confirm. That marks the fob active and closes the task.
+- Built as: the `keyfobs` table and function, Settings → Keyfobs for the board (issue, lost fobs to turn off, add a fob a family already has, the free count and fee), the Keyfobs card in the member app, card payment through `stripe_checkout` (`keyfob`), and the Facilities Director's "gate" alert for every fob task. `node scripts/test_keyfobs.mjs [--live]`.
+- Not yet: the CSV import (Doug isn't uploading it yet). When it goes in, a claimed family's fob numbers from the list become active fobs when their membership is approved.
+- **P5. Later (after closing, with the panel connected):** typing the number turns the fob on at the gate. Renewals extend it, lapses switch it off, and a lost fob goes off at once. Per the keyfob automation design (memory) this starts with the read-only panel check.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

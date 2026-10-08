@@ -24,6 +24,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, requireOwner } from '../_shared/auth.ts';
 import { fmtPoolDate, poolToday, tenantTimeZone, zoneOrDefault } from '../_shared/pool_time.ts';
+import { addressMatch } from '../_shared/keyfobs.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -103,7 +104,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, fob_review_note, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
 
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
@@ -155,6 +156,86 @@ async function autoLinkAdminToMember(
       });
     }
   } catch { /* never fail the calling action over this */ }
+}
+
+type ImportedHit = { id: string; family_name: string | null; primary_name: string | null; primary_email: string | null; primary_phone: string | null; invited_at: string | null; via: 'email' | 'phone' };
+
+/** A family on the club's imported list (PLAN.md P): a pre-filled
+ *  application waiting to be claimed, matched by email or phone. */
+async function importedMatch(
+  sb: ReturnType<typeof createClient>, tenantId: string, email: string | null, phone: string | null,
+): Promise<ImportedHit | null> {
+  const cols = 'id, family_name, primary_name, primary_email, primary_phone, invited_at';
+  if (email) {
+    const { data } = await sb.from('applications').select(cols).eq('tenant_id', tenantId).eq('status', 'prefilled')
+      .eq('claim_source', 'csv_import').ilike('primary_email', email).limit(1).maybeSingle();
+    if (data) return { ...(data as Omit<ImportedHit, 'via'>), via: 'email' };
+  }
+  if (phone) {
+    const { data } = await sb.from('applications').select(cols).eq('tenant_id', tenantId).eq('status', 'prefilled')
+      .eq('claim_source', 'csv_import').eq('primary_phone', phone).limit(1).maybeSingle();
+    if (data) return { ...(data as Omit<ImportedHit, 'via'>), via: 'phone' };
+  }
+  return null;
+}
+
+/** One family's personal link to their pre-filled application, by text
+ *  and/or email. A fresh token each time, so an older link stops working. */
+async function sendClaimInvite(
+  sb: ReturnType<typeof createClient>,
+  tenant: { id: string; slug: string; display_name: string | null; plan: string | null },
+  app: { id: string; primary_name: string | null; primary_email: string | null; primary_phone: string | null },
+  want: { email: boolean; sms: boolean },
+): Promise<{ delivered: boolean; email: boolean; sms: boolean; capped: string | null; tokenFailed?: boolean }> {
+  const out = { delivered: false, email: false, sms: false, capped: null as string | null };
+  const canEmail = want.email && !!app.primary_email;
+  const canSms = want.sms && !!app.primary_phone;
+  if (!canEmail && !canSms) return out;
+  const tok = randomToken();
+  const { error: updErr } = await sb.from('applications')
+    .update({ claim_token_hash: await sha256Hex(tok), invited_at: new Date().toISOString() })
+    .eq('id', app.id).eq('tenant_id', tenant.id);
+  if (updErr) return { ...out, tokenFailed: true };
+  const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+  const clubName = tenant.display_name || 'your club';
+  const claimUrl = `${clubUrl}/apply.html?claim=${encodeURIComponent(tok)}`;
+  const firstName = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
+  if (canSms) {
+    const { sendSms } = await import('../_shared/send_sms.ts');
+    const r = await sendSms({
+      sb, tenantId: tenant.id, tenantPlan: tenant.plan,
+      to: app.primary_phone as string,
+      body: `Hi ${firstName}, ${clubName} here. We've moved to the Poolside app. Your info is already filled in: tap to confirm and pay your dues. ${claimUrl}`,
+    });
+    if (r.sent) { out.delivered = true; out.sms = true; }
+    else if (r.capped) out.capped = r.capped_by === 'platform' ? 'platform' : 'club';
+  }
+  const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+  if (canEmail && RESEND_API_KEY) {
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsideapp.com>';
+    const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
+    const html = `
+        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">${esc(clubName)} has moved to a new system</h2>
+          <p style="margin:0 0 16px;color:#334155">Hi ${esc(firstName)} — we've switched to Poolside to manage memberships, payments, and pool access. We've pre-filled your information to make this quick.</p>
+          <p style="margin:0 0 16px;color:#334155">Tap below to review your details, add anyone on your membership, accept the club policies, and pay your dues for the season.</p>
+          <p style="margin:24px 0">
+            <a href="${claimUrl}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Confirm &amp; pay →</a>
+          </p>
+          <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5">If the button doesn't work, paste this link into your browser:<br><code style="font-size:12px;word-break:break-all;color:#0a3b5c">${claimUrl}</code></p>
+          <hr style="border:0;border-top:1px solid #e5e7eb;margin:28px 0">
+          <p style="margin:0;color:#94a3b8;font-size:12px">You're receiving this because you're a member of ${esc(clubName)}. Questions? Just reply to this email.</p>
+        </div>`;
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: RESEND_FROM, to: [app.primary_email], subject: `${clubName}: confirm your membership & pay for the season`, html }),
+      });
+      if (res.ok) { out.delivered = true; out.email = true; }
+    } catch { /* delivered stays as the text left it */ }
+  }
+  return out;
 }
 
 type PendingApp = { id: string; created_at: string; payment_method: string | null; payment_status: string | null };
@@ -341,6 +422,27 @@ Deno.serve(async (req) => {
   }
 
   // ── submit (no auth — anyone with the form can apply) ─────────────────
+  // ── resend_claim (public) — "send me my personal link" (PLAN.md P) ──────
+  // Someone on the club's imported list tried the open signup form. Their
+  // link goes to the phone or email on file (never to what was typed, unless
+  // it matches), at most once every 10 minutes.
+  if (action === 'resend_claim') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, plan').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const email = strOrNull(body.email)?.toLowerCase() ?? null;
+    const rawPhone = String(body.phone ?? '').trim();
+    const phone = rawPhone ? normalizePhoneE164(rawPhone) : null;
+    const hit = await importedMatch(sb, tenant.id as string, email, phone);
+    // The same answer either way, so this can't be used to find out who's on the list.
+    const done = { ok: true, message: 'If you\'re on the list, your link is on its way to the phone or email we have for you.' };
+    if (!hit) return jsonResponse(done);
+    if (hit.invited_at && Date.now() - Date.parse(hit.invited_at) < 10 * 60_000) return jsonResponse(done);
+    await sendClaimInvite(sb, tenant as { id: string; slug: string; display_name: string; plan: string | null }, hit,
+      { email: hit.via !== 'phone', sms: hit.via === 'phone' });
+    return jsonResponse(done);
+  }
+
   // ── check_contact (public) — step 1 of the join form (PLAN.md N1) ───────
   // "Already a member, sign in" on the first page, not at checkout. Same
   // answers the final submit gives, so it tells nobody anything new.
@@ -362,6 +464,9 @@ Deno.serve(async (req) => {
     }
     if (emailHit || phoneHit) {
       return jsonResponse({ ok: true, member: true, matched_via: emailHit && phoneHit ? 'both' : emailHit ? 'email' : 'phone' });
+    }
+    if (await importedMatch(sb, tenant.id as string, email, phone)) {
+      return jsonResponse({ ok: true, imported: true });
     }
     const waiting = (await pendingApplications(sb, tenant.id as string, email, phone)).filter(a => !unfinishedCardSignup(a));
     if (waiting.length) {
@@ -474,6 +579,16 @@ Deno.serve(async (req) => {
             : `You're already a member at ${tenant.display_name || 'this club'}. Sign in below — we'll text or email you a one-tap link.`,
           code: 'already_member',
           matched_via,
+        }, 409);
+      }
+
+      // On the club's imported list: their spot is waiting at their personal
+      // link, so a fresh signup would be a duplicate (and look new).
+      const imported = await importedMatch(sb, tenant.id as string, email, phone);
+      if (imported) {
+        return jsonResponse({
+          ok: false, code: 'imported',
+          error: `You're on ${tenant.display_name || 'the club'}'s member list already. Use your personal link to join, or ask us to send it again.`,
         }, 409);
       }
 
@@ -590,9 +705,16 @@ Deno.serve(async (req) => {
       body:    strOrNull(body.body),
       payment_method,
       payment_status: 'unpaid',
-      is_new_member:    body.is_new_member !== false,
-      need_new_fob:     body.need_new_fob === true,
-      prior_fob_number: strOrNull(body.prior_fob_number),
+      // Poolside decides who is new, not the form (PLAN.md P): a claim is a
+      // family from the club's list; anyone else here has already been
+      // checked against members and that list, so they are new. A claim
+      // keeps the fob number the list gave it.
+      is_new_member:    !claimAppId,
+      need_new_fob:     body.need_new_fob === true && !claimAppId,
+      ...(claimAppId ? {} : { prior_fob_number: strOrNull(body.prior_fob_number) }),
+      // A new family at the address of a past member: the board takes a
+      // second look before a free fob goes out (houses do change hands).
+      fob_review_note: claimAppId ? null : await addressMatch(sb, tenant.id as string, strOrNull(body.address)),
       alt_email:        body.alt_email ? String(body.alt_email).trim().toLowerCase() : null,
       adults_json,
       children_json,
@@ -1178,83 +1300,26 @@ Deno.serve(async (req) => {
 
     const { data: tenant } = await sb.from('tenants')
       .select('slug, display_name, plan').eq('id', TID).maybeSingle();
-    const clubUrl  = tenant ? `https://${tenant.slug}.poolsideapp.com` : '';
-    const clubName = tenant?.display_name || 'your club';
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsideapp.com>';
-    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 
     let sent = 0, skipped_no_email = 0, skipped_already = 0, failed = 0;
     let sent_email = 0, sent_sms = 0, sms_capped = 0, sms_capped_platform = 0;
     for (const app of (apps ?? [])) {
       if (onlyUninvited && app.invited_at) { skipped_already++; continue; }
-      const canEmail = wantEmail && !!app.primary_email;
-      const canSms   = wantSms   && !!app.primary_phone;
       // "No contact at all" is the number a treasurer needs — it is a list of
       // people to phone, not a silent failure.
-      if (!canEmail && !canSms) { skipped_no_email++; continue; }
-
-      // Fresh token each send — a re-send invalidates the previous link.
-      const tok  = randomToken();
-      const hash = await sha256Hex(tok);
-      const { error: updErr } = await sb.from('applications')
-        .update({ claim_token_hash: hash, invited_at: new Date().toISOString() })
-        .eq('id', app.id).eq('tenant_id', TID);
-      if (updErr) { failed++; continue; }
-
-      const claimUrl = `${clubUrl}/apply.html?claim=${encodeURIComponent(tok)}`;
-      let delivered = false;
-
+      if (!(wantEmail && app.primary_email) && !(wantSms && app.primary_phone)) { skipped_no_email++; continue; }
       // Text first when asked: it is the channel a migrating club actually
       // reaches people on, and it is what gets opened on a phone where the
-      // whole flow then happens.
-      if (canSms) {
-        const { sendSms } = await import('../_shared/send_sms.ts');
-        const firstNm = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
-        const r = await sendSms({
-          sb, tenantId: TID, tenantPlan: tenant?.plan as string | null,
-          to: app.primary_phone as string,
-          body: `Hi ${firstNm}, ${clubName} here. We've moved to the Poolside app. Your info is already filled in: tap to confirm and pay your dues. ${claimUrl}`,
-        });
-        if (r.sent) { delivered = true; sent_sms++; }
-        else if (r.capped) { sms_capped++; if (r.capped_by === 'platform') sms_capped_platform++; }
-      }
-
-      if (!canEmail) {
-        if (delivered) sent++; else failed++;
-        continue;
-      }
-      if (!RESEND_API_KEY) {
-        // Token is stored either way; email can be re-sent once configured.
-        if (delivered) sent++; else failed++;
-        continue;
-      }
-      const firstName = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
-      const html = `
-        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
-          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">${esc(clubName)} has moved to a new system</h2>
-          <p style="margin:0 0 16px;color:#334155">Hi ${esc(firstName)} — we've switched to Poolside to manage memberships, payments, and pool access. We've pre-filled your information to make this quick.</p>
-          <p style="margin:0 0 16px;color:#334155">Tap below to review your details, add anyone on your membership, accept the club policies, and pay your dues for the season.</p>
-          <p style="margin:24px 0">
-            <a href="${claimUrl}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Confirm &amp; pay →</a>
-          </p>
-          <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5">If the button doesn't work, paste this link into your browser:<br><code style="font-size:12px;word-break:break-all;color:#0a3b5c">${claimUrl}</code></p>
-          <hr style="border:0;border-top:1px solid #e5e7eb;margin:28px 0">
-          <p style="margin:0;color:#94a3b8;font-size:12px">You're receiving this because you're a member of ${esc(clubName)}. Questions? Just reply to this email.</p>
-        </div>`;
-      try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: RESEND_FROM, to: [app.primary_email],
-            subject: `${clubName}: confirm your membership & pay for the season`,
-            html,
-          }),
-        });
-        if (res.ok) { sent_email++; delivered = true; }
-      } catch { /* delivered stays false unless SMS got through */ }
-      if (delivered) sent++; else failed++;
+      // whole flow then happens. The token is stored either way, so email
+      // can be re-sent once configured.
+      const r = await sendClaimInvite(sb, { id: TID, slug: tenant?.slug as string, display_name: tenant?.display_name as string, plan: tenant?.plan as string | null },
+        app as never, { email: wantEmail, sms: wantSms });
+      if (r.tokenFailed) { failed++; continue; }
+      if (r.sms) sent_sms++;
+      if (r.email) sent_email++;
+      if (r.capped) { sms_capped++; if (r.capped === 'platform') sms_capped_platform++; }
+      if (r.delivered) sent++; else failed++;
     }
 
     await audit(sb, TID, payload.synthetic ? null : payload.sub, 'tenant_admin', 'application.claim_invites_sent', null,
@@ -1566,6 +1631,38 @@ Deno.serve(async (req) => {
       household_id: hh.id,
       updated_at: new Date().toISOString(),
     }).eq('id', id);
+
+    // ── Keyfobs (PLAN.md P) ─────────────────────────────────────────────
+    // A family from the club's list brings the fob number on that list. A
+    // new family who asked for one gets the club's included fob, waiting for
+    // the board to issue it (with a note if they share a past member's
+    // address). Only when the club has keyfobs.
+    try {
+      const { fobSettings, parseFobNumber, includedUsed, syncHouseholdFobs } = await import('../_shared/keyfobs.ts');
+      const { data: fs } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+      const fobs = fobSettings(fs?.value);
+      if (fobs.enabled) {
+        for (const part of String(app.prior_fob_number ?? '').split(/[;\n]|,(?=\s*\d{4,})/)) {
+          const parsed = parseFobNumber(part);
+          if (!parsed.ok) continue;
+          await sb.from('keyfobs').insert({ tenant_id: TID, household_id: hh.id, card_number: parsed.number,
+            status: 'active', reason: 'imported', issued_at: new Date().toISOString() });
+        }
+        if (app.is_new_member !== false && app.need_new_fob === true
+            && fobs.included_free > 0 && (await includedUsed(sb, hh.id as string)) < fobs.included_free) {
+          const { data: fob } = await sb.from('keyfobs').insert({ tenant_id: TID, household_id: hh.id, status: 'requested',
+            reason: 'new_member', included: true, payment_status: 'none', check_note: app.fob_review_note ?? null }).select('id').single();
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: TID, target_scopes: ['keyfobs'], kind: 'keyfob.issue',
+            summary: `Issue a keyfob to the ${app.family_name} (included with their new membership)${app.fob_review_note ? ' · check: ' + app.fob_review_note : ''}`,
+            link_url: '/club/admin/keyfobs.html', source_kind: 'keyfob', source_id: fob?.id,
+            push_title: '🔑 New member keyfob', push_body: `The ${app.family_name} need a keyfob.`,
+          });
+        }
+        await syncHouseholdFobs(sb, hh.id as string);
+      }
+    } catch (e) { console.error('keyfobs at approval (non-fatal):', (e as Error).message); }
 
     // ── Welcome email + magic-link token ────────────────────────────────
     // Generate a member_magic_links row so the family can sign in

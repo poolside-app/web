@@ -740,5 +740,37 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, url: session.url });
   }
 
+  // ── A keyfob the family asked for (PLAN.md P): another fob, or one to
+  // replace a lost one. The card fee is the member's, like parties.
+  if (action === 'keyfob') {
+    if (payload.kind !== 'member' || !payload.hid) return jsonResponse({ ok: false, error: 'Members only' }, 403);
+    const { data: fob } = await sb.from('keyfobs')
+      .select('id, tenant_id, household_id, reason, status, payment_status, price_cents')
+      .eq('id', String(body.keyfob_id ?? '')).maybeSingle();
+    if (!fob || fob.tenant_id !== TID || fob.household_id !== payload.hid) return jsonResponse({ ok: false, error: 'Keyfob not found' }, 404);
+    if (fob.status !== 'requested' || fob.payment_status !== 'unpaid') return jsonResponse({ ok: false, error: 'Nothing to pay on that fob' }, 409);
+    const feeCents = Number(fob.price_cents) || 0;
+    if (feeCents <= 0) return jsonResponse({ ok: false, error: 'Nothing to pay on that fob' }, 409);
+    const { data: payRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const pay = ((payRow?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined) ?? {};
+    const { fobCardTotal } = await import('../_shared/keyfobs.ts');
+    const amountCents = fobCardTotal(feeCents, Number(pay.stripe_pct ?? 2.9) / 100, Number(pay.stripe_fixed_cents ?? 30));
+    const session = await stripeCheckout({
+      tenantStripeAccount: tenant.stripe_account_id,
+      amountCents,
+      productName: fob.reason === 'replacement' ? 'Replacement keyfob' : 'Keyfob',
+      description: `$${(feeCents / 100).toFixed(2)} keyfob + $${((amountCents - feeCents) / 100).toFixed(2)} card fee`,
+      successUrl: `${clubUrl}/m/index.html?paid=1#keyfobs`,
+      cancelUrl: `${clubUrl}/m/index.html?paid=0#keyfobs`,
+      metadata: { kind: 'keyfob', keyfob_id: fob.id, tenant_id: TID },
+      feeBps: FEE_BPS_PROGRAMS,
+      policy: feePolicyFromTenant(tenant),
+      simulate: testMode,
+    });
+    if (!session.ok) return jsonResponse({ ok: false, error: session.error }, 500);
+    await sb.from('keyfobs').update({ stripe_session_id: session.session_id }).eq('id', fob.id);
+    return jsonResponse({ ok: true, url: session.url });
+  }
+
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
 });

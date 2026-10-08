@@ -594,6 +594,27 @@ Deno.serve(async (req) => {
       }
     } catch (e) { console.error('member plan:', (e as Error).message); }
 
+    // Their keyfobs (PLAN.md P), when the club uses them: the card on the
+    // member home, with no second call.
+    let keyfobs: Record<string, unknown> | null = null;
+    try {
+      const { data: sv } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+      const kf = await import('../_shared/keyfobs.ts');
+      const set = kf.fobSettings(sv?.value);
+      if (set.enabled) {
+        const pay = ((sv?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined) ?? {};
+        const { data: fobs } = await sb.from('keyfobs')
+          .select('id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, requested_at, issued_at, lost_at')
+          .eq('household_id', payload.hid as string).neq('status', 'off').order('requested_at');
+        keyfobs = {
+          fobs: (fobs ?? []).map(f => ({ ...f, card_number: undefined, tail: kf.fobTail(f.card_number as number | null) })),
+          fee_cents: set.fee_cents,
+          card_total_cents: kf.fobCardTotal(set.fee_cents, Number(pay.stripe_pct ?? 2.9) / 100, Number(pay.stripe_fixed_cents ?? 30)),
+          venmo_handle: (pay.venmo_handle as string | undefined) ?? null,
+        };
+      }
+    } catch (e) { console.error('member keyfobs:', (e as Error).message); }
+
     return jsonResponse({
       ok: true,
       user: member,
@@ -601,6 +622,7 @@ Deno.serve(async (req) => {
       household: { ...household, members: housemates ?? [] },
       renewal,
       plan,
+      keyfobs,
       is_board_member,
       refreshed_token,
     });
