@@ -371,8 +371,10 @@ window.addManifestLink = function (href) {
     <label>Title</label>
     <input id="p-title" placeholder="Smith Family birthday party" maxlength="140">
     <label>Date and start time</label>
-    <input type="datetime-local" id="p-starts" oninput="paintPartyEnd()">
+    <input type="datetime-local" id="p-starts" oninput="paintPartyEnd();loadPartyBusy()">
     <div id="p-ends-note" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
+    <div id="p-busy" style="font-size:12.5px;color:#92400e;margin-top:4px"></div>
+    <div id="p-fee-note" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
     <label>Expected guests <span style="color:var(--muted);font-weight:500;font-size:11px">(approx is fine)</span></label>
     <input type="number" id="p-guests" min="0" placeholder="20">
     <label>Anything the admin should know? <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
@@ -958,6 +960,39 @@ async function submitPhoto() {
 // ── Party request flow ─────────────────────────────────────────────────
 // Every party runs the club's set length (N3); the member picks the start.
 function partyHours() { return Number(window.PUBLIC_DATA?.public_settings?.party_length_hours) || 4; }
+// The party fee and the card total (the card fee is always the member's,
+// PLAN.md O), and the times already taken on the chosen day.
+function partyRules() { return window.PUBLIC_DATA?.public_settings?.parties || { fee_cents: 0, auto_approve: false, hold_days: 2 }; }
+function partyCardTotal(fee) {
+  const pay = window.PUBLIC_DATA?.public_settings?.payments || {};
+  const pct = Number(pay.stripe_pct ?? 2.9) / 100, fixed = Number(pay.stripe_fixed_cents ?? 30);
+  return fee > 0 ? Math.ceil((fee + fixed) / (1 - pct)) : 0;
+}
+const usd = c => '$' + (c / 100).toFixed(2);
+function paintPartyFee() {
+  const r = partyRules();
+  const el = document.getElementById('p-fee-note');
+  if (!el) return;
+  el.textContent = r.fee_cents
+    ? `Party fee ${usd(r.fee_cents)}: ${usd(partyCardTotal(r.fee_cents))} by card (books it on the spot) or ${usd(r.fee_cents)} by Venmo.`
+    : 'No party fee.';
+  const btn = document.getElementById('p-submit');
+  if (btn) btn.textContent = r.auto_approve ? 'Book it' : 'Send request';
+}
+let PARTY_BUSY_T = null;
+function loadPartyBusy() {
+  clearTimeout(PARTY_BUSY_T);
+  PARTY_BUSY_T = setTimeout(async () => {
+    const v = document.getElementById('p-starts').value;
+    const out = document.getElementById('p-busy');
+    if (!v || !out) return;
+    try {
+      const r = await callMember('party_busy', { date: v.slice(0, 10) });
+      const t = iso => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      out.textContent = r.ok && r.busy.length ? `Already booked that day: ${r.busy.map(b => `${t(b.starts_at)}–${t(b.ends_at)}`).join(', ')}. Pick a time that doesn't overlap.` : '';
+    } catch (_) { out.textContent = ''; }
+  }, 400);
+}
 function paintPartyEnd() {
   const v = document.getElementById('p-starts').value;
   const note = document.getElementById('p-ends-note');
@@ -971,7 +1006,7 @@ function openPartyModal() {
   const start = PoolTime.atTime(PoolTime.addDays(PoolTime.todayKey(), 7), 14, 0);   // a week out, 2 PM at the pool
   document.getElementById('p-title').value = '';
   document.getElementById('p-starts').value = toLocalInput(start.toISOString());
-  paintPartyEnd();
+  paintPartyEnd(); paintPartyFee(); loadPartyBusy();
   document.getElementById('p-guests').value = '';
   document.getElementById('p-body').value = '';
   document.getElementById('p-err').classList.remove('show');
@@ -1071,6 +1106,17 @@ async function submitParty() {
     if (!data.ok) throw new Error(data.error || 'Could not submit');
     closePartyModal();
     await refreshParties();
+    if (data.approved && data.fee_cents > 0) {
+      const until = new Date(data.hold_until).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      const card = await ask({ text: `It's yours until ${until}. Pay now to lock it in.`,
+        yes: `Pay ${usd(data.card_total_cents)} by card`, no: `I'll pay ${usd(data.fee_cents)} by Venmo` });
+      if (card) return payPartyCard(data.party.id);
+      notify(`Held until ${until}. Send ${usd(data.fee_cents)} by Venmo, then tap "I paid by Venmo" on the party.`);
+    } else if (data.approved) {
+      notify('🎉 Booked. It\'s on the club calendar.');
+    } else {
+      notify('Request sent. The board will let you know.');
+    }
   } catch (e) { errEl.textContent = e.message; errEl.classList.add('show'); }
   finally { btn.disabled = false; btn.textContent = orig; }
 }
@@ -1085,6 +1131,15 @@ async function claimPartyPaid(id) {
     if (!data.ok) throw new Error(data.error || 'Could not record');
     notify('✓ Treasurer notified. They\'ll confirm your booking once they see the Venmo payment.');
     await refreshParties();
+  } catch (e) { notify(e.message, 'err'); }
+}
+
+// Card books the party on the spot; the card fee is the member's (PLAN.md O).
+async function payPartyCard(id) {
+  try {
+    const r = await callMember('party_booking', { party_id: id }, '/functions/v1/stripe_checkout');
+    if (!r.ok || !r.url) throw new Error(r.error || 'Could not open the card page');
+    location.href = r.url;
   } catch (e) { notify(e.message, 'err'); }
 }
 
@@ -1130,8 +1185,10 @@ async function refreshParties() {
             <div class="pmeta">${escapeHtml(fmt(b.starts_at))}${b.ends_at ? ' → ' + escapeHtml(new Date(b.ends_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})) : ''}${b.expected_guests ? ' · ' + b.expected_guests + ' guests' : ''}</div>
             ${b.admin_notes ? `<div class="pnote">📝 ${escapeHtml(b.admin_notes)}</div>` : ''}
             ${showPay ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff;border:0;border-radius:8px;cursor:pointer;font-weight:600" onclick="claimPartyPaid('${b.id}')">💵 I paid via Venmo</button>
-            </div>` : ''}
+              ${b.price_cents ? `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff;border:0;border-radius:8px;cursor:pointer;font-weight:600" onclick="payPartyCard('${b.id}')">💳 Pay ${usd(partyCardTotal(b.price_cents))} by card</button>` : ''}
+              <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:600" onclick="claimPartyPaid('${b.id}')">💵 I paid ${b.price_cents ? usd(b.price_cents) + ' ' : ''}by Venmo</button>
+            </div>
+            ${b.decided_at ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px">Held until ${new Date(Date.parse(b.decided_at) + (partyRules().hold_days || 2) * 86400000).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}. Card books it right away; Venmo waits for the board to confirm.</div>` : ''}` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             <span class="pill ${statusClass}" style="white-space:nowrap">${escapeHtml(statusLabel)}</span>
@@ -2620,10 +2677,11 @@ async function submitProfile() {
   // Back from Stripe after a plan change (PLAN.md M).
   {
     const q = new URLSearchParams(location.search);
-    const msg = { card: 'Your card is updated.', paid: 'Paid in full. Thank you!', back: 'Welcome back. Your membership is reinstated.' }[q.get('plan')];
+    const msg = { card: 'Your card is updated.', paid: 'Paid in full. Thank you!', back: 'Welcome back. Your membership is reinstated.' }[q.get('plan')]
+      || (q.get('paid') === '1' && location.hash === '#parties' ? '🎉 Paid. Your party is booked and on the club calendar.' : '');
     if (msg) {
       notify(msg);
-      q.delete('plan');
+      q.delete('plan'); q.delete('paid');
       history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
     }
     if (location.hash === '#plan') document.getElementById('plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

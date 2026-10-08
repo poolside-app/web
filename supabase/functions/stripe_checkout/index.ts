@@ -714,18 +714,20 @@ Deno.serve(async (req) => {
     if (!party || party.tenant_id !== TID) return jsonResponse({ ok: false, error: 'Party not found' }, 404);
     if (party.status !== 'approved') return jsonResponse({ ok: false, error: 'Party must be approved before payment' }, 409);
     if (party.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
-    const amountCents = (party.price_cents as number) || 0;
-    if (amountCents <= 0) return jsonResponse({ ok: false, error: 'Party fee not set — ask the board' }, 400);
-    // The 2.0% platform fee is taken out of the member's payment as a Stripe
-    // Connect application_fee. Stripe's own 2.9%+30¢ is on top of that — by
-    // billing the member the gross amount, the club nets the full party fee.
-    // Caller can opt to pass `gross_up: true` (default) to include both fees
-    // in the displayed price; otherwise the member pays exactly amountCents.
+    const feeCents = (party.price_cents as number) || 0;
+    if (feeCents <= 0) return jsonResponse({ ok: false, error: 'Party fee not set — ask the board' }, 400);
+    // The card fee always goes on the member, never the club (Doug,
+    // 2026-10-07): the club nets the whole party fee.
+    const { data: payRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const pay = ((payRow?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined) ?? {};
+    const { partyCardTotal } = await import('../_shared/party_slots.ts');
+    const amountCents = partyCardTotal(feeCents, Number(pay.stripe_pct ?? 2.9) / 100, Number(pay.stripe_fixed_cents ?? 30));
     const dateLabel = fmtPoolDate(party.starts_at as string, zoneOrDefault(tenant.timezone), { dateStyle: 'medium' });
     const session = await stripeCheckout({
       tenantStripeAccount: tenant.stripe_account_id,
       amountCents,
       productName: `Party fee — ${party.title} (${dateLabel})`,
+      description: `$${(feeCents / 100).toFixed(2)} party fee + $${((amountCents - feeCents) / 100).toFixed(2)} card fee`,
       successUrl: `${clubUrl}/m/index.html?paid=1#parties`,
       cancelUrl: `${clubUrl}/m/index.html?paid=0#parties`,
       metadata: { kind: 'party_booking', party_id: party.id, tenant_id: TID },

@@ -499,8 +499,11 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('N6: the member home offers "Turn on notifications"', /Turn on notifications/.test(prompt), prompt.slice(0, 120));
     await mh.evaluate(() => openPartyModal());
     await wait(300);
-    const party = await mh.evaluate(() => ({ ends: !!document.getElementById('p-ends'), note: document.getElementById('p-ends-note').textContent }));
+    await wait(700);
+    const party = await mh.evaluate(() => ({ ends: !!document.getElementById('p-ends'), note: document.getElementById('p-ends-note').textContent,
+      fee: document.getElementById('p-fee-note').textContent, btn: document.getElementById('p-submit').textContent }));
     check('N3: members pick a start; the end follows (4 hours)', !party.ends && /Parties run 4 hours, so yours ends at/.test(party.note), JSON.stringify(party));
+    check('O: the form says the fee, card total and Venmo, and "Book it"', /\$250\.00: \$257\.78 by card/.test(party.fee) && /by Venmo/.test(party.fee) && party.btn === 'Book it', JSON.stringify(party));
     // On an iPhone in Chrome: Chrome's steps, and the Home Screen app's
     // start address carries a one-time sign-in.
     const IPHONE_CHROME = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.6478.54 Mobile/15E148 Safari/604.1';

@@ -53,7 +53,7 @@ console.log('N3 · parties: a start time and the club\'s length (offline)');
   const auth = read('supabase/functions/member_auth/index.ts');
   const admin = read('club/admin/parties.html');
   check('members pick a date and start time only', !/id="p-ends"/.test(home) && /Date and start time/.test(home) && /paintPartyEnd/.test(home));
-  check('the server sets the end, ignoring any sent', /partyEnd\(startsDate\.toISOString\(\), partyHours/.test(auth));
+  check('the server sets the end, ignoring any sent', /partyEnd\(startsDate\.toISOString\(\), ps\.hours\)/.test(auth));
   check('approving with a new start moves the whole party', !/ov-ends_at/.test(admin) && /newEnd = newStart \? partyEnd/.test(read('supabase/functions/parties_admin/index.ts')));
   check('the approve window fits a phone', /@media \(max-width: 640px\)[\s\S]*?\.row2 \{ grid-template-columns: 1fr; \}/.test(admin));
   check('the board sets the party length on the Parties page', /id="party-hours"/.test(admin) && /settings_save/.test(admin));
@@ -77,6 +77,24 @@ console.log('N4–N7 · alerts, help, pop-ups, Text all members (offline)');
   check('N7: board billing buttons verify the login (was calling a missing function)', !/verifyAdmin\(/.test(read('supabase/functions/tenant_admin_auth/index.ts')));
 }
 
+console.log('O · parties: open times, card first (offline)');
+{
+  const ps = await importTs(new URL('supabase/functions/_shared/party_slots.ts', root));
+  const set = ps.partySettings({ parties: { fee_cents: 25000, auto_approve: true, hold_days: 2 } });
+  check('Bishop: $250, open times approved on the spot, 2-day hold', set.fee_cents === 25000 && set.auto_approve && set.hold_days === 2 && set.hours === 4);
+  check('the card fee is the member\'s: $250 → $257.78', ps.partyCardTotal(25000) === Math.ceil((25000 + 30) / 0.971) && ps.partyCardTotal(25000) === 25778, String(ps.partyCardTotal(25000)));
+  check('two parties can share a day, not a time', ps.overlaps('2027-06-12T21:00:00Z', '2027-06-13T01:00:00Z', '2027-06-12T23:00:00Z', '2027-06-13T03:00:00Z') && !ps.overlaps('2027-06-12T21:00:00Z', '2027-06-13T01:00:00Z', '2027-06-13T01:00:00Z', '2027-06-13T05:00:00Z'));
+  const now = Date.parse('2027-06-01T12:00:00Z');
+  check('an unpaid approved party holds its time for 2 days', ps.holdsTime({ status: 'approved', payment_status: 'unpaid', decided_at: '2027-05-31T00:00:00Z' }, 2, now) && !ps.holdsTime({ status: 'approved', payment_status: 'unpaid', decided_at: '2027-05-29T00:00:00Z' }, 2, now));
+  check('a Venmo they say they sent holds it until the board confirms', ps.holdsTime({ status: 'approved', payment_status: 'pending_verify', decided_at: '2027-05-01T00:00:00Z' }, 2, now));
+  const home = read('m/index.html');
+  check('members pay by card first, Venmo second', /payPartyCard\('\$\{b\.id\}'\)/.test(home) && /I paid \$\{b\.price_cents \? usd\(b\.price_cents\)/.test(home));
+  check('the request form shows times already taken that day', /callMember\('party_busy'/.test(home));
+  check('the board edits the fee and automatic approval', /id="party-fee"/.test(read('club/admin/parties.html')) && /id="party-auto"/.test(read('club/admin/parties.html')));
+  check('a party card payment carries the card fee', /partyCardTotal\(feeCents/.test(read('supabase/functions/stripe_checkout/index.ts')));
+  check('the daily run gives back unpaid times after the hold', /parties_released/.test(read('supabase/functions/payment_plans/index.ts')));
+}
+
 if (LIVE) {
   console.log('\nLive (Bishop, temporary family)');
   const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
@@ -89,8 +107,8 @@ if (LIVE) {
   };
   const b64 = b => Buffer.from(b).toString('base64url');
   const jwt = p => { const h = b64(JSON.stringify({ alg: 'HS256', typ: 'JWT' })); const body = b64(JSON.stringify({ ...p, exp: Math.floor(Date.now() / 1000) + 600 })); return `${h}.${body}.${createHmac('sha256', env.ADMIN_JWT_SECRET).update(`${h}.${body}`).digest('base64url')}`; };
-  const fn = async (name, body, token) => {
-    const r = await fetch(`${env.SUPABASE_URL}/functions/v1/${name}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+  const fn = async (name, body, token, headers = {}) => {
+    const r = await fetch(`${env.SUPABASE_URL}/functions/v1/${name}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, body: JSON.stringify(body) });
     return { status: r.status, ...(await r.json().catch(() => ({}))) };
   };
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
@@ -106,6 +124,8 @@ if (LIVE) {
     check('N1: a new family goes straight on', c2.ok && !c2.member && !c2.applied, short(c2));
 
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, hid: m.household_id, slug: 'bishopestates' });
+    const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' limit 1`);
+    const admTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const h = await fn('member_auth', { action: 'handoff' }, memTok);
     check('N2: the member home gets a one-time sign-in', h.ok && /^[A-Za-z0-9_-]{40,}$/.test(h.token || ''), short(h));
     const man = await fetch(`${env.SUPABASE_URL}/functions/v1/tenant_manifest?slug=bishopestates&h=${h.token}`);
@@ -120,13 +140,48 @@ if (LIVE) {
     const [{ n }] = await sql(`select count(*)::int n from member_push_subscriptions where member_id = '${m.id}'`);
     check('N6: a member can turn on notifications', sub.ok && n === 1, short(sub));
 
-    const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' limit 1`);
-    const admTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const ps = await fn('parties_admin', { action: 'settings_get' }, admTok);
-    check('N3: the Parties page reads the party length (4 hours)', ps.ok && ps.length_hours === 4, short(ps));
+    check('N3/O: the Parties page reads the length, fee and automatic approval', ps.ok && ps.length_hours === 4 && ps.fee_cents === 25000 && ps.auto_approve === true, short(ps));
+
+    // O: parties
+    const day = '2027-06-12';
+    const at = h => new Date(`${day}T${String(h).padStart(2, '0')}:00:00-07:00`).toISOString();
+    const req = (h, title) => fn('member_auth', { action: 'request_party', title, starts_at: at(h), policies_accepted: true }, memTok);
+    const b0 = await fn('member_auth', { action: 'party_busy', date: day }, memTok);
+    check('O: an empty day shows nothing taken', b0.ok && b0.busy.length === 0, short(b0));
+    const p1 = await req(14, `${FAMILY} party A`);
+    check('O: an open time is approved on the spot, $250, card $257.78', p1.ok && p1.approved && p1.fee_cents === 25000 && p1.card_total_cents === 25778, short(p1));
+    const clash = await req(16, `${FAMILY} party B`);
+    check('O: a time overlapping it is refused, with the taken time', !clash.ok && clash.status === 409 && /overlaps/.test(clash.error || ''), short(clash));
+    const p2 = await req(19, `${FAMILY} party C`);
+    check('O: a later time the same day is fine', p2.ok && p2.approved, short(p2));
+    const b1 = await fn('member_auth', { action: 'party_busy', date: day }, memTok);
+    check('O: the form shows both times taken', b1.ok && b1.busy.length === 2, short(b1));
+    const pay = await fn('stripe_checkout', { action: 'party_booking', party_id: p1.party.id }, memTok);
+    const tok = pay.url ? new URL(pay.url).hash.replace(/^#t=/, '') : '';
+    const amt = tok ? JSON.parse(Buffer.from(tok.split('.')[1], 'base64url').toString()).amt : 0;
+    check('O: card checkout charges $257.78 (fee + card fee)', pay.ok && amt === 25778, short({ pay, amt }));
+    await fn('stripe_checkout', { action: 'simulate_complete', token: tok });
+    const [booked] = await sql(`select status, payment_status, event_id from party_bookings where id = '${p1.party.id}'`);
+    check('O: paying by card books it and puts it on the calendar', booked.status === 'approved' && booked.payment_status === 'paid' && !!booked.event_id, short(booked));
+    await sql(`update party_bookings set decided_at = now() - interval '3 days' where id = '${p2.party.id}'`);
+    const cron = await fn('payment_plans', { action: 'cron_run' }, null, { 'x-cron-secret': env.CRON_SECRET });
+    const [released] = await sql(`select status from party_bookings where id = '${p2.party.id}'`);
+    check('O: an unpaid party gives its time back after 2 days', cron.ok && cron.parties_released >= 1 && released.status === 'cancelled', short({ released, n: cron.parties_released }));
+    const p3 = await req(19, `${FAMILY} party D`);
+    check('O: and that time can be booked again', p3.ok && p3.approved, short(p3));
+    const vc = await fn('member_auth', { action: 'claim_party_paid', id: p3.party.id }, memTok);
+    const [pv] = await sql(`select payment_status from party_bookings where id = '${p3.party.id}'`);
+    check('O: Venmo still works and waits for the board', vc.ok && pv.payment_status === 'pending_verify', short(pv));
+    const ver = await fn('parties_admin', { action: 'verify_payment', id: p3.party.id }, admTok);
+    const [pd] = await sql(`select payment_status, event_id from party_bookings where id = '${p3.party.id}'`);
+    check('O: the board confirms the Venmo and it\'s booked', ver.ok && pd.payment_status === 'paid' && !!pd.event_id, short({ ver, pd }));
   } catch (e) {
     check('live run', false, e.message);
   } finally {
+    await sql(`delete from events where id in (select event_id from party_bookings where tenant_id = '${club.id}' and title like '${FAMILY}%' and event_id is not null);
+      delete from admin_tasks where source_kind = 'party_booking' and source_id in (select id from party_bookings where tenant_id = '${club.id}' and title like '${FAMILY}%');
+      delete from stripe_processed_events where id in (select 'evt_' || stripe_session_id from party_bookings where tenant_id = '${club.id}' and title like '${FAMILY}%' and stripe_session_id is not null)`);
     await purgeTestFamilies(sql, club.id, `${FAMILY}%`);
     const [{ left }] = await sql(`select count(*)::int left from households where tenant_id = '${club.id}' and family_name like '${FAMILY}%'`);
     check('cleanup: the temporary family is gone', left === 0);

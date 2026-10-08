@@ -856,8 +856,10 @@ Deno.serve(async (req) => {
     // Every party runs the club's set length (N3); the member only picks the
     // start, so an end time from the page is ignored.
     const { data: lenRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
-    const { partyHours, partyEnd } = await import('../_shared/party_length.ts');
-    const endsAt: string = partyEnd(startsDate.toISOString(), partyHours(lenRow?.value));
+    const { partyEnd } = await import('../_shared/party_length.ts');
+    const { partySettings, clashes, partyCardTotal } = await import('../_shared/party_slots.ts');
+    const ps = partySettings(lenRow?.value);
+    const endsAt: string = partyEnd(startsDate.toISOString(), ps.hours);
     const guests = b.expected_guests;
     const expected_guests = guests === undefined || guests === null || guests === ''
       ? null
@@ -875,27 +877,23 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'You must accept the party policies before submitting' }, 400);
     }
 
-    // Day-blocking: reject if there's already a confirmed party on the same
-    // calendar day. Members shouldn't be able to even REQUEST a date that's
-    // already locked — saves them from filling out a form for nothing.
-    // Confirmed = status=approved AND payment_status=paid. Pending/unpaid
-    // requests don't lock the date (board can decide which to approve).
-    // The day is the pool's calendar day (pool_date, stamped by a trigger).
+    // Two parties can share a day but not a time (Doug, 2026-10-07). A time
+    // another party holds is refused, with the taken times, so the family can
+    // pick an open one.
     const tz = await tenantTimeZone(sb, payload.tid as string);
-    const { data: collisions } = await sb.from('party_bookings')
-      .select('id, title, starts_at')
-      .eq('tenant_id', payload.tid as string)
-      .eq('status', 'approved').eq('payment_status', 'paid')
-      .eq('pool_date', poolDate(startsDate, tz))
-      .limit(1);
-    if (collisions && collisions.length > 0) {
-      return jsonResponse({ ok: false, error: 'That day already has a confirmed party — pick another date.' }, 409);
+    const taken = await clashes(sb, payload.tid as string, startsDate.toISOString(), endsAt, ps);
+    if (taken.length) {
+      const fmt = (iso: string) => fmtPoolDate(iso, tz, { hour: 'numeric', minute: '2-digit' });
+      const times = taken.map(t => `${fmt(t.starts_at)}–${fmt(t.ends_at ?? endsAt)}`).join(', ');
+      return jsonResponse({ ok: false, error: `That time overlaps a party already booked (${times}). Pick a time that doesn't overlap.`, taken }, 409);
     }
 
-    // Snapshot price from tenant settings at request time.
-    const { data: settings } = await sb.from('settings')
-      .select('value').eq('tenant_id', payload.tid as string).maybeSingle();
-    const priceCents = Number(((settings?.value as Record<string, unknown> | undefined)?.party_price_cents ?? 0)) || 0;
+    // The club's party fee, fixed at request time. An open time is approved
+    // on the spot when the club allows it (PLAN.md O): the family can pay by
+    // card right away and the party is booked.
+    const priceCents = ps.fee_cents;
+    const autoApprove = ps.auto_approve;
+    const nowIso = new Date().toISOString();
 
     const { data, error } = await sb.from('party_bookings').insert({
       tenant_id: payload.tid as string,
@@ -906,14 +904,41 @@ Deno.serve(async (req) => {
       starts_at: startsDate.toISOString(),
       ends_at: endsAt,
       expected_guests,
-      status: 'pending',
+      status: autoApprove ? 'approved' : 'pending',
+      decided_at: autoApprove ? nowIso : null,
       price_cents: priceCents > 0 ? priceCents : null,
-      payment_status: 'unpaid',
+      payment_status: autoApprove && priceCents <= 0 ? 'paid' : 'unpaid',
+      ...(autoApprove && priceCents <= 0 ? { paid_at: nowIso } : {}),
       policies_accepted: true,
       accepted_at: new Date().toISOString(),
       signature,
-    }).select('id, title, starts_at, ends_at, status, price_cents, created_at').single();
+    }).select('id, title, starts_at, ends_at, status, price_cents, payment_status, created_at').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    // A free party at an open time is booked outright: on the calendar now.
+    if (autoApprove && priceCents <= 0) {
+      const { data: ev } = await sb.from('events').insert({
+        tenant_id: payload.tid as string, title, body: bodyText || null, kind: 'party',
+        starts_at: startsDate.toISOString(), ends_at: endsAt, all_day: false,
+      }).select('id').single();
+      if (ev) await sb.from('party_bookings').update({ event_id: ev.id }).eq('id', data.id);
+    }
+
+    // Approved on the spot: tell the board (a pop-up, no task to act on).
+    if (autoApprove) {
+      try {
+        const { pushBoard } = await import('../_shared/enqueue_task.ts');
+        const { data: hh } = await sb.from('households').select('family_name').eq('id', member.household_id as string).maybeSingle();
+        const when = fmtPoolDate(startsDate, tz, { dateStyle: 'medium', timeStyle: 'short' });
+        await pushBoard({ tenant_id: payload.tid as string, target_scopes: ['parties'], notice: 'rentals',
+          title: `🎉 Party booked: ${title}`,
+          body: `${when}${hh?.family_name ? ' · the ' + hh.family_name : ''}${priceCents > 0 ? ' · approved automatically, waiting on payment' : ''}`,
+          url: '/club/admin/parties.html', tag: `party:${data.id}` });
+      } catch { /* the Parties page shows it either way */ }
+      const hold = new Date(Date.now() + ps.hold_days * 86400_000).toISOString();
+      return jsonResponse({ ok: true, party: data, approved: true, hold_until: hold,
+        card_total_cents: partyCardTotal(priceCents), fee_cents: priceCents });
+    }
 
     // Fire admin_task so the board sees the request without polling. We
     // load the family name from the household so the admin task summary
@@ -957,6 +982,16 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({ ok: true, party: data });
+  }
+
+  // ── party_busy: the times already taken on a day (PLAN.md O) ───────────
+  //   { action: 'party_busy', date: 'YYYY-MM-DD' } → { ok, busy: [{ starts_at, ends_at }] }
+  if (action === 'party_busy') {
+    const day = String((body as Record<string, unknown>).date ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return jsonResponse({ ok: false, error: 'date required' }, 400);
+    const { data: row } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+    const { partySettings, busyTimes } = await import('../_shared/party_slots.ts');
+    return jsonResponse({ ok: true, busy: await busyTimes(sb, payload.tid as string, day, partySettings(row?.value)) });
   }
 
   // ── claim_party_paid (Venmo path: member-side "I paid Venmo") ─────────

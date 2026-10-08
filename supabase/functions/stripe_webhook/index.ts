@@ -475,12 +475,11 @@ Deno.serve(async (req) => {
         .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id, pool_date')
         .eq('id', md.party_id).eq('tenant_id', tenantId).maybeSingle();
       if (party && party.payment_status !== 'paid') {
-        // Day-block check (in case another party paid between approve and now).
-        // pool_date is the pool's calendar day, stamped by a database trigger.
-        const { data: collisions } = await sb.from('party_bookings')
-          .select('id').eq('tenant_id', tenantId).neq('id', party.id)
-          .eq('status', 'approved').eq('payment_status', 'paid')
-          .eq('pool_date', party.pool_date).limit(1);
+        // Two parties can share a day but not a time (PLAN.md O): check
+        // another booking didn't take this time between approval and now.
+        const { partySettings, bookedClashes } = await import('../_shared/party_slots.ts');
+        const { data: partySet } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+        const collisions = await bookedClashes(sb, tenantId, party as never, partySettings(partySet?.value));
         if (collisions && collisions.length > 0) {
           // Race lost: someone else's payment confirmed first. We mark this
           // payment as paid but leave the party cancelled (no calendar event).
@@ -491,7 +490,7 @@ Deno.serve(async (req) => {
             payment_status: 'paid', payment_method: 'stripe',
             status: 'cancelled',
             paid_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-            admin_notes: 'Auto-cancelled: another party paid for this date first. REFUND THIS MEMBER.',
+            admin_notes: 'Auto-cancelled: another party was booked for this time first. REFUND THIS MEMBER.',
           }).eq('id', md.party_id).eq('tenant_id', tenantId);
           try {
             const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
@@ -499,7 +498,7 @@ Deno.serve(async (req) => {
               tenant_id: tenantId,
               target_scopes: ['parties', 'payments'],
               kind: 'party.refund_needed',
-              summary: `⚠ Refund needed: ${party.title} — date got double-booked`,
+              summary: `⚠ Refund needed: ${party.title} — the time got double-booked`,
               link_url: '/club/admin/parties.html',
               source_kind: 'party_booking', source_id: party.id as string,
               push_title: `⚠ Party refund needed`,

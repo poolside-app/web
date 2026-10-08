@@ -647,6 +647,43 @@ Deno.serve(async (req) => {
       enforced++;
     }
 
+    // 4b. Parties approved but not paid within the club's hold (2 days) give
+    //     their time back (PLAN.md O). A Venmo the family says they sent
+    //     holds it until the board confirms. The family is told.
+    let parties_released = 0;
+    try {
+      const { partySettings } = await import('../_shared/party_slots.ts');
+      const { data: unpaid } = await sb.from('party_bookings')
+        .select('id, tenant_id, household_id, requested_by, title, decided_at, starts_at')
+        .eq('status', 'approved').eq('payment_status', 'unpaid').not('decided_at', 'is', null).limit(200);
+      for (const p of unpaid ?? []) {
+        const club = await clubFor(p.tenant_id as string);
+        if (!club) continue;
+        const hold = partySettings(club.sv).hold_days;
+        if (Date.now() - Date.parse(p.decided_at as string) < hold * 86400_000) continue;
+        await sb.from('party_bookings').update({
+          status: 'cancelled', updated_at: new Date().toISOString(),
+          admin_notes: `Released: not paid within ${hold} day${hold === 1 ? '' : 's'} of approval.`,
+        }).eq('id', p.id).eq('status', 'approved').eq('payment_status', 'unpaid');
+        await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
+          .eq('source_kind', 'party_booking').eq('source_id', p.id).is('completed_at', null);
+        const { pushMembers } = await import('../_shared/member_notify.ts');
+        await pushMembers({ tenant_id: p.tenant_id as string, household_ids: [p.household_id as string],
+          title: `${p.title}: the time was released`, body: `It wasn't paid within ${hold} days. Book it again if it's still open.`, url: '/m/#parties', tag: `party-${p.id}` });
+        try {
+          const { data: who } = await sb.from('household_members').select('name, email').eq('id', p.requested_by).maybeSingle();
+          if (who?.email) {
+            const { sendEmail, emailShell, escHtml } = await import('../_shared/send_email.ts');
+            await sendEmail({ to: who.email as string, subject: `${club.name}: your party time was released`,
+              html: emailShell({ tenantName: club.name, clubUrl: club.clubUrl, preheader: 'It was not paid in time.',
+                contentHtml: `<p style="margin:0 0 12px">Hi ${escHtml(String(who.name ?? ''))}, your party "${escHtml(String(p.title))}" wasn't paid within ${hold} days of being approved, so the time was released for other families.</p>
+                  <p style="margin:0"><a href="${club.clubUrl}/m/#parties" style="display:inline-block;padding:10px 18px;background:#0a3b5c;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">Book it again</a></p>` }) });
+          }
+        } catch { /* the pop-up and the Parties page say it too */ }
+        parties_released++;
+      }
+    } catch (e) { console.error('party release (non-fatal):', (e as Error).message); }
+
     // 5. Referral rewards whose 30 days are up go to the board, and the
     //    member is texted (H6). Folded in here: one daily job, not two.
     let referralsUnlocked = 0;
@@ -790,7 +827,7 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, charged, retried, lapsed, past_deadline, reminded, enforced, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';

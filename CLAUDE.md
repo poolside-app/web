@@ -92,6 +92,17 @@ The daily `payment_plans` cron charges with idempotency keys. Test-payment cards
 
 Members turn on pop-ups in the app (`js/member-push.js`, the `push_member` function, `member_push_subscriptions`). Doug decided on 2026-10-07 how members are told things. Board replies, party decisions, plan receipts and announcements (with "Notify members" on) arrive as pop-ups through `_shared/member_notify.ts`, plus email where it makes sense: receipts and payment details always, a board reply only when no pop-up reached them. **No texts** except "Text all members", sign-in codes and the welcome text at approval. Agendas reach the board by pop-up only. On iPhone, pop-ups need the app on the Home Screen. The member home hands that app a one-time sign-in through the manifest's start address (`member_auth` `handoff`, `tenant_manifest ?h=`), so it opens signed in. `node scripts/test_signup_notes.mjs [--live]`.
 
+### Parties
+
+Members pick a date and start time; every party runs the club's length (`_shared/party_length.ts`). `_shared/party_slots.ts` holds the rest:
+- The fee.
+- Automatic approval of open times.
+- Two parties can share a day but never overlap. The `party_bookings_booked_no_overlap` exclusion constraint enforces this for paid parties.
+- A 2-day hold for unpaid approved parties. The daily `payment_plans` run releases them.
+- Card totals: the card fee is always the member's.
+
+Card payment books the party in the webhook. Venmo waits for the board's `verify_payment`.
+
 ### Member help
 
 Members ask the board from the app (`help_requests` function, `help_requests` + `help_messages` tables). Each topic goes to whoever holds the board position that gets it (`HELP_NOTICE` in `_shared/positions.ts`), else the president. Only they see it, it keeps one dashboard task until solved, and board replies are texted to the member with a `/m/#help=<id>` link. Photos live in the private `help-photos` bucket behind signed links. SQL can't delete storage files, so delete a request through the function (president) to remove its photos. `node scripts/test_help_requests.mjs [--offline]`.

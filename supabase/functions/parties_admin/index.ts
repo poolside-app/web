@@ -15,8 +15,10 @@
 //   { action: 'reject', id, admin_notes? }
 //     → { ok, booking }
 //
-//   { action: 'settings_get' } / { action: 'settings_save', length_hours }
-//     → { ok, length_hours }   how long every party runs (N3, default 4)
+//   { action: 'settings_get' } / { action: 'settings_save', length_hours?, fee_cents?, auto_approve? }
+//     → { ok, length_hours, fee_cents, auto_approve, hold_days }
+//        how long every party runs (N3), the fee, and whether an open time is
+//        approved on the spot (PLAN.md O)
 //
 //   { action: 'cancel_admin', id }
 //     → { ok }   // admin-side cancel (e.g. for a no-show after approval).
@@ -141,19 +143,29 @@ Deno.serve(async (req) => {
   // approved one ghosts.
   // ── settings: how long every party runs (N3) ──────────────────────────
   if (action === 'settings_get' || action === 'settings_save') {
-    const { partyHours } = await import('../_shared/party_length.ts');
+    const { partySettings } = await import('../_shared/party_slots.ts');
     const { data: row } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
     const value = (row?.value as Record<string, unknown> | undefined) ?? {};
-    if (action === 'settings_get') return jsonResponse({ ok: true, length_hours: partyHours(value) });
-    const hours = Number(body.length_hours);
-    if (!Number.isFinite(hours) || hours < 1 || hours > 12) return jsonResponse({ ok: false, error: 'Pick 1 to 12 hours.' }, 400);
-    const parties = { ...((value.parties as Record<string, unknown> | undefined) ?? {}), length_hours: Math.round(hours * 2) / 2 };
+    const shape = (v: unknown) => { const p = partySettings(v); return { length_hours: p.hours, fee_cents: p.fee_cents, auto_approve: p.auto_approve, hold_days: p.hold_days }; };
+    if (action === 'settings_get') return jsonResponse({ ok: true, ...shape(value) });
+    const parties = { ...((value.parties as Record<string, unknown> | undefined) ?? {}) };
+    if (body.length_hours !== undefined) {
+      const hours = Number(body.length_hours);
+      if (!Number.isFinite(hours) || hours < 1 || hours > 12) return jsonResponse({ ok: false, error: 'Pick 1 to 12 hours.' }, 400);
+      parties.length_hours = Math.round(hours * 2) / 2;
+    }
+    if (body.fee_cents !== undefined) {
+      const fee = Number(body.fee_cents);
+      if (!Number.isFinite(fee) || fee < 0 || fee > 500000) return jsonResponse({ ok: false, error: 'Enter a party fee in dollars.' }, 400);
+      parties.fee_cents = Math.round(fee);
+    }
+    if (body.auto_approve !== undefined) parties.auto_approve = body.auto_approve === true;
     const next = { ...value, parties };
     const { error } = row
       ? await sb.from('settings').update({ value: next }).eq('tenant_id', TID)
       : await sb.from('settings').insert({ tenant_id: TID, value: next });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, length_hours: partyHours(next) });
+    return jsonResponse({ ok: true, ...shape(next) });
   }
 
   if (action === 'approve') {
@@ -167,28 +179,22 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: `Already ${bk.status}` }, 409);
     }
 
-    // Day-block at approve time too — if another booking has already paid +
-    // locked this date between request and approve, reject early instead of
-    // wasting the host's time on a payment they can't complete.
-    // pool_date is the pool's calendar day, stamped by a database trigger.
-    const { data: collisions } = await sb.from('party_bookings')
-      .select('id').eq('tenant_id', TID)
-      .neq('id', id)
-      .eq('status', 'approved').eq('payment_status', 'paid')
-      .eq('pool_date', bk.pool_date)
-      .limit(1);
-    if (collisions && collisions.length > 0) {
-      return jsonResponse({ ok: false, error: 'That day already has a confirmed party — reject this request and pick another date.' }, 409);
-    }
-
     const ovr = (body.override ?? {}) as Record<string, unknown>;
     // A new start time moves the whole party: it still runs the club's set
     // length (N3). The calendar event isn't created until payment confirms.
     const decided_by = payload.synthetic ? null : payload.sub;
     const { partyHours, partyEnd } = await import('../_shared/party_length.ts');
+    const { partySettings, bookedClashes } = await import('../_shared/party_slots.ts');
     const { data: lenRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
     const newStart = isoOrNull(ovr.starts_at);
     const newEnd = newStart ? partyEnd(newStart, partyHours(lenRow?.value)) : null;
+
+    // Two parties can share a day, not a time (PLAN.md O): refuse a time
+    // another party has already booked.
+    const taken = await bookedClashes(sb, TID, { id, starts_at: newStart ?? bk.starts_at, ends_at: newEnd ?? bk.ends_at }, partySettings(lenRow?.value));
+    if (taken.length) {
+      return jsonResponse({ ok: false, error: `That time overlaps "${taken[0].title}", already booked. Pick another start time, or reject this request.` }, 409);
+    }
     const { data: updated, error: bkErr } = await sb.from('party_bookings').update({
       status: 'approved',
       admin_notes: strOrNull(body.admin_notes),
@@ -269,16 +275,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Already verified' }, 409);
     }
 
-    // Day-block at confirm time — last chance to catch a race.
-    // pool_date is the pool's calendar day, stamped by a database trigger.
-    const { data: collisions } = await sb.from('party_bookings')
-      .select('id').eq('tenant_id', TID)
-      .neq('id', id)
-      .eq('status', 'approved').eq('payment_status', 'paid')
-      .eq('pool_date', bk.pool_date)
-      .limit(1);
-    if (collisions && collisions.length > 0) {
-      return jsonResponse({ ok: false, error: 'Another party already confirmed for that day. Cancel one before verifying this.' }, 409);
+    // Last check before the money books it: no other booked party at this
+    // time (two can share a day, PLAN.md O).
+    const { partySettings, bookedClashes } = await import('../_shared/party_slots.ts');
+    const { data: slotRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const taken = (await bookedClashes(sb, TID, bk as never, partySettings(slotRow?.value))).filter(r => r.payment_status === 'paid');
+    if (taken.length) {
+      return jsonResponse({ ok: false, error: `"${taken[0].title}" is already booked at that time. Cancel one before verifying this.` }, 409);
     }
 
     // Materialize calendar event now that payment is confirmed.

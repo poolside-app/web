@@ -487,6 +487,23 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ N7. "Text all members":** reproduce it, fix it, prove a test send.
 - **✅ N8. Phone-width sweep:** every page and every pop-up at iPhone size. Fix anything that runs off the screen, starting with Add sponsor.
 
+### O. Faster party booking (Doug, 10/7) — ✅ done 10/8
+Doug: "booked, board approved, paid by Venmo, board approved the Venmo… seems sluggish."
+Doug decided:
+- An open time is approved on the spot (a setting on the Parties page, on).
+- Two parties can share a day but not a time; an overlapping time is refused, with the taken times shown.
+- Card first, Venmo kept. A card payment books it instantly, and the card fee is always the member's, never the club's.
+- Bishop's fee is $250, editable on the Parties page.
+- An unpaid approved party holds its time for 2 days, then gives it back and tells the family. A Venmo they say they sent holds it until the board confirms.
+
+Done:
+- `_shared/party_slots.ts`.
+- The database refuses two paid parties at overlapping times (exclusion constraint, replacing one-per-day).
+- The request form shows the day's taken times, the fee and the card total, with "Book it".
+- After booking: "Pay $257.78 by card" or "I'll pay $250 by Venmo".
+- The daily run releases unpaid times.
+- `node scripts/test_signup_notes.mjs --live` checks all of it.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
