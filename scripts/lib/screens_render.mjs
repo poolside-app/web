@@ -512,9 +512,15 @@ export async function renderChecks({ check, read, sql, jwt }) {
       steps: document.querySelector('#install-guide .pwa-instr')?.textContent.replace(/\s+/g, ' ') || '',
       manifest: document.querySelector('link[rel="manifest"]')?.getAttribute('href') || '',
       viewport: document.querySelector('meta[name="viewport"]')?.content || '',
+      address: location.search,
     }));
     check('N2: on iPhone Chrome the install card shows Chrome\'s steps', /Chrome/.test(guide.on) && /top-right/.test(guide.steps), JSON.stringify(guide).slice(0, 200));
-    check('N2: and the Home Screen app will open signed in', /^\/manifest\.webmanifest\?h=[A-Za-z0-9_-]{40,}$/.test(guide.manifest), guide.manifest);
+    check('N2: and the Home Screen app will open signed in (manifest and page address)', /^\/manifest\.webmanifest\?h=[A-Za-z0-9_-]{40,}$/.test(guide.manifest) && /[?&]h=[A-Za-z0-9_-]{40,}/.test(guide.address), JSON.stringify({ m: guide.manifest, a: guide.address }));
+    // A tab opened from someone else's link never signs in with it.
+    const shared = await open('/m/?h=someone-elses-token-0123456789abcdefghij', {}, null, IPHONE_CHROME);
+    await wait(1500);
+    const sharedUrl = await shared.evaluate(() => location.pathname + location.search);
+    check('N2: a shared link with a sign-in in it is ignored in a browser', !/h=/.test(sharedUrl), sharedUrl);
     check('N8: iPhones don\'t zoom into form fields', /maximum-scale=1/.test(guide.viewport), guide.viewport);
     check('N: member home has no page errors', mh.errs.length === 0, mh.errs.join(' | '));
     await mh.screenshot({ path: '/tmp/poolside-member-notes.png' });

@@ -11,6 +11,22 @@
      rewrite; apple-touch-icon + theme-color get set by /js/pwa.js once the
      branding lands from tenant_public. -->
 <link rel="manifest" href="/manifest.webmanifest">
+<script>
+// iPhone Home Screen sign-in (PLAN.md N2). iPhone starts an added app at the
+// page's own address, so the one-time sign-in goes in the address as well as
+// the manifest, as early as possible. Only the Home Screen app ever uses it.
+(function () {
+  try {
+    var standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    if (!/iPad|iPhone|iPod/.test(navigator.userAgent) || standalone) return;
+    var c = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null');
+    if (!c || !(c.exp > Date.now() + 3600000)) return;
+    document.querySelector('link[rel="manifest"]').href = '/manifest.webmanifest?h=' + encodeURIComponent(c.token);
+    var u = new URL(location.href);
+    if (u.searchParams.get('h') !== c.token) { u.searchParams.set('h', c.token); history.replaceState(null, '', u.pathname + u.search + u.hash); }
+  } catch (e) { /* the app asks them to sign in once */ }
+})();
+</script>
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1541,6 +1557,11 @@ async function prepareHandoff() {
   }
   const link = document.querySelector('link[rel="manifest"]');
   if (h && link) link.href = '/manifest.webmanifest?h=' + encodeURIComponent(h);
+  // iPhone starts the added app at the page's own address, so it goes there too.
+  if (h) {
+    const u = new URL(location.href);
+    if (u.searchParams.get('h') !== h) { u.searchParams.set('h', h); history.replaceState(null, '', u.pathname + u.search + u.hash); }
+  }
 }
 
 async function installAndroid() {
@@ -2217,10 +2238,18 @@ async function submitProfile() {
 (async () => {
   // Opened from the iPhone Home Screen with a one-time sign-in in the
   // address (PLAN.md N2): sign in with it, unless already signed in here.
+  // Only the Home Screen app uses it. In a browser tab it stays in the
+  // address (so "Add to Home Screen" picks it up) only if it's this phone's
+  // own; a link someone shared is cleaned off and never used.
   const handoff = new URLSearchParams(location.search).get('h');
-  if (handoff) {
+  const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  let ownHandoff = false;
+  try { ownHandoff = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null')?.token === handoff; } catch (_) {}
+  if (handoff && (standalone || !ownHandoff)) {
     const q = new URLSearchParams(location.search); q.delete('h');
     history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+  }
+  if (handoff && standalone) {
     if (!token()) {
       try {
         const r = await fetch(AUTH_URL, { method: 'POST', headers: { 'content-type': 'application/json' },
