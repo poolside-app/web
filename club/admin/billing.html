@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Plan & billing — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -33,6 +34,8 @@
   main { flex: 1; padding: 28px 22px; max-width: 920px; width: 100%; margin: 0 auto; }
   .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 14px; }
   .stat-row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px; margin: 14px 0 0; }
+  /* Phones: three stats across ran 23px off the screen (N8). */
+  @media (max-width: 640px) { .stat-row { grid-template-columns: 1fr 1fr; } }
   .stat { padding: 14px 16px; border:1px solid var(--border); border-radius: var(--r-md); }
   .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
   .stat .val { font-family: 'Fraunces', serif; font-size: 24px; color: var(--blue); margin-top: 4px; }

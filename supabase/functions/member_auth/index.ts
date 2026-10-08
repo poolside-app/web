@@ -499,6 +499,23 @@ Deno.serve(async (req) => {
   }
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
+  // ── handoff (PLAN.md N2) ───────────────────────────────────────────────
+  // iPhone keeps a Home Screen app's storage apart from Safari's, so a member
+  // signed in here had to sign in again in the app they just added. The
+  // member home asks for this one-time sign-in and puts it in the app's start
+  // address (tenant_manifest ?h=), so the app opens signed in. It's an
+  // ordinary magic link: used once, good for 7 days.
+  if (action === 'handoff') {
+    const tok = randomToken();
+    const expires_at = new Date(Date.now() + 7 * 86400_000).toISOString();
+    const { error } = await sb.from('member_magic_links').insert({
+      tenant_id: payload.tid, member_id: payload.sub,
+      token_hash: await sha256Hex(tok), expires_at,
+    });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, token: tok, expires_at });
+  }
+
   // ── me ─────────────────────────────────────────────────────────────────
   if (action === 'me') {
     const [{ data: member }, { data: tenant }, { data: household }, { data: housemates }] = await Promise.all([
@@ -836,14 +853,11 @@ Deno.serve(async (req) => {
     if (startsDate < new Date()) {
       return jsonResponse({ ok: false, error: 'Pick a date in the future' }, 400);
     }
-    const endsAtRaw = b.ends_at;
-    let endsAt: string | null = null;
-    if (endsAtRaw) {
-      const e = new Date(String(endsAtRaw));
-      if (isNaN(e.getTime())) return jsonResponse({ ok: false, error: 'Invalid end time' }, 400);
-      if (e < startsDate) return jsonResponse({ ok: false, error: 'End time must be after start' }, 400);
-      endsAt = e.toISOString();
-    }
+    // Every party runs the club's set length (N3); the member only picks the
+    // start, so an end time from the page is ignored.
+    const { data: lenRow } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+    const { partyHours, partyEnd } = await import('../_shared/party_length.ts');
+    const endsAt: string = partyEnd(startsDate.toISOString(), partyHours(lenRow?.value));
     const guests = b.expected_guests;
     const expected_guests = guests === undefined || guests === null || guests === ''
       ? null
@@ -1128,7 +1142,7 @@ Deno.serve(async (req) => {
         actor_id: payload.sub, actor_kind: 'member',
         metadata: { household_id: me.data.household_id, role },
       });
-      await sb.from('admin_tasks').insert({
+      await (await import('../_shared/enqueue_task.ts')).enqueueAdminTask(sb, {
         tenant_id: me.data.tenant_id,
         target_scopes: ['applications'],
         kind: 'household_member.member_added',
@@ -1486,7 +1500,7 @@ Deno.serve(async (req) => {
         actor_id: payload.sub as string, actor_kind: 'member',
         metadata: { old_primary: payload.sub, new_primary: newId },
       });
-      await sb.from('admin_tasks').insert({
+      await (await import('../_shared/enqueue_task.ts')).enqueueAdminTask(sb, {
         tenant_id: payload.tid as string,
         target_scopes: ['households'],
         kind: 'household.transfer_primary',
@@ -1558,14 +1572,19 @@ Deno.serve(async (req) => {
     }).select('id').single();
     if (phErr) return jsonResponse({ ok: false, error: phErr.message }, 500);
 
-    // Open an admin task so the moderator queue surfaces this without polling
-    await sb.from('admin_tasks').insert({
+    // A dashboard task and a pop-up for whoever approves photos (the
+    // Membership & Marketing Director, else the President). It used to skip
+    // enqueueAdminTask, so it never popped up or followed positions (N4).
+    const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+    await enqueueAdminTask(sb, {
       tenant_id: tid,
       target_scopes: ['photos'],
       kind: 'photo.pending_approval',
       summary: `Photo from ${member?.name || 'a member'} pending approval`,
       link_url: '/club/admin/photos.html#pending',
       source_kind: 'photo', source_id: photo.id,
+      push_title: '📸 New photo to approve',
+      push_body: `From ${member?.name || 'a member'}`,
     });
 
     return jsonResponse({ ok: true, photo_id: photo.id, url: pub.publicUrl, status: 'pending' });

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>My Club — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -16,6 +17,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
 <script src="/js/pwa.js" defer></script>
+<script src="/js/member-push.js" defer></script>
 <script src="/js/sponsor-popup.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/js/calendar.css">
@@ -333,10 +335,9 @@
 
     <label>Title</label>
     <input id="p-title" placeholder="Smith Family birthday party" maxlength="140">
-    <div class="row2">
-      <div><label>Starts</label><input type="datetime-local" id="p-starts"></div>
-      <div><label>Ends <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label><input type="datetime-local" id="p-ends"></div>
-    </div>
+    <label>Date and start time</label>
+    <input type="datetime-local" id="p-starts" oninput="paintPartyEnd()">
+    <div id="p-ends-note" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
     <label>Expected guests <span style="color:var(--muted);font-weight:500;font-size:11px">(approx is fine)</span></label>
     <input type="number" id="p-guests" min="0" placeholder="20">
     <label>Anything the admin should know? <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
@@ -599,6 +600,11 @@
     </div>
     <div id="help-thread-sub" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
     <div class="help-msgs" id="help-thread-msgs"><div class="empty">Loading…</div></div>
+    <!-- Solved means closed: a new question starts a new request (Doug, 10/7). -->
+    <div id="help-thread-solved" style="display:none;margin-top:12px;padding:12px 14px;background:#f0fdf4;border-radius:12px;font-size:13.5px;color:#14532d">
+      This question is solved, so it's closed. Need something else?
+      <div style="margin-top:8px"><button class="btn" onclick="closeHelpThread();openHelp()" style="background:var(--blue);color:#fff">Ask a new question</button></div>
+    </div>
     <div id="help-thread-reply">
       <label for="help-reply-body">Reply</label>
       <textarea id="help-reply-body" rows="3" maxlength="2000" placeholder="Write back to the board"></textarea>
@@ -915,12 +921,22 @@ async function submitPhoto() {
 }
 
 // ── Party request flow ─────────────────────────────────────────────────
+// Every party runs the club's set length (N3); the member picks the start.
+function partyHours() { return Number(window.PUBLIC_DATA?.public_settings?.party_length_hours) || 4; }
+function paintPartyEnd() {
+  const v = document.getElementById('p-starts').value;
+  const note = document.getElementById('p-ends-note');
+  if (!note) return;
+  const start = v ? fromLocalInput(v) : null;
+  if (!start) { note.textContent = `Parties run ${partyHours()} hours.`; return; }
+  const end = new Date(Date.parse(start) + partyHours() * 3600_000);
+  note.textContent = `Parties run ${partyHours()} hours, so yours ends at ${end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.`;
+}
 function openPartyModal() {
   const start = PoolTime.atTime(PoolTime.addDays(PoolTime.todayKey(), 7), 14, 0);   // a week out, 2 PM at the pool
   document.getElementById('p-title').value = '';
   document.getElementById('p-starts').value = toLocalInput(start.toISOString());
-  const end = new Date(start.getTime() + 2 * 60 * 60_000);
-  document.getElementById('p-ends').value = toLocalInput(end.toISOString());
+  paintPartyEnd();
   document.getElementById('p-guests').value = '';
   document.getElementById('p-body').value = '';
   document.getElementById('p-err').classList.remove('show');
@@ -1004,8 +1020,6 @@ async function submitParty() {
   }
   const title = document.getElementById('p-title').value.trim();
   const starts_at = fromLocalInput(document.getElementById('p-starts').value);
-  const ends_at_v = document.getElementById('p-ends').value;
-  const ends_at = ends_at_v ? fromLocalInput(ends_at_v) : null;
   const guests = document.getElementById('p-guests').value;
   const body = document.getElementById('p-body').value.trim();
   if (!title) { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
@@ -1014,7 +1028,7 @@ async function submitParty() {
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
   try {
     const data = await callMember('request_party', {
-      title, starts_at, ends_at,
+      title, starts_at,
       expected_guests: guests || null,
       body: body || null,
       policies_accepted: true,
@@ -1484,55 +1498,49 @@ function renderInstallCard() {
   const host = document.getElementById('install-card-host');
   if (!host || !window.Pwa) return;
   if (window.Pwa.isStandalone()) { host.innerHTML = ''; return; }
-  const platform = window.Pwa.detectPlatform();
-
-  const iosBlock = `
-    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 14px;margin-top:10px">
-      <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#0369a1;font-weight:700;margin-bottom:6px">📱 iPhone &amp; iPad (Safari)</div>
-      <ol style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:var(--text)">
-        <li>Tap the <b>Share</b> button (square with an up-arrow)</li>
-        <li>Scroll down and tap <b>"Add to Home Screen"</b></li>
-        <li>Tap <b>Add</b> in the top-right</li>
-      </ol>
-    </div>`;
-  const androidBlock = `
-    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;margin-top:10px">
-      <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#15803d;font-weight:700;margin-bottom:6px">📱 Android (Chrome)</div>
-      <div id="android-prompt-wrap" style="margin-bottom:8px;${window.Pwa.canPromptInstall() ? '' : 'display:none'}">
-        <button class="btn" onclick="installAndroid()" style="background:var(--blue);color:#fff;width:100%">Install app</button>
-      </div>
-      <ol style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:var(--text)">
-        <li>Tap the <b>three-dot menu (⋮)</b> top-right of Chrome</li>
-        <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
-        <li>Tap <b>Install</b> to confirm</li>
-      </ol>
-    </div>`;
-
-  let inner;
-  if (platform === 'ios') inner = iosBlock;
-  else if (platform === 'android') inner = androidBlock;
-  else inner = iosBlock + androidBlock;
-
+  // The shared guide (js/pwa.js) knows Safari, Chrome on iPhone and Android;
+  // this card used to show Safari's steps to everyone on an iPhone.
   host.innerHTML = `
     <details class="card" style="padding:14px 16px">
       <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px">
         <span style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:var(--blue)">📲 Add this club to your home screen</span>
         <span style="font-size:12px;color:var(--muted)">Tap to expand</span>
       </summary>
-      <p style="font-size:13px;color:var(--muted);margin:10px 0 0;line-height:1.5">Use it like a regular app — full screen, your club's icon, no browser bars.</p>
-      ${inner}
+      <div id="install-guide"></div>
     </details>`;
-
-  // If the deferred prompt arrives later (Chrome fires it after page load),
-  // reveal the inline Install button automatically.
-  document.addEventListener('pwa-installable', () => {
-    const wrap = document.getElementById('android-prompt-wrap');
-    if (wrap) wrap.style.display = '';
+  window.Pwa.renderInstallGuide(document.getElementById('install-guide'), {
+    title: 'How to add it',
+    lede: 'Use it like a regular app: full screen, your club\'s icon, and notifications. You stay signed in.',
   });
+  prepareHandoff();
   document.addEventListener('pwa-installed', () => {
     const h = document.getElementById('install-card-host');
     if (h) h.innerHTML = '';
   });
+}
+
+// iPhone keeps the Home Screen app's storage apart from Safari's (and
+// Chrome's), so the app asked members to sign in again. The app's start
+// address carries a one-time sign-in instead (PLAN.md N2): asked for once a
+// week at most, and only on an iPhone that hasn't added the app yet.
+async function prepareHandoff() {
+  if (!/iPad|iPhone|iPod/.test(navigator.userAgent) || !window.Pwa || window.Pwa.isStandalone()) return;
+  let h = null;
+  try {
+    const c = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null');
+    if (c && c.member === (ME_USER && ME_USER.id) && c.exp > Date.now() + 86400000) h = c.token;
+  } catch (_) { /* ask again */ }
+  if (!h) {
+    try {
+      const r = await callMember('handoff');
+      if (r.ok && r.token) {
+        h = r.token;
+        try { localStorage.setItem('poolside_member_handoff', JSON.stringify({ token: h, exp: Date.parse(r.expires_at), member: ME_USER && ME_USER.id })); } catch (_) {}
+      }
+    } catch (_) { /* the app falls back to signing in */ }
+  }
+  const link = document.querySelector('link[rel="manifest"]');
+  if (h && link) link.href = '/manifest.webmanifest?h=' + encodeURIComponent(h);
 }
 
 async function installAndroid() {
@@ -2032,7 +2040,9 @@ function paintHelpThread(r) {
     const img = m.photo_url ? `<a href="${escapeAttr(m.photo_url)}" target="_blank" rel="noopener"><img src="${escapeAttr(m.photo_url)}" alt="Photo"></a>` : '';
     return `<div class="help-msg ${m.author_kind === 'board' ? 'board' : 'member'}">${who}${escapeHtml(m.body)}${img}<div class="when">${escapeHtml(when(m.created_at))}</div></div>`;
   }).join('');
-  document.getElementById('help-reply-send').textContent = q.status === 'solved' ? 'Reopen and send' : 'Send reply';
+  const solved = q.status === 'solved';
+  document.getElementById('help-thread-reply').style.display = solved ? 'none' : '';
+  document.getElementById('help-thread-solved').style.display = solved ? '' : 'none';
 }
 async function sendHelpReply() {
   if (!HELP_OPEN_ID) return;
@@ -2205,6 +2215,24 @@ async function submitProfile() {
 }
 
 (async () => {
+  // Opened from the iPhone Home Screen with a one-time sign-in in the
+  // address (PLAN.md N2): sign in with it, unless already signed in here.
+  const handoff = new URLSearchParams(location.search).get('h');
+  if (handoff) {
+    const q = new URLSearchParams(location.search); q.delete('h');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    if (!token()) {
+      try {
+        const r = await fetch(AUTH_URL, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'verify', slug: getSlug(), token: handoff }) }).then(x => x.json());
+        if (r.ok && r.token) {
+          localStorage.setItem('poolside_member_token', r.token);
+          localStorage.setItem('poolside_member_user', JSON.stringify(r.user));
+          localStorage.setItem('poolside_member_tenant', JSON.stringify(r.tenant));
+        }
+      } catch (_) { /* fall through to the sign-in page */ }
+    }
+  }
   if (!token()) { logout(); return; }
 
   let me;
@@ -2465,6 +2493,7 @@ async function submitProfile() {
       <span style="color:var(--blue);font-weight:600;font-size:13px;flex-shrink:0">Manage →</span>
     </a>
 
+    <div id="push-prompt" style="display:none"></div>
     ${renderPlanCard(me.plan)}
     ${renderRenewalCard(me.renewal, tenant)}
 
@@ -2540,6 +2569,7 @@ async function submitProfile() {
 
   `;
   loadHelpList();
+  if (window.MemberPush) MemberPush.mountPrompt(document.getElementById('push-prompt'));
   // Back from Stripe after a plan change (PLAN.md M).
   {
     const q = new URLSearchParams(location.search);

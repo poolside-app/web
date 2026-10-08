@@ -149,7 +149,7 @@ console.log('\nK3 · alerts follow positions (offline)');
   check('K3: Member help shows who handles each topic and links to the Board page', !/saveTopics/.test(mh) && /board\.html/.test(mh), '');
   const hr = read('supabase/functions/help_requests/index.ts');
   check('K3: board replies to members say the board member\'s position',
-    /const signedName = myTitle \? `\$\{me\.name\} \(\$\{myTitle\}\)`/.test(hr) && /board_title/.test(between(hr, 'const myTitle', ';')) && /replyText\([^)]*signedName/.test(hr), '');
+    /const signedName = myTitle \? `\$\{me\.name\} \(\$\{myTitle\}\)`/.test(hr) && /board_title/.test(between(hr, 'const myTitle', ';')) && /title: `\$\{signedName\} replied`/.test(hr), '');
 }
 
 // ── K4: "My job" on the dashboard (offline) ────────────────────────────

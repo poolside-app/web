@@ -175,7 +175,7 @@ async function getJwtKey(): Promise<CryptoKey> {
 type TenantAdminPayload = {
   sub: string; kind: 'tenant_admin'; tid: string; slug: string; exp: number;
   impersonated_by?: string; synthetic?: boolean;
-  role_template?: string; scopes?: string[];
+  role_template?: string; scopes?: string[]; is_super?: boolean;
 };
 
 // Predefined role templates. The `owner` template is special — it skips
@@ -1125,9 +1125,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error } = await sb.from('admin_users').update({ active: false })
+    const { error } = await sb.from('admin_users').update({ active: false, board_title: null })
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // Someone off the board holds no position; the position stays, open
+    // (Doug, 2026-10-07, after Kristin was removed but still held Vice-President).
+    await sb.from('board_position_holders').delete().eq('admin_user_id', id);
     try {
       await sb.from('audit_log').insert({
         tenant_id: payload.tid, kind: 'admin.deactivated', entity_type: 'admin_user', entity_id: id,
@@ -1261,7 +1264,7 @@ Deno.serve(async (req) => {
   //    stripe_webhook fires emails to Doug + the club and the white-glove
   //    work begins outside the app.
   if (action === 'start_setup_service') {
-    const payload = await verifyAdmin(token);
+    const payload = await verifyToken(token);
     if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeKey) return jsonResponse({ ok: false, error: 'Stripe not configured' }, 500);
@@ -1302,7 +1305,7 @@ Deno.serve(async (req) => {
   //    in Doug's inbox. Requires the tenant to have a stripe_customer_id
   //    (set when they first upgraded out of Free).
   if (action === 'open_billing_portal') {
-    const payload = await verifyAdmin(token);
+    const payload = await verifyToken(token);
     if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
     if (payload.role_template !== 'owner') {
       return jsonResponse({ ok: false, error: 'Only the club owner can open the billing portal' }, 403);
@@ -1353,7 +1356,7 @@ Deno.serve(async (req) => {
   // this is Poolside billing the club, the same as a plan upgrade, and must
   // not flow through the account the club collects dues into.
   if (action === 'start_sms_topup') {
-    const payload = await verifyAdmin(token);
+    const payload = await verifyToken(token);
     if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
     if (payload.role_template !== 'owner' && !payload.is_super) {
       return jsonResponse({ ok: false, error: 'Only the club owner can buy texts' }, 403);
@@ -1412,7 +1415,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'start_plan_upgrade') {
-    const payload = await verifyAdmin(token);
+    const payload = await verifyToken(token);
     if (!payload) return jsonResponse({ ok: false, error: 'Auth required' }, 401);
     if (payload.role_template !== 'owner') {
       return jsonResponse({ ok: false, error: 'Only the club owner can change the plan' }, 403);

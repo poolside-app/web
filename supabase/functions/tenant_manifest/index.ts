@@ -36,7 +36,7 @@ type ManifestKind = 'member' | 'admin' | 'kiosk';
 
 function manifest(
   name: string, themeColor: string, icon192: string, icon512: string,
-  opts?: { admin?: boolean; kiosk?: boolean },
+  opts?: { admin?: boolean; kiosk?: boolean; handoff?: string | null },
 ) {
   // Three variants, because they are three genuinely different things:
   //
@@ -62,7 +62,9 @@ function manifest(
     name: `${name}${suffix}`,
     short_name: kind === 'member' ? base : `${base}${kind === 'admin' ? ' Board' : ' Gate'}`,
     description: `${name} — pool club app`,
-    start_url: start,
+    // A member's one-time sign-in rides in the start address, so the app
+    // they add to an iPhone Home Screen opens signed in (PLAN.md N2).
+    start_url: kind === 'member' && opts?.handoff ? `${start}?h=${opts.handoff}` : start,
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
@@ -85,6 +87,10 @@ Deno.serve(async (req) => {
   const isAdmin = url.searchParams.get('admin') === '1';
   // ?kiosk=1 → the gate tablet's own icon, opening straight to check-in.
   const isKiosk = url.searchParams.get('kiosk') === '1';
+  // ?h= → the member's one-time sign-in (member_auth handoff). Never cached:
+  // it's one person's.
+  const hRaw = url.searchParams.get('h') ?? '';
+  const handoff = /^[A-Za-z0-9_-]{20,100}$/.test(hRaw) ? hRaw : null;
 
   // Generic Poolside manifest if no slug — when someone hits poolsideapp.com root.
   if (!slug) {
@@ -123,13 +129,14 @@ Deno.serve(async (req) => {
   const icon512    = (branding.icon_512_url as string | null) || DEFAULT_ICON_512;
   const name       = tenant.display_name || 'Poolside';
 
-  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk })), {
+  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk, handoff })), {
     headers: {
       ...cors,
       'content-type': 'application/manifest+json; charset=utf-8',
       // Short cache so a brand change shows up on the next install attempt;
-      // already-installed apps cache the manifest themselves.
-      'cache-control': 'public, max-age=300',
+      // already-installed apps cache the manifest themselves. One member's
+      // sign-in is never cached anywhere.
+      'cache-control': handoff ? 'private, no-store' : 'public, max-age=300',
     },
   });
 });

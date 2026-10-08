@@ -265,6 +265,11 @@ export async function endPlan(sb: SupabaseClient, club: PlanClub, plan: Record<s
     : reason === 'deadline' ? `your dues weren't paid in full by the club's deadline`
     : 'you canceled your payment plan';
 
+  if (plan.household_id) {
+    const { pushMembers } = await import('./member_notify.ts');
+    await pushMembers({ tenant_id: club.tenantId, household_ids: [plan.household_id as string],
+      title: 'Your membership is canceled', body: `Because ${why}. Tap to see how to reinstate.`, url: '/m/#plan', tag: `plan-${plan.id}` });
+  }
   if (plan.primary_email) {
     try {
       const { renderAndSend } = await import('./email_template.ts');

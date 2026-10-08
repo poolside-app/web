@@ -32,7 +32,6 @@ import { boardCaller, isBoardMember, type BoardCaller } from '../_shared/board.t
 import { HELP_TOPICS, topicOwnerId } from '../_shared/task_routing.ts';
 import { TOPIC_LABELS, isTopic, helpLink, replyText, canSeeHelpRequest, snippet, type Topic } from '../_shared/help.ts';
 import { openHelpTask, closeHelpTasks } from '../_shared/help_tasks.ts';
-import { sendSms } from '../_shared/send_sms.ts';
 import { sendEmail, emailShell, escHtml } from '../_shared/send_email.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -221,6 +220,8 @@ Deno.serve(async (req) => {
     if (action === 'reply') {
       const r = await ownRequest(String(body.id ?? ''));
       if (!r) return j({ ok: false, error: 'Request not found' }, 404);
+      // Solved means closed: something new is a new request (Doug, 10/7).
+      if (r.status === 'solved') return j({ ok: false, error: 'This question is solved. Ask a new one from the app.', solved: true }, 409);
       const text = cleanBody(body.body);
       if (!text) return j({ ok: false, error: 'Write a message first.' }, 400);
       const photo = await savePhoto(sb, TID, r.id, body);
@@ -228,10 +229,8 @@ Deno.serve(async (req) => {
       await sb.from('help_messages').insert({
         tenant_id: TID, request_id: r.id, author_kind: 'member', author_member_id: me.id, body: text, photo_path: photo.path,
       });
-      // A reply to a solved request means it isn't solved.
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { updated_at: now };
-      if (r.status === 'solved') Object.assign(patch, { status: 'open', solved_at: null, solved_by: null });
       const { data: updated } = await sb.from('help_requests').update(patch).eq('id', r.id).select(REQ_FIELDS).single();
       await openHelpTask(sb, updated ?? r, me.name, text, true);
       return j({ ok: true, request: await shape(updated ?? r) });
@@ -351,21 +350,23 @@ Deno.serve(async (req) => {
       tenant_id: TID, request_id: r.id, author_kind: 'board', author_admin_id: me.id, body: text,
     }).select('id').single();
 
-    // Text the member (email if there's no cell, or the text didn't go).
+    // A pop-up in the member's app; email if it didn't reach them. Never a
+    // text: texts cost on both ends, and the conversation lives in the app
+    // (PLAN.md N5, Doug 2026-10-07).
     const link = helpLink(tenant.slug, r.id);
     const myTitle = board.find(b => b.id === me.id)?.board_title;
     const signedName = myTitle ? `${me.name} (${myTitle})` : me.name;
-    let sent_by: 'text' | 'email' | null = null;
+    let sent_by: 'popup' | 'email' | null = null;
     let send_error: string | null = null;
-    if (member.phone) {
-      const s = await sendSms({
-        sb, tenantId: TID, tenantPlan: tenant.plan, to: member.phone,
-        // Signed with their position, so the member knows who's answering.
-        body: replyText(tenant.display_name || 'Your pool', signedName, text, link),
-        kind: 'transactional', source: 'help_requests.reply',
-      });
-      if (s.sent) sent_by = 'text'; else send_error = s.error ?? 'The text did not go through';
-    }
+    const { pushMembers } = await import('../_shared/member_notify.ts');
+    const pop = r.member_id
+      ? await pushMembers({
+          tenant_id: TID, member_ids: [r.member_id as string],
+          title: `${signedName} replied`, body: snippet(text, 140),
+          url: `/m/#help=${r.id}`, tag: `help-${r.id}`,
+        })
+      : { sent: 0, reached: [] as string[] };
+    if (pop.reached.length) sent_by = 'popup';
     if (!sent_by && member.email) {
       const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
       const e = await sendEmail({
@@ -376,13 +377,13 @@ Deno.serve(async (req) => {
           preheader: snippet(text, 90),
           contentHtml: `<p style="margin:0 0 12px">${escHtml(signedName)} replied to your ${escHtml(TOPIC_LABELS[r.topic as Topic].toLowerCase())} question:</p>
             <blockquote style="margin:0 0 16px;padding:12px 16px;background:#f1f5f9;border-radius:10px;white-space:pre-wrap">${escHtml(text)}</blockquote>
-            <p style="margin:0"><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a3b5c;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">Read or reply</a></p>`,
+            <p style="margin:0"><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a3b5c;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">Read or reply in the app</a></p>`,
         }),
       });
-      if (e.sent) { sent_by = 'email'; send_error = null; }
-      else send_error = send_error ?? e.error ?? 'The email did not go through';
+      if (e.sent) sent_by = 'email';
+      else send_error = e.error ?? 'The email did not go through';
     }
-    if (!member.phone && !member.email) send_error = 'No cell or email on file for this member';
+    if (!sent_by && !member.email) send_error = 'Notifications are off and there is no email on file. They\'ll see it in the app.';
     if (msg) await sb.from('help_messages').update({ sent_by, send_error }).eq('id', msg.id);
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };

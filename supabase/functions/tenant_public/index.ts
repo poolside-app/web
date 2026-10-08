@@ -11,6 +11,7 @@
 //   { ok: false, error: 'Not found' }   404 if no such slug
 // =============================================================================
 
+import { partyHours } from '../_shared/party_length.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { poolDayBounds, validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
 import { sellingYear, opensMonthOf } from '../_shared/membership_year.ts';
@@ -131,6 +132,8 @@ Deno.serve(async (req) => {
       tiers: Array.isArray((v.payments as Record<string, Record<string, unknown>> | undefined)?.plan?.tiers)
         ? (v.payments as Record<string, Record<string, unknown>>).plan.tiers : [],
     },
+    // Every party runs this long; members pick only the start (N3).
+    party_length_hours: partyHours(v),
     features: {
       swim_lessons:         !!v.features?.swim_lessons,
       parties:              !!v.features?.parties,

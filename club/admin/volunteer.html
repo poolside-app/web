@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Volunteer — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -53,6 +54,8 @@
   .modal input, .modal textarea, .modal select { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
   .modal textarea { resize: vertical; min-height: 70px; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Phones: two date-and-time boxes side by side ran off the screen (N8). */
+  @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
   .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
   .modal-foot .left { margin-right: auto; }
   .err { display:none; margin-top:12px; padding:10px 14px; font-size:13px; background:#fee2e2; border:1px solid #fecaca; color:#7f1d1d; border-radius:10px; }

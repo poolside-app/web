@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Parties — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -83,6 +84,13 @@
   .modal input, .modal select, .modal textarea { width: 100%; padding: 10px 12px; font: 14px/1.4 'Inter'; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; font-family: inherit; }
   .modal textarea { resize: vertical; min-height: 80px; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Phones: date-and-time boxes are wide; side by side they ran off the
+     screen (Doug, 10/7). One column, and the modal fits the screen. */
+  @media (max-width: 640px) {
+    .row2 { grid-template-columns: 1fr; }
+    .modal { padding: 20px 16px; max-height: 92vh; overflow-y: auto; }
+    .modal input, .modal select, .modal textarea { min-width: 0; max-width: 100%; }
+  }
   .modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
   .modal-foot .left { margin-right: auto; }
   .info { background: var(--bg-2); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.55; }
@@ -128,6 +136,19 @@
   <div id="list">
     <div class="empty">Loading…</div>
   </div>
+
+  <!-- How long every party runs (N3). Members pick only the start. -->
+  <div style="margin-top:18px;padding:14px 16px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg)">
+    <div style="font-weight:600;margin-bottom:6px">Party length</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px">
+      Every party runs
+      <input id="party-hours" type="number" min="1" max="12" step="0.5" style="width:70px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font:14px Inter">
+      hours.
+      <button class="btn" type="button" onclick="savePartyHours()" style="padding:8px 14px">Save</button>
+      <span id="party-hours-msg" style="font-size:12.5px;color:var(--muted)"></span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">Members pick a date and start time; the end follows from this.</div>
+  </div>
 </main>
 
 <!-- Detail / decision modal -->
@@ -142,10 +163,9 @@
 
     <h3 style="font-family:'Fraunces',serif;font-size:15px;margin:0 0 8px">Approve with changes (optional)</h3>
     <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Leave blank to approve exactly what the member requested. Fill in to swap a different time or spot.</p>
-    <div class="row2">
-      <div><label>New start time</label><input type="datetime-local" id="ov-starts_at"></div>
-      <div><label>New end time</label><input type="datetime-local" id="ov-ends_at"></div>
-    </div>
+    <label>New start time</label>
+    <input type="datetime-local" id="ov-starts_at">
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">The party still runs <span class="party-hours">4</span> hours from the new start.</div>
     <label>New location</label>
     <input id="ov-location" placeholder="The clubhouse / Side lawn / etc.">
 
@@ -266,6 +286,25 @@ function applySearch() {
     (b.requester?.name        || '').toLowerCase().includes(q));
   render(filtered);
 }
+async function loadPartyHours() {
+  try {
+    const r = await call('settings_get');
+    if (r.ok) {
+      document.getElementById('party-hours').value = r.length_hours;
+      document.querySelectorAll('.party-hours').forEach(el => { el.textContent = r.length_hours; });
+    }
+  } catch (_) { /* leave blank */ }
+}
+async function savePartyHours() {
+  const msg = document.getElementById('party-hours-msg');
+  try {
+    const r = await call('settings_save', { length_hours: Number(document.getElementById('party-hours').value) });
+    if (!r.ok) throw new Error(r.error || 'Could not save');
+    document.querySelectorAll('.party-hours').forEach(el => { el.textContent = r.length_hours; });
+    msg.style.color = '#15803d'; msg.textContent = '✓ Saved';
+  } catch (e) { msg.style.color = 'var(--red)'; msg.textContent = e.message; }
+}
+
 async function refresh() {
   try {
     const data = await call('list', { status: STATUS });
@@ -300,7 +339,6 @@ function openModal(id, rows) {
   document.getElementById('m-body').textContent = b.body || '(no notes from member)';
   document.getElementById('m-admin_notes').value = b.admin_notes || '';
   document.getElementById('ov-starts_at').value = '';
-  document.getElementById('ov-ends_at').value = '';
   document.getElementById('ov-location').value = '';
   // Pre-fill the price input with the snapshotted price (member sees what
   // the request was made under). Admin can edit before approve.
@@ -352,11 +390,9 @@ async function appr() {
   if (!SELECTED) return;
   const override = {};
   const s = fromLocalInput(document.getElementById('ov-starts_at').value);
-  const e = fromLocalInput(document.getElementById('ov-ends_at').value);
   const loc = document.getElementById('ov-location').value.trim();
   const priceVal = document.getElementById('ov-price').value.trim();
   if (s) override.starts_at = s;
-  if (e) override.ends_at = e;
   if (loc) override.location = loc;
   if (priceVal !== '') override.price_cents = Math.max(0, Math.round(Number(priceVal) * 100));
   const admin_notes = document.getElementById('m-admin_notes').value.trim() || null;
@@ -417,6 +453,7 @@ async function adminCancel() {
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   } catch { logout(); return; }
+  loadPartyHours();
   await refresh();
 })();
 </script>

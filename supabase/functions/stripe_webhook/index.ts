@@ -554,6 +554,12 @@ Deno.serve(async (req) => {
               });
             }
           } catch (e) { console.error('party_booking confirmed email (non-fatal):', (e as Error).message); }
+          // And a pop-up in the family's app (N6).
+          try {
+            const { pushMembers } = await import('../_shared/member_notify.ts');
+            await pushMembers({ tenant_id: tenantId, household_ids: [party.household_id as string],
+              title: `✅ ${party.title} is booked`, body: 'Payment received. It\'s on the club calendar.', url: '/m/#parties', tag: 'party' });
+          } catch { /* the email is the record */ }
         }
       }
     }

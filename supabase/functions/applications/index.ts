@@ -157,6 +157,57 @@ async function autoLinkAdminToMember(
   } catch { /* never fail the calling action over this */ }
 }
 
+type PendingApp = { id: string; created_at: string; payment_method: string | null; payment_status: string | null };
+
+/** Pending applications from this email or phone. */
+async function pendingApplications(
+  sb: ReturnType<typeof createClient>, tenantId: string, email: string | null, phone: string | null,
+): Promise<PendingApp[]> {
+  const cols = 'id, created_at, payment_method, payment_status';
+  const out: PendingApp[] = [];
+  if (email) {
+    const { data } = await sb.from('applications').select(cols).eq('tenant_id', tenantId).eq('status', 'pending').ilike('primary_email', email).limit(5);
+    out.push(...((data ?? []) as PendingApp[]));
+  }
+  if (phone) {
+    const { data } = await sb.from('applications').select(cols).eq('tenant_id', tenantId).eq('status', 'pending').eq('primary_phone', phone).limit(5);
+    out.push(...((data ?? []) as PendingApp[]));
+  }
+  return [...new Map(out.map(a => [a.id, a])).values()];
+}
+
+/** A card signup that never paid: the family left Stripe's page. */
+function unfinishedCardSignup(a: PendingApp): boolean {
+  return (a.payment_method === 'stripe' || a.payment_method === 'stripe_plan') && (a.payment_status ?? 'unpaid') === 'unpaid';
+}
+
+/** Put unfinished card signups aside so the family can start over: the
+ *  application is closed with a note (kept, for the record), its never-started
+ *  payment plan removed, and its board task closed. */
+async function setAsideUnfinished(sb: ReturnType<typeof createClient>, tenantId: string, apps: PendingApp[]): Promise<void> {
+  for (const a of apps) {
+    const { data: plans } = await sb.from('payment_plans').select('id, stripe_payment_method_id').eq('application_id', a.id);
+    let started = false;
+    for (const p of plans ?? []) {
+      const { count } = await sb.from('payment_plan_installments').select('id', { count: 'exact', head: true })
+        .eq('plan_id', p.id).in('status', ['paid', 'manual']);
+      if ((count ?? 0) > 0 || p.stripe_payment_method_id) started = true;
+    }
+    if (started) continue;   // under way after all: leave everything
+    for (const p of plans ?? []) {
+      await sb.from('payment_plan_installments').delete().eq('plan_id', p.id);
+      await sb.from('payment_plans').delete().eq('id', p.id);
+    }
+    const now = new Date().toISOString();
+    await sb.from('applications').update({
+      status: 'rejected', decided_at: now,
+      admin_notes: 'Closed automatically: the family started a new application without finishing the card payment on this one.',
+    }).eq('id', a.id).eq('tenant_id', tenantId).eq('status', 'pending');
+    await sb.from('admin_tasks').update({ completed_at: now })
+      .eq('tenant_id', tenantId).eq('source_kind', 'application').eq('source_id', a.id).is('completed_at', null);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -290,6 +341,36 @@ Deno.serve(async (req) => {
   }
 
   // ── submit (no auth — anyone with the form can apply) ─────────────────
+  // ── check_contact (public) — step 1 of the join form (PLAN.md N1) ───────
+  // "Already a member, sign in" on the first page, not at checkout. Same
+  // answers the final submit gives, so it tells nobody anything new.
+  if (action === 'check_contact') {
+    const slug = String(body.slug ?? '').trim().toLowerCase();
+    const { data: tenant } = await sb.from('tenants').select('id, display_name, timezone').eq('slug', slug).maybeSingle();
+    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const email = strOrNull(body.email)?.toLowerCase() ?? null;
+    const rawPhone = String(body.phone ?? '').trim();
+    const phone = rawPhone ? normalizePhoneE164(rawPhone) : null;
+    let emailHit = false, phoneHit = false;
+    if (email) {
+      const { data } = await sb.from('household_members').select('id').eq('tenant_id', tenant.id).eq('active', true).ilike('email', email).limit(1).maybeSingle();
+      emailHit = !!data;
+    }
+    if (phone) {
+      const { data } = await sb.from('household_members').select('id').eq('tenant_id', tenant.id).eq('active', true).eq('phone_e164', phone).limit(1).maybeSingle();
+      phoneHit = !!data;
+    }
+    if (emailHit || phoneHit) {
+      return jsonResponse({ ok: true, member: true, matched_via: emailHit && phoneHit ? 'both' : emailHit ? 'email' : 'phone' });
+    }
+    const waiting = (await pendingApplications(sb, tenant.id as string, email, phone)).filter(a => !unfinishedCardSignup(a));
+    if (waiting.length) {
+      const since = fmtPoolDate(waiting[0].created_at, zoneOrDefault(tenant.timezone), { dateStyle: 'medium' });
+      return jsonResponse({ ok: true, applied: true, message: `You already applied on ${since}. The board will be in touch soon. Watch for an email.` });
+    }
+    return jsonResponse({ ok: true });
+  }
+
   if (action === 'submit') {
     const slug = String(body.slug ?? '').trim().toLowerCase();
     if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
@@ -396,23 +477,12 @@ Deno.serve(async (req) => {
         }, 409);
       }
 
-      const appMatchPromises: Promise<{ data: Array<{ id: string; created_at: string }> | null }>[] = [];
-      if (email) {
-        appMatchPromises.push(
-          sb.from('applications').select('id, created_at')
-            .eq('tenant_id', tenant.id).eq('status', 'pending')
-            .ilike('primary_email', email).limit(1) as never,
-        );
-      }
-      if (phone) {
-        appMatchPromises.push(
-          sb.from('applications').select('id, created_at')
-            .eq('tenant_id', tenant.id).eq('status', 'pending')
-            .eq('primary_phone', phone).limit(1) as never,
-        );
-      }
-      const appHits = (await Promise.all(appMatchPromises))
-        .flatMap(r => r.data ?? []);
+      // A family who left the card page never paid: their application is
+      // replaced, so trying again just works (Doug hit this on 10/7). One
+      // waiting on a Venmo or check is real, and still blocks a second.
+      const pendingHits = await pendingApplications(sb, tenant.id as string, email, phone);
+      const appHits = pendingHits.filter(a => !unfinishedCardSignup(a));
+      await setAsideUnfinished(sb, tenant.id as string, pendingHits.filter(unfinishedCardSignup));
       if (appHits.length > 0) {
         const since = appHits[0].created_at
           ? `from ${fmtPoolDate(appHits[0].created_at, zoneOrDefault(tenant.timezone), { dateStyle: 'medium' })}`

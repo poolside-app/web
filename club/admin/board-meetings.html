@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Board minutes — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -678,17 +679,17 @@ async function sendAgenda(id) {
   try {
     const pv = await call('send_agenda', { meeting_id: id, preview: true });
     if (!pv.ok) throw new Error(pv.error || 'Could not get the board list');
-    const names = c => pv.recipients.filter(r => r.channel === c).map(r => r.name);
-    const txt = names('text'), em = names('email'), none = pv.recipients.filter(r => !r.channel).map(r => r.name);
-    const msg = 'Send the agenda to the board?\n\n'
-      + (txt.length ? `By text: ${txt.join(', ')}\n` : '')
-      + (em.length ? `By email: ${em.join(', ')}\n` : '')
-      + (none.length ? `No phone or email on file: ${none.join(', ')}\n` : '')
+    // In the app only (Doug, 10/7): a pop-up on each board member's phone.
+    const on = pv.recipients.filter(r => r.channel === 'popup').map(r => r.name);
+    const off = pv.recipients.filter(r => !r.channel).map(r => r.name);
+    const msg = 'Send the agenda to the board? It pops up in the board app.\n\n'
+      + (on.length ? `Pop-up to: ${on.join(', ')}\n` : '')
+      + (off.length ? `Notifications off (they'll see it when they open the app): ${off.join(', ')}\n` : '')
       + (pv.already_sent_at ? '\nIt was sent before; this sends it again.' : '');
     if (!confirm(msg)) return;
     const r = await call('send_agenda', { meeting_id: id });
     if (!r.ok) throw new Error(r.error || 'Could not send it');
-    alert(`Sent: ${r.texted} by text, ${r.emailed} by email.${r.missed.length ? ` Not reached: ${r.missed.join(', ')}.` : ''}`);
+    alert(`Sent to ${r.reached} board member${r.reached === 1 ? '' : 's'} by pop-up.${r.missed.length ? ` Notifications are off for: ${r.missed.join(', ')}.` : ''}`);
     await loadNext();
     if (document.getElementById('agenda-scrim').classList.contains('open')) openAgenda(id);
   } catch (e) { alert(e.message); }

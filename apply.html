@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Apply for membership — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/plan-picker.js"></script>
@@ -938,6 +939,37 @@ function goNext() {
   if (btn) { btn.style.opacity = '0.6'; setTimeout(() => { btn.style.opacity = ''; }, 150); }
   try { return _goNext(); } catch (e) { show('Error: ' + (e && e.message ? e.message : e)); }
 }
+// The phone and email on step 1 are checked once against the club's members
+// and waiting applications. An application the family left at the card page
+// doesn't count: submitting again replaces it.
+let CONTACT_OK_FOR = '';
+async function checkContactThenNext(phoneEl, emailEl) {
+  const key = phoneEl.value.trim() + '|' + emailEl.value.trim().toLowerCase();
+  if (CONTACT_OK_FOR === key) return showStep(2);
+  const btn = document.getElementById('next-btn');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  try {
+    const r = await fetch(APPLY_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'check_contact', slug: getSlug(), phone: phoneEl.value.trim(), email: emailEl.value.trim() }),
+    }).then(x => x.json());
+    if (r.ok && r.member) {
+      const field = r.matched_via === 'email' ? emailEl : phoneEl;
+      const what = r.matched_via === 'email' ? 'This email' : r.matched_via === 'phone' ? 'This phone number' : 'This phone number and email';
+      showField(field, `${what} already belongs to a member here. Sign in instead of applying again.`);
+      const note = field.nextElementSibling;
+      if (note && note.classList.contains('field-err')) {
+        note.insertAdjacentHTML('beforeend', ' <a href="/m/login.html" style="font-weight:600">Sign in →</a>');
+      }
+      return;
+    }
+    if (r.ok && r.applied) return showField(emailEl, r.message);
+  } catch (_) { /* the final submit checks again */ }
+  finally { if (btn) { btn.disabled = false; btn.textContent = label; } }
+  CONTACT_OK_FOR = key;
+  showStep(2);
+}
 function _goNext() {
   const errEl = document.getElementById('err'); errEl.classList.remove('show');
   clearFieldErrs();
@@ -959,6 +991,8 @@ function _goNext() {
     if (!email.value.trim())  return showField(email,  'Primary email is required');
     if (!emergN.value.trim()) return showField(emergN, 'Emergency contact name is required');
     if (!emergP.value.trim()) return showField(emergP, 'Emergency contact phone is required');
+    // Already a member? Say so here, not at checkout (PLAN.md N1).
+    if (!window.__POOLSIDE_CLAIM_TOKEN__) return checkContactThenNext(phone, email);
   } else if (CURRENT_STEP === 2) {
     const adults = collectAdults();
     if (!adults.length || !adults[0].name) return show('At least one adult name is required');
@@ -1497,8 +1531,9 @@ async function prefillFromClaim(token) {
     }
     document.getElementById('form').className = 'card ok';
     const isAdmin = params.get('prefill') === 'admin';
-    document.getElementById('form').innerHTML =
-      `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
+    document.getElementById('form').innerHTML = isAdmin
+      ? `<h1>Payment canceled</h1><p class="lede">No charge was made. You can <a href="/club/admin/">continue setting up your club</a>.</p>`
+      : `<h1>Payment canceled</h1><p class="lede">No charge was made. When you're ready, <a href="/apply.html">start your application again</a>; the unfinished one is replaced.</p>`;
     return;
   }
   if (params.has('plan_started')) {
@@ -1516,8 +1551,9 @@ async function prefillFromClaim(token) {
     document.getElementById('form').className = 'card ok';
     {
       const isAdmin = params.get('prefill') === 'admin';
-      document.getElementById('form').innerHTML =
-        `<h1>Payment cancelled</h1><p class="lede">No charge was made. You can ${isAdmin ? '<a href="/club/admin/">continue setting up your club</a>' : 'close this tab'} and the board will follow up with payment options after they review your application.</p>`;
+      document.getElementById('form').innerHTML = isAdmin
+        ? `<h1>Payment canceled</h1><p class="lede">No charge was made. You can <a href="/club/admin/">continue setting up your club</a>.</p>`
+        : `<h1>Payment canceled</h1><p class="lede">No charge was made and no plan was started. When you're ready, <a href="/apply.html">start your application again</a>; the unfinished one is replaced.</p>`;
     }
     return;
   }

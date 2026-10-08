@@ -7,8 +7,9 @@
 //   { action: 'list' }
 //     → { ok, posts: [...] }     // includes inactive (soft-deleted)
 //
-//   { action: 'create', title, body, pinned? }
-//     → { ok, post }
+//   { action: 'create', title, body, pinned?, notify_members? }
+//     → { ok, post, notified }   notify_members (default on) pops it up on
+//                                members' phones that have notifications on (N6)
 //
 //   { action: 'update', id, ...patch }
 //     → { ok, post }
@@ -96,13 +97,27 @@ Deno.serve(async (req) => {
     // created_by is nullable — synthetic impersonation tokens leave it null
     // since payload.sub is the provider admin's id, not an admin_users row.
     const created_by = payload.synthetic ? null : payload.sub;
+    const notify = body.notify_members !== false;
     const { data, error } = await sb.from('posts').insert({
       tenant_id: TID, title, body: text,
       pinned: !!body.pinned,
       created_by,
+      notify_members: notify,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, post: data });
+    // A pop-up for every member with notifications on. No email and no text
+    // (Doug, 2026-10-07): "Text all members" is the only club-wide text.
+    let notified = 0;
+    if (notify) {
+      const { pushMembers } = await import('../_shared/member_notify.ts');
+      const r = await pushMembers({
+        tenant_id: TID, all: true, title: `📰 ${title}`,
+        body: text.replace(/\s+/g, ' ').slice(0, 160), url: '/m/#news', tag: `post-${data.id}`,
+      });
+      notified = r.reached.length;
+      await sb.from('posts').update({ notified_at: new Date().toISOString() }).eq('id', data.id);
+    }
+    return jsonResponse({ ok: true, post: data, notified });
   }
 
   if (action === 'update') {

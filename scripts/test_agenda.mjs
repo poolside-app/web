@@ -128,7 +128,8 @@ if (A) {
   const bm = read('supabase/functions/board_meetings/index.ts');
   const send = between(bm, "action === 'send_agenda'", "// ── bylaws");
   check('L3: sending is its own action, with a preview, and records who sent it', /preview/.test(send) && /agenda_sent_at/.test(send) && /agenda_sent_by/.test(send), '');
-  check('L3: it texts, emails and pops up for the whole board', /sendSms/.test(send) && /sendEmail/.test(send) && /pushBoard/.test(send) && /admin_ids/.test(send), '');
+  // Doug, 10/7: agendas are in the app only, a pop-up; no text, no email.
+  check('L3: it pops up for the whole board, with no text or email', !/sendSms/.test(send) && !/sendEmail/.test(send) && /pushBoard/.test(send) && /admin_ids/.test(send), '');
   check('L3: pop-ups can go to a named list of board members', /admin_ids/.test(read('supabase/functions/push_admin/index.ts')) && /admin_ids/.test(read('supabase/functions/_shared/task_routing.ts')), '');
   const page = read('club/admin/board-meetings.html');
   check('L3: "Send to the board" only on the button, with who\'ll get it how; "Send again" after', /send_agenda/.test(page) && /preview: true/.test(page) && /Send again/.test(page), '');

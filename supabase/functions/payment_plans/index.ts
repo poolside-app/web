@@ -237,6 +237,11 @@ async function chargeInstallment(
     attempt_count: attempts, last_attempt_at: now, last_error: errorMsg,
     first_failed_at: inst.first_failed_at ?? now,
   }).eq('id', inst.id);
+  if (attempts === 1 && plan.household_id) {
+    const { pushMembers } = await import('../_shared/member_notify.ts');
+    await pushMembers({ tenant_id: club.tenantId, household_ids: [plan.household_id as string],
+      title: 'A payment didn\'t go through', body: 'Update your card in the app and it goes through right away.', url: '/m/#plan', tag: `plan-${plan.id}` });
+  }
   if (attempts === 1 && plan.primary_email) {
     try {
       const { renderAndSend } = await import('../_shared/email_template.ts');
@@ -253,10 +258,18 @@ async function chargeInstallment(
   return { paid: false, exhausted, error: errorMsg };
 }
 
-/** The family's receipt for one payment, naming the next one if any. */
+/** The family's receipt for one payment, naming the next one if any: a
+ *  pop-up in their app (N6) and the emailed receipt, which is the record. */
 async function sendReceipt(
   sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>, inst: Inst, rows: Inst[], amount: number,
 ): Promise<void> {
+  if (plan.household_id) {
+    const { pushMembers } = await import('../_shared/member_notify.ts');
+    const left = rows.some(r => r.sequence > inst.sequence && !isPaid(r));
+    await pushMembers({ tenant_id: club.tenantId, household_ids: [plan.household_id as string],
+      title: left ? `Payment received: $${(amount / 100).toFixed(2)}` : 'You\'re paid in full 🎉',
+      body: left ? 'Thanks! Your plan is on track.' : `Your ${club.name} dues are paid in full.`, url: '/m/#plan', tag: `plan-${plan.id}` });
+  }
   if (!plan.primary_email) return;
   try {
     const { renderAndSend } = await import('../_shared/email_template.ts');
@@ -525,8 +538,8 @@ Deno.serve(async (req) => {
             }
           } catch { /* best-effort; the admin task below is the backstop */ }
 
-          await sb.from('admin_tasks').insert({
-            tenant_id: tenant.id, target_scopes: ['payments'], kind: 'renewal.auto_renew_failed',
+          await (await import('../_shared/enqueue_task.ts')).enqueueAdminTask(sb, {
+            tenant_id: tenant.id as string, target_scopes: ['payments'], kind: 'renewal.auto_renew_failed',
             summary: `Auto-renew failed for ${hh.family_name} — card declined`,
             source_kind: 'household', source_id: hh.id,
           });

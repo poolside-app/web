@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Member help — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -107,7 +108,7 @@
 
 <main>
   <h1>Member help</h1>
-  <p class="lede">Questions and problems members send from the app. Each topic goes to the board member who handles it, and anything else goes to the president. Your replies are texted to the member. A request stays on your dashboard until it's solved.</p>
+  <p class="lede">Questions and problems members send from the app. Each topic goes to the board member who handles it, and anything else goes to the president. Your replies pop up in the member's app (or are emailed). A request stays on your dashboard until it's solved.</p>
 
   <!-- Who handles what. The president picks; everyone else sees it. -->
   <details class="topics" id="topics-card" style="display:none">
@@ -294,9 +295,10 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN) closeR
 function paintRequest() {
   const { request: q, member, messages, board, is_owner } = OPEN;
   document.getElementById('r-title').textContent = `${TOPIC_ICON[q.topic] || ''} ${q.topic_label}`;
-  const contact = member.phone ? `Replies are texted to ${member.phone.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, '($1) $2-$3')}`
-    : member.email ? `No cell on file, so replies are emailed to ${member.email}`
-    : 'No cell or email on file, so they only see replies in the app';
+  // Replies pop up in the member's app, or are emailed if notifications are
+  // off there. Never texted (Doug, 10/7).
+  const contact = member.email ? `Replies pop up in their app, or are emailed to ${member.email} if their notifications are off`
+    : 'Replies pop up in their app; with notifications off, they see them next time they open it';
   document.getElementById('r-who').textContent = `${member.name}${member.family_name ? ' · ' + member.family_name : ''}`;
   document.getElementById('r-reply-to').textContent = contact + '.';
 
@@ -319,7 +321,7 @@ function paintRequest() {
     if (m.author_kind === 'note') return `<div class="msg note">${escapeHtml(m.body)} · ${escapeHtml(when(m.created_at))}</div>`;
     const board = m.author_kind === 'board';
     const img = m.photo_url ? `<a href="${escapeAttr(m.photo_url)}" target="_blank" rel="noopener"><img src="${escapeAttr(m.photo_url)}" alt="Photo from ${escapeAttr(m.author_name || 'the member')}"></a>` : '';
-    const how = !board ? '' : m.sent_by === 'text' ? ' · texted ✓' : m.sent_by === 'email' ? ' · emailed ✓'
+    const how = !board ? '' : m.sent_by === 'popup' ? ' · pop-up ✓' : m.sent_by === 'text' ? ' · texted ✓' : m.sent_by === 'email' ? ' · emailed ✓'
       : m.send_error ? ` · ⚠ not sent: ${m.send_error.replace(/^Twilio \d+: /, '').slice(0, 90)}` : '';
     return `<div class="msg ${board ? 'board' : 'member'}"><div class="by">${escapeHtml(m.author_name || (board ? 'Board' : 'Member'))}</div>${escapeHtml(m.body)}${img}<div class="when">${escapeHtml(when(m.created_at) + how)}</div></div>`;
   }).join('');
@@ -340,8 +342,8 @@ async function sendReply(andSolve) {
     if (!r.ok) throw new Error(r.error || 'Could not send');
     if (andSolve) await call('set_status', { id, status: 'solved' });
     const m = r.message || {};
-    toast(m.sent_by === 'text' ? 'Sent, and texted to them.' : m.sent_by === 'email' ? 'Sent, and emailed to them.'
-      : 'Saved, but it didn\'t reach them by text or email. They\'ll see it in the app.', m.sent_by ? '' : 'err');
+    toast(m.sent_by === 'popup' ? 'Sent. It popped up on their phone.' : m.sent_by === 'email' ? 'Sent, and emailed to them.'
+      : 'Saved. They\'ll see it next time they open the app.', m.sent_by ? '' : 'err');
     await openRequest(id);
   } catch (e) {
     err.textContent = e.message; err.classList.add('show');

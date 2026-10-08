@@ -20,7 +20,7 @@ node scripts/test_payments.mjs    # targeted: fake card + fake Venmo signup end 
 node scripts/test_screens.mjs [--live] [--render]   # member/board screens (D1–D13); offline by default
 ```
 
-Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas), `test_flex_plan` (payment plans; offline by default, `--live` uses a throwaway club with its own Stripe test account). `ONLY=<step>` limits the live part of the last four.
+Targeted tests for newer features each take `--offline` (free) or run live against a temporary family or board login they remove afterward: `test_task_routing`, `test_board_meetings`, `test_help_requests`, `test_screens`, `test_money` (plans, discounts, referrals, codes), `test_positions` (board positions, bylaws), `test_agenda` (meeting agendas), `test_flex_plan` (payment plans; offline by default, `--live` uses a throwaway club with its own Stripe test account), `test_signup_notes` (signup checks, Home Screen sign-in, parties, pop-ups). `ONLY=<step>` limits the live part of `test_money`, `test_positions`, `test_agenda` and `test_flex_plan`. `node scripts/check_phone_width.mjs [page]` opens every page and pop-up at iPhone width (about 2 calls a page).
 
 All of these read secrets from `.env.local` (gitignored). There is no `npm test`, no lint, no build step — the frontend is static files served as-is.
 
@@ -87,6 +87,10 @@ A family pays in full, or picks how much to pay today ($0 included) and the mont
 - To reinstate, the family pays what's overdue plus the reactivation fee.
 
 The daily `payment_plans` cron charges with idempotency keys. Test-payment cards (`sim_pm_…`) are never sent to Stripe; the board uses "Simulate the next payment" instead. `node scripts/test_flex_plan.mjs [--live]`.
+
+### Member notifications
+
+Members turn on pop-ups in the app (`js/member-push.js`, the `push_member` function, `member_push_subscriptions`). Doug decided on 2026-10-07 how members are told things. Board replies, party decisions, plan receipts and announcements (with "Notify members" on) arrive as pop-ups through `_shared/member_notify.ts`, plus email where it makes sense: receipts and payment details always, a board reply only when no pop-up reached them. **No texts** except "Text all members", sign-in codes and the welcome text at approval. Agendas reach the board by pop-up only. On iPhone, pop-ups need the app on the Home Screen. The member home hands that app a one-time sign-in through the manifest's start address (`member_auth` `handoff`, `tenant_manifest ?h=`), so it opens signed in. `node scripts/test_signup_notes.mjs [--live]`.
 
 ### Member help
 

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
 <title>Announcements — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
@@ -197,6 +198,12 @@
       <input type="checkbox" id="m-pinned">
       <label for="m-pinned" style="margin:0;font-weight:500">📌 Pin to top of the home page</label>
     </div>
+    <!-- N6: a pop-up on members' phones that have notifications on. New
+         posts only; editing a post never sends it again. -->
+    <div class="check-row" id="m-notify-row">
+      <input type="checkbox" id="m-notify" checked>
+      <label for="m-notify" style="margin:0;font-weight:500">🔔 Notify members (a pop-up on their phones)</label>
+    </div>
     <div class="err" id="m-err"></div>
     <div class="modal-foot">
       <button id="m-delete" class="btn btn-danger left" style="display:none" onclick="del()">Remove post</button>
@@ -306,7 +313,7 @@ async function openBlast() {
   paintBlastBalance();
   document.getElementById('blast-body').value = '';
   document.getElementById('blast-err').classList.remove('show');
-  document.getElementById('blast-scrim').classList.add('show');
+  document.getElementById('blast-scrim').classList.add('open');
   const p = await callBlast('preview', { body: 'x' });
   if (p.ok) {
     BLAST_STATE.recipients = p.recipient_count;
@@ -319,7 +326,7 @@ async function openBlast() {
   }
   measureBlast();
 }
-function closeBlast() { document.getElementById('blast-scrim').classList.remove('show'); }
+function closeBlast() { document.getElementById('blast-scrim').classList.remove('open'); }
 
 async function queueBlast() {
   const btn = document.getElementById('blast-send');
@@ -494,6 +501,8 @@ function openCreate() {
   document.getElementById('m-title-input').value = '';
   document.getElementById('m-body').value = '';
   document.getElementById('m-pinned').checked = false;
+  document.getElementById('m-notify').checked = true;
+  document.getElementById('m-notify-row').style.display = '';
   document.getElementById('m-delete').style.display = 'none';
   document.getElementById('m-err').classList.remove('show');
   document.getElementById('scrim').classList.add('open');
@@ -504,6 +513,7 @@ function openEdit(p) {
   document.getElementById('m-title-input').value = p.title;
   document.getElementById('m-body').value = p.body;
   document.getElementById('m-pinned').checked = !!p.pinned;
+  document.getElementById('m-notify-row').style.display = 'none';
   document.getElementById('m-delete').style.display = p.active ? 'inline-block' : 'none';
   document.getElementById('m-err').classList.remove('show');
   document.getElementById('scrim').classList.add('open');
@@ -521,9 +531,11 @@ async function save() {
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
   try {
     const action = id ? 'update' : 'create';
-    const data = await call(action, id ? { id, title, body, pinned } : { title, body, pinned });
+    const notify_members = document.getElementById('m-notify').checked;
+    const data = await call(action, id ? { id, title, body, pinned } : { title, body, pinned, notify_members });
     if (!data.ok) throw new Error(data.error || 'Save failed');
     closeM();
+    if (!id && notify_members && typeof toast === 'function') toast(data.notified ? `Posted. It popped up for ${data.notified} member${data.notified === 1 ? '' : 's'}.` : 'Posted. Nobody has notifications on yet.');
     await refresh();
   } catch (e) { err.textContent = e.message; err.classList.add('show'); }
   finally { btn.disabled = false; btn.textContent = orig; }

@@ -15,6 +15,9 @@
 //   { action: 'reject', id, admin_notes? }
 //     → { ok, booking }
 //
+//   { action: 'settings_get' } / { action: 'settings_save', length_hours }
+//     → { ok, length_hours }   how long every party runs (N3, default 4)
+//
 //   { action: 'cancel_admin', id }
 //     → { ok }   // admin-side cancel (e.g. for a no-show after approval).
 //                // If approved, also marks the linked event inactive.
@@ -62,6 +65,16 @@ function strOrNull(v: unknown): string | null {
   const s = String(v).trim();
   return s ? s : null;
 }
+/** A pop-up about a party in the family's app (N6). Best-effort: the email
+ *  that goes with each decision is the record. */
+async function partyPop(tenantId: string, householdId: string | null, title: string, body: string): Promise<void> {
+  if (!householdId) return;
+  try {
+    const { pushMembers } = await import('../_shared/member_notify.ts');
+    await pushMembers({ tenant_id: tenantId, household_ids: [householdId], title, body, url: '/m/#parties', tag: 'party' });
+  } catch (e) { console.error('party pop-up:', (e as Error).message); }
+}
+
 function isoOrNull(v: unknown): string | null {
   if (v === null || v === undefined || v === '') return null;
   const d = new Date(String(v));
@@ -126,6 +139,23 @@ Deno.serve(async (req) => {
   // pay". The calendar event is NOT created yet — it's reserved until the
   // payment lands. This keeps the day open for other paying parties if the
   // approved one ghosts.
+  // ── settings: how long every party runs (N3) ──────────────────────────
+  if (action === 'settings_get' || action === 'settings_save') {
+    const { partyHours } = await import('../_shared/party_length.ts');
+    const { data: row } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const value = (row?.value as Record<string, unknown> | undefined) ?? {};
+    if (action === 'settings_get') return jsonResponse({ ok: true, length_hours: partyHours(value) });
+    const hours = Number(body.length_hours);
+    if (!Number.isFinite(hours) || hours < 1 || hours > 12) return jsonResponse({ ok: false, error: 'Pick 1 to 12 hours.' }, 400);
+    const parties = { ...((value.parties as Record<string, unknown> | undefined) ?? {}), length_hours: Math.round(hours * 2) / 2 };
+    const next = { ...value, parties };
+    const { error } = row
+      ? await sb.from('settings').update({ value: next }).eq('tenant_id', TID)
+      : await sb.from('settings').insert({ tenant_id: TID, value: next });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, length_hours: partyHours(next) });
+  }
+
   if (action === 'approve') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
@@ -152,9 +182,13 @@ Deno.serve(async (req) => {
     }
 
     const ovr = (body.override ?? {}) as Record<string, unknown>;
-    // Note: starts_at/ends_at overrides update the booking row but the
-    // calendar event isn't created until payment confirms.
+    // A new start time moves the whole party: it still runs the club's set
+    // length (N3). The calendar event isn't created until payment confirms.
     const decided_by = payload.synthetic ? null : payload.sub;
+    const { partyHours, partyEnd } = await import('../_shared/party_length.ts');
+    const { data: lenRow } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+    const newStart = isoOrNull(ovr.starts_at);
+    const newEnd = newStart ? partyEnd(newStart, partyHours(lenRow?.value)) : null;
     const { data: updated, error: bkErr } = await sb.from('party_bookings').update({
       status: 'approved',
       admin_notes: strOrNull(body.admin_notes),
@@ -163,8 +197,8 @@ Deno.serve(async (req) => {
       title: strOrNull(ovr.title) ?? bk.title,
       body: ovr.body !== undefined ? strOrNull(ovr.body) : bk.body,
       location: ovr.location !== undefined ? strOrNull(ovr.location) : bk.location,
-      starts_at: isoOrNull(ovr.starts_at) ?? bk.starts_at,
-      ends_at: ovr.ends_at !== undefined ? isoOrNull(ovr.ends_at) : bk.ends_at,
+      starts_at: newStart ?? bk.starts_at,
+      ends_at: newEnd ?? bk.ends_at,
       price_cents: ovr.price_cents !== undefined && ovr.price_cents !== null && ovr.price_cents !== ''
         ? Math.max(0, Math.trunc(Number(ovr.price_cents) || 0))
         : bk.price_cents,
@@ -204,6 +238,10 @@ Deno.serve(async (req) => {
         });
       }
     } catch { /* non-fatal */ }
+    // And a pop-up in the family's app (N6). The email above stays: it has
+    // the payment details.
+    await partyPop(TID, bk.household_id as string, `🎉 ${updated.title} is approved`,
+      updated.price_cents ? 'Pay to lock in the date. Details are in the app.' : 'See the details in the app.');
 
     return jsonResponse({ ok: true, booking: updated });
   }
@@ -298,6 +336,7 @@ Deno.serve(async (req) => {
         });
       }
     } catch { /* non-fatal */ }
+    await partyPop(TID, bk.household_id as string, `✅ ${updated.title} is booked`, 'Payment received. It\'s on the club calendar.');
 
     return jsonResponse({ ok: true, booking: updated, event_id: ev.id });
   }
@@ -347,6 +386,7 @@ Deno.serve(async (req) => {
         });
       }
     } catch { /* non-fatal */ }
+    await partyPop(TID, data.household_id as string, `${data.title} wasn't approved`, adminNotes ? String(adminNotes).slice(0, 140) : 'See the details in the app.');
 
     return jsonResponse({ ok: true, booking: data });
   }

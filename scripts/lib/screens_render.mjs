@@ -6,7 +6,7 @@ import { makeTempMember, purgeTestFamilies } from './testdata.mjs';
 
 const HOST = 'https://bishopestates.poolsideapp.com';
 const LOCAL = {
-  '/apply.html': 'apply.html', '/js/plan-picker.js': 'js/plan-picker.js', '/renew.html': 'renew.html',
+  '/apply.html': 'apply.html', '/js/plan-picker.js': 'js/plan-picker.js', '/js/member-push.js': 'js/member-push.js', '/js/phone-fit.js': 'js/phone-fit.js', '/js/pwa.js': 'js/pwa.js', '/sw.js': 'sw.js', '/club/admin/announcements.html': 'club/admin/announcements.html', '/club/admin/parties.html': 'club/admin/parties.html', '/renew.html': 'renew.html',
   '/m/': 'm/index.html', '/m/index.html': 'm/index.html', '/m/login.html': 'm/login.html',
   '/club/admin/members.html': 'club/admin/members.html',
   '/': 'club/index.html', '/index.html': 'club/index.html',
@@ -33,9 +33,10 @@ export async function renderChecks({ check, read, sql, jwt }) {
 
   // `rewrite(action, json)` edits an Edge Function's real answer before the
   // page sees it (used to show the renewal page outside the renewal window).
-  async function open(path, store = {}, rewrite = null) {
+  async function open(path, store = {}, rewrite = null, ua = null) {
     const ctx = await browser.createBrowserContext();
     const p = await ctx.newPage();
+    if (ua) await p.setUserAgent(ua);
     await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
     await p.emulateTimezone('America/New_York');
     await p.evaluateOnNewDocument(s => { if (!sessionStorage.getItem('seeded')) { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); sessionStorage.setItem('seeded', '1'); } }, store);
@@ -463,6 +464,60 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('M6: payments page has no page errors', pay.errs.length === 0, pay.errs.join(' | '));
     await pay.evaluate(() => { const d = document.getElementById('plans')?.closest('details'); if (d) d.open = true; document.getElementById('plans')?.scrollIntoView(); });
     await pay.screenshot({ path: '/tmp/poolside-plans-table.png' });
+    }
+
+    if (want('notes')) {
+    // PLAN.md N: Doug's 10/7 signup notes, on the real pages.
+    const ownerTok3 = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
+    const an = await open('/club/admin/announcements.html', { poolside_tenant_token: ownerTok3 });
+    await an.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => /Text all members/.test(x.textContent)); b && b.click(); });
+    await wait(1500);
+    const blast = await an.evaluate(() => {
+      const s = document.getElementById('blast-scrim');
+      document.getElementById('blast-body').value = 'Pool is closed today for weather.';
+      measureBlast();
+      return { shown: getComputedStyle(s).display !== 'none', send: !document.getElementById('blast-send').disabled };
+    });
+    check('N7: "Text all members" opens, and a short message can be queued', blast.shown && blast.send, JSON.stringify(blast));
+    await an.evaluate(() => closeBlast());
+    await an.evaluate(() => openCreate());
+    const notify = await an.evaluate(() => ({ on: document.getElementById('m-notify').checked, shown: getComputedStyle(document.getElementById('m-notify-row')).display !== 'none' }));
+    check('N6: a new post has "Notify members" on by default', notify.on && notify.shown, JSON.stringify(notify));
+    check('N: announcements page has no page errors', an.errs.length === 0, an.errs.join(' | '));
+
+    const pa = await open('/club/admin/parties.html', { poolside_tenant_token: ownerTok3 });
+    await pa.waitForFunction(() => document.getElementById('party-hours')?.value, { timeout: 20000 }).catch(() => {});
+    const hours = await pa.$eval('#party-hours', el => el.value);
+    check('N3: the Parties page shows the party length (4 hours)', hours === '4', hours);
+    check('N3: parties page has no page errors', pa.errs.length === 0, pa.errs.join(' | '));
+
+    const memTok3 = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
+    const mh = await open('/m/', { poolside_member_token: memTok3 });
+    await mh.waitForSelector('.hero-card', { timeout: 30000 });
+    await wait(1500);
+    const prompt = await mh.evaluate(() => { const el = document.getElementById('push-prompt'); return el && getComputedStyle(el).display !== 'none' ? el.innerText.replace(/\s+/g, ' ') : ''; });
+    check('N6: the member home offers "Turn on notifications"', /Turn on notifications/.test(prompt), prompt.slice(0, 120));
+    await mh.evaluate(() => openPartyModal());
+    await wait(300);
+    const party = await mh.evaluate(() => ({ ends: !!document.getElementById('p-ends'), note: document.getElementById('p-ends-note').textContent }));
+    check('N3: members pick a start; the end follows (4 hours)', !party.ends && /Parties run 4 hours, so yours ends at/.test(party.note), JSON.stringify(party));
+    // On an iPhone in Chrome: Chrome's steps, and the Home Screen app's
+    // start address carries a one-time sign-in.
+    const IPHONE_CHROME = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.6478.54 Mobile/15E148 Safari/604.1';
+    const ic = await open('/m/', { poolside_member_token: memTok3 }, null, IPHONE_CHROME);
+    await ic.waitForSelector('#install-guide', { timeout: 30000 }).catch(() => {});
+    await ic.waitForFunction(() => /\?h=/.test(document.querySelector('link[rel="manifest"]')?.getAttribute('href') || ''), { timeout: 15000 }).catch(() => {});
+    const guide = await ic.evaluate(() => ({
+      on: document.querySelector('#install-guide .pwa-btab.on')?.textContent || '',
+      steps: document.querySelector('#install-guide .pwa-instr')?.textContent.replace(/\s+/g, ' ') || '',
+      manifest: document.querySelector('link[rel="manifest"]')?.getAttribute('href') || '',
+      viewport: document.querySelector('meta[name="viewport"]')?.content || '',
+    }));
+    check('N2: on iPhone Chrome the install card shows Chrome\'s steps', /Chrome/.test(guide.on) && /top-right/.test(guide.steps), JSON.stringify(guide).slice(0, 200));
+    check('N2: and the Home Screen app will open signed in', /^\/manifest\.webmanifest\?h=[A-Za-z0-9_-]{40,}$/.test(guide.manifest), guide.manifest);
+    check('N8: iPhones don\'t zoom into form fields', /maximum-scale=1/.test(guide.viewport), guide.viewport);
+    check('N: member home has no page errors', mh.errs.length === 0, mh.errs.join(' | '));
+    await mh.screenshot({ path: '/tmp/poolside-member-notes.png' });
     }
   } finally {
     await purgeTestFamilies(sql, club.id, `${FAMILY}%`);

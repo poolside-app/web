@@ -449,6 +449,44 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ M7. Fees.** Turn on Bishop's existing "no Poolside fees" switch. The $4 plan fee stays for every other club.
 - **✅ M8. Live test** on a throwaway club with its own Stripe test account and Stripe's test cards. It covers a plan from start to finish, a declined card, a card updated after a failure, paying off early, canceling, a late joiner and the rounding. Then the club is deleted.
 
+### N. From Doug's own signup test (10/7 evening)
+What I found:
+- Signing up with a phone or email already on file only fails at the last step. A family who backs out of the card page is stuck too: their unpaid application blocks a second try (memory: plan auto-renew + checkout dead end).
+- iPhone: the Home Screen app keeps its own storage, separate from Safari's, so it asks you to sign in again. Android doesn't do this.
+- The member home's "Add to Home Screen" card only shows Safari's steps. The shared install guide (js/pwa.js) already knows Chrome's, but the member home doesn't use it.
+- Parties: members pick a start and an end. The board's "Approve with changes" puts two date-and-time boxes side by side, which runs off a phone screen.
+- Party approval sends an email only, no text.
+- A photo upload makes a dashboard task but never a pop-up: it skips enqueueAdminTask, so it doesn't follow positions either. (Doug's pop-ups were turned on after the upload anyway.)
+- Board replies to help requests are texted, but a text back goes nowhere. There is no incoming-text handling.
+- Members have no pop-up notifications at all; only the board does. Announcements reach members only by the separate "Text all members".
+- "Text all members": opened and previewed, but nothing was queued (no rows). Needs reproducing at phone size.
+- Sponsors → Add sponsor is offset on a phone. Every page and pop-up needs a phone-width check.
+
+Doug decided (10/7):
+- Members get notices by pop-up in the app, plus email where it makes sense. Texts are only for "Text all members", sign-in codes and the welcome text at approval.
+- Help requests: answered in the app on both sides, with no texts. Texts cost about a penny each way and count against the allowance.
+- Every member notice is a pop-up for members who turned pop-ups on: board replies, party decisions, plan receipts, announcements.
+- Announcements: a "Notify members" switch on each post, on by default. Members without pop-ups get no email for announcements.
+- Meeting agendas: in the app only (pop-up), not by text or email.
+- Parties: a fixed length, set by the board (4 hours to start). The board can still change the time when approving.
+- Kristin: removed from the board. Vice-President stays as an open position. Done 10/7: her leftover hold on it is cleared. Removing someone has to drop their positions too (bug).
+
+Done 10/7–8. Checks: `node scripts/test_signup_notes.mjs [--live]`, `RENDER_ONLY=notes node scripts/test_screens.mjs --render` and `node scripts/check_phone_width.mjs`, which opens every page and pop-up at iPhone width.
+Found on the way and fixed:
+- The board's billing buttons crashed: Premium Setup, the billing portal, buying texts and changing plans all called a function that didn't exist.
+- iPhone Safari zoomed into any form field under 16px and stayed zoomed. That was the "offset" Add sponsor.
+- The Events and Volunteer edit windows were too wide on a phone, and so was the Billing page's stat row.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ N1. Signup checks the phone and email on step 1.** "Already a member, sign in" shows on step 1, not at checkout. If the family has an unpaid application waiting, they go back to its payment ("Try again") instead of being blocked.
+- **✅ N2. Stay signed in on the iPhone Home Screen app.** The page hands the Home Screen app a one-time sign-in when it's added, so it opens signed in. The member home's install card shows the right steps for Chrome.
+- **✅ N3. Parties: date and start time only, for the club's party length** (4 hours, editable). The board's approve screen fits a phone. Members get a text when their party is approved, changed or declined.
+- **✅ N4. Photo uploads alert the board** through positions (Membership & Marketing Director, else the President), with a pop-up.
+- **✅ N5. Help requests in the app only.** Board replies reach the member by pop-up, else email, never text. Removing a board member also drops their positions.
+- **✅ N6. Member pop-ups.** A "Turn on notifications" button in the member app. Board replies, party decisions, plan receipts, and announcements with "Notify members" on all pop up. Meeting agendas reach the board by pop-up only.
+- **✅ N7. "Text all members":** reproduce it, fix it, prove a test send.
+- **✅ N8. Phone-width sweep:** every page and every pop-up at iPhone size. Fix anything that runs off the screen, starting with Add sponsor.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
