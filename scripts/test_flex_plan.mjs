@@ -25,11 +25,16 @@ const fp = await importTs(new URL('supabase/functions/_shared/flex_plan.ts', roo
 const ps = await importTs(new URL('supabase/functions/_shared/payment_schedule.ts', root));
 
 // Doug's examples: $600, half by April 1, paid in full by June 1. The family
-// signs up on November 15, 2026, for the 2027 season.
-const SPEC = ps.resolveRules({
+// signs up on November 15, 2026, for the 2027 season. Since PLAN.md S1
+// (10/8) every plan payment falls on the club's billing day, the 1st unless
+// the club picks another; these examples are a club billing on the 15th,
+// which is the arithmetic Doug's examples were worked out with.
+const SPEC_CFG = {
   milestones: [{ date: '04-01', min_pct: 50, label: 'Half paid' }, { date: '06-01', min_pct: 100, label: 'Paid in full' }],
   min_installment_cents: 2500,
-}, 2027, 12);
+};
+const rulesOn = (day, cfg = SPEC_CFG) => ps.resolveRules({ ...cfg, billing_day: day }, 2027, 12);
+const SPEC = rulesOn(15);
 const NOV15 = '2026-11-15';
 
 console.log('M1 · the calculator (offline)');
@@ -73,10 +78,10 @@ console.log('M1 · the calculator (offline)');
   // Joining in February, paying off in May: only one monthly payment lands
   // before April 1, so an even split misses the half rule. The answer is the
   // least to pay today that makes it work.
-  const feb = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-05', startDate: '2027-02-10', rules: SPEC });
+  const feb = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-05', startDate: '2027-02-10', rules: rulesOn(10) });
   check('Feb joiner, $0 today: refused', !feb.ok && feb.code === 'misses_deadline', short(feb));
   check('Feb joiner: told to pay at least $150 today', !feb.ok && feb.min_today_cents === 15000 && /\$150\.00/.test(feb.error), short(feb));
-  const feb2 = fp.flexSchedule({ totalCents: 60000, todayCents: 15000, payoffMonth: '2027-05', startDate: '2027-02-10', rules: SPEC });
+  const feb2 = fp.flexSchedule({ totalCents: 60000, todayCents: 15000, payoffMonth: '2027-05', startDate: '2027-02-10', rules: rulesOn(10) });
   check('Feb joiner paying $150 today: accepted', feb2.ok, short(feb2));
 
   // A late joiner after the half-paid date pays at least half today.
@@ -107,24 +112,31 @@ console.log('M1 · the calculator (offline)');
   const small = fp.flexSchedule({ totalCents: 60000, todayCents: 50000, payoffMonth: '2027-05', startDate: NOV15, rules: SPEC });
   check('$16.66 a month is under the $25 minimum: refused', !small.ok && small.code === 'payment_too_small', short(small));
 
-  // The 28th at most, so every month has the day.
-  const d31 = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-03', startDate: '2027-01-31', rules: SPEC });
-  check('signing up on the 31st charges on the 28th', d31.ok && d31.payments.every(p => p.due_date.endsWith('-28')), short(d31.ok ? d31.payments : d31));
+  // The billing day is the 28th at most, so every month has it (S1).
+  check('a billing day past the 28th is the 28th', rulesOn(31).billingDay === 28);
+  const d1 = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-03', startDate: '2027-01-31', rules: ps.resolveRules(SPEC_CFG, 2027, 12) });
+  check('by default every payment is on the 1st, whatever day they joined (S1)', d1.ok && d1.payments.every(p => p.due_date.endsWith('-01')), short(d1.ok ? d1.payments : d1));
 
   // Bishop: half by April 10, paid in full by July 15.
-  const BISHOP = ps.resolveRules({
+  const BISHOP_CFG = {
     milestones: [{ date: '04-10', min_pct: 50, label: 'Half paid' }, { date: '07-15', min_pct: 100, label: 'Paid in full' }],
     min_installment_cents: 2500,
-  }, 2027, 12);
+  };
+  const BISHOP = rulesOn(5, BISHOP_CFG);
   const b5 = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-07', startDate: '2026-12-05', rules: BISHOP });
   check('Bishop, Dec 5, $0 down, paid off in July: 7 payments, 4 of them by April 10',
     b5.ok && b5.payments.length === 7 && b5.checks[0].paid_cents === 34284, short(b5.ok ? b5.checks : b5));
   // Signing up on the 20th, only three payments land before April 10.
-  const b20 = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-07', startDate: '2026-12-20', rules: BISHOP });
+  const b20 = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-07', startDate: '2026-12-20', rules: rulesOn(20, BISHOP_CFG) });
   check('Bishop, Dec 20, $0 down, July: refused, pay at least $75 today', !b20.ok && b20.min_today_cents === 7500, short(b20));
-  const b20ok = fp.flexSchedule({ totalCents: 60000, todayCents: 7500, payoffMonth: '2027-07', startDate: '2026-12-20', rules: BISHOP });
+  const b20ok = fp.flexSchedule({ totalCents: 60000, todayCents: 7500, payoffMonth: '2027-07', startDate: '2026-12-20', rules: rulesOn(20, BISHOP_CFG) });
   check('Bishop, Dec 20, $75 today: accepted, the last payment on July 15 (not the 20th)',
     b20ok.ok && b20ok.payments.length === 7 && b20ok.payments[6].due_date === '2027-07-15', short(b20ok.ok ? b20ok.payments : b20ok));
+  // Bishop as it is now, billing on the 1st (S1): the same Dec 20 family
+  // needs nothing down, since four payments land before April 10.
+  const b1 = fp.flexSchedule({ totalCents: 60000, todayCents: 0, payoffMonth: '2027-07', startDate: '2026-12-20', rules: ps.resolveRules(BISHOP_CFG, 2027, 12) });
+  check('Bishop on the 1st, Dec 20, $0 down: accepted, Jan 1 through Jul 1',
+    b1.ok && b1.payments.length === 7 && b1.payments[0].due_date === '2027-01-01' && b1.payments[6].due_date === '2027-07-01', short(b1.ok ? b1.payments : b1));
 
   // Fees ride on each payment: the $4 plan fee, and the card fee when the
   // club passes it on. The dues part still adds up to the price.
@@ -151,6 +163,7 @@ console.log('M3 · the quote a family sees (offline)');
     cfg: ops.planConfig({ payments: { plan: {
       enabled: true, access_when: 'half_paid',
       milestones: [{ date: '04-10', min_pct: 50, label: 'Half paid' }, { date: '07-15', min_pct: 100, label: 'Paid in full' }],
+      billing_day: 20,   // the club in these examples bills on the 20th (S1)
       ...(over.plan || {}),
     } } }),
     passFee: true, pct: 0.029, fixed: 30, stripeAccount: 'acct_x', chargesEnabled: true, feesWaived: true, testMode: false,
@@ -177,6 +190,8 @@ console.log('M3 · the quote a family sees (offline)');
   check('quote: not offered for a membership type the club left out', !single.available && /type/.test(single.reason), short(single));
   const off = pq.quotePlan(club({ plan: { enabled: false } }), { totalCents: 60000, tierSlug: 'family', year: 2027, policy: WAIVED });
   check('quote: not offered when plans are off', !off.available);
+  const on1 = pq.quotePlan(club({ plan: { billing_day: 1 } }), { totalCents: 60000, tierSlug: 'family', year: 2027, policy: WAIVED, todayCents: 0, payoffMonth: '2027-07' });
+  check('quote: billing on the 1st, the same family can start with $0 (S1)', on1.choice.ok && on1.choice.rows[0].due_date === '2027-01-01', short(on1.choice));
   const late = pq.quotePlan(club({ today: '2027-07-20' }), { totalCents: 60000, tierSlug: 'family', year: 2027, policy: WAIVED });
   check('quote: after July 15, pay in full only', !late.available && /paying in full/.test(late.reason), short(late));
 

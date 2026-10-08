@@ -561,6 +561,22 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ R7.** Auto-renew becomes "approve next season": when renewals open, auto-renew families get the price, policies and last season's payment choice; one tap signs and charges the saved card; a reminder after a week; no approval, no charge.
 - Notes: approving with the saved card charges it once, then runs the usual renewal approval (season forward, extra keyfobs). A family that used a payment plan last season starts on "Payment plan" (through checkout); one tap is for paying in full. In test mode, a test checkout keeps a pretend card (`sim_pm_`) so one-tap approval can be tried. `node scripts/test_board_notes.mjs [--live]` (26 offline, 10 live checks).
 
+### S. Approve every automatic payment (Doug, 10/8) — ✅ done 10/8
+Doug: "I am very concerned about random charges." Decided (10/8):
+- Poolside never has card numbers; Stripe keeps the card and Poolside only its reference. Stripe can't show future payments because Poolside schedules them, so Poolside shows them.
+- Every plan payment falls on one billing day, **the 1st** (the club can change it). Payments today at checkout, and anything a family does itself, aren't affected.
+- **Nothing is charged until a board member ticks it.** Money → Upcoming lists each payment due in the next 30 days, one short line each ("Smith family · $600 total · $150 down · $55 a month · Approve $55, Nov 1"), with its own checkbox.
+- 3 days before the billing day, the Treasurer gets a pop-up and a dashboard task; if anything is still unticked on the billing day, it waits and the reminder repeats daily. A family never loses access, or lapses, because the board hadn't approved.
+- Approving a payment also approves its retries (3, 7 and 14 days after a decline).
+- The same page shows the last 30 days of automatic charges and renewal approvals, paid or declined. No daily summary pop-up.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ S1.** Billing day: plan payments on the club's billing day (default the 1st); a setting on Payments setup.
+- **✅ S2.** Approval: `approved_at` on each payment; the daily run charges only approved ones; deadlines don't end a plan over an unapproved payment.
+- **✅ S3.** The ask: the Treasurer's pop-up and task 3 days before, daily after the billing day while anything waits; closed when all are approved.
+- **✅ S4.** Money → Upcoming: the next 30 days with checkboxes and "Approve checked", undo before it's charged, and the last 30 days of automatic charges.
+- Notes: there were no active plans anywhere when this shipped, so nothing was waiting. Older examples in `test_flex_plan` now use a club billing on the 15th or 20th, the arithmetic Doug's examples were worked out with. `node scripts/test_plan_approval.mjs [--live]` (16 offline, 7 live checks).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

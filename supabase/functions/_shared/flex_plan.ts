@@ -44,12 +44,6 @@ export type FlexError = {
 };
 export type FlexResult = FlexOk | FlexError;
 
-/** The day of the month the family is charged: the day they signed up, the
- *  28th at most so every month has it. */
-export function chargeDay(startDate: string): number {
-  return Math.min(Number(startDate.slice(8, 10)) || 1, 28);
-}
-
 /** The months a family can choose to be paid off by: next month through the
  *  month of the paid-in-full date, no more than the club's payment limit. */
 export function payoffMonths(rules: ScheduleRules, startDate: string): string[] {
@@ -69,10 +63,11 @@ export function payoffMonths(rules: ScheduleRules, startDate: string): string[] 
 }
 
 /** Monthly charge dates from next month through the payoff month, on the
- *  family's charge day, never after the paid-in-full date. */
+ *  club's billing day (the 1st unless the club changed it, PLAN.md S1),
+ *  never after the paid-in-full date. */
 export function monthlyDates(rules: ScheduleRules, startDate: string, payoffMonth: string): string[] {
   const final = finalDate(rules)!;
-  const day = chargeDay(startDate);
+  const day = Math.min(28, Math.max(1, Math.trunc(Number(rules.billingDay ?? 1)) || 1));
   return payoffMonths(rules, startDate)
     .filter(ym => ym <= payoffMonth)
     .map(ym => {

@@ -240,6 +240,9 @@
           <div><label>Plan-signup cutoff</label><input type="date" id="plan-cutoff"></div>
           <div><label>Most payments allowed</label><input type="number" id="plan-max" min="2" max="24"></div>
           <div><label>Smallest payment ($)</label><input type="number" id="plan-min" min="1" step="1"></div>
+          <!-- PLAN.md S1: every plan payment on one day, so the board approves
+               the month's payments together (Money → Upcoming). -->
+          <div><label>Billing day of the month</label><input type="number" id="plan-billing-day" min="1" max="28" step="1"></div>
         </div>
         <div class="row3" style="gap:10px;margin-top:8px">
           <div><label>Gate and key fob start</label>
@@ -959,6 +962,7 @@ async function loadPlanConfig() {
     document.getElementById('plan-cutoff').value   = c.plan_signup_cutoff_date || '';
     document.getElementById('plan-max').value      = (c.max_installments ?? 12);
     document.getElementById('plan-min').value      = Math.round((c.min_installment_cents ?? 2500) / 100);
+    document.getElementById('plan-billing-day').value = (c.billing_day ?? 1);
     document.getElementById('plan-access').value   = c.access_when || 'half_paid';
     const allowed = Array.isArray(c.tiers) ? c.tiers : [];
     document.getElementById('plan-tiers').innerHTML = (r.tiers_available || []).map(t =>
@@ -1024,6 +1028,7 @@ async function savePlanConfig() {
       plan_signup_cutoff_date: document.getElementById('plan-cutoff').value || null,
       max_installments:        Number(document.getElementById('plan-max').value) || 12,
       min_installment_cents:   Math.round((Number(document.getElementById('plan-min').value) || 25) * 100),
+      billing_day:             Math.min(28, Math.max(1, Math.trunc(Number(document.getElementById('plan-billing-day').value) || 1))),
       access_when: document.getElementById('plan-access').value,
       // Every type ticked is stored as "all", so a type added later is included.
       tiers: (() => {

@@ -38,6 +38,7 @@
     // all. A treasurer had to learn three tabs and one secret URL.
     money: [
       { key: 'payments',  label: 'Payments',  href: '/club/admin/payments.html',  scope: 'payments'      },
+      { key: 'upcoming',  label: 'Upcoming',  href: '/club/admin/upcoming.html',  scope: 'payments'      },  // PLAN.md S: approve plan payments
       { key: 'donations', label: 'Donations', href: '/club/admin/donations.html', scope: 'payments'      },
       { key: 'sponsors',  label: 'Sponsors',  href: '/club/admin/sponsors.html',  scope: 'announcements' },
     ],
@@ -81,7 +82,7 @@
     'members.html': 'members', 'policies.html': 'members',
     'import.html': 'members', 'migrate.html': 'members', 'emails.html': 'members',
     'payments.html': 'money',
-    'donations.html': 'money', 'sponsors.html': 'money',
+    'donations.html': 'money', 'sponsors.html': 'money', 'upcoming.html': 'money',
     'events.html': 'calendar', 'programs.html': 'calendar', 'parties.html': 'calendar',
     'volunteer.html': 'calendar', 'lifeguards.html': 'calendar', 'my-shifts.html': 'calendar',
     'announcements.html': 'content', 'photos.html': 'content',

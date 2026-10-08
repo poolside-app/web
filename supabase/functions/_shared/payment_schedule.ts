@@ -42,6 +42,9 @@ export type ScheduleRules = {
   milestones: Milestone[];
   minInstallmentCents: number;
   maxInstallments: number;
+  /** The day of the month every plan payment falls on (PLAN.md S1: one day,
+   *  so the board can approve the month's payments together). 1–28. */
+  billingDay?: number;
 };
 
 const DEFAULT_MIN_INSTALLMENT_CENTS = 2500;   // $25 — below this the card fees eat it
@@ -82,6 +85,7 @@ export function resolveRules(
     milestones,
     minInstallmentCents: posInt(planConfig?.min_installment_cents, DEFAULT_MIN_INSTALLMENT_CENTS),
     maxInstallments: clamp(posInt(planConfig?.max_installments, DEFAULT_MAX_INSTALLMENTS), 2, 24),
+    billingDay: clamp(posInt(planConfig?.billing_day, 1), 1, 28),
   };
 }
 

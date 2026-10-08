@@ -77,6 +77,7 @@ PAGE_TO_TAB = {
     # Settings — configuration and the club's account with Poolside
     "settings.html":       "settings",
     "board.html":          "settings",
+    "upcoming.html":       "money",
     "keyfobs.html":        "settings",
     "billing.html":        "settings",
     # Deliberately no active tab: reached from the dashboard, a FAB, or an

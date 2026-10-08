@@ -81,7 +81,7 @@ async function hasPaymentsScope(sb: SupabaseClient, p: AdminPayload): Promise<bo
 // The plan rules (when the gate opens, what a lapse does, how a family comes
 // back) live in _shared/plan_ops.ts, shared with checkout and the webhook.
 import {
-  PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor,
+  PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor, chargeableNow, awaitingApproval,
   grantAccessIfReady, completeIfPaid, endPlan, enforceEnd, seasonStarted, rulesFor, planView,
   memberPlanView, type PlanClub, type PlanConfig, type Inst,
 } from '../_shared/plan_ops.ts';
@@ -389,6 +389,81 @@ async function chargeRenewalWithSavedCard(sb: SupabaseClient, appId: string): Pr
   return { ok: true, paid: true };
 }
 
+// ── Approving plan payments (PLAN.md S, Doug 2026-10-08) ─────────────────────
+// Nothing is charged until a board member ticks the payment on Money →
+// Upcoming. 3 days before a payment is due, the Treasurer gets a dashboard
+// task and a pop-up; from its due date on, the pop-up repeats daily until
+// every due payment is approved. The task closes when nothing is waiting.
+const ASK_DAYS_BEFORE = 3;
+
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function askForApproval(sb: SupabaseClient, onlyTenant: string | null): Promise<{ asked: number; reminded: number; closed: number }> {
+  let asked = 0, reminded = 0, closed = 0;
+  let q = sb.from('payment_plan_installments')
+    .select('id, plan_id, tenant_id, due_date, amount_cents, plan_fee_cents, card_fee_cents, status, approved_at')
+    .is('approved_at', null).in('status', ['pending', 'retrying']).limit(2000);
+  if (onlyTenant) q = q.eq('tenant_id', onlyTenant);
+  const { data: rows } = await q;
+  const planIds = [...new Set((rows ?? []).map(r => r.plan_id as string))];
+  const { data: plans } = planIds.length
+    ? await sb.from('payment_plans').select('id, status').in('id', planIds)
+    : { data: [] as Array<{ id: string; status: string }> };
+  const active = new Set((plans ?? []).filter(p => p.status === 'active').map(p => p.id as string));
+  const byTenant = new Map<string, typeof rows>();
+  for (const r of (rows ?? [])) {
+    if (!active.has(r.plan_id as string)) continue;
+    const list = byTenant.get(r.tenant_id as string) ?? [];
+    list.push(r); byTenant.set(r.tenant_id as string, list);
+  }
+  // Clubs with an open ask: close it if nothing is waiting any more.
+  let tq = sb.from('admin_tasks').select('id, tenant_id, metadata').eq('kind', 'payments.approve_due').is('completed_at', null);
+  if (onlyTenant) tq = tq.eq('tenant_id', onlyTenant);
+  const { data: openTasks } = await tq;
+  const tenants = new Set<string>([...byTenant.keys(), ...(openTasks ?? []).map(t => t.tenant_id as string)]);
+  for (const tid of tenants) {
+    const club = await loadPlanClub(sb, tid);
+    if (!club) continue;
+    const soon = (byTenant.get(tid) ?? []).filter(r => (r.due_date as string) <= addDays(club.today, ASK_DAYS_BEFORE));
+    const open = (openTasks ?? []).find(t => t.tenant_id === tid);
+    if (!soon.length) {
+      if (open) { await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() }).eq('id', open.id); closed++; }
+      continue;
+    }
+    const total = soon.reduce((n, r) => n + chargeFor(r as unknown as Inst, club.feesWaived), 0);
+    const first = soon.map(r => r.due_date as string).sort()[0];
+    const when = new Date(`${first}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const summary = `Approve ${soon.length} plan payment${soon.length === 1 ? '' : 's'} due ${when}: $${(total / 100).toFixed(2)}. Nothing is charged until you do.`;
+    if (!open) {
+      const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+      await enqueueAdminTask(sb, {
+        tenant_id: tid, target_scopes: ['payments'], kind: 'payments.approve_due', summary,
+        link_url: '/club/admin/upcoming.html', source_kind: 'payments_approval',
+        metadata: { pushed_on: club.today },
+        push_title: '💳 Plan payments to approve', push_body: summary,
+      });
+      asked++;
+      continue;
+    }
+    // Keep the task's wording current; from the due date on, remind daily.
+    const pushedOn = ((open.metadata as Record<string, unknown> | null)?.pushed_on as string | undefined) ?? '';
+    const overdue = first <= club.today;
+    await sb.from('admin_tasks').update({ summary, metadata: { ...((open.metadata as Record<string, unknown>) ?? {}), pushed_on: overdue && pushedOn !== club.today ? club.today : pushedOn } }).eq('id', open.id);
+    if (overdue && pushedOn !== club.today) {
+      const { pushBoard } = await import('../_shared/enqueue_task.ts');
+      const { TASK_NOTICE } = await import('../_shared/positions.ts');
+      await pushBoard({ tenant_id: tid, target_scopes: ['payments'], notice: TASK_NOTICE['payments.approve_due'] ?? 'payments',
+        title: '💳 Plan payments still waiting', body: summary, url: '/club/admin/upcoming.html', tag: 'payments_approval' });
+      reminded++;
+    }
+  }
+  return { asked, reminded, closed };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -513,11 +588,21 @@ Deno.serve(async (req) => {
     return jsonResponse(r, r.ok ? 200 : 409);
   }
 
+  // The approval ask on its own (tests; the daily run does it too).
+  if (action === 'approval_ask_run') {
+    const got = req.headers.get('x-cron-secret') || '';
+    if (!CRON_SECRET || got !== CRON_SECRET) return jsonResponse({ ok: false, error: 'Bad cron secret' }, 401);
+    return jsonResponse({ ok: true, ...(await askForApproval(sb, body.only_tenant ? String(body.only_tenant) : null)) });
+  }
+
   if (action === 'cron_run') {
     const got = req.headers.get('x-cron-secret') || '';
     if (!CRON_SECRET || got !== CRON_SECRET) {
       return jsonResponse({ ok: false, error: 'Bad cron secret' }, 401);
     }
+    // Ask the board to approve what's coming due (PLAN.md S3), first.
+    let approval = { asked: 0, reminded: 0, closed: 0 };
+    try { approval = await askForApproval(sb, null); } catch (e) { console.error('approval ask:', (e as Error).message); }
     // Every club's own "today" (pool time), loaded once per club.
     const clubs = new Map<string, PlanClub | null>();
     const clubFor = async (tid: string) => {
@@ -534,7 +619,8 @@ Deno.serve(async (req) => {
       const club = await clubFor(plan.tenant_id as string);
       if (!club) continue;
       const rows = await installmentsOf(sb, plan.id as string);
-      const due = rows.filter(r => (r.status === 'pending' || r.status === 'retrying') && r.due_date <= club.today);
+      // Only what a board member approved on Money → Upcoming (PLAN.md S2).
+      const due = chargeableNow(rows, club.today);
       if (!due.length) continue;
       if (!plan.stripe_customer_id || !plan.stripe_payment_method_id) continue;
       if (String(plan.stripe_payment_method_id).startsWith('sim_')) continue;
@@ -566,6 +652,8 @@ Deno.serve(async (req) => {
       if (!final || club.today <= final) continue;
       const rows = await installmentsOf(sb, plan.id as string);
       if (rows.every(isPaid)) continue;
+      // Never end a plan over a payment the board hadn't approved (S2).
+      if (rows.some(awaitingApproval)) continue;
       await endPlan(sb, club, plan, 'deadline');
       past_deadline++;
     }
@@ -789,7 +877,7 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, approval, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
@@ -826,6 +914,82 @@ Deno.serve(async (req) => {
       ok: true, config: planConfig(data?.value),
       tiers_available: tiers.map(t => ({ slug: t.slug, label: t.label })),
     });
+  }
+
+  // ── Money → Upcoming (PLAN.md S4) ──────────────────────────────────────
+  // Every plan payment due in the next 30 days (or the whole season), one
+  // short line each, and the last 30 days of automatic charges.
+  if (action === 'upcoming') {
+    const club = await loadPlanClub(sb, payload.tid);
+    if (!club) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    const horizon = body.all === true ? '9999-12-31' : addDays(club.today, 30);
+    const { data: plans } = await sb.from('payment_plans')
+      .select('id, family_name, status, total_cents, today_cents, stripe_payment_method_id')
+      .eq('tenant_id', payload.tid).limit(1000);
+    const planBy = new Map<string, Record<string, unknown>>((plans ?? []).map(p => [p.id as string, p as Record<string, unknown>]));
+    const ids = [...planBy.keys()];
+    const { data: rows } = ids.length ? await sb.from('payment_plan_installments')
+      .select('id, plan_id, sequence, due_date, amount_cents, plan_fee_cents, card_fee_cents, status, attempt_count, last_error, last_attempt_at, paid_at, approved_at, approved_by, stripe_session_id')
+      .in('plan_id', ids).order('due_date') : { data: [] };
+    const all = (rows ?? []) as Array<Record<string, unknown>>;
+    const { data: admins } = await sb.from('admin_users').select('id, display_name, email').eq('tenant_id', payload.tid);
+    const who = new Map((admins ?? []).map(a => [a.id as string, (a.display_name as string) || (a.email as string) || 'Board']));
+    const monthlyOf = (pid: string) => {
+      const later = all.filter(r => r.plan_id === pid && Number(r.sequence) > 1).map(r => Number(r.amount_cents));
+      return later.length ? Math.max(...later) : 0;
+    };
+    const countOf = (pid: string) => all.filter(r => r.plan_id === pid).length;
+    const upcoming = all.filter(r => {
+      const p = planBy.get(r.plan_id as string);
+      return p?.status === 'active' && (r.status === 'pending' || r.status === 'retrying') && (r.due_date as string) <= horizon;
+    }).map(r => {
+      const p = planBy.get(r.plan_id as string)!;
+      return {
+        id: r.id, plan_id: r.plan_id, family_name: p.family_name, due_date: r.due_date, sequence: r.sequence, of: countOf(r.plan_id as string),
+        amount_cents: Number(r.amount_cents), charge_cents: chargeFor(r as unknown as Inst, club.feesWaived),
+        plan_total_cents: Number(p.total_cents), down_cents: Number(p.today_cents ?? 0), monthly_cents: monthlyOf(r.plan_id as string),
+        status: r.status, last_error: r.last_error ?? null,
+        approved_at: r.approved_at ?? null, approved_by: r.approved_by ? who.get(r.approved_by as string) ?? 'Board' : null,
+        test_card: String(p.stripe_payment_method_id ?? '').startsWith('sim_'),
+      };
+    });
+    // The last 30 days: charges the daily run made (not ones a family paid
+    // at checkout), paid or declined, and renewals approved with a saved card.
+    const since = new Date(Date.now() - 30 * 86400_000).toISOString();
+    const history = all.filter(r => !r.stripe_session_id && r.last_attempt_at && (r.last_attempt_at as string) >= since
+      && ['paid', 'retrying', 'failed'].includes(String(r.status))).map(r => ({
+        kind: 'plan', family_name: planBy.get(r.plan_id as string)?.family_name ?? '', at: r.paid_at ?? r.last_attempt_at,
+        charge_cents: chargeFor(r as unknown as Inst, club.feesWaived), status: r.status, last_error: r.last_error ?? null,
+        approved_by: r.approved_by ? who.get(r.approved_by as string) ?? 'Board' : null,
+      }));
+    const { data: renewals } = await sb.from('audit_log').select('created_at, summary')
+      .eq('tenant_id', payload.tid).eq('kind', 'renewal.auto_charged').gte('created_at', since).limit(200);
+    for (const a of (renewals ?? [])) history.push({ kind: 'renewal', family_name: String(a.summary ?? ''), at: a.created_at, charge_cents: 0, status: 'paid', last_error: null, approved_by: 'The family' });
+    history.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    return jsonResponse({ ok: true, today: club.today, horizon: body.all === true ? null : horizon,
+      billing_day: club.cfg.billing_day ?? 1, test_mode: club.testMode, upcoming, history });
+  }
+
+  // Tick: approve these payments (and their retries). Untick before it's
+  // charged with 'unapprove'.
+  if (action === 'approve') {
+    const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(Boolean).slice(0, 500);
+    if (!ids.length) return jsonResponse({ ok: false, error: 'Tick at least one payment.' }, 400);
+    const { data, error } = await sb.from('payment_plan_installments')
+      .update({ approved_at: new Date().toISOString(), approved_by: payload.sub })
+      .in('id', ids).eq('tenant_id', payload.tid).is('approved_at', null).in('status', ['pending', 'retrying'])
+      .select('id');
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    await askForApproval(sb, payload.tid);   // closes the task once nothing waits
+    return jsonResponse({ ok: true, approved: (data ?? []).length });
+  }
+  if (action === 'unapprove') {
+    const { data, error } = await sb.from('payment_plan_installments')
+      .update({ approved_at: null, approved_by: null })
+      .eq('id', String(body.id ?? '')).eq('tenant_id', payload.tid).eq('status', 'pending').select('id');
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!(data ?? []).length) return jsonResponse({ ok: false, error: 'That payment has already been tried, so it can\'t be undone here.' }, 409);
+    return jsonResponse({ ok: true });
   }
 
   if (action === 'config_save') {

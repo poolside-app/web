@@ -34,6 +34,8 @@ export const PLAN_DEFAULTS = {
   /** Doug's spec (10/7): members get receipts and failure emails, nothing
    *  else. Days before a charge to remind them, if a club wants it back. */
   reminder_days_before: [] as number[],
+  /** The day of the month every plan payment falls on (PLAN.md S1). */
+  billing_day: 1,
   /** Card retries: days after the first failure. The fourth failure ends it. */
   retry_days: [3, 7, 14] as number[],
   lapse_grace_days: 14,
@@ -55,6 +57,7 @@ export function planConfig(sv: unknown): PlanConfig {
   if (!['card', 'first_payment', 'half_paid'].includes(c.access_when)) c.access_when = 'half_paid';
   if (!Array.isArray(c.tiers)) c.tiers = [];
   if (!Array.isArray(c.retry_days) || !c.retry_days.length) c.retry_days = PLAN_DEFAULTS.retry_days;
+  c.billing_day = Math.min(28, Math.max(1, Math.trunc(Number(c.billing_day)) || 1));
   return c;
 }
 
@@ -112,8 +115,31 @@ export type Inst = {
   plan_fee_cents: number; card_fee_cents: number; status: string;
   attempt_count?: number | null; last_error?: string | null; paid_at?: string | null;
   first_failed_at?: string | null;
+  /** A board member ticked it on Money → Upcoming (PLAN.md S2). */
+  approved_at?: string | null;
 };
 export const isPaid = (i: { status: string }) => i.status === 'paid' || i.status === 'manual';
+
+/**
+ * The payments the daily run may charge today (PLAN.md S2, Doug 10/8: "I am
+ * very concerned about random charges"): due, not paid, and approved by a
+ * board member. Approval covers retries. In order: a payment that isn't
+ * approved holds back the ones after it.
+ */
+export function chargeableNow<T extends { sequence: number; due_date: string; status: string; approved_at?: string | null }>(rows: T[], today: string): T[] {
+  const due = rows.filter(r => (r.status === 'pending' || r.status === 'retrying') && r.due_date <= today)
+    .sort((a, b) => a.sequence - b.sequence);
+  const out: T[] = [];
+  for (const r of due) {
+    if (!r.approved_at) break;
+    out.push(r);
+  }
+  return out;
+}
+
+/** An unpaid payment the board hasn't approved yet: never the family's fault. */
+export const awaitingApproval = (i: { status: string; approved_at?: string | null }) =>
+  !isPaid(i) && !i.approved_at;
 
 export async function installmentsOf(sb: SupabaseClient, planId: string): Promise<Inst[]> {
   const { data } = await sb.from('payment_plan_installments').select('*').eq('plan_id', planId).order('sequence');

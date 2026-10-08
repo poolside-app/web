@@ -76,6 +76,8 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'keyfob.off': 'gate',
   'keyfob.venmo': 'gate',
   'renewal.auto_renew_failed': 'payments',
+  // Plan payments waiting for approval (PLAN.md S3).
+  'payments.approve_due': 'payments',
   'referral.reward_request': 'referrals',
   'party.requested': 'rentals',
   'party.venmo_claim': 'rentals',
