@@ -79,6 +79,8 @@ console.log('U4/V · the member app (offline)');
   check('the banner has the date, the weather and today', /hero-date/.test(pane) && /id="hero-weather"/.test(pane) && /todayLine/.test(pane) && /api\.open-meteo\.com/.test(home));
   check('keyfobs only on My family', !/renderFobCard|keyfob/i.test(pane) && /renderFobCard\(me\.keyfobs\)/.test(home.slice(home.indexOf('<section data-pane="family"'))));
   check('an unpaid family sees "Pay for" and the calendar', /Pay for \$\{/.test(home) && /: calendarHtml\}/.test(pane));
+  check('the banner shows the season they\'re a member for', /✓ \$\{escapeHtml\(String\(acc\.season\)\)\} member/.test(home) && /Renew for \$\{escapeHtml\(String\(acc\.season\)\)\} →/.test(home));
+  check('closed for the season: a thank-you in place of the hours', /Thanks for a great \$\{poolSeason\} season! We look forward to seeing you next summer\./.test(home) && /closed_message/.test(home));
   check('remote unlock offline is one quiet line', /Remote unlock is offline right now\. Use your keyfob\./.test(home));
 }
 
