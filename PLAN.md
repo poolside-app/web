@@ -617,6 +617,27 @@ Doug, on the tabs: the bottom bar doesn't stay at the bottom; keyfobs belong onl
 - **My family:** the family card, payment plan, keyfobs, and refer a friend (moved off the banner).
 - Weather: Open-Meteo (free, no key), from the pool's map pin, which only signed-in current members get.
 
+### W. A board home for each board member (Doug, 10/9) — ✅ done 10/9
+Doug liked the member home and asked for the board page done the same way, one per board member. Mockups shown 10/9 (President, Treasurer, Facilities Director). Doug decided (10/9):
+- **The page comes from the ticks.** Whatever the President ticks for a position on Settings → Board (its screens and its alerts) decides that person's home. Nothing extra to set up. When the President changes the ticks, the person's page changes the next time they open it. Someone with two positions gets both; the President (full access) sees everything.
+- **Bottom bar on phones, on every board page,** like the member app. Computers keep the top tabs.
+- **The gate unlock at the top of every board member's home,** not only the President's, and only when the club has keyfobs and remote unlock on.
+
+The home, in order:
+- A small banner: hi, the date, the weather at the pool, today's hours, their position and the season. Three numbers from their screens: money (collected, still owed, on a plan); members (families paid of all, signups waiting, renewals left); gate (check-ins today, keyfobs to make, fobs in use); calendar (parties this week, events this week, program signups); no screens (families paid, open member questions, next meeting). The President gets families paid, collected, on a plan.
+- The gate unlock (one quiet line when it's offline).
+- **Needs you:** their dashboard tasks and member questions in one list, one button each. Replaces "What needs your attention", "Your tasks" and the Member help card.
+- **Today at the pool** and **Coming up** (events, parties, programs, the next board meeting; plan charge days for money people).
+- Four quick buttons from their screens (Text all members, Post news, Add an event, Add photos, Upcoming payments, Signups, Member list, Keyfobs, Check-in, Lifeguard shifts…, first four they can use).
+- Their job description, and the signup link for those who handle signups.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ W1.** The home: one server call (`admin_tasks` `home`) returns the numbers, to-dos, today, coming up and buttons, limited to the person's screens and alerts. It replaces about ten calls the dashboard makes now. The page is rebuilt as above.
+- **✅ W2.** The unlock for every board member: a `gate_admin` action any active board member can use (today only the owner can), logged with who opened it. Shown only with keyfobs and remote unlock on. No real unlock is tested while the bridge is off (a queued unlock could fire when it comes back).
+- **✅ W3.** The bottom bar on every board page (Home, the sections they can use, More with the rest, help, member view and sign out), and the top tabs hide sections they can't use. Done once in `js/admin-subtabs.js`, not page by page. Every page checked at iPhone width.
+- **✅ W4.** Proof: `scripts/test_board_home.mjs` (offline: what Bishop's President, Treasurer, Facilities Director and Grounds Director each get; live: a few calls with a temporary board login, removed after) and screenshots of three positions on a phone and a computer.
+- Notes: "families paid" has no "of 64" (the dues bar never had one: what the 64 is would be arguable). The board meeting links (start one, add to the agenda) stay as rows at the bottom of the home. A Facilities Director's Settings tab now opens Keyfobs; before, the tab was hidden from them. Quick buttons open their form (`announcements.html#text`, `#new`, `events.html#new`, `photos.html#upload`). The "?" button gives way to More on phones. `node scripts/test_board_home.mjs [--live]` (47 offline, 9 live checks).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

@@ -987,6 +987,8 @@ async function removeSub(encUrl, name) {
     if (s.ok) SETTINGS = s.settings || {};
   } catch { SETTINGS = {}; }
   await refresh();
+  // The board home's "Add an event" button (PLAN.md W).
+  if (location.hash === '#new') openCreate();
   await refreshExtFeeds();
 })();
 

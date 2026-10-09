@@ -676,6 +676,7 @@ window.addManifestLink = function (href) {
 <script src="/js/calendar.js"></script>
 <script src="/js/upcoming.js"></script>
 <script src="/js/today.js" defer></script>
+<script src="/js/pool-weather.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
@@ -1903,29 +1904,8 @@ async function claimFobVenmo() {
 }
 
 // ── The weather at the pool, for the banner (PLAN.md V) ──────────────────
-// Open-Meteo: free, no key. Kept for 30 minutes so opening the app often
-// doesn't ask again. The banner just leaves it out if it can't be had.
-const WX = { 0: ['☀️', 'Clear'], 1: ['🌤️', 'Mostly sunny'], 2: ['⛅', 'Partly cloudy'], 3: ['☁️', 'Cloudy'], 45: ['🌫️', 'Fog'], 48: ['🌫️', 'Fog'],
-  51: ['🌦️', 'Drizzle'], 53: ['🌦️', 'Drizzle'], 55: ['🌦️', 'Drizzle'], 61: ['🌧️', 'Rain'], 63: ['🌧️', 'Rain'], 65: ['🌧️', 'Heavy rain'],
-  71: ['🌨️', 'Snow'], 73: ['🌨️', 'Snow'], 75: ['🌨️', 'Snow'], 80: ['🌦️', 'Showers'], 81: ['🌦️', 'Showers'], 82: ['🌧️', 'Heavy showers'],
-  95: ['⛈️', 'Thunderstorms'], 96: ['⛈️', 'Thunderstorms'], 99: ['⛈️', 'Thunderstorms'] };
-async function loadWeather(loc) {
-  const el = document.getElementById('hero-weather');
-  if (!el) return;
-  const KEY = 'poolside_wx';
-  let wx = null;
-  try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); if (c && Date.now() - c.at < 30 * 60_000 && c.lat === loc.lat) wx = c; } catch (_) {}
-  if (!wx) {
-    try {
-      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=auto`).then(x => x.json());
-      if (!r || !r.current) return;
-      wx = { at: Date.now(), lat: loc.lat, t: Math.round(r.current.temperature_2m), code: r.current.weather_code };
-      try { localStorage.setItem(KEY, JSON.stringify(wx)); } catch (_) {}
-    } catch (_) { return; }
-  }
-  const [icon, label] = WX[wx.code] || ['🌡️', ''];
-  el.textContent = `${icon} ${wx.t}°${label ? ' ' + label : ''} at the pool`;
-}
+// js/pool-weather.js, shared with the board home (PLAN.md W).
+function loadWeather(loc) { return PoolWeather.load(loc, document.getElementById('hero-weather')); }
 
 // ── The app tabs (PLAN.md U4) ────────────────────────────────────────────
 // Old links still land in the right place: #parties on Calendar, #plan and

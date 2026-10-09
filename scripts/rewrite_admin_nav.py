@@ -126,9 +126,10 @@ def rewrite_file(path: Path, dry_run: bool = False):
     # Strip every previously-injected strip first, wherever it sits, so the
     # only one left is the one we add back.
     body = OLD_STRIP_RE.sub("", text)
-    block = SUBTAB_BLOCK if name in PAGE_TO_TAB and PAGE_TO_TAB[name] else ""
-    # Pages with no active tab still get no strip.
-    new_nav = render_nav(PAGE_TO_TAB[name]) + (block if PAGE_TO_TAB[name] else "")
+    # Every page with the tabs gets the block: it also draws the bottom bar
+    # on phones (PLAN.md W3). Pages with no active tab have no strip, since
+    # admin-subtabs.js finds no section for them.
+    new_nav = render_nav(PAGE_TO_TAB[name]) + SUBTAB_BLOCK
     new_text = NAV_RE.sub(lambda _m: new_nav, body, count=1)
 
     if new_text == text:

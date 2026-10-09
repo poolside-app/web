@@ -605,46 +605,10 @@ Deno.serve(async (req) => {
 
     // ── Dues collected ───────────────────────────────────────────────
     // Two numbers: how many have paid, and how much is in. Nothing else.
-    //
-    // No denominator on purpose. "118 of 150" invites the question of what
-    // 150 is — active households? including the family that moved away in
-    // March? the ones mid-application? — and every answer is arguable, which
-    // makes the headline number arguable too. How many have paid is not.
-    //
-    // Paid means confirmed by either route: a Stripe charge that cleared, or
-    // a Venmo, check or cash payment the treasurer ticked off. Both set the
-    // same flag, so neither is favored.
-    //
-    // The money is derived from each paid household's tier price, because
-    // there is no payments table to sum — dues arrive four different ways and
-    // the only thing all four update is that flag. So it is what the club has
-    // booked, not what has cleared a bank.
-    //
-    // Test payments (test mode) aren't money in: they're left out of both
-    // numbers and reported on their own as test_paid.
+    // The rules are in _shared/dues_totals.ts, shared with the board home.
     try {
-      const { testPaidHouseholds } = await import('../_shared/test_payments.ts');
-      const testIds = await testPaidHouseholds(sb, payload.tid);
-      // Paid for the current season (PLAN.md U2), so the bar never mixes
-      // last season's families into this one's.
-      const { sellingYear } = await import('../_shared/membership_year.ts');
-      const season = sellingYear(settingsValue);
-      const { data: hh } = await sb.from('households')
-        .select('id, tier')
-        .eq('tenant_id', payload.tid).eq('active', true).gte('paid_until_year', season);
-      const tiers = (settingsValue.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
-      const priceOf = (slug: string | null | undefined) => {
-        const t = tiers.find(x => x.slug === slug) ?? tiers[0];
-        return Number(t?.price_cents ?? 0) || 0;
-      };
-      const all = hh ?? [];
-      const rows = all.filter(r => !testIds.has(r.id as string));
-      (usage as Record<string, unknown>).dues = {
-        season,
-        paid: rows.length,
-        collected_cents: rows.reduce((n, r) => n + priceOf(r.tier as string), 0),
-        test_paid: all.length - rows.length,
-      };
+      const { duesTotals } = await import('../_shared/dues_totals.ts');
+      (usage as Record<string, unknown>).dues = await duesTotals(sb as never, payload.tid, settingsValue);
     } catch (e) {
       console.error('dues total for ticker (non-fatal):', (e as Error).message);
     }

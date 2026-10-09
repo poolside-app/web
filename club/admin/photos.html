@@ -427,6 +427,8 @@ function moveDown() { moveBy(+1); }
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   } catch { logout(); return; }
   await refresh();
+  // The board home's "Add photos" button (PLAN.md W): straight to the upload.
+  if (location.hash === '#upload') document.getElementById('drop')?.scrollIntoView({ block: 'center' });
 })();
 </script>
 </body>

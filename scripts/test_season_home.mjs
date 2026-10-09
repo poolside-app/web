@@ -76,7 +76,7 @@ console.log('U4/V · the member app (offline)');
   const pane = home.slice(home.indexOf('<section data-pane="home">'), home.indexOf('<section data-pane="help"'));
   const order = ['hero-card compact', 'gate-card', 'todo-host', 'Latest news', 'renderFundraiserCard', 'photos-card', 'calendarHtml'].map(k => pane.indexOf(k));
   check('Home: banner, unlock, to-dos, news, fundraiser, photos, calendar', order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1])), short(order));
-  check('the banner has the date, the weather and today', /hero-date/.test(pane) && /id="hero-weather"/.test(pane) && /todayLine/.test(pane) && /api\.open-meteo\.com/.test(home));
+  check('the banner has the date, the weather and today', /hero-date/.test(pane) && /id="hero-weather"/.test(pane) && /todayLine/.test(pane) && /\/js\/pool-weather\.js/.test(home) && /api\.open-meteo\.com/.test(read('js/pool-weather.js')));
   check('keyfobs only on My family', !/renderFobCard|keyfob/i.test(pane) && /renderFobCard\(me\.keyfobs\)/.test(home.slice(home.indexOf('<section data-pane="family"'))));
   check('an unpaid family sees "Pay for" and the calendar', /Pay for \$\{/.test(home) && /: calendarHtml\}/.test(pane));
   check('the banner shows the season they\'re a member for', /✓ \$\{escapeHtml\(String\(acc\.season\)\)\} member/.test(home) && /Renew for \$\{escapeHtml\(String\(acc\.season\)\)\} →/.test(home));

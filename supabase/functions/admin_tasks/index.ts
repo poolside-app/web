@@ -12,6 +12,9 @@
 //     → { ok, tasks: [...], me }  — open tasks visible to caller, newest
 //                                   first; assigned ones carry assigned_name
 //
+//   { action: 'home' }
+//     → the same, plus { home } for the dashboard (PLAN.md W)
+//
 //   { action: 'count' }
 //     → { ok, open: N }        — fast pill for the dashboard
 //
@@ -35,6 +38,8 @@ import { TOPIC_LABELS } from '../_shared/help.ts';
 import { loadBoard } from '../_shared/positions_db.ts';
 import { noticeRecipients, HELP_NOTICE, SPENDING_RULE } from '../_shared/positions.ts';
 import { taskNotice } from '../_shared/task_routing.ts';
+import { loadHome } from '../_shared/board_home.ts';
+import { zoneOrDefault } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -106,14 +111,15 @@ Deno.serve(async (req) => {
   const recipientsOf = (notice: string) => noticeRecipients(notice, board.positions, board.holders, board.logins);
   const visible = (t: Parameters<typeof taskVisibleTo>[0]) => taskVisibleTo(t, caller, recipientsOf);
 
-  if (action === 'list') {
+  // The open tasks this person sees, and what the dashboard shows with them.
+  async function listPayload() {
     let q = sb.from('admin_tasks').select(FIELDS).eq('tenant_id', TID);
     if (!body.include_completed) {
       q = q.is('completed_at', null).is('dismissed_at', null);
     }
     q = q.order('created_at', { ascending: false }).limit(100);
     const { data, error } = await q;
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (error) throw new Error(error.message);
     const tasks = (data ?? []).filter(visible);
     // "For the Treasurer": the position a board-position alert belongs to.
     for (const t of tasks as Record<string, unknown>[]) {
@@ -142,14 +148,40 @@ Deno.serve(async (req) => {
     // "Your job" (PLAN.md K4): the positions this person holds, with their
     // job descriptions, and the club's spending rule.
     const heldIds = new Set(board.holders.filter(h => h.admin_user_id === caller.id).map(h => h.position_id));
-    const my_positions = board.positions.filter(p => heldIds.has(p.id))
-      .map(p => ({ title: p.title, purpose: p.purpose ?? null, description: p.description ?? null }));
+    const held = board.positions.filter(p => heldIds.has(p.id));
+    const my_positions = held.map(p => ({ title: p.title, purpose: p.purpose ?? null, description: p.description ?? null }));
     const { data: st } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
-    const rule = ((st?.value as Record<string, Record<string, unknown>> | null)?.board?.spending_rule);
-    return jsonResponse({
-      ok: true, tasks, me: caller.id, help_topics_mine, push_devices: devices ?? 0,
-      my_positions, spending_rule: typeof rule === 'string' ? rule : SPENDING_RULE,
-    });
+    const settingsValue = (st?.value ?? {}) as Record<string, unknown>;
+    const rule = (settingsValue as Record<string, Record<string, unknown>>)?.board?.spending_rule;
+    return {
+      payload: {
+        ok: true, tasks, me: caller.id, help_topics_mine, push_devices: devices ?? 0,
+        my_positions, spending_rule: typeof rule === 'string' ? rule : SPENDING_RULE,
+      },
+      held, settingsValue,
+    };
+  }
+
+  if (action === 'list') {
+    try { return jsonResponse((await listPayload()).payload); }
+    catch (e) { return jsonResponse({ ok: false, error: (e as Error).message }, 500); }
+  }
+
+  // The board home (PLAN.md W): the tasks, plus the banner's numbers, today
+  // and the week ahead, and the quick buttons, all from this person's
+  // screens (the ticks on Settings → Board). One call for the whole page.
+  if (action === 'home') {
+    try {
+      const { payload: list, held, settingsValue } = await listPayload();
+      const tz = zoneOrDefault((await sb.from('tenants').select('timezone').eq('id', TID).maybeSingle()).data?.timezone);
+      const home = await loadHome(sb as never, {
+        tenantId: TID, tz, settingsValue, caller, held: caller.isOwner ? [] : held,
+        tasks: list.tasks as Array<{ kind: string }>,
+      });
+      return jsonResponse({ ...list, home });
+    } catch (e) {
+      return jsonResponse({ ok: false, error: (e as Error).message }, 500);
+    }
   }
 
   if (action === 'count') {

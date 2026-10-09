@@ -49,32 +49,17 @@
   .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
   .who a { color: var(--blue); cursor: pointer; }
   main {
-    flex: 1; padding: 32px 22px;
-    max-width: 880px; width: 100%; margin: 0 auto;
+    flex: 1; padding: 26px 22px 32px;
+    max-width: 1080px; width: 100%; margin: 0 auto;
   }
   .card {
     background: #fff; border: 1px solid var(--border);
-    border-radius: var(--r-lg); padding: 28px;
-    box-shadow: var(--shadow); margin-bottom: 22px;
+    border-radius: var(--r-lg); padding: 20px 22px;
+    box-shadow: var(--shadow); margin-bottom: 18px;
   }
-  .pill {
-    display: inline-block; padding: 3px 10px; border-radius: 999px;
-    font-size: 11px; font-weight: 600; letter-spacing: .04em;
-    text-transform: uppercase;
-  }
-  .pill.trial    { background: #fef3c7; color: #92400e; }
-  .pill.active   { background: #dcfce7; color: #14532d; }
-  .pill.suspended{ background: #fee2e2; color: #7f1d1d; }
-  .lede { color: var(--muted); margin: 8px 0 0; font-size: 15px; }
-  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 18px; }
-  .stat {
-    background: var(--bg-2); border-radius: var(--r-md); padding: 18px 16px;
-  }
-  .stat .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
-  .stat .val { font-size: 22px; font-weight: 700; margin-top: 6px; color: var(--blue); }
   .placeholder {
     border: 2px dashed var(--border); border-radius: var(--r-md);
-    padding: 40px 22px; text-align: center; color: var(--muted);
+    padding: 26px 18px; text-align: center; color: var(--muted); font-size: 14px;
   }
   /* nav.tabs: horizontal scroll the tab strip itself on narrow viewports
      instead of pushing the whole page wider (mobile fix 2026-05-22). */
@@ -93,6 +78,75 @@
   nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
   nav.tabs a:hover { color: var(--blue); }
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* ── The board home (PLAN.md W): the member home's layout, one per board
+     member. Banner, the gate, Needs you, today, quick buttons. ── */
+  .hero { background: linear-gradient(135deg, var(--blue), var(--blue-2)); color: #fff; border-radius: var(--r-lg); padding: 16px 18px; margin-bottom: 14px; box-shadow: 0 10px 30px rgba(10,59,92,.18); }
+  .hero-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .hero h1 { font-size: 22px; color: #fff; }
+  .hero-date { font-size: 13px; opacity: .85; white-space: nowrap; }
+  .hero-badges { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .hb { padding: 3px 10px; border-radius: 999px; font: 700 12.5px 'Inter', sans-serif; }
+  .hb.role { background: rgba(255,255,255,.14); color: #fff; }
+  .hb.season { background: rgba(34,197,94,.22); color: #dcfce7; }
+  .hero-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 13.5px; }
+  .hero-line span { white-space: nowrap; }
+  .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 14px; border-top: 1px solid rgba(255,255,255,.16); padding-top: 12px; }
+  .hs { padding: 0 8px; border-left: 1px solid rgba(255,255,255,.16); color: #fff; text-decoration: none; min-width: 0; }
+  .hs:first-child { border-left: 0; padding-left: 0; }
+  .hs .v { font: 700 19px 'Inter', sans-serif; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hs .l { font-size: 11.5px; opacity: .8; margin-top: 1px; line-height: 1.3; }
+
+  .gate { display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 16px !important; }
+  .gate .gi { font-size: 22px; }
+  .gate .gt { flex: 1; font-weight: 600; font-size: 15px; min-width: 0; }
+  .gate .gt small { display: block; font-weight: 500; font-size: 12.5px; color: var(--green); }
+  .gate .gt small.off { color: var(--muted); }
+  .hbtn { padding: 9px 16px; border-radius: 10px; font: 600 13.5px 'Inter', sans-serif; border: 0; background: var(--blue); color: #fff; white-space: nowrap; text-decoration: none; cursor: pointer; display: inline-block; }
+  .hbtn.ghost { background: var(--blue-l); color: var(--blue); }
+  .hbtn:disabled { opacity: .6; cursor: default; }
+
+  .card-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .card-h h2 { margin: 0; }
+  .count { background: var(--sun); color: var(--blue); font: 700 12px/20px 'Inter', sans-serif; padding: 0 8px; border-radius: 999px; }
+  .sub-h { font: 700 11.5px 'Inter', sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
+  .todo { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); }
+  .todo:first-child { border-top: 0; padding-top: 2px; }
+  .ti { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 19px; flex: none; background: var(--blue-l); }
+  .ti.money { background: #dcfce7; } .ti.fob { background: #fef3c7; } .ti.ask { background: #ede9fe; } .ti.party { background: #fce7f3; }
+  .tt { flex: 1; min-width: 0; }
+  .tt b { display: block; font-size: 14.5px; font-weight: 600; }
+  .tt span { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 1px; overflow-wrap: anywhere; }
+  .tt .meta { font-size: 11.5px; margin-top: 3px; }
+  .tt .meta button { background: none; border: 0; padding: 0; color: var(--blue); font: 600 11.5px 'Inter', sans-serif; cursor: pointer; }
+  .ev { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); align-items: center; }
+  .ev:first-child, .sub-h + .ev { border-top: 0; }
+  .ev .when { width: 92px; flex: none; font: 600 12.5px 'Inter', sans-serif; color: var(--blue); }
+  .ev .what { flex: 1; font-size: 14px; min-width: 0; }
+  .ev .what small { display: block; font-size: 12px; color: var(--muted); }
+  .tag { font: 600 11px 'Inter', sans-serif; padding: 2px 8px; border-radius: 999px; background: var(--bg-2); color: var(--muted); white-space: nowrap; text-decoration: none; }
+  .tag.wait { background: #fef3c7; color: #92400e; }
+  .qa { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qa a { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: var(--r-md); background: var(--bg-2); color: var(--text); text-decoration: none; font: 600 13.5px 'Inter', sans-serif; min-width: 0; }
+  .qa a span { font-size: 20px; }
+  .rows > a, .rows > details > summary, .rows > .row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--text); text-decoration: none; font-size: 14px; font-weight: 500; cursor: pointer; list-style: none; }
+  .rows > :first-child, .rows > details:first-child > summary { border-top: 0; padding-top: 0; }
+  .rows > details > summary::-webkit-details-marker { display: none; }
+  .rows .arr { margin-left: auto; color: var(--muted); }
+  .rows .copy { margin-left: auto; font: 600 12.5px 'Inter', sans-serif; color: var(--blue); background: var(--blue-l); padding: 5px 10px; border-radius: 8px; border: 0; cursor: pointer; }
+  .job { font-size: 13.5px; line-height: 1.6; padding: 0 0 10px; }
+  .layout { display: block; }
+  @media (min-width: 900px) {
+    .hero { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 24px; padding: 22px 26px; margin-bottom: 18px; }
+    .hero h1 { font-size: 26px; }
+    .hero-top { justify-content: flex-start; gap: 14px; }
+    .hero-stats { margin: 0; border-top: 0; padding-top: 0; }
+    .hs { padding: 4px 18px; }
+    .hs .v { font-size: 24px; }
+    .layout { display: flex; align-items: flex-start; gap: 18px; }
+    .col.left { flex: 1.55; min-width: 0; }
+    .col.right { flex: 1; min-width: 0; }
+  }
 </style>
 </head>
 <body>
@@ -120,6 +174,8 @@
 <script src="/js/admin-help-fab.js" defer></script>
 <script src="/js/admin-push.js" defer></script>
 <script src="/js/upcoming.js"></script>
+<script src="/js/today.js"></script>
+<script src="/js/pool-weather.js"></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
 </main>
@@ -127,17 +183,10 @@
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
-const AUTH_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
-const APPS_URL    = `${SUPABASE_URL}/functions/v1/applications`;
-const PARTIES_URL = `${SUPABASE_URL}/functions/v1/parties_admin`;
+const AUTH_URL     = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
-const HH_URL = `${SUPABASE_URL}/functions/v1/households_admin`;
-const PAY_URL = `${SUPABASE_URL}/functions/v1/payments_admin`;
-const EVENTS_URL = `${SUPABASE_URL}/functions/v1/events_admin`;
-const PROGRAMS_URL = `${SUPABASE_URL}/functions/v1/programs`;
-const VOLUNTEER_URL = `${SUPABASE_URL}/functions/v1/volunteer`;
-const TASKS_URL = `${SUPABASE_URL}/functions/v1/admin_tasks`;
-const GATE_URL = `${SUPABASE_URL}/functions/v1/gate_admin`;
+const TASKS_URL    = `${SUPABASE_URL}/functions/v1/admin_tasks`;
+const GATE_URL     = `${SUPABASE_URL}/functions/v1/gate_admin`;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,6 +228,35 @@ document.getElementById('signout').addEventListener('click', logout);
   history.replaceState(null, '', window.location.pathname + window.location.search);
 })();
 
+// ── How each kind of task reads in "Needs you" ──────────────────────────
+// A short title, an icon, and the one button. The task's own summary is the
+// line underneath. Anything not listed reads as a plain to-do.
+const TASK_LOOK = [
+  [/^payments\.approve_due/,          '💳', 'money', 'Approve upcoming payments', 'Review'],
+  [/^(venmo\.claim|party\.venmo_claim|keyfob\.venmo)/, '📲', 'money', 'Venmo to check', 'Check'],
+  [/^application\.submitted/,        '📝', '',      'Signup to review',  'Review'],
+  [/^application\.(refund|dispute)|^stripe\.refund|^party\.refund/, '💸', 'money', 'Money to sort out', 'Open'],
+  [/^plan\.fob_|^keyfob\./,          '🔑', 'fob',   'Keyfob',            'Open'],
+  [/^plan\.|^renewal\./,             '💳', 'money', 'Payment plan',      'Open'],
+  [/^referral\./,                    '🎁', 'party', 'Referral reward',   'Open'],
+  [/^party\.requested/,              '🎉', 'party', 'Party request',     'Decide'],
+  [/^help\.request/,                 '💬', 'ask',   'Member question',   'Reply'],
+  [/^photo\./,                       '📷', '',      'Photo to approve',  'Review'],
+  [/^household/,                     '👪', '',      'Family change',     'Open'],
+  [/^meeting\./,                     '🗒️', '',      'Meeting follow-up', 'Open'],
+  [/^gate\./,                        '🚪', 'fob',   'Gate',              'Open'],
+];
+// What comes first: money that's waiting on a tick, then people waiting.
+const TASK_ORDER = [/^payments\.approve_due/, /venmo/, /^application\.submitted/, /^help\.request/, /^party\.requested/, /^keyfob\.|^plan\.fob_/];
+function taskLook(kind) {
+  const hit = TASK_LOOK.find(([re]) => re.test(String(kind || '')));
+  return hit ? { icon: hit[1], tone: hit[2], title: hit[3], button: hit[4] } : { icon: '🔔', tone: '', title: 'To do', button: 'Open' };
+}
+function taskRank(kind) {
+  const i = TASK_ORDER.findIndex(re => re.test(String(kind || '')));
+  return i < 0 ? TASK_ORDER.length : i;
+}
+
 (async () => {
   // Use the shared PoolsideAuth.meOrLogout — only fires logout on a real
   // 401 or session-fatal error, not on every network blip. Random logouts
@@ -192,16 +270,7 @@ document.getElementById('signout').addEventListener('click', logout);
   }
   if (!data) return;  // already redirected to login.html
 
-  // Doug 2026-05-23: `token` was referenced in 7 fetch headers below but
-  // never actually declared. Every interpolation `${token}` threw a
-  // silent ReferenceError that the surrounding try/catch swallowed — so
-  // the household count, activity feed, tasks queue, and onboarding
-  // status calls have all been failing since the file was written, just
-  // quietly showing "—" / "Couldn't load…" placeholders that read as
-  // "all clear" instead of "the request crashed." Declare it now so
-  // those queries actually execute.
   const token = localStorage.getItem('poolside_tenant_token');
-
   const { user, tenant } = data;
 
   // First-login forced password change. An invited admin lands here with
@@ -234,163 +303,7 @@ document.getElementById('signout').addEventListener('click', logout);
   // sign-in page they have no account for.
   const memberSwitch = document.getElementById('member-switch');
   if (memberSwitch && user.linked_member_id) memberSwitch.style.display = '';
-    if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant, data.usage);
-
-  // Impersonation banner now painted globally by PoolsideFlags.apply()
-  // above so it appears on every admin page, not just the dashboard.
-
-
-  const statusLabel = ({trial:'Free Trial', active:'Active', suspended:'Suspended', churned:'Closed'})[tenant.status] ?? tenant.status;
-  const planLabel   = ({free:'Free', starter:'Starter', pro:'Pro', enterprise:'Enterprise'})[tenant.plan] ?? tenant.plan;
-
-  // Households + member counts in parallel with the render
-  let hhCount = '…', memberCount = '…';
-  document.getElementById('main').innerHTML = `
-    <!-- Order rationale (Doug 2026-05-23):
-         1. What needs your attention       — what to DO  (above the fold)
-         2. Your tasks                      — my queue
-         3. Stats card                      — what IS    (passive context)
-         4. Quick actions                   — common nav
-         5. Apply link                      — share-me URL (rarely needed)
-         Doug's 2026-05-23 phone test: he had an open pending application
-         and the dashboard read as "all clear" because action items were
-         below the stats fold. Hoisting attention cards above stats so
-         pending work is impossible to miss. -->
-
-    <!-- Quick-unlock card — only renders when this tenant has the gate
-         add-on at status='active' AND the bridge is online. Lives above
-         everything else so a board member at the gate can fire an unlock
-         without going to settings or signing in on the member side.
-         Hidden by default; loadGateUnlockCard() flips display when the
-         get_status response confirms readiness. Doug 2026-05-23. -->
-    <div class="card" id="gate-quick-unlock" style="display:none;background:linear-gradient(135deg,var(--blue),var(--blue-2));color:#fff;border:0">
-      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
-        <div style="font-size:42px;line-height:1">🚪</div>
-        <div style="flex:1;min-width:200px">
-          <h2 style="color:#fff;font-size:18px;margin:0 0 4px">Unlock the gate</h2>
-          <div id="gate-quick-status" style="font-size:13px;opacity:.85">Bridge online — tap to fire an unlock at the panel.</div>
-        </div>
-        <button id="gate-quick-btn" type="button" style="padding:14px 28px;background:#fff;color:var(--blue);border:0;border-radius:12px;font:700 15px Inter,sans-serif;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.15)">🚪 Unlock now</button>
-      </div>
-      <div id="gate-quick-feedback" style="font-size:13px;margin-top:10px;min-height:18px"></div>
-    </div>
-
-    <!-- PLAN.md K4: the board member's own position(s) and job description,
-         so every director has their list in front of them. -->
-    <div class="card" id="my-job-card" style="display:none"></div>
-
-    <div class="card" id="activity-card">
-      <h2>What needs your attention</h2>
-      <div class="placeholder">Loading…</div>
-    </div>
-
-    <div id="push-prompt" style="display:none;margin-bottom:16px"></div>
-
-    <div class="card" id="tasks-card" style="display:none">
-      <h2>Your tasks</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Things routed to you or your role. First admin to handle one closes it for everyone.</p>
-      <div id="tasks-list"></div>
-    </div>
-
-    <div class="card" id="member-help-card">
-      <h2>Member help</h2>
-      <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Questions and problems members send from the app. Each one goes to the board member who handles that topic. <span id="member-help-mine" style="color:var(--text);font-weight:600"></span></p>
-      <a href="/club/admin/member-help.html" style="display:inline-block;padding:10px 18px;background:var(--blue);color:#fff;text-decoration:none;border-radius:10px;font:600 14px 'Inter'">Open the inbox</a>
-    </div>
-
-    <div class="card" id="meetings-card">
-      <h2>Board meeting</h2>
-      <p style="font-size:13.5px;color:var(--muted);margin:0 0 14px">Taking notes at a board meeting? Start one here. It records the time, and you check off who's there.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <a href="/club/admin/board-meetings.html#start" style="padding:10px 18px;background:var(--blue);color:#fff;text-decoration:none;border-radius:10px;font:600 14px 'Inter'">▶ Start a meeting</a>
-        <a href="/club/admin/board-meetings.html#add" style="font:600 13px 'Inter';color:var(--blue)">+ Add to the next agenda</a>
-        <a href="/club/admin/board-meetings.html" style="font:600 13px 'Inter';color:var(--blue)">Past minutes</a>
-      </div>
-    </div>
-
-    <div class="card">
-      <h1>${escapeHtml(tenant.display_name)}</h1>
-      <p class="lede">Admin dashboard — your club is at <a href="https://${escapeHtml(tenant.slug)}.poolsideapp.com" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">${escapeHtml(tenant.slug)}.poolsideapp.com</a></p>
-      <div class="grid">
-        <div class="stat"><div class="lbl">Status</div><div class="val"><span class="pill ${escapeHtml(tenant.status)}">${escapeHtml(statusLabel)}</span></div></div>
-        <div class="stat"><div class="lbl">Plan</div><div class="val">${escapeHtml(planLabel)}</div></div>
-        <div class="stat"><div class="lbl">Households</div><div class="val" id="hh-count">…</div></div>
-        <div class="stat"><div class="lbl">Members</div><div class="val" id="m-count">…</div></div>
-        <div class="stat"><div class="lbl">Open payments</div><div class="val" id="pay-count">…</div></div>
-        <div class="stat"><div class="lbl">Upcoming events</div><div class="val" id="ev-count">…</div></div>
-        <div class="stat"><div class="lbl">Active programs</div><div class="val" id="prog-count">…</div></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Quick actions</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
-        <a class="qa" href="/club/admin/members.html#applications" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📨 <b>Review applications</b><br><span style="color:var(--muted);font-size:12px">Approve new memberships</span></a>
-        <a class="qa" href="/club/admin/announcements.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📣 <b>Post announcement</b><br><span style="color:var(--muted);font-size:12px">News for members</span></a>
-        <a class="qa" href="/club/admin/events.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📅 <b>Add event</b><br><span style="color:var(--muted);font-size:12px">Calendar entry</span></a>
-        <a class="qa" href="/club/admin/programs.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🏊 <b>Add program</b><br><span style="color:var(--muted);font-size:12px">Swim lessons / yoga / camp</span></a>
-<a class="qa" href="/club/admin/photos.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">📷 <b>Upload photos</b><br><span style="color:var(--muted);font-size:12px">Gallery for members</span></a>
-        <a class="qa" href="/club/admin/volunteer.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🙋 <b>Post volunteer slot</b><br><span style="color:var(--muted);font-size:12px">Snack-bar shift, swim meet</span></a>
-        <a class="qa" href="/club/admin/settings.html#gate" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">🚪 <b>Keyfob / gate access</b><br><span style="color:var(--muted);font-size:12px">Paid add-on — request integration</span></a>
-        <a class="qa" href="/club/admin/settings.html" style="display:block;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:#fff">⚙️ <b>Club settings</b><br><span style="color:var(--muted);font-size:12px">Branding, hours, contact</span></a>
-      </div>
-    </div>
-
-    <!-- Apply-link card moved to the bottom 2026-05-21 — it's the answer
-         to the FAQ "where do I send members to apply?" but it's not
-         daily-use info. Pushed below the action-oriented content. -->
-    <div class="card" id="apply-link-card" data-focus="apply-link">
-      <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 6px">🔗 Your apply link</h2>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5">Send this to families who want to join. Paste it in an email blast, on Facebook, or on your existing club website.</p>
-      <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
-        <input id="apply-link-input" type="text" readonly value="" onclick="this.select()" style="flex:1;min-width:240px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-2);color:var(--blue);font:600 13px 'Inter';user-select:all">
-        <button id="apply-link-copy" type="button" style="padding:10px 18px;background:var(--blue);color:#fff;border:0;border-radius:10px;font:600 13px 'Inter';cursor:pointer;white-space:nowrap">📋 Copy link</button>
-      </div>
-      <details style="font-size:13px;color:var(--muted)">
-        <summary style="cursor:pointer;color:var(--blue);font-weight:600;padding:4px 0">How to share this →</summary>
-        <div style="padding:10px 14px;margin-top:8px;background:var(--bg-2);border-radius:10px;line-height:1.55">
-          <b>Email blast:</b> "Memberships for [year] are open — apply at [link]."<br>
-          <b>Facebook post:</b> Pin a post with the link to your club's group.<br>
-          <b>Existing website:</b> Add a "Join us →" button linking to the apply page.<br>
-          <b>SMS / text:</b> Forward the link directly to a friend.<br>
-          <b>Flyer / printed:</b> A QR code generator (Google "QR code from URL") will turn this link into a scannable square.
-        </div>
-      </details>
-    </div>
-  `;
-
-  // ── Apply-link card: populate URL + wire Copy button ─────────────────
-  {
-    const applyUrl = `https://${tenant.slug}.poolsideapp.com/apply.html`;
-    const inputEl = document.getElementById('apply-link-input');
-    const copyBtn = document.getElementById('apply-link-copy');
-    if (inputEl) inputEl.value = applyUrl;
-    if (copyBtn) {
-      copyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(applyUrl);
-          const orig = copyBtn.textContent;
-          copyBtn.textContent = '✓ Copied';
-          copyBtn.style.background = '#16a34a';
-          markApplyLinkShared();
-          setTimeout(() => {
-            copyBtn.textContent = orig;
-            copyBtn.style.background = '';
-          }, 1800);
-        } catch {
-          // navigator.clipboard can fail in non-HTTPS or older browsers —
-          // fall back to selecting the text so the user can Ctrl+C.
-          // Tick the step here too: the intent to share is the same, and
-          // before this the flag was only set on the success path, so an
-          // admin whose browser blocks the clipboard API could never
-          // complete the step and the checklist never went away.
-          if (inputEl) { inputEl.focus(); inputEl.select(); }
-          markApplyLinkShared();
-          alert('Press Ctrl+C (or ⌘C on Mac) to copy.');
-        }
-      });
-    }
-  }
+  if (window.PoolsideFlags) PoolsideFlags.apply((data.tenant && data.tenant.features) || {}, data.user, data.tenant, data.usage);
 
   // ── The setup checklist (J1) ────────────────────────────────────────
   // One list, from tenant_settings.setup_status. It replaced the setup
@@ -428,7 +341,7 @@ document.getElementById('signout').addEventListener('click', logout);
       card.id = 'setup-card';
       // Lives outside <main> (main.innerHTML is replaced on render), so it
       // reproduces main's content box itself.
-      card.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:18px 22px;width:calc(100% - 44px);max-width:836px;margin:0 auto 18px';
+      card.style.cssText = 'background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:14px;padding:18px 22px;width:calc(100% - 44px);max-width:1036px;margin:18px auto 0';
       const main = document.getElementById('main');
       main.parentNode.insertBefore(card, main);
     }
@@ -477,7 +390,7 @@ document.getElementById('signout').addEventListener('click', logout);
       } catch { /* shows again next load */ }
       paintSetupChecklist();
     });
-    // The join-link item points at the card further down this page.
+    // The join-link item points at the signup link at the bottom of this page.
     card.querySelector('[data-setup="share_link"]')?.addEventListener('click', e => {
       const target = document.getElementById('apply-link-card');
       if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
@@ -486,279 +399,245 @@ document.getElementById('signout').addEventListener('click', logout);
   }
   paintSetupChecklist();
 
-  // Households + members counts
-  try {
-    const hRes = await fetch(HH_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'list' }),
-    });
-    const hData = await hRes.json();
-    if (hData.ok) {
-      const active = (hData.households || []).filter(h => h.active !== false);
-      const memberTotal = active.reduce((n, h) => n + (h.members || []).filter(m => m.active).length, 0);
-      document.getElementById('hh-count').textContent = active.length;
-      document.getElementById('m-count').textContent = memberTotal;
-    } else {
-      document.getElementById('hh-count').textContent = '0';
-      document.getElementById('m-count').textContent = '0';
-    }
-  } catch {
-    document.getElementById('hh-count').textContent = '–';
-    document.getElementById('m-count').textContent = '–';
-  }
-
-  // Activity feed + secondary stats. All in parallel — none depends on the others.
-  try {
-    const headers = { 'content-type': 'application/json', 'authorization': `Bearer ${token}` };
-    const j = (url, body) => fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({ ok: false }));
-    const [appsPending, parties, payments, events, programs, feeds] = await Promise.all([
-      // 'needs_attention' = pending submissions + approved-but-unpaid
-      // (same unified queue as the Pipeline). Single counter on the
-      // dashboard matches the Members nav badge + Pipeline subtab badge.
-      j(APPS_URL,      { action: 'list', status: 'needs_attention' }),
-      j(PARTIES_URL,   { action: 'list', status: 'pending' }),
-      j(PAY_URL,       { action: 'list' }),
-      j(EVENTS_URL,    { action: 'list', range: 'upcoming' }),
-      j(PROGRAMS_URL,  { action: 'list', active_only: true }),
-      // Imported calendars (Google etc.) count as events too.
-      fetch(`${SUPABASE_URL}/functions/v1/external_calendar`, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'list_public', slug: tenant.slug }) }).then(r => r.json()).catch(() => ({ ok: false })),
-    ]);
-
-    const appCount   = (appsPending.applications || []).length;
-    const partyCount = (parties.bookings || []).length;
-    // Dedupe: payments_admin.list includes application-bound payment rows
-    // (Venmo not yet verified, etc.) — but those already surface as
-    // "new applications" via the Pipeline. Counting them again as "open
-    // payments" double-counts the same household (Doug 2026-05-23).
-    // Filter to payment items NOT tied to an application — typically
-    // pure annual dues / programs.
-    const payItems   = (payments.items || []).filter(i => i.source !== 'application');
-    const overdueCount = payItems.filter(i => (i.age_days ?? 0) >= 14).length;
-    // Next 30 days, club events plus feed events (a daily "Pool Open" isn't
-    // an event; see js/upcoming.js).
-    const upcomingEv = PoolsideUpcoming.merge(events.events || [], (feeds.ok && feeds.feeds) || [], { days: 30, limit: Infinity }).length;
-    const activeProg = (programs.programs || []).length;
-
-    document.getElementById('pay-count').textContent  = payItems.length;
-    document.getElementById('ev-count').textContent   = upcomingEv;
-    document.getElementById('prog-count').textContent = activeProg;
-
-    const items = [];
-    if (appCount > 0) {
-      // Split label by what the items actually are — "X new" reads wrong
-      // when some are approved-but-awaiting-Venmo-verify.
-      const apps = appsPending.applications || [];
-      const newCount = apps.filter(a => a.status === 'pending').length;
-      const verifyCount = apps.filter(a => a.status === 'approved').length;
-      const labelParts = [];
-      if (newCount)    labelParts.push(`${newCount} new application${newCount === 1 ? '' : 's'}`);
-      if (verifyCount) labelParts.push(`${verifyCount} awaiting Venmo verify`);
-      items.push({
-        icon: '📨', label: labelParts.join(' · '),
-        sub: 'One-click approve or verify in Pipeline',
-        href: '/club/admin/members.html#applications', tone: 'amber',
-      });
-    }
-    if (partyCount > 0) items.push({
-      icon: '🎉', label: `${partyCount} party request${partyCount === 1 ? '' : 's'}`,
-      sub: 'Approve or reject', href: '/club/admin/parties.html', tone: 'amber',
-    });
-    if (payItems.length > 0) items.push({
-      icon: '💸', label: `${payItems.length} open payment${payItems.length === 1 ? '' : 's'}`,
-      sub: overdueCount > 0 ? `${overdueCount} 14+ days old` : 'Dues, programs, passes',
-      href: '/club/admin/payments.html', tone: overdueCount > 0 ? 'red' : 'amber',
-    });
-
-    const card = document.getElementById('activity-card');
-    if (items.length === 0) {
-      card.innerHTML = `<h2>What needs your attention</h2>
-        <div class="placeholder">
-          ✓ All caught up — no pending applications, party requests, or unpaid items.
-          <div style="margin-top:14px;font-size:13px">
-            New here? <a href="/club/admin/help.html" style="color:var(--blue);font-weight:600;text-decoration:underline">Browse the help center</a> for setup tips and how-tos.
-          </div>
-        </div>`;
-    } else {
-      card.innerHTML = `<h2>What needs your attention</h2>
-        <div style="display:flex;flex-direction:column;gap:8px">${items.map(it => `
-          <a href="${it.href}" style="display:flex;gap:14px;align-items:center;padding:14px 18px;border:1px solid var(--border);border-radius:var(--r-md);text-decoration:none;color:var(--text);background:${it.tone==='red'?'#fef2f2':it.tone==='amber'?'#fffbeb':'#fff'};border-left:4px solid ${it.tone==='red'?'var(--red)':it.tone==='amber'?'var(--sun)':'var(--blue)'}">
-            <div style="font-size:24px">${it.icon}</div>
-            <div style="flex:1"><div style="font-weight:600;font-size:14px">${escapeHtml(it.label)}</div><div style="font-size:12px;color:var(--muted)">${escapeHtml(it.sub)}</div></div>
-            <div style="color:var(--blue);font-weight:600">→</div>
-          </a>
-        `).join('')}</div>`;
-    }
-  } catch {
-    document.getElementById('activity-card').innerHTML = `<h2>What needs your attention</h2><div class="placeholder">Couldn't load activity feed.</div>`;
-    ['pay-count','ev-count','prog-count'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '–'; });
-  }
-
-  // Quick-unlock card — visible only when this tenant has the gate
-  // add-on active AND the bridge is reachable. Doug 2026-05-23: surface
-  // the unlock right on the admin dashboard for board members at the
-  // gate, so they don't have to drill into Settings → Remote keyfob
-  // access or sign in on the member side.
-  try {
-    // Cheap pre-filter: skip the API call entirely if the tenant doesn't
-    // have the gate feature enabled. Avoids one network round-trip on
-    // every dashboard load for clubs that never bought the add-on.
-    const features = (data.tenant && data.tenant.features) || {};
-    if (!features.gate) throw new Error('gate feature not enabled');
-
-    const gr = await fetch(GATE_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'get_status' }),
-    });
-    if (!gr.ok) throw new Error('get_status fetch failed');
-    const gdata = await gr.json();
-    if (!gdata.ok || !gdata.panel) throw new Error('no panel data');
-    const panel = gdata.panel;
-    const bh = gdata.bridge_health || { state: 'unknown' };
-    // Only reveal when status='active' AND bridge is at least heartbeating
-    // recently. Offline/never_seen would queue an unlock the panel can't
-    // execute — surfacing the button would just produce dead taps.
-    const ready = panel.status === 'active' && (bh.state === 'online' || bh.state === 'stale') && !!panel.panel_host;
-    if (!ready) throw new Error('gate not ready for quick-unlock');
-
-    const card = document.getElementById('gate-quick-unlock');
-    card.style.display = 'block';
-    const statusEl = document.getElementById('gate-quick-status');
-    if (statusEl) {
-      statusEl.textContent = bh.state === 'online'
-        ? `🟢 Bridge online (last seen ${bh.last_seen_seconds_ago}s ago) — tap to fire an unlock at the panel.`
-        : `🟡 Bridge briefly stale (~${bh.last_seen_seconds_ago}s ago). Unlock will fire when the bridge polls next.`;
-    }
-    const btn = document.getElementById('gate-quick-btn');
-    const fb  = document.getElementById('gate-quick-feedback');
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      const orig = btn.textContent;
-      btn.textContent = 'Sending…';
-      fb.textContent = '';
-      fb.style.color = '';
-      try {
-        const ur = await fetch(GATE_URL, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'test_unlock' }),
-        });
-        const udata = await ur.json();
-        if (!udata.ok) throw new Error(udata.error || 'Unlock failed');
-        fb.style.color = '#dcfce7';
-        fb.textContent = '✓ Unlock queued — the bridge picks it up within ~2 seconds. Gate should open shortly.';
-      } catch (e) {
-        fb.style.color = '#fecaca';
-        fb.textContent = '✗ ' + (e.message || 'Unlock failed');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = orig;
-      }
-    });
-  } catch (_) {
-    // Card stays hidden — no harm, no log spam.
-  }
-
-  // Per-role task queue (admin_tasks). The same call says which member-help
-  // topics come to this board member, for the Member help card and the
-  // pop-up prompt below.
-  let tdata = null;
+  // ── The home, in one call (PLAN.md W) ───────────────────────────────
+  // admin_tasks `home`: this person's tasks, and the banner's numbers,
+  // today, the week ahead and the quick buttons, all from the screens the
+  // President ticked for their position.
+  let tdata;
   try {
     const r = await fetch(TASKS_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'list' }),
+      body: JSON.stringify({ action: 'home' }),
     });
     tdata = await r.json();
     if (!tdata.ok) throw new Error(tdata.error || 'Failed');
-    const tasks = tdata.tasks || [];
-    if (tasks.length) {
-      const card = document.getElementById('tasks-card');
-      const list = document.getElementById('tasks-list');
-      card.style.display = 'block';
-      const KIND_ICON = {
-        'application.submitted': '📨',
-        'venmo.claim':           '💸',
-        'party.requested':       '🎉',
-        'help.request':          '🙋',
-        'meeting.follow_up':     '🗒️',
-      };
-      list.innerHTML = tasks.map(t => {
-        const ageHours = Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / 3600_000));
-        const age = ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`;
-        return `
-          <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:#fff">
-            <div style="font-size:20px;flex-shrink:0">${KIND_ICON[t.kind] || '🔔'}</div>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:14px">${escapeHtml(t.summary)}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(age)} · ${escapeHtml(taskFor(t, tdata.me))}</div>
-            </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              ${t.link_url ? `<a href="${escapeHtml(t.link_url)}" style="padding:6px 12px;background:var(--blue);color:#fff;text-decoration:none;border-radius:8px;font:600 12px 'Inter'">Open</a>` : ''}
-              <button onclick="completeTask('${t.id}')" style="padding:6px 12px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font:600 12px 'Inter';cursor:pointer">✓ Done</button>
-            </div>
-          </div>`;
-      }).join('');
+    if (!tdata.home) throw new Error('Refresh the page to load the new version.');
+  } catch (e) {
+    document.getElementById('main').innerHTML = `<div class="card"><h2>Couldn't load your page</h2><p>${escapeHtml(e.message === 'Failed to fetch' ? 'Could not reach the server. Check your connection and refresh.' : e.message)}</p></div>`;
+    return;
+  }
+  const home = tdata.home;
+  const tasks = tdata.tasks || [];
+  // The tab numbers come from these same tasks (no second call).
+  if (window.PoolsideNav && PoolsideNav.paintFromTasks) PoolsideNav.paintFromTasks(tasks);
+
+  // ── Times and days ──
+  const fmtT = hhmm => { const [h, m] = String(hhmm).split(':').map(Number); return `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'AM' : 'PM'}`; };
+  const clock = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(':00', '');
+  // "10–11:30 AM": one AM/PM when both ends share it.
+  const span = (s, e, allDay) => {
+    if (allDay) return 'All day';
+    if (!e) return clock(s);
+    const a = clock(s), b = clock(e), pa = a.slice(-2), pb = b.slice(-2);
+    return pa === pb ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
+  };
+  const shortDay = key => PoolTime.fmtDay(key, { weekday: 'short' }) + ' ' + Number(key.slice(5, 7)) + '/' + Number(key.slice(8, 10));
+  const days = Array.from({ length: 7 }, (_, i) => PoolTime.addDays(home.today, i));
+  const money = c => '$' + Math.round(Number(c || 0) / 100).toLocaleString();
+
+  // Calendar entries for a day: events and programs by the shared rules
+  // (js/today.js), plus parties from the bookings (with the family's name
+  // for those who handle parties) and today's lifeguard shifts.
+  const calEvents = (home.events || []).filter(e => e.kind !== 'party');
+  function dayItems(key) {
+    const items = PoolsideToday.items(calEvents, key === home.today ? home.programs : [], key)
+      .map(i => ({ when: span(i.start, i.end, i.allDay), sort: i.allDay ? 0 : i.start.getTime(), title: i.label, sub: i.location || (i.kind === 'lesson' ? 'Program' : '') }));
+    for (const p of (home.parties || []).filter(p => p.pool_date === key)) {
+      const s = new Date(p.starts_at), e = p.ends_at ? new Date(p.ends_at) : null;
+      items.push({ when: span(s, e, false), sort: s.getTime(), title: p.family ? `${p.title} · ${p.family}` : p.title,
+        sub: p.status === 'pending' ? '' : (p.paid ? 'Paid' : 'Not paid yet'), wait: p.status === 'pending', href: '/club/admin/parties.html' });
     }
-  } catch { /* non-critical */ }
-
-  paintMyJob(tdata);
-
-  // Member help: what's waiting on you, and which topics come to you.
-  const helpNote = document.getElementById('member-help-mine');
-  if (helpNote && tdata && tdata.ok) {
-    const waiting = (tdata.tasks || []).filter(t => t.kind === 'help.request'
-      && (t.assigned_admin_id === tdata.me || !t.assigned_admin_id)).length;
-    const mine = tdata.help_topics_mine || [];
-    helpNote.textContent = [
-      waiting ? `${waiting} waiting on you.` : '',
-      mine.length ? `Coming to you: ${mine.join(', ')}.` : '',
-    ].join(' ').trim();
+    if (key === home.today) for (const s of (home.shifts || [])) {
+      const st = new Date(s.starts_at), en = s.ends_at ? new Date(s.ends_at) : null;
+      const filled = (s.lifeguard_signups || []).filter(x => x.status !== 'released').length;
+      items.push({ when: span(st, en, false), sort: st.getTime(), title: 'Lifeguard shift', sub: `${filled} of ${s.spots_needed || 1} signed up`, href: '/club/admin/lifeguards.html' });
+    }
+    return items.sort((a, b) => a.sort - b.sort);
   }
 
-  // The full phone-alerts card lives on settings.html, which only owners can
-  // open. Everyone else gets this small prompt (AdminPush.mountPrompt builds
-  // its own markup), because tasks now go to one board member and pop-ups
-  // are how they hear about them. For someone member-help questions come
-  // to, with no device getting pop-ups, it can't be dismissed.
-  // admin-push.js is deferred, so wait for it.
+  // ── The banner ──
+  const first = String(user.display_name || '').trim().split(/\s+/)[0] || 'there';
+  const titles = (tdata.my_positions || []).map(p => p.title);
+  const roleBadge = titles.length ? titles.join(' · ') : (user.board_title || (user.role_template === 'owner' ? 'Owner' : 'Board member'));
+  const hrs = PoolTime.hoursFor(home.pool, home.today);
+  const todayLine = !home.season_open ? '🏝️ Closed for the season'
+    : hrs ? `🕙 Open ${fmtT(hrs.opens)}–${fmtT(hrs.closes)}` : '🚫 Closed today';
+  const eventsWeek = days.reduce((n, k) => n + PoolsideToday.items(calEvents, [], k).length, 0);
+  const statValue = s => {
+    if (s.key === 'events_week') return eventsWeek;
+    if (s.key === 'next_meeting') return s.value ? shortDay(s.value) : 'None';
+    if (s.money) return money(s.value);
+    return s.value == null ? '–' : Number(s.value).toLocaleString();
+  };
+  const statLabel = s => s.key === 'next_meeting' && !s.value ? 'board meeting planned' : s.label;
+  const heroHtml = `
+    <section class="hero">
+      <div>
+        <div class="hero-top"><h1>Hi, ${escapeHtml(first)}!</h1><span class="hero-date">${escapeHtml(new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }))}</span></div>
+        <div class="hero-badges"><span class="hb role">${escapeHtml(roleBadge)}</span><span class="hb season">${escapeHtml(String(home.season))} season</span></div>
+        <div class="hero-line"><span id="hero-weather"></span><span>${escapeHtml(todayLine)}</span></div>
+      </div>
+      <div class="hero-stats">${(home.stats || []).map(s => `
+        <a class="hs" href="${escapeHtml(s.href)}"><div class="v">${escapeHtml(String(statValue(s)))}</div><div class="l">${escapeHtml(statLabel(s))}</div></a>`).join('')}
+      </div>
+    </section>`;
+
+  // ── The gate, at the top for everyone who can open it (PLAN.md W2) ──
+  const gateHtml = home.gate && home.gate.show ? `
+    <section class="card gate" id="gate-card">
+      <div class="gi">🚪</div>
+      <div class="gt">Front gate${home.gate.online ? '<small>● Online</small>' : '<small class="off">Remote unlock is offline right now. Keyfobs still work.</small>'}<small id="gate-feedback" style="color:var(--muted)"></small></div>
+      ${home.gate.online ? '<button type="button" class="hbtn" id="gate-btn">Unlock now</button>' : ''}
+    </section>` : '<section class="card gate" id="gate-card" style="display:none"></section>';
+
+  // ── Needs you: their tasks, one button each ──
+  const sorted = [...tasks].sort((a, b) => taskRank(a.kind) - taskRank(b.kind) || String(b.created_at).localeCompare(String(a.created_at)));
+  const age = t => {
+    const h = Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / 3600_000));
+    return h < 1 ? 'just now' : h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
+  };
+  const todoRow = t => {
+    const look = taskLook(t.kind);
+    // A position's alert, for the position they hold, is simply theirs.
+    const forWho = t.for_position && titles.includes(t.for_position) ? 'For you' : taskFor(t, tdata.me);
+    return `
+      <div class="todo">
+        <div class="ti ${look.tone}">${look.icon}</div>
+        <div class="tt"><b>${escapeHtml(look.title)}</b><span>${escapeHtml(t.summary)}</span>
+          <span class="meta">${escapeHtml(age(t))}${forWho === 'For you' ? '' : ' · ' + escapeHtml(forWho)} · <button type="button" onclick="completeTask('${escapeHtml(t.id)}')">Mark done</button></span></div>
+        ${t.link_url ? `<a class="hbtn${taskRank(t.kind) < 3 ? '' : ' ghost'}" href="${escapeHtml(t.link_url)}">${look.button}</a>` : ''}
+      </div>`;
+  };
+  const SHOW = 6;
+  const needsHtml = `
+    <section class="card" id="needs-card">
+      <div class="card-h"><h2>Needs you</h2>${tasks.length ? `<span class="count">${tasks.length}</span>` : ''}</div>
+      ${tasks.length ? `<div>${sorted.slice(0, SHOW).map(todoRow).join('')}</div>
+        ${sorted.length > SHOW ? `<details><summary style="cursor:pointer;font:600 13px Inter,sans-serif;color:var(--blue);padding-top:8px">Show ${sorted.length - SHOW} more</summary><div>${sorted.slice(SHOW).map(todoRow).join('')}</div></details>` : ''}`
+        : '<div class="placeholder">✓ All caught up. Nothing is waiting on you.</div>'}
+    </section>`;
+
+  // ── Today at the pool, and the week ahead ──
+  const evRow = i => `<div class="ev"><div class="when">${escapeHtml(i.when)}</div><div class="what">${escapeHtml(i.title)}${i.sub ? `<small>${escapeHtml(i.sub)}</small>` : ''}</div>${i.wait ? `<a class="tag wait" href="${escapeHtml(i.href || '#')}">Waiting on you</a>` : ''}${i.tag || ''}</div>`;
+  const todayItems = dayItems(home.today);
+  const coming = [];
+  for (const k of days.slice(1)) for (const i of dayItems(k)) coming.push({ ...i, when: shortDay(k), key: k, title: i.title, sub: [i.when, i.sub].filter(Boolean).join(' · ') });
+  if (home.charge_day) {
+    const c = home.charge_day;
+    coming.push({ key: c.date, when: shortDay(c.date), title: `Plan payments, ${money(c.cents)}`, sub: `${c.count} famil${c.count === 1 ? 'y' : 'ies'}`,
+      wait: c.waiting > 0, href: '/club/admin/upcoming.html', tag: c.waiting ? '' : '<span class="tag">Approved</span>' });
+  }
+  if (home.next_meeting) {
+    const m = home.next_meeting;
+    coming.push({ key: m.date, when: shortDay(m.date), title: `Board meeting${m.time ? ', ' + fmtT(m.time) : ''}`, sub: m.agenda ? 'The agenda is ready' : 'Add to the agenda anytime',
+      tag: `<a class="hbtn ghost" style="padding:6px 12px;font-size:12.5px" href="/club/admin/board-meetings.html${m.agenda ? '' : '#add'}">${m.agenda ? 'Agenda' : 'Add'}</a>` });
+  }
+  coming.sort((a, b) => String(a.key).localeCompare(String(b.key)));
+  const todayHtml = `
+    <section class="card" id="today-card">
+      <div class="card-h"><h2>Today at the pool</h2></div>
+      ${todayItems.length ? `<div>${todayItems.map(evRow).join('')}</div>` : `<div style="font-size:14px;color:var(--muted)">${home.season_open ? 'Nothing on the calendar today.' : 'The pool is closed for the season.'}</div>`}
+      ${coming.length ? `<div class="sub-h">Coming up</div><div>${coming.slice(0, 6).map(evRow).join('')}</div>` : ''}
+    </section>`;
+
+  // ── Quick buttons, their job, the signup link ──
+  const quickHtml = `
+    <section class="card" id="quick-card">
+      <div class="card-h"><h2>Quick actions</h2></div>
+      <div class="qa">${(home.quick || []).map(q => `<a href="${escapeHtml(q.href)}"><span>${q.icon}</span>${escapeHtml(q.label)}</a>`).join('')}</div>
+    </section>`;
+  const applyUrl = `https://${tenant.slug}.poolsideapp.com/apply.html`;
+  const rowsHtml = `
+    <section class="card rows" id="more-card">
+      ${titles.length ? `<details id="my-job"><summary>👔 Your job as ${escapeHtml(titles.join(' and '))} <span class="arr">›</span></summary><div class="job" id="my-job-body"></div></details>` : ''}
+      <a href="/club/admin/board-meetings.html#start">▶️ Start a board meeting <span class="arr">›</span></a>
+      <a href="/club/admin/board-meetings.html#add">🗒️ Add to the next agenda <span class="arr">›</span></a>
+      <a href="/club/admin/board.html">👥 The whole board <span class="arr">›</span></a>
+      ${home.signup_link ? `<div class="row" id="apply-link-card" data-focus="apply-link">🔗 Signup link for new families <button type="button" class="copy" id="apply-link-copy">Copy</button></div>` : ''}
+    </section>`;
+
+  document.getElementById('main').innerHTML = `
+    ${heroHtml}
+    ${gateHtml}
+    <div class="layout">
+      <div class="col left">
+        <div id="push-prompt" style="display:none;margin-bottom:16px"></div>
+        ${needsHtml}
+        ${todayHtml}
+      </div>
+      <div class="col right">
+        ${quickHtml}
+        ${rowsHtml}
+      </div>
+    </div>`;
+
+  if (home.pool && home.pool.location) PoolWeather.load(home.pool.location, document.getElementById('hero-weather'));
+  paintMyJob(tdata);
+
+  // The signup link: copy it, and tick the setup step.
+  document.getElementById('apply-link-copy')?.addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    try { await navigator.clipboard.writeText(applyUrl); btn.textContent = '✓ Copied'; }
+    catch { window.prompt('Copy the signup link:', applyUrl); }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+    markApplyLinkShared();
+  });
+
+  // The gate: one tap opens it.
+  document.getElementById('gate-btn')?.addEventListener('click', async e => {
+    const btn = e.currentTarget, fb = document.getElementById('gate-feedback');
+    btn.disabled = true; btn.textContent = 'Opening…'; fb.textContent = '';
+    try {
+      const r = await fetch(GATE_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'board_unlock' }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Unlock failed');
+      fb.style.color = 'var(--green)'; fb.textContent = '✓ The gate should open in a moment.';
+    } catch (err) {
+      fb.style.color = 'var(--red)'; fb.textContent = err.message || 'Unlock failed';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Unlock now';
+    }
+  });
+
+  // The phone pop-ups prompt (admin-push.js builds its own markup). For
+  // someone member-help questions come to, with no device getting pop-ups,
+  // it can't be dismissed. admin-push.js is deferred, so wait for it.
   const mountPush = () => window.AdminPush && window.AdminPush.mountPrompt(document.getElementById('push-prompt'), {
-    mustFor: (tdata && tdata.help_topics_mine) || [],
-    devices: tdata && tdata.ok ? tdata.push_devices : 1,
+    mustFor: tdata.help_topics_mine || [],
+    devices: tdata.push_devices,
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountPush);
   else mountPush();
-
 })();
 
 // Who a task is for: one board member, a board position, a role, or the president.
 function taskFor(t, me) {
   if (t.assigned_admin_id) return t.assigned_admin_id === me ? 'For you' : `For ${t.assigned_name || 'a board member'}`;
   if (t.for_position) return `For the ${t.for_position}`;
-  return (t.target_scopes || []).join(', ') || 'President';
+  return (t.target_scopes || []).length ? 'For the board' : 'For the President';
 }
 
 // "Your job": the positions this board member holds, with the purpose up
-// front and the full job description a tap away.
+// front and the full job description (PLAN.md K4).
 function paintMyJob(tdata) {
-  const card = document.getElementById('my-job-card');
+  const body = document.getElementById('my-job-body');
   const mine = (tdata && tdata.my_positions) || [];
-  if (!card || !mine.length) return;
+  if (!body || !mine.length) return;
   const line = l => {
     const t = l.trim(), m = t.match(/^([^:]{2,40}):\s(.*)$/);
     const inner = m && !/^\d+\./.test(t) ? `<b>${escapeHtml(m[1])}:</b> ${escapeHtml(m[2])}` : escapeHtml(t);
     return `<p style="margin:0 0 6px${/^\s+/.test(l) ? ';margin-left:18px' : ''}">${inner}</p>`;
   };
-  card.innerHTML = `<h2>Your job: ${escapeHtml(mine.map(p => p.title).join(' · '))}</h2>`
-    + mine.map(p => `
-      ${p.purpose ? `<p style="font-size:14px;margin:6px 0 0">${escapeHtml(p.purpose)}</p>` : ''}
-      ${p.description ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--blue)">${mine.length > 1 ? escapeHtml(p.title) + ': job' : 'Job'} description</summary>
-        <div style="font-size:13.5px;line-height:1.6;margin-top:8px">${String(p.description).split('\n').filter(l => l.trim()).map(line).join('')}</div></details>` : ''}`).join('')
-    + (tdata.spending_rule ? `<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0"><b>Spending rule:</b> ${escapeHtml(tdata.spending_rule)}</p>` : '')
-    + `<p style="font-size:12.5px;margin:6px 0 0"><a href="/club/admin/board.html">The whole board</a></p>`;
-  card.style.display = '';
+  body.innerHTML = mine.map(p => `
+      ${mine.length > 1 ? `<p style="margin:8px 0 4px;font-weight:700">${escapeHtml(p.title)}</p>` : ''}
+      ${p.purpose ? `<p style="margin:0 0 8px">${escapeHtml(p.purpose)}</p>` : ''}
+      ${p.description ? String(p.description).split('\n').filter(l => l.trim()).map(line).join('') : ''}`).join('')
+    + (tdata.spending_rule ? `<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0"><b>Spending rule:</b> ${escapeHtml(tdata.spending_rule)}</p>` : '');
 }
 
 async function completeTask(id) {

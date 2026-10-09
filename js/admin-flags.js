@@ -327,7 +327,13 @@
     // Insert AFTER the header so it appears as a strip below it
     header.parentNode.insertBefore(ticker, header.nextSibling);
 
-    paintDuesTicker(usage.dues, header, ticker);
+    // The board home's banner has these numbers (PLAN.md W).
+    if (!isDashboard()) paintDuesTicker(usage.dues, header, ticker);
+  }
+
+  // The board home, /club/admin/ (index.html).
+  function isDashboard() {
+    return /\/club\/admin\/(index\.html)?$/.test(window.location.pathname);
   }
 
   // ── Dues collected — the board's number ─────────────────────────────
@@ -502,6 +508,17 @@
     if (typeof features === 'object') {
       document.body.dataset.featureFlags = JSON.stringify(features);
     }
+
+    // The sections this person can use: the top tabs and, on phones, the
+    // bottom bar (PLAN.md W3, js/admin-subtabs.js). Saved so the next page
+    // draws the bar before its own sign-in check comes back.
+    if (user) {
+      try {
+        localStorage.setItem('poolside_tenant_user', JSON.stringify(user));
+        localStorage.setItem('poolside_tenant_features', JSON.stringify(features || {}));
+      } catch (_) { /* private mode */ }
+    }
+    if (window.AdminNav && document.querySelector('nav.tabs')) window.AdminNav.render(user, features);
   }
 
   // Slide the admin session forward — if me() returned a freshly-issued
@@ -637,11 +654,12 @@
       } else if (b) b.remove();
     });
   }
-  function setNavBadge(hrefSubstr, n) {
+  function setNavBadge(hrefSubstr, n, sec) {
     const links = document.querySelectorAll('nav.tabs a');
     for (const link of links) {
       const href = link.getAttribute('href') || '';
-      if (!href.includes(hrefSubstr)) continue;
+      // A tab may open someone's own screen (AdminNav), so match its section.
+      if (!(sec && link.dataset.section === sec) && !href.includes(hrefSubstr)) continue;
       let badge = link.querySelector('.nav-badge');
       if (n > 0) {
         if (!badge) {
@@ -659,6 +677,25 @@
     }
   }
 
+  // The numbers on each tab, from a list of tasks. The board home passes the
+  // tasks it already has (PLAN.md W); every other page asks for them.
+  function paintFromTasks(tasks) {
+    const top = {};
+    SUB_COUNTS = {};
+    for (const t of tasks || []) {
+      const where = taskSection(t);
+      if (!where) continue;
+      top[where.sec] = (top[where.sec] || 0) + 1;
+      if (where.sub) SUB_COUNTS[where.sub] = (SUB_COUNTS[where.sub] || 0) + 1;
+    }
+    for (const [sec, href] of Object.entries(TOP_HREF)) setNavBadge(href, top[sec] || 0, sec);
+    setDashBadge((tasks || []).length);
+    paintSubBadges();
+    LAST_TOP = top;
+    document.dispatchEvent(new CustomEvent('poolside:badges', { detail: { top, total: (tasks || []).length } }));
+  }
+  let LAST_TOP = null;
+
   async function paintNavBadges() {
     let tok;
     try { tok = localStorage.getItem('poolside_tenant_token'); } catch (_) { tok = null; }
@@ -673,18 +710,7 @@
       if (!r.ok) return;
       const data = await r.json();
       if (!data.ok) return;
-      const tasks = data.tasks || [];
-      const top = {};
-      SUB_COUNTS = {};
-      for (const t of tasks) {
-        const where = taskSection(t);
-        if (!where) continue;
-        top[where.sec] = (top[where.sec] || 0) + 1;
-        if (where.sub) SUB_COUNTS[where.sub] = (SUB_COUNTS[where.sub] || 0) + 1;
-      }
-      for (const [sec, href] of Object.entries(TOP_HREF)) setNavBadge(href, top[sec] || 0);
-      setDashBadge(tasks.length);
-      paintSubBadges();
+      paintFromTasks(data.tasks || []);
     } catch (_) { /* badges best-effort — never break the page */ }
   }
 
@@ -704,11 +730,14 @@
     } else if (badge) badge.remove();
   }
 
-  window.PoolsideNav = { paintNavBadges, setNavBadge, paintSubBadges };
+  window.PoolsideNav = { paintNavBadges, setNavBadge, paintSubBadges, paintFromTasks, lastTop: () => LAST_TOP };
 
   // Defer until DOMContentLoaded if nav isn't rendered yet (admin-flags.js
   // loads in <head> on most pages, but a couple have it after nav.tabs).
-  if (document.querySelector('nav.tabs')) {
+  // The board home paints them from its own call instead.
+  if (isDashboard()) {
+    /* index.html calls paintFromTasks */
+  } else if (document.querySelector('nav.tabs')) {
     paintNavBadges();
   } else if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', paintNavBadges, { once: true });

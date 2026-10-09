@@ -106,7 +106,8 @@ console.log('\nBoard side (E4, offline)');
   check('every board member can reach it from the nav', /member-help\.html',\s+scope: ''/.test(subtabs) && /'member-help\.html': 'content'/.test(subtabs)
     && /"member-help\.html":\s+"content"/.test(read('scripts/rewrite_admin_nav.py')));
   const dash = read('club/admin/index.html');
-  check('the dashboard has a Member help card', /member-help\.html/.test(dash) && /id="member-help-card"/.test(dash));
+  // PLAN.md W: questions are rows in "Needs you", and Member help is a quick button.
+  check('member questions show in "Needs you" on the dashboard', /help\\\.request/.test(dash) && /Member question/.test(dash) && /member-help\.html/.test(read('supabase/functions/_shared/board_home.ts')));
   check('a topic owner without pop-ups gets a warning they can\'t dismiss',
     /help_topics_mine/.test(dash) && /mustFor/.test(read('js/admin-push.js')));
 }

@@ -112,7 +112,7 @@ try {
   check('a daily "Pool Open" is left out (Today shows the hours)', !titles.includes('Pool Open'));
   check('a weekly event shows only its next date', titles.filter(t => t === 'Swim team practice').length === 1);
   check('the member home and dashboard both use it',
-    /PoolsideUpcoming\.merge/.test(member) && /upcoming\.js/.test(member) && /PoolsideUpcoming\.merge/.test(dash) && /upcoming\.js/.test(dash));
+    /PoolsideUpcoming\.merge/.test(member) && /upcoming\.js/.test(member) && /upcoming\.js/.test(dash) && /PoolsideToday\.items\(/.test(dash) && /isDailyFixture/.test(read('js/today.js')));
 } catch (e) {
   check('js/upcoming.js exists', false, e.message.split('\n')[0]);
 }
@@ -121,7 +121,7 @@ console.log('\nD10 · the money total leaves out test payments');
 try {
   const t = await importTs(new URL('supabase/functions/_shared/test_payments.ts', root));
   check('the fake-Venmo note matches what the simulator writes', read('supabase/functions/applications/index.ts').includes(t.SIM_NOTE));
-  check('the dues total uses it', /testPaidHouseholds/.test(read('supabase/functions/tenant_admin_auth/index.ts')) && /test_paid/.test(read('js/admin-flags.js')));
+  check('the dues total uses it', /testPaidHouseholds/.test(read('supabase/functions/_shared/dues_totals.ts')) && /duesTotals/.test(read('supabase/functions/tenant_admin_auth/index.ts')) && /test_paid/.test(read('js/admin-flags.js')));
 } catch (e) {
   check('_shared/test_payments.ts exists', false, e.message.split('\n')[0]);
 }

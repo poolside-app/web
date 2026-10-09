@@ -219,6 +219,9 @@
   var _ctx = null;
   window.PoolsideToday = {
     render: function (ctx) { _ctx = ctx || {}; draw(_ctx, _ctx.events || []); },
+    // The same rules for any day, for the board home's "Today at the pool"
+    // and the week ahead (PLAN.md W).
+    items: function (events, programs, dayKey) { return buildItems(events, programs, dayKey); },
     update: function (events) { if (_ctx) draw(_ctx, events || _ctx.events || []); },
   };
 })();

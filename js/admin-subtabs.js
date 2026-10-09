@@ -94,6 +94,172 @@
   // admin-flags.js puts the waiting-task numbers on these tabs (PLAN.md R1).
   window.AdminSections = { SECTIONS, PAGE_SECTION };
 
+  // ── The bottom bar on phones (PLAN.md W3) ──────────────────────────────
+  // Doug, 10/9: the member app's bottom bar on every board page. Home, the
+  // sections this person can use (from the screens the President ticked
+  // for their position), and More with the rest, help, member view and sign
+  // out. Computers keep the top tabs, which now hide the same sections and
+  // open each one on a screen the person can use (a Facilities Director's
+  // Settings opens Keyfobs; it used to be hidden from them altogether).
+  // admin-flags.js calls AdminNav.render(user, features) once it knows who
+  // is signed in; until then the last visit's answer is used.
+  const FEATURE_OF = { programs: ['programs', true], parties: ['parties', true], volunteer: ['volunteer', true],
+    lifeguards: ['lifeguard_scheduling', false], keyfobs: ['keyfobs', true] };
+  const SECTION_LOOK = {
+    members: ['👪', 'Members', '/club/admin/members.html'], money: ['💵', 'Money', '/club/admin/payments.html'],
+    calendar: ['📅', 'Calendar', '/club/admin/events.html'], content: ['📰', 'Content', '/club/admin/announcements.html'],
+    settings: ['⚙️', 'Settings', '/club/admin/settings.html'], insights: ['📊', 'Insights', '/club/admin/audit.html'],
+  };
+  const BAR_ORDER = ['members', 'money', 'calendar', 'content', 'settings', 'insights'];
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function ownerish(user) {
+    return !user || user.role_template === 'owner' || !!user.is_super || !!user.impersonated || (user.roles || []).includes('owner');
+  }
+  function itemOn(item, user, features) {
+    const f = FEATURE_OF[item.key];
+    if (f) { const v = (features || {})[f[0]]; if (f[1] ? v === false : !v) return false; }
+    return ownerish(user) || !item.scope || (user.scopes || []).includes(item.scope);
+  }
+  /** The sections this person can use, each opening on a screen they can use. */
+  function sectionsFor(user, features) {
+    return BAR_ORDER.map(key => {
+      const items = SECTIONS[key].filter(i => itemOn(i, user, features));
+      if (!items.length) return null;
+      const [icon, label, canonical] = SECTION_LOOK[key];
+      const canon = items.find(i => i.href.split('#')[0] === canonical);
+      const mine = items.find(i => i.scope);
+      return { key, icon, label, href: canon ? canonical : (mine || items[0]).href, items };
+    }).filter(Boolean);
+  }
+  /** Home, the first three sections, More. */
+  function barFor(user, features) {
+    const secs = sectionsFor(user, features);
+    return [{ key: 'home', icon: '🏠', label: 'Home', href: '/club/admin/' }, ...secs.slice(0, 3),
+      { key: 'more', icon: '☰', label: 'More', href: '#more', rest: secs.slice(3) }];
+  }
+
+  let navUser = null, navFeatures = {}, navCounts = null;
+  function pageSection() {
+    const f = (window.location.pathname.split('/').pop() || 'index.html');
+    return f === 'index.html' || f === '' ? 'home' : (PAGE_SECTION[f] || null);
+  }
+  function fixTopTabs(secs) {
+    const byKey = Object.fromEntries(secs.map(x => [x.key, x]));
+    document.querySelectorAll('nav.tabs a').forEach(a => {
+      if (!a.dataset.section) {
+        const href = (a.getAttribute('href') || '').split('#')[0];
+        const key = Object.keys(SECTION_LOOK).find(k => SECTION_LOOK[k][2] === href);
+        if (!key) return;
+        a.dataset.section = key;
+      }
+      const sec = byKey[a.dataset.section];
+      a.style.display = sec ? '' : 'none';
+      if (sec) a.setAttribute('href', sec.href);
+    });
+  }
+  function paintBarBadges() {
+    const bar = document.getElementById('btabs');
+    if (!bar || !navCounts) return;
+    const top = navCounts.top || {};
+    bar.querySelectorAll('a[data-btab]').forEach(a => {
+      const k = a.dataset.btab;
+      const n = k === 'home' ? (navCounts.total || 0)
+        : k === 'more' ? (a.dataset.restKeys || '').split(',').filter(Boolean).reduce((m, r) => m + (top[r] || 0), 0)
+        : (top[k] || 0);
+      const b = a.querySelector('.nb');
+      b.textContent = String(n);
+      b.hidden = !n;
+    });
+  }
+  function closeMore() { document.getElementById('btabs-more')?.remove(); }
+  function openMore(rest) {
+    closeMore();
+    const signout = document.getElementById('signout');
+    const memberView = navUser && navUser.linked_member_id;
+    const row = (href, icon, label, sub, attrs) => `<a href="${esc(href)}"${attrs || ''}><span class="i">${icon}</span><span>${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></a>`;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="btabs-more">
+        <div class="btabs-scrim"></div>
+        <div class="btabs-sheet" role="dialog" aria-label="More">
+          <div class="grab"></div>
+          ${rest.map(x => row(x.href, x.icon, x.label, x.items.map(i => i.label).join(', '))).join('')}
+          ${row('/club/admin/help.html', '❓', 'Help and guides')}
+          ${memberView ? row('/m/', '👤', 'Member view') : ''}
+          ${row('#signout', '↪️', 'Sign out', '', ' data-signout="1"')}
+        </div>
+      </div>`);
+    const wrap = document.getElementById('btabs-more');
+    wrap.querySelector('.btabs-scrim').addEventListener('click', closeMore);
+    wrap.querySelector('[data-signout]').addEventListener('click', e => {
+      e.preventDefault();
+      closeMore();
+      if (signout) { signout.click(); return; }
+      ['poolside_tenant_token', 'poolside_tenant_user', 'poolside_tenant_tenant'].forEach(k => { try { localStorage.removeItem(k); } catch (_) {} });
+      window.location.href = '/club/admin/login.html';
+    });
+  }
+  function injectBarCss() {
+    if (document.getElementById('admin-btabs-css')) return;
+    const style = document.createElement('style');
+    style.id = 'admin-btabs-css';
+    style.textContent = `
+      .btabs { display: none; }
+      @media (max-width: 767px) {
+        body.has-btabs nav.tabs { display: none !important; }
+        body.has-btabs header .who { display: none !important; }
+        .btabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; background: #fff; border-top: 1px solid var(--border, #e5e7eb); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); transform: translateZ(0); }
+        .btabs a { flex: 1; max-width: 200px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; font: 600 11px 'Inter', system-ui, sans-serif; color: var(--muted, #5d6b81); border-radius: 10px; text-decoration: none; position: relative; }
+        .btabs a .i { font-size: 21px; line-height: 1.1; }
+        .btabs a.on { color: var(--blue, #0a3b5c); background: var(--blue-l, #e6eef5); }
+        .btabs a .nb { position: absolute; top: 1px; left: 50%; margin-left: 7px; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--sun, #f59e0b); color: #fff; font: 700 10.5px/18px 'Inter', system-ui, sans-serif; text-align: center; }
+        body.has-btabs { padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important; }
+        body.has-btabs #poolside-help-fab { display: none !important; }
+        body.has-btabs .toast { bottom: calc(86px + env(safe-area-inset-bottom)) !important; }
+        body.has-btabs #bar { bottom: calc(62px + env(safe-area-inset-bottom)) !important; }
+        #btabs-more .btabs-scrim { position: fixed; inset: 0; background: rgba(15,23,42,.42); z-index: 80; }
+        #btabs-more .btabs-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 81; background: #fff; border-radius: 20px 20px 0 0; padding: 10px 18px calc(22px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px rgba(0,0,0,.15); max-height: 80vh; overflow-y: auto; }
+        #btabs-more .grab { width: 40px; height: 5px; border-radius: 9px; background: #d1d5db; margin: 0 auto 8px; }
+        #btabs-more a { display: flex; align-items: center; gap: 14px; padding: 13px 4px; border-top: 1px solid var(--border, #e5e7eb); color: var(--text, #0f172a); text-decoration: none; font: 600 15px 'Inter', system-ui, sans-serif; }
+        #btabs-more .grab + a { border-top: 0; }
+        #btabs-more a .i { font-size: 21px; width: 26px; text-align: center; }
+        #btabs-more a small { display: block; font: 500 12.5px 'Inter', system-ui, sans-serif; color: var(--muted, #5d6b81); }
+      }`;
+    document.head.appendChild(style);
+  }
+  function renderNav(user, features) {
+    navUser = user || null;
+    navFeatures = features || {};
+    const secs = sectionsFor(navUser, navFeatures);
+    fixTopTabs(secs);
+    if (!document.body) return;
+    injectBarCss();
+    const bar = barFor(navUser, navFeatures);
+    const here = pageSection();
+    const inBar = bar.some(b => b.key === here);
+    const more = bar[bar.length - 1];
+    document.getElementById('btabs')?.remove();
+    document.body.insertAdjacentHTML('beforeend', `
+      <nav class="btabs" id="btabs" aria-label="Board sections">
+        ${bar.map(b => `<a href="${esc(b.href)}" data-btab="${b.key}"${b.key === 'more' ? ` data-rest-keys="${esc(more.rest.map(r => r.key).join(','))}"` : ''} class="${b.key === here || (b.key === 'more' && here && !inBar) ? 'on' : ''}"><span class="i">${b.icon}</span>${esc(b.label)}<span class="nb" hidden></span></a>`).join('')}
+      </nav>`);
+    document.body.classList.add('has-btabs');
+    document.querySelector('#btabs [data-btab="more"]').addEventListener('click', e => { e.preventDefault(); openMore(more.rest); });
+    paintBarBadges();
+  }
+  // The numbers come from admin-flags.js (paintFromTasks).
+  document.addEventListener('poolside:badges', e => { navCounts = e.detail || null; paintBarBadges(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMore(); });
+  window.AdminNav = { sectionsFor, barFor, render: renderNav };
+  // Draw straight away from the last visit, so the bar doesn't pop in late.
+  try {
+    const u = JSON.parse(localStorage.getItem('poolside_tenant_user') || 'null');
+    const f = JSON.parse(localStorage.getItem('poolside_tenant_features') || 'null');
+    if (u) {
+      const draw = () => renderNav(u, f || {});
+      if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw, { once: true });
+    }
+  } catch (_) { /* no saved answer yet: admin-flags draws it */ }
+
   const file = (window.location.pathname.split('/').pop() || 'index.html');
   const section = PAGE_SECTION[file];
   if (!section) return;

@@ -161,7 +161,7 @@ console.log('\nK4 · "My job" on the dashboard (offline)');
   check('K4: each task says which position it\'s for', /for_position/.test(at), '');
   const dash = read('club/admin/index.html');
   check('K4: the dashboard shows "Your job" with the purpose and full description',
-    /id="my-job-card"/.test(dash) && /my_positions/.test(dash) && /description/.test(between(dash, 'function paintMyJob', '\n}\n')), '');
+    /id="my-job"/.test(dash) && /my_positions/.test(dash) && /description/.test(between(dash, 'function paintMyJob', '\n}\n')), '');
   check('K4: a task names its position ("For the Treasurer")', /for_position/.test(between(dash, 'function taskFor', '\n}\n')), '');
 }
 

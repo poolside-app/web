@@ -47,6 +47,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
+import { bridgeOnline } from '../_shared/bridge_health.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -832,6 +833,53 @@ Deno.serve(async (req) => {
       ok: true,
       unlocks: (data ?? []).map(u => ({ ...u, member_name: nameById.get(u.member_id) ?? null })),
     });
+  }
+
+  // ── board_unlock (PLAN.md W2) ─────────────────────────────────────
+  // The "Unlock now" button at the top of every board member's home (Doug,
+  // 10/9: every board member, not only the President, and only when the
+  // club has keyfobs and remote unlock on). Unlike test_unlock it never
+  // queues while the bridge is off: the bridge takes the oldest waiting
+  // unlock whenever it comes back, so a tap from hours ago would open the
+  // gate then. Each unlock records the board member who made it.
+  if (action === 'board_unlock') {
+    const { data: me } = await sb.from('admin_users').select('id, active, role_template, roles')
+      .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle();
+    const attendantOnly = me && (me.role_template === 'gate_attendant'
+      || (((me.roles as string[] | null) ?? []).length && ((me.roles as string[]) ?? []).every(r => r === 'gate_attendant')));
+    if (!me || !me.active || attendantOnly) {
+      return jsonResponse({ ok: false, error: 'Only board members can open the gate from here.' }, 403);
+    }
+    const [{ data: st }, { data: row }] = await Promise.all([
+      sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
+      sb.from('gate_panels').select('id, status, panel_host, bridge_last_seen_at').eq('tenant_id', payload.tid).maybeSingle(),
+    ]);
+    const features = (((st?.value ?? {}) as Record<string, unknown>).features ?? {}) as Record<string, unknown>;
+    if (!features.keyfobs || !features.gate || !row || row.status !== 'active' || !row.panel_host) {
+      return jsonResponse({ ok: false, error: 'Remote unlock isn\'t set up for your club.' }, 400);
+    }
+    if (!bridgeOnline(row.bridge_last_seen_at as string | null)) {
+      return jsonResponse({ ok: false, error: 'Remote unlock is offline right now. Keyfobs still work.', reason: 'gate_offline' }, 409);
+    }
+    // One tap at a time, and never a pile-up behind a slow bridge.
+    const since = new Date(Date.now() - 3000).toISOString();
+    const [{ count: recent }, { count: waiting }] = await Promise.all([
+      sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('admin_user_id', payload.sub).gte('requested_at', since),
+      sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('tenant_id', payload.tid).in('status', ['pending', 'in_flight']),
+    ]);
+    if ((recent ?? 0) > 0) return jsonResponse({ ok: false, error: 'You just opened it. Give it a moment.' }, 429);
+    if ((waiting ?? 0) > 20) return jsonResponse({ ok: false, error: 'The gate is backed up. Try again in a moment.' }, 503);
+    const { data: unlock, error } = await sb.from('gate_unlocks').insert({
+      tenant_id: payload.tid,
+      member_id: null,
+      admin_user_id: payload.sub,
+      status: 'pending',
+      is_test: false,
+      actor_kind: 'admin',
+      client_user_agent: req.headers.get('user-agent')?.slice(0, 200) || null,
+    }).select('id').single();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, unlock_id: unlock.id });
   }
 
   if (action === 'test_unlock') {
