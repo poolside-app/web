@@ -610,6 +610,13 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ U4.** The member app tabs.
 - Notes: Bishop's current season is **2027**: it went on sale 10/7 when Doug asked to start the next season, and is now fixed (it changes only on the button). Families paid for 2026 stay members until Jan 1, 2027. `node scripts/test_season_home.mjs [--live]` (27 offline, 3 live checks).
 
+### V. Member home, second pass (Doug, 10/9) — ✅ done 10/9
+Doug, on the tabs: the bottom bar doesn't stay at the bottom; keyfobs belong only on My family; photos on the front page; a smaller top banner with the date and the weather at the pool (for current members) plus what's happening today; remote unlock right under it, only if the club has it; latest news near the top; photos under that; the calendar scrolls on the front page; three tabs.
+- **Three tabs:** Home, Ask the board, My family. The bar is fixed to the bottom of the screen everywhere (it sat across the top on a computer before).
+- **Home, in order:** a small banner (hi, the date, the weather at the pool, today's hours and first event), remote unlock (only when the club has it; a one-line note when it's offline), anything to do (renewal, a plan needing attention), latest news, the fundraiser, photos, then the calendar with parties, programs and volunteering.
+- **My family:** the family card, payment plan, keyfobs, and refer a friend (moved off the banner).
+- Weather: Open-Meteo (free, no key), from the pool's map pin, which only signed-in current members get.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

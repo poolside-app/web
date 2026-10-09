@@ -48,8 +48,10 @@ console.log('\nD2 · the Venmo wait matches the club\'s setting');
   check('the thank-you uses offline_verify_window_days', /offline_verify_window_days/.test(between(apply, 'async function submitApplication', 'function simulateVenmo')) || /verifyDays/.test(done));
 }
 
-console.log('\nD3 · a new member isn\'t welcomed "back"');
-check('first visit says Welcome to…, later visits Welcome back', /poolside_welcomed_/.test(member) && /Welcome to\b/.test(member));
+console.log('\nD3 · the banner greets, it doesn\'t welcome "back"');
+// Since PLAN.md V (10/9) the banner is "Hi, <name>" with the date, the
+// weather and today; there's no "Welcome back" line to get wrong.
+check('the banner greets by name with today\'s date, no "Welcome back"', /Hi, \$\{escapeHtml/.test(member) && /hero-date/.test(member) && !/Welcome back to/.test(member));
 
 console.log('\nD4 · no browser pop-ups in the member app');
 {

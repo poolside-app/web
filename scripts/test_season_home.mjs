@@ -67,18 +67,19 @@ console.log('U3 · the January 1 rule (offline)');
   check('parties and keyfobs refuse a non-member', /requireCurrentMember|memberStatus\(/.test(ma.slice(ma.indexOf("action === 'request_party'"), ma.indexOf("action === 'request_party'") + 3000)) && /householdStatus\(/.test(read('supabase/functions/keyfobs/index.ts')));
 }
 
-console.log('U4 · the member app tabs (offline)');
+console.log('U4/V · the member app (offline)');
 {
   const home = read('m/index.html');
-  const tabs = ['home', 'calendar', 'photos', 'help', 'family'];
-  check('five tabs: Home, Calendar, Photos, Ask the board, My family', /data-tab="\$\{id\}"/.test(home) && tabs.every(t => new RegExp(`tab\\('${t}',`).test(home)));
-  check('each part of the page belongs to a tab', /data-pane="home"/.test(home) && /data-pane="calendar"/.test(home) && /data-pane="photos"/.test(home) && /data-pane="help"/.test(home) && /data-pane="family"/.test(home));
-  check('Home starts with the gate, then anything to do, then the fundraiser', (() => {
-    const pane = home.slice(home.indexOf('data-pane="home"'));
-    const g = pane.indexOf('gate-card'), t = pane.indexOf('todo-host'), f = pane.indexOf('renderFundraiserCard');
-    return g > 0 && t > g && f > t;
-  })());
-  check('an unpaid family sees "Pay for" and only what they can use', /Pay for \$\{/.test(home) && /UNPAID_TABS|lockedTabs/.test(home));
+  // Doug, 10/9 (PLAN.md V): three tabs; Home in his order; keyfobs only on My family.
+  check('three tabs: Home, Ask the board, My family', /data-tab="\$\{id\}"/.test(home) && ['home', 'help', 'family'].every(t => new RegExp(`tab\\('${t}',`).test(home)) && !/tab\('calendar',/.test(home) && !/tab\('photos',/.test(home));
+  check('the bar is fixed to the bottom, attached to the page', /document\.body\.insertAdjacentHTML\('beforeend', `\s*<nav class="mtabs"/.test(home) && /\.mtabs \{ position: fixed;[^}]*bottom: 0/.test(home) && !/\.mtabs \{ position: sticky/.test(home));
+  const pane = home.slice(home.indexOf('<section data-pane="home">'), home.indexOf('<section data-pane="help"'));
+  const order = ['hero-card compact', 'gate-card', 'todo-host', 'Latest news', 'renderFundraiserCard', 'photos-card', 'calendarHtml'].map(k => pane.indexOf(k));
+  check('Home: banner, unlock, to-dos, news, fundraiser, photos, calendar', order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1])), short(order));
+  check('the banner has the date, the weather and today', /hero-date/.test(pane) && /id="hero-weather"/.test(pane) && /todayLine/.test(pane) && /api\.open-meteo\.com/.test(home));
+  check('keyfobs only on My family', !/renderFobCard|keyfob/i.test(pane) && /renderFobCard\(me\.keyfobs\)/.test(home.slice(home.indexOf('<section data-pane="family"'))));
+  check('an unpaid family sees "Pay for" and the calendar', /Pay for \$\{/.test(home) && /: calendarHtml\}/.test(pane));
+  check('remote unlock offline is one quiet line', /Remote unlock is offline right now\. Use your keyfob\./.test(home));
 }
 
 if (LIVE) {

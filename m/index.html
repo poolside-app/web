@@ -91,21 +91,14 @@ window.addManifestLink = function (href) {
   .who a { cursor: pointer; }
 
   main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
-  /* The app tabs (PLAN.md U4): a bar at the bottom on a phone, across the
-     top on a computer. */
-  .mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9000; display: flex; background: #fff; border-top: 1px solid var(--border); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); }
-  .mtabs button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; background: none; border: 0; font: 600 10.5px 'Inter', sans-serif; color: var(--muted); cursor: pointer; border-radius: 10px; }
-  .mtabs button .ti { font-size: 20px; line-height: 1.1; }
+  /* The app tabs (PLAN.md U4, V): a bar fixed to the bottom of the screen
+     on every device, attached straight to <body> so nothing can move it. */
+  .mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9000; display: flex; justify-content: center; background: #fff; border-top: 1px solid var(--border); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); transform: translateZ(0); }
+  .mtabs button { flex: 1; max-width: 200px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; background: none; border: 0; font: 600 11px 'Inter', sans-serif; color: var(--muted); cursor: pointer; border-radius: 10px; }
+  .mtabs button .ti { font-size: 21px; line-height: 1.1; }
   .mtabs button.on { color: var(--blue); background: var(--blue-l, #e6eef5); }
-  body.has-tabs main { padding-bottom: 96px; }
+  body.has-tabs main { padding-bottom: 100px; }
   body.has-tabs #pool-pass-fab { bottom: calc(84px + env(safe-area-inset-bottom)) !important; }
-  @media (min-width: 760px) {
-    .mtabs { position: sticky; top: 0; bottom: auto; justify-content: center; gap: 4px; border-top: 0; border-bottom: 1px solid var(--border); box-shadow: none; margin: -28px -22px 20px; padding: 6px 12px; border-radius: 0; }
-    .mtabs button { flex: 0 0 auto; flex-direction: row; gap: 6px; font-size: 14px; padding: 9px 14px; }
-    .mtabs button .ti { font-size: 16px; }
-    body.has-tabs main { padding-bottom: 28px; }
-    body.has-tabs #pool-pass-fab { bottom: 22px !important; }
-  }
 
   .hero-card {
     background: linear-gradient(135deg, var(--blue), var(--blue-2));
@@ -115,6 +108,12 @@ window.addManifestLink = function (href) {
   .hero-card h1 { color: #fff; }
   .hero-card .sub { opacity: .85; margin: 6px 0 0; font-size: 14px; }
   .hero-card .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  /* The smaller banner (PLAN.md V): hi, the date, the weather, today. */
+  .hero-card.compact { padding: 16px 18px; margin-bottom: 14px; }
+  .hero-card.compact h1 { font-size: 22px; }
+  .hero-card .hero-date { font-size: 13px; opacity: .85; white-space: nowrap; }
+  .hero-card .hero-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 13.5px; }
+  .hero-card .hero-line span { white-space: nowrap; }
   .btn {
     padding: 10px 18px; border-radius: var(--r-md);
     font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
@@ -1899,10 +1898,36 @@ async function claimFobVenmo() {
   } catch (e) { notify(e.message, 'err'); }
 }
 
+// ── The weather at the pool, for the banner (PLAN.md V) ──────────────────
+// Open-Meteo: free, no key. Kept for 30 minutes so opening the app often
+// doesn't ask again. The banner just leaves it out if it can't be had.
+const WX = { 0: ['☀️', 'Clear'], 1: ['🌤️', 'Mostly sunny'], 2: ['⛅', 'Partly cloudy'], 3: ['☁️', 'Cloudy'], 45: ['🌫️', 'Fog'], 48: ['🌫️', 'Fog'],
+  51: ['🌦️', 'Drizzle'], 53: ['🌦️', 'Drizzle'], 55: ['🌦️', 'Drizzle'], 61: ['🌧️', 'Rain'], 63: ['🌧️', 'Rain'], 65: ['🌧️', 'Heavy rain'],
+  71: ['🌨️', 'Snow'], 73: ['🌨️', 'Snow'], 75: ['🌨️', 'Snow'], 80: ['🌦️', 'Showers'], 81: ['🌦️', 'Showers'], 82: ['🌧️', 'Heavy showers'],
+  95: ['⛈️', 'Thunderstorms'], 96: ['⛈️', 'Thunderstorms'], 99: ['⛈️', 'Thunderstorms'] };
+async function loadWeather(loc) {
+  const el = document.getElementById('hero-weather');
+  if (!el) return;
+  const KEY = 'poolside_wx';
+  let wx = null;
+  try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); if (c && Date.now() - c.at < 30 * 60_000 && c.lat === loc.lat) wx = c; } catch (_) {}
+  if (!wx) {
+    try {
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=auto`).then(x => x.json());
+      if (!r || !r.current) return;
+      wx = { at: Date.now(), lat: loc.lat, t: Math.round(r.current.temperature_2m), code: r.current.weather_code };
+      try { localStorage.setItem(KEY, JSON.stringify(wx)); } catch (_) {}
+    } catch (_) { return; }
+  }
+  const [icon, label] = WX[wx.code] || ['🌡️', ''];
+  el.textContent = `${icon} ${wx.t}°${label ? ' ' + label : ''} at the pool`;
+}
+
 // ── The app tabs (PLAN.md U4) ────────────────────────────────────────────
 // Old links still land in the right place: #parties on Calendar, #plan and
 // #keyfobs on My family, #help=<id> on Ask the board.
-const TAB_FOR = { home: 'home', calendar: 'calendar', parties: 'calendar', photos: 'photos', help: 'help', family: 'family', plan: 'family', keyfobs: 'family' };
+const TAB_FOR = { home: 'home', calendar: 'home', parties: 'home', photos: 'home', help: 'help', family: 'family', plan: 'family', keyfobs: 'family' };
+const SCROLL_TO = { calendar: 'calendar-card', parties: 'parties-card', photos: 'photos-card' };
 function tabForHash(h) {
   const key = String(h || '').replace(/^#/, '').split('=')[0];
   return TAB_FOR[key] || 'home';
@@ -1913,7 +1938,7 @@ function showTab(tab, scrollTo, first) {
   document.querySelectorAll('#mtabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   // Keep a #help=<id> link as it is; otherwise the address shows the tab.
   if (!/^#help=/.test(location.hash) || !first) history.replaceState(null, '', location.pathname + location.search + '#' + (scrollTo && scrollTo !== tab && TAB_FOR[scrollTo] ? scrollTo : tab));
-  const target = scrollTo && scrollTo !== tab && document.getElementById(scrollTo === 'parties' ? 'parties-card' : scrollTo);
+  const target = scrollTo && scrollTo !== tab && document.getElementById(SCROLL_TO[scrollTo] || scrollTo);
   if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), first ? 300 : 30);
   else if (!first) window.scrollTo({ top: 0 });
 }
@@ -2343,6 +2368,12 @@ async function loadGateCard() {
       return;
     }
     card.style.display = 'block';
+    // Offline: one quiet line, not a big card (PLAN.md V).
+    if (!r.can_unlock && r.reason === 'gate_offline') {
+      card.style.cssText = 'display:block;padding:12px 16px;background:var(--bg-2);color:var(--muted);text-align:left;box-shadow:none';
+      document.getElementById('gate-card-body').innerHTML = '<div style="font-size:13.5px">🔒 Remote unlock is offline right now. Use your keyfob.</div>';
+      return;
+    }
     if (r.can_unlock) {
       renderGateEnabled();
     } else {
@@ -2605,13 +2636,6 @@ async function submitProfile() {
 
   const { user, household, tenant } = me;
   ME_HOUSEHOLD = household;
-  // "Welcome back" only once they've been here before, on this phone.
-  let firstVisit = false;
-  try {
-    const key = 'poolside_welcomed_' + user.id;
-    firstVisit = !localStorage.getItem(key);
-    localStorage.setItem(key, '1');
-  } catch (_) {}
   const venmo = publicData.public_settings?.payments?.venmo_handle;
 
   // Pool-pass FAB — only show when the tenant has 'member_pass' in their
@@ -2660,11 +2684,7 @@ async function submitProfile() {
   }
 
   // Hero card with greeting + quick actions
-  const heroActions = [];
-  // Refer a friend gets the bright treatment — it's the growth lever.
-  const referReward = Number(publicData.public_settings?.referrals?.reward_cents ?? 10000);
-  heroActions.push(`<button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">💌 Refer a friend, earn $${(referReward / 100).toFixed(referReward % 100 ? 2 : 0)}</button>`);
-  // Parties, photos and Ask the board have their own tabs now (PLAN.md U4).
+  // Refer a friend moved to My family (PLAN.md V).
   // "Edit my info" + "Add a household member" both moved to /m/family.html
   // — the household card below is the link in. Hero stays focused on
   // engagement actions, not chores.
@@ -2732,77 +2752,99 @@ async function submitProfile() {
     `).join('')
     : '<div class="empty">No announcements yet.</div>';
 
-  // ── The app tabs (PLAN.md U4, Doug 10/8) ─────────────────────────────
-  // Home: the gate, anything to pay or approve, the fundraiser, today, news.
-  // Calendar: the calendar plus parties, programs and volunteering. Photos.
-  // Ask the board. My family: people, keyfobs, payment plan, settings.
+  // ── The member home (PLAN.md U4, V; Doug 10/8 and 10/9) ──────────────
+  // Three tabs: Home, Ask the board, My family. Home, in order: a small
+  // banner (hi, the date, the weather at the pool, today), remote unlock if
+  // the club has it, anything to do, latest news, the fundraiser, photos,
+  // then the calendar with parties, programs and volunteering. Keyfobs,
+  // the payment plan and refer-a-friend live on My family.
   // A family that isn't a member for the season (from January 1, U3) sees
-  // "Pay for <season>" and only My family, the calendar and Ask the board.
+  // "Pay for <season>" and the calendar.
   const acc = me.access || { member: true };
-  const lockedTabs = acc.member ? [] : ['photos'];
+  const lockedTabs = [];
   const payNow = acc.member ? '' : `
     <div class="card" style="background:#fef3c7;border-color:#fcd34d">
       <h2 style="color:#7c2d12">Pay for ${escapeHtml(String(acc.season))} to use everything</h2>
       <p style="font-size:14px;color:#7c2d12;margin:0 0 12px;line-height:1.5">Renew for the ${escapeHtml(String(acc.season))} season to use the gate, photos, parties, keyfobs and news again. Until then you can see the calendar, ask the board, and update your family.</p>
       <a class="btn" href="/m/renew.html" style="background:var(--blue);color:#fff;display:inline-block">Renew for ${escapeHtml(String(acc.season))}</a>
     </div>`;
-  // Things to do, on Home. A plan that needs attention shows here; otherwise
-  // it lives on My family.
+  // Today, for the banner: the pool's hours and the first thing on.
+  const todayKey = PoolTime.todayKey();
+  const hrs = PoolTime.hoursFor(publicData.public_settings?.pool, todayKey);
+  const fmtT = hhmm => { const [h, m] = String(hhmm).split(':').map(Number); return `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'AM' : 'PM'}`; };
+  const seasonClosed = publicData.public_settings?.season?.open === false;
+  const todaysEvents = (publicData.events || []).filter(e => e.starts_at && PoolTime.dayKey(new Date(e.starts_at)) === todayKey)
+    .sort((x, y) => String(x.starts_at).localeCompare(String(y.starts_at)));
+  const todayLine = [
+    seasonClosed ? '🏝️ Closed for the season' : hrs ? `🕗 Open ${fmtT(hrs.opens)}–${fmtT(hrs.closes)}` : '🚫 Closed today',
+    todaysEvents.length ? `📅 ${escapeHtml(todaysEvents[0].title)}${todaysEvents[0].all_day ? '' : ' ' + new Date(todaysEvents[0].starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${todaysEvents.length > 1 ? ` +${todaysEvents.length - 1} more` : ''}` : '',
+  ].filter(Boolean).map(t => `<span>${t}</span>`).join('');
+  // Things to do, on Home: renewal, and a plan that needs attention.
   const planNeedsYou = !!(me.plan && ['past_due', 'lapsed', 'cancelled'].includes(me.plan.status));
-  const fobsToPay = (me.keyfobs?.fobs || []).filter(f => f.status === 'requested' && !f.included && f.payment_status === 'unpaid').length;
   const todo = [
     acc.member ? renderRenewalCard(me.renewal, tenant) : '',
     planNeedsYou ? renderPlanCard(me.plan) : '',
-    fobsToPay ? `<button type="button" class="card" onclick="showTab('family', 'keyfobs')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;cursor:pointer;background:#fef3c7;border-color:#fcd34d">
-        <span>🔑 <b>${fobsToPay === 1 ? 'A keyfob' : fobsToPay + ' keyfobs'} to pay for</b><br><span style="font-size:13px;color:var(--muted)">The board sets them up once they're paid.</span></span>
-        <span style="color:var(--blue);font-weight:600;font-size:13px">Pay →</span></button>` : '',
     earlyBirdBanner,
   ].join('');
-  const tab = (id, icon, label) => lockedTabs.includes(id) ? ''
-    : `<button type="button" data-tab="${id}" onclick="showTab('${id}')"><span class="ti">${icon}</span><span>${label}</span></button>`;
+  // News: the latest two, the rest behind "More news".
+  const postRow = p => `
+      <div class="post-row">
+        <div class="post-title">${escapeHtml(p.title)}${p.pinned ? ' 📌' : ''}</div>
+        <div class="post-meta">${escapeHtml(fmtPostDate(p.published_at))}</div>
+        <div class="post-body">${escapeHtml(p.body)}</div>
+      </div>`;
+  const newsHtml = posts.length
+    ? posts.slice(0, 2).map(postRow).join('') + (posts.length > 2 ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--blue)">More news (${posts.length - 2})</summary>${posts.slice(2).map(postRow).join('')}</details>` : '')
+    : '<div class="empty">No announcements yet.</div>';
+  const referReward = Number(publicData.public_settings?.referrals?.reward_cents ?? 10000);
+  const tab = (id, icon, label) => `<button type="button" data-tab="${id}" onclick="showTab('${id}')"><span class="ti">${icon}</span><span>${label}</span></button>`;
+  document.getElementById('mtabs')?.remove();
+  document.body.insertAdjacentHTML('beforeend', `
+    <nav class="mtabs" id="mtabs" aria-label="Sections">
+      ${tab('home', '🏠', 'Home')}${tab('help', '🙋', 'Ask the board')}${tab('family', '👨‍👩‍👧', 'My family')}
+    </nav>`);
+
+  const calendarHtml = `
+      <div class="card" id="calendar-card">
+        <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          📅 Coming up
+          ${acc.member && user.can_book_parties ? '<button class="btn btn-ghost" onclick="openPartyModal()" style="font-size:12px;padding:6px 12px">🎉 Book a party</button>' : ''}
+        </h2>
+        <div id="coming-up">${eventsHtml}</div>
+        <div id="member-calendar" style="margin-top:14px"></div>
+      </div>`;
 
   document.getElementById('main').innerHTML = `
-    <nav class="mtabs" id="mtabs" aria-label="Sections">
-      ${tab('home', '🏠', 'Home')}${tab('calendar', '📅', 'Calendar')}${tab('photos', '📸', 'Photos')}${tab('help', '🙋', 'Ask the board')}${tab('family', '👨‍👩‍👧', 'My family')}
-    </nav>
-
     <section data-pane="home">
       ${renderSponsorStrip(publicData.sponsors || [])}
-      ${renderSeasonClosedBanner(publicData.public_settings?.season)}
-      <div class="hero-card">
-        <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
-        <p class="sub">${firstVisit ? 'Welcome to' : 'Welcome back to'} ${escapeHtml(tenant.display_name)}.</p>
-        ${acc.member ? `<div class="actions">${heroActions.join('')}</div>` : ''}
+      <div class="hero-card compact">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <h1>Hi, ${escapeHtml((user.name || '').split(' ')[0] || 'there')}!</h1>
+          <span class="hero-date">${escapeHtml(PoolTime.fmtDay(todayKey, { weekday: 'long', month: 'long', day: 'numeric' }))}</span>
+        </div>
+        ${acc.member ? `<div class="hero-line"><span id="hero-weather"></span>${todayLine}</div>` : ''}
       </div>
       ${payNow}
       ${acc.member ? `
-      <!-- Gate unlock first (Doug: "remote unlock should be pretty high up").
-           Hidden until loadGateCard() finds the club and family can use it. -->
-      <div class="card" id="gate-card" style="display:none;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff;text-align:center;padding:24px 22px">
+      <!-- Remote unlock, only when the club has it (loadGateCard). -->
+      <div class="card" id="gate-card" style="display:none;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff;text-align:center;padding:20px 22px">
         <div id="gate-card-body"></div>
       </div>
       <div id="todo-host">${todo}</div>
       <div id="push-prompt" style="display:none"></div>
-      ${renderFundraiserCard(publicData.public_settings?.fundraiser, publicData.public_settings?.payments, publicData.tenant)}
-      <div id="today-block"></div>
       <div class="card">
         <h2>📰 Latest news</h2>
-        ${postsHtml}
+        ${newsHtml}
       </div>
-      <div id="install-card-host"></div>` : ''}
-    </section>
-
-    <section data-pane="calendar" style="display:none">
-      ${acc.member && user.can_book_parties ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><button class="btn" onclick="openPartyModal()" style="background:var(--blue);color:#fff">🎉 Book a party</button></div>` : ''}
-      <div class="card">
-        <h2>📅 Coming up</h2>
-        <div id="coming-up">${eventsHtml}</div>
+      ${renderFundraiserCard(publicData.public_settings?.fundraiser, publicData.public_settings?.payments, publicData.tenant)}
+      <div class="card" id="photos-card">
+        <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          📸 Photos
+          <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Add a photo</button>
+        </h2>
+        ${photosHtml}
       </div>
-      <div class="card">
-        <h2>Calendar</h2>
-        <div id="member-calendar"></div>
-      </div>
-      ${acc.member ? `
+      ${calendarHtml}
       <div class="card" id="parties-card">
         <h2>Your party requests</h2>
         <div class="empty">Loading…</div>
@@ -2814,19 +2856,9 @@ async function submitProfile() {
       <div class="card" id="volunteer-card" style="display:none">
         <h2>Volunteer</h2>
         <div id="volunteer-body" class="empty">Loading…</div>
-      </div>` : ''}
-    </section>
-
-    <section data-pane="photos" style="display:none">
-      ${acc.member ? `
-      <div class="card">
-        <h2 style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          📸 Photos
-          <button class="btn btn-ghost" onclick="openPhotoUpload()" style="font-size:12px;padding:6px 12px">+ Add a photo</button>
-        </h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Snapshots from the club. The board approves each one before it shows here and on the club's page.</p>
-        ${photosHtml}
-      </div>` : ''}
+      </div>
+      <div id="today-block" style="display:none"></div>
+      <div id="install-card-host"></div>` : calendarHtml}
     </section>
 
     <section data-pane="help" style="display:none">
@@ -2849,9 +2881,14 @@ async function submitProfile() {
       </a>
       ${planNeedsYou ? '' : renderPlanCard(me.plan)}
       ${acc.member ? renderFobCard(me.keyfobs) : ''}
+      ${acc.member ? `<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span><b>💌 Refer a friend</b><br><span style="font-size:13px;color:var(--muted)">Earn $${(referReward / 100).toFixed(referReward % 100 ? 2 : 0)} when a family you invite joins.</span></span>
+        <button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">Invite a family</button>
+      </div>` : ''}
     </section>
   `;
   loadHelpList();
+  if (acc.member && acc.pool_location) loadWeather(acc.pool_location);
   document.body.classList.add('has-tabs');
   window.__LOCKED_TABS__ = lockedTabs;
   showTab(tabForHash(location.hash), location.hash.slice(1).split('=')[0] || null, true);

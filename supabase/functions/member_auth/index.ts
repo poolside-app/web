@@ -635,6 +635,14 @@ Deno.serve(async (req) => {
       const ms = await import('../_shared/membership_status.ts');
       const st = await ms.householdStatus(sb as never, payload.tid as string, payload.hid as string);
       access = { ...st, can_use: st.member ? null : ms.UNPAID_CAN_USE };
+      // The pool's map pin, for the weather on the banner (PLAN.md V):
+      // current members only.
+      if (st.member) {
+        const { data: svp } = await sb.from('settings').select('value').eq('tenant_id', payload.tid as string).maybeSingle();
+        const pool = ((svp?.value as Record<string, unknown> | undefined)?.pool as Record<string, unknown> | undefined) ?? {};
+        const lat = Number(pool.lat), lng = Number(pool.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng) && (lat || lng)) access.pool_location = { lat, lng };
+      }
     } catch (e) { console.error('member access:', (e as Error).message); }
 
     return jsonResponse({
