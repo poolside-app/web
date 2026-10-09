@@ -13,6 +13,7 @@
 //   { action: 'request', count? }               → { ok, fobs }  more fobs, at the fee, up to the family limit
 //   { action: 'report_lost', id, replace? }     → { ok, replacement? }
 //   { action: 'claim_venmo', ids }              → { ok }        "I paid by Venmo" for the unpaid ones
+//   { action: 'cancel', ids }                   → { ok, count } a request not paid yet (PLAN.md X2)
 //
 // Board actions (tenant admin; the keyfobs or households screen):
 //   { action: 'list' }                          → { ok, fobs, households, settings }
@@ -20,6 +21,7 @@
 //   { action: 'add', household_id, number, member_id? } → { ok, fob }   a fob they already have
 //   { action: 'turned_off', id }                → { ok }        done at the panel
 //   { action: 'require_payment', id }           → { ok }        a flagged free fob: charge instead
+//   { action: 'cancel', id }                    → { ok }        a request not paid yet; the family gets a pop-up
 //   { action: 'confirm_venmo', id }             → { ok }
 //   { action: 'swap', id, number?, charge? }    → { ok }        a broken fob: a free one now, or $15 first (PLAN.md Q5)
 //   { action: 'settings_get' } / { action: 'settings_save', included_free?, fee_cents?, max_per_family? }
@@ -29,7 +31,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, type AdminPayload } from '../_shared/auth.ts';
-import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs, liveFobCount } from '../_shared/keyfobs.ts';
+import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs, liveFobCount, canCancel } from '../_shared/keyfobs.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -194,6 +196,18 @@ Deno.serve(async (req) => {
       }
       return j({ ok: true, count: fobs.length });
     }
+    // Cancel a request before it's paid (PLAN.md X2). It never had a fob
+    // number, so it's simply removed.
+    if (action === 'cancel') {
+      const ids = (Array.isArray(body.ids) ? body.ids : [body.id]).map(String).filter(Boolean).slice(0, 20);
+      const { data: fobs } = await sb.from('keyfobs').select(FIELDS).eq('household_id', hid)
+        .in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
+      const ok = (fobs ?? []).filter(f => canCancel(f));
+      if (!ok.length) return j({ ok: false, error: 'Only a request that isn\'t paid yet can be canceled. Ask the board through Member help.' }, 409);
+      await sb.from('keyfobs').delete().in('id', ok.map(f => f.id));
+      for (const f of ok) await closeTasks(sb, f.id as string, null, hid);
+      return j({ ok: true, count: ok.length });
+    }
     return j({ ok: false, error: `Unknown action: ${action}` }, 400);
   }
 
@@ -305,6 +319,17 @@ Deno.serve(async (req) => {
     await sb.from('keyfobs').update({ status: 'off', turned_off_at: new Date().toISOString() }).eq('id', f.id);
     await closeTasks(sb, f.id as string, me.id);
     await syncHouseholdFobs(sb, f.household_id as string);
+    return j({ ok: true });
+  }
+
+  // Cancel a request before it's paid (PLAN.md X2): the family gets a pop-up.
+  if (action === 'cancel') {
+    const f = await one(body.id);
+    if (!f || !canCancel(f)) return j({ ok: false, error: 'Only a request that isn\'t paid yet can be canceled.' }, 409);
+    await sb.from('keyfobs').delete().eq('id', f.id);
+    await closeTasks(sb, f.id as string, me.id, f.household_id as string);
+    await popFamily(TID, f.household_id as string, '🔑 Keyfob request canceled',
+      `The board canceled your request for ${f.reason === 'replacement' ? 'a replacement fob' : 'a new fob'}. Ask the board if you still need one.`);
     return j({ ok: true });
   }
 

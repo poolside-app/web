@@ -121,7 +121,8 @@ console.log('W3 · the bottom bar on every board page (offline)');
     check('President: every section', ['members', 'money', 'calendar', 'content', 'insights', 'settings'].every(k => keysOf('president').includes(k)), short(keysOf('president')));
     check('Treasurer: Members and Money, no Calendar', keysOf('treasurer').includes('members') && keysOf('treasurer').includes('money') && !keysOf('treasurer').includes('calendar'), short(keysOf('treasurer')));
     const fac = nav.sectionsFor(user('facilities'), F);
-    check('Facilities Director: Settings opens Keyfobs (it used to be hidden)', fac.some(x => x.key === 'settings' && /keyfobs\.html/.test(x.href)) && !fac.some(x => x.key === 'members' || x.key === 'money'), short(fac));
+    // Keyfobs moved under Members (PLAN.md X1): their Members tab opens it.
+    check('Facilities Director: Members opens Keyfobs (it used to be hidden)', fac.some(x => x.key === 'members' && /keyfobs\.html/.test(x.href)) && !fac.some(x => x.key === 'money'), short(fac));
     check('Events & Rentals: Calendar opens Parties when Events is ticked off', nav.sectionsFor({ role_template: 'custom', scopes: ['parties'] }, F).some(x => x.key === 'calendar' && /parties\.html/.test(x.href)));
     const bar = nav.barFor(user('president'), F);
     check('the bar: Home, three sections, More', bar.length === 5 && bar[0].key === 'home' && bar[4].key === 'more', short(bar.map(b => b.key)));

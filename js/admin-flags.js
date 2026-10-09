@@ -487,7 +487,7 @@
           }
         }
         // Members hub — visible if user has ANY members-section scope.
-        const MEMBERS_SCOPES = ['households','applications','tiers','renewals','payments','programs','parties','volunteer','meetings'];
+        const MEMBERS_SCOPES = ['households','applications','tiers','renewals','payments','programs','parties','volunteer','meetings','keyfobs'];
         const hasAnyMembers = MEMBERS_SCOPES.some(s => scopes.has(s));
         if (!hasAnyMembers) {
           document.querySelectorAll('a[href^="/club/admin/members.html"]').forEach(el => { el.style.display = 'none'; });
@@ -630,7 +630,7 @@
       return { sec, sub: hit ? hit.key : null };
     }
     const k = String(t.kind || '');
-    if (/^keyfob\.|^plan\.fob_/.test(k)) return { sec: 'settings', sub: 'keyfobs' };
+    if (/^keyfob\.|^plan\.fob_/.test(k)) return { sec: 'members', sub: 'keyfobs' };
     if (/^application\.(refund|dispute)|^plan\.|^payments?\.|^referral\.|^renewal\.|^dues\./.test(k)) return { sec: 'money', sub: 'payments' };
     if (/^application\.|^venmo\./.test(k)) return { sec: 'members', sub: 'applications' };
     if (/^household/.test(k)) return { sec: 'members', sub: 'households' };

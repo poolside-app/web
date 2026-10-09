@@ -784,7 +784,7 @@ Deno.serve(async (req) => {
       description: `$${(feeCents / 100).toFixed(2)} for ${n === 1 ? 'the keyfob' : n + ' keyfobs'} + $${((amountCents - feeCents) / 100).toFixed(2)} card fee`,
       successUrl: `${clubUrl}/m/index.html?paid=1#keyfobs`,
       cancelUrl: `${clubUrl}/m/index.html?paid=0#keyfobs`,
-      metadata: { kind: 'keyfob', keyfob_ids: due.map(f => f.id).join(','), tenant_id: TID },
+      metadata: { kind: 'keyfob', keyfob_ids: due.map(f => f.id).join(','), tenant_id: TID, household_id: String(payload.hid) },
       feeBps: FEE_BPS_PROGRAMS,
       policy: feePolicyFromTenant(tenant),
       simulate: testMode,

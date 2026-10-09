@@ -479,6 +479,30 @@ Deno.serve(async (req) => {
       const { data: fobs } = await sb.from('keyfobs').select('id, household_id, reason, payment_status')
         .in('id', fobIds).eq('tenant_id', tenantId);
       const due = (fobs ?? []).filter(f => f.payment_status !== 'paid');
+      // Canceled while the checkout was still open (PLAN.md X2): the money
+      // came in for a request that's gone. Nothing is refunded on its own;
+      // the Treasurer refunds it in Stripe, or the fob is issued after all.
+      const found = new Set((fobs ?? []).map(f => f.id as string));
+      const missing = fobIds.filter(id => !found.has(id));
+      if (missing.length) {
+        try {
+          const { data: lateHh } = md.household_id
+            ? await sb.from('households').select('family_name').eq('id', md.household_id).eq('tenant_id', tenantId).maybeSingle()
+            : { data: null };
+          const fam = (lateHh?.family_name as string | undefined) ?? 'A family';
+          const paidUsd = `$${((Number(session.amount_total) || 0) / 100).toFixed(2)}`;
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: tenantId, target_scopes: ['payments'], kind: 'keyfob.paid_after_cancel',
+            summary: `${fam === 'A family' ? fam : `The ${fam}`} paid ${paidUsd} by card for ${missing.length === 1 ? 'a keyfob request that was' : missing.length + ' keyfob requests that were'} canceled. Refund it in Stripe, or issue the fob after all.`,
+            link_url: '/club/admin/payments.html',
+            // source_id is a uuid column: the family; the Stripe session goes in metadata.
+            ...(md.household_id ? { source_kind: 'keyfob_payment', source_id: md.household_id } : {}),
+            metadata: { stripe_session_id: String(session.id ?? ''), keyfob_ids: missing, amount_cents: Number(session.amount_total) || 0 },
+            push_title: '🔑 Keyfob paid after canceling', push_body: `${fam} paid ${paidUsd} for a canceled keyfob request.`,
+          });
+        } catch { /* best-effort */ }
+      }
       if (due.length) {
         await sb.from('keyfobs').update({ payment_status: 'paid', payment_method: 'stripe', paid_at: new Date().toISOString() }).in('id', due.map(f => f.id));
         const hid = due[0].household_id as string;

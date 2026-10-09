@@ -638,6 +638,18 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ W4.** Proof: `scripts/test_board_home.mjs` (offline: what Bishop's President, Treasurer, Facilities Director and Grounds Director each get; live: a few calls with a temporary board login, removed after) and screenshots of three positions on a phone and a computer.
 - Notes: "families paid" has no "of 64" (the dues bar never had one: what the 64 is would be arguable). The board meeting links (start one, add to the agenda) stay as rows at the bottom of the home. A Facilities Director's Settings tab now opens Keyfobs; before, the tab was hidden from them. Quick buttons open their form (`announcements.html#text`, `#new`, `events.html#new`, `photos.html#upload`). The "?" button gives way to More on phones. `node scripts/test_board_home.mjs [--live]` (47 offline, 9 live checks).
 
+### X. Keyfobs under Members, and canceling an unpaid request (Doug, 10/9) — ✅ done 10/9
+Doug: "keyfob section should be under members… there is a pending keyfob that needs to be paid via venmo… I can't cancel this request on the admin side, nor the member side… I should be able to do this on both." And: "no they can't cancel after it's paid… I want to cancel during that time."
+- **Keyfobs moves from Settings to Members** (Pipeline, Households, Renewals, Keyfobs, Policies).
+- **Cancel a request that isn't paid yet,** from the app (My family) and from the board's Keyfobs page. Not paid means waiting to be paid, or free (a new family's included fob). Once it's paid, by card, with the dues, or a Venmo the family says they sent, there's no cancel on either side.
+- Canceling removes the request (it never had a fob number) and closes its board task. When the board cancels, the family gets a pop-up.
+- A card payment that comes in for a request canceled in the meantime (the checkout was still open) isn't lost: the board gets a task to refund it in Stripe or issue the fob.
+
+Steps (each one: a failing test first, then the fix, then proof):
+- **✅ X1.** Keyfobs under Members: `js/admin-subtabs.js`, the nav generator, the tab numbers.
+- **✅ X2.** `keyfobs` `cancel` for the family and the board, only before payment; the buttons on both sides; the webhook's late-payment task.
+- **✅ X3.** Proof: `test_keyfobs` (offline, and live with a temporary family: cancel an unpaid request from each side, refused once paid). `ONLY=cancel node scripts/test_keyfobs.mjs --live` runs just this part (about 12 calls). The late-payment task goes to the Treasurer (the `payments` alert), linked to Money.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

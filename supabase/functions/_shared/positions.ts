@@ -75,6 +75,8 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'keyfob.issue': 'gate',
   'keyfob.off': 'gate',
   'keyfob.venmo': 'gate',
+  // A card payment for a request canceled meanwhile: a refund (PLAN.md X2).
+  'keyfob.paid_after_cancel': 'payments',
   'renewal.auto_renew_failed': 'payments',
   // Plan payments waiting for approval (PLAN.md S3).
   'payments.approve_due': 'payments',

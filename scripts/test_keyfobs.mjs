@@ -13,6 +13,7 @@ import { makeTempMember, purgeTestFamilies } from './lib/testdata.mjs';
 const root = new URL('../', import.meta.url);
 const read = rel => readFileSync(new URL(rel, root), 'utf8');
 const LIVE = process.argv.includes('--live');
+const ONLY = process.env.ONLY || '';   // ONLY=cancel: just the X part live
 let passed = 0, failed = 0;
 function check(label, ok, detail = '') {
   if (ok) { passed++; console.log(`  ✓ ${label}`); }
@@ -99,6 +100,30 @@ console.log('Q · keyfobs at checkout (offline)');
   check('Q5: the board can swap a broken fob', /call\('swap'/.test(read('club/admin/keyfobs.html')) && /action === 'swap'/.test(read('supabase/functions/keyfobs/index.ts')));
 }
 
+console.log('X · keyfobs under Members, and canceling before payment (offline)');
+{
+  const sub = read('js/admin-subtabs.js');
+  const members = sub.slice(sub.indexOf('members: ['), sub.indexOf('],', sub.indexOf('members: [')));
+  const settingsStrip = sub.slice(sub.indexOf('settings: ['), sub.indexOf('],', sub.indexOf('settings: [')));
+  check('X1: Keyfobs is under Members, not Settings', /keyfobs\.html/.test(members) && !/keyfobs\.html/.test(settingsStrip) && /'keyfobs\.html': 'members'/.test(sub));
+  check('X1: the nav generator agrees', /"keyfobs\.html":\s+"members"/.test(read('scripts/rewrite_admin_nav.py')));
+  check('X1: keyfob tasks count on the Members tab', /\^keyfob\\\.\|\^plan\\\.fob_\/\.test\(k\)\) return \{ sec: 'members', sub: 'keyfobs' \}/.test(read('js/admin-flags.js')));
+  const k = await importTs(new URL('supabase/functions/_shared/keyfobs.ts', root));
+  const f = (status, payment_status, included = false) => ({ status, payment_status, included });
+  check('X2: an unpaid request can be canceled', k.canCancel?.(f('requested', 'unpaid')) === true);
+  check('X2: so can a free one (nothing to pay)', k.canCancel?.(f('requested', 'none', true)) === true);
+  check('X2: not once it\'s paid, by card, with the dues or a Venmo they sent', k.canCancel && !k.canCancel(f('requested', 'paid')) && !k.canCancel(f('requested', 'pending_verify')) && !k.canCancel(f('active', 'paid')));
+  const kf = read('supabase/functions/keyfobs/index.ts');
+  const memberPart = kf.slice(0, kf.indexOf('═══ The board'));
+  const boardPart = kf.slice(kf.indexOf('═══ The board'));
+  check('X2: the family can cancel, the board can cancel, both only before payment',
+    /action === 'cancel'/.test(memberPart) && /action === 'cancel'/.test(boardPart) && /canCancel\(/.test(memberPart) && /canCancel\(/.test(boardPart));
+  check('X2: canceling removes the request and closes its task', /\.delete\(\)/.test(kf.slice(kf.indexOf("action === 'cancel'"))) && /closeTasks\(/.test(boardPart.slice(boardPart.indexOf("action === 'cancel'"), boardPart.indexOf("action === 'cancel'") + 1500)));
+  check('X2: a "Cancel request" on My family and on the board\'s Keyfobs page', /cancelFob\(/.test(read('m/index.html')) && /Cancel request/.test(read('m/index.html')) && /cancelRequest\(/.test(read('club/admin/keyfobs.html')));
+  const wh = read('supabase/functions/stripe_webhook/index.ts');
+  check('X2: a card payment for a canceled request becomes a refund task', /keyfob\.paid_after_cancel/.test(wh) && /household_id/.test(read('supabase/functions/stripe_checkout/index.ts').slice(read('supabase/functions/stripe_checkout/index.ts').indexOf("action === 'keyfob'"), read('supabase/functions/stripe_checkout/index.ts').indexOf("action === 'keyfob'") + 2500)));
+}
+
 if (LIVE) {
   console.log('\nLive (Bishop, temporary family)');
   const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
@@ -124,6 +149,34 @@ if (LIVE) {
   try {
     const m = await makeTempMember(sql, club.id, FAMILY);
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, hid: m.household_id, slug: 'bishopestates' });
+
+    // X: cancel a request before it's paid, from either side (Doug, 10/9).
+    {
+      const gone = async id => (await sql(`select count(*)::int as n from keyfobs where id = '${id}'`))[0].n === 0;
+      const r1 = await fn('keyfobs', { action: 'request' }, memTok);
+      const c1 = await fn('keyfobs', { action: 'cancel', ids: [r1.fob?.id] }, memTok);
+      check('X2: the family cancels an unpaid request', c1.ok && await gone(r1.fob?.id), short(c1));
+      const r2 = await fn('keyfobs', { action: 'request' }, memTok);
+      const c2 = await fn('keyfobs', { action: 'cancel', id: r2.fob?.id }, admTok);
+      check('X2: the board cancels an unpaid request', c2.ok && await gone(r2.fob?.id), short(c2));
+      const r3 = await fn('keyfobs', { action: 'request' }, memTok);
+      await fn('keyfobs', { action: 'claim_venmo', ids: [r3.fob?.id] }, memTok);
+      const c3m = await fn('keyfobs', { action: 'cancel', ids: [r3.fob?.id] }, memTok);
+      const c3b = await fn('keyfobs', { action: 'cancel', id: r3.fob?.id }, admTok);
+      check('X2: once they say they sent the Venmo, neither side can cancel', !c3m.ok && !c3b.ok && !(await gone(r3.fob?.id)), short({ c3m, c3b }));
+      // The checkout was still open when they canceled, then they paid.
+      const r4 = await fn('keyfobs', { action: 'request' }, memTok);
+      const p4 = await fn('stripe_checkout', { action: 'keyfob', keyfob_id: r4.fob?.id }, memTok);
+      const t4 = p4.url ? new URL(p4.url).hash.replace(/^#t=/, '') : '';
+      await fn('keyfobs', { action: 'cancel', ids: [r4.fob?.id] }, memTok);
+      await fn('stripe_checkout', { action: 'simulate_complete', token: t4 });
+      const late = await sql(`select summary from admin_tasks where tenant_id = '${club.id}' and kind = 'keyfob.paid_after_cancel' and summary like '%${FAMILY}%' and completed_at is null`);
+      check('X2: a card payment after canceling becomes a refund task for the board', late.length === 1 && /refund/i.test(late[0].summary), short(late));
+      await sql(`delete from admin_tasks where tenant_id = '${club.id}' and kind = 'keyfob.paid_after_cancel' and summary like '%${FAMILY}%'`);
+      const sid4 = t4 ? JSON.parse(Buffer.from(t4.split('.')[1], 'base64url').toString()).sid : null;
+      if (sid4) await sql(`delete from stripe_processed_events where id = 'evt_${sid4}'`);
+    }
+    if (!ONLY) {
 
     // An imported (prefilled) family can't sign up as new.
     const impPhone = '+1555' + stamp;
@@ -223,6 +276,7 @@ if (LIVE) {
     const sc = await fn('keyfobs', { action: 'swap', id: sw.fob?.id, charge: true }, admTok);
     const [chg] = await sql(`select status, payment_status, price_cents from keyfobs where replaces_id = '${sw.fob?.id}'`);
     check('Q5: or charges $15 for it', sc.ok && chg?.payment_status === 'unpaid' && chg?.price_cents === 1500, short({ sc, chg }));
+    }
   } catch (e) {
     check('live run', false, e.stack || e.message);
   } finally {

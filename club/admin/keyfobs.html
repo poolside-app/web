@@ -81,12 +81,12 @@
 </header>
 <nav class="tabs">
   <a href="/club/admin/">Dashboard</a>
-  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/members.html" class="on">Members</a>
   <a href="/club/admin/payments.html">Money</a>
   <a href="/club/admin/events.html">Calendar</a>
   <a href="/club/admin/announcements.html">Content</a>
   <a href="/club/admin/audit.html">Insights</a>
-  <a href="/club/admin/settings.html" class="on">Settings</a>
+  <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <div id="admin-subtabs"></div>
 <script src="/js/admin-subtabs.js"></script>
@@ -230,6 +230,7 @@ function paint() {
         <input id="n-${escapeAttr(f.id)}" inputmode="numeric" autocomplete="off" placeholder="Number on the fob" aria-label="Number on the fob">
         <button class="btn btn-sm btn-success" onclick="issue('${escapeAttr(f.id)}')">Issue</button>
         ${f.included ? `<button class="btn btn-sm btn-ghost" onclick="requirePayment('${escapeAttr(f.id)}')">Ask them to pay ${escapeHtml(money(DATA.settings.fee_cents))}</button>` : ''}
+        ${f.payment_status === 'none' ? `<button class="btn btn-sm btn-ghost" onclick="cancelRequest('${escapeAttr(f.id)}')">Cancel request</button>` : ''}
       </div>
     </div>`;
   const venmoCard = f => `
@@ -244,7 +245,8 @@ function paint() {
   document.getElementById('wait-wrap').style.display = unpaid.length ? '' : 'none';
   document.getElementById('wait-list').innerHTML = unpaid.map(f => `
     <div class="card"><div class="t">${who(f)} ${payChip(f)}</div>
-      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(money(f.price_cents))} · asked ${escapeHtml(day(f.requested_at))}. They pay in the app.</div></div>`).join('');
+      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(money(f.price_cents))} · asked ${escapeHtml(day(f.requested_at))}. They pay in the app.</div>
+      <div class="issue-row"><button class="btn btn-sm btn-ghost" onclick="cancelRequest('${escapeAttr(f.id)}')">Cancel request</button></div></div>`).join('');
   paintAll();
 }
 
@@ -289,6 +291,15 @@ async function swapFob(id) {
   const r = await call('swap', number.trim() ? { id, number: number.trim() } : { id, charge: true });
   if (!r.ok) { toast(r.error || 'Could not swap', 'err'); return; }
   toast(number.trim() ? `Swapped to fob ${r.fob.tail}. The family got a pop-up.` : 'Asked them to pay for a new one.');
+  load();
+}
+// Before it's paid, a request can be canceled (Doug, 10/9, PLAN.md X2).
+async function cancelRequest(id) {
+  const f = DATA.fobs.find(x => x.id === id);
+  if (!confirm(`Cancel ${f ? f.family_name + "'s" : 'this'} keyfob request? They get a pop-up.`)) return;
+  const r = await call('cancel', { id });
+  if (!r.ok) { toast(r.error || 'Could not cancel', 'err'); return; }
+  toast('Request canceled. The family got a pop-up.');
   load();
 }
 async function requirePayment(id) {

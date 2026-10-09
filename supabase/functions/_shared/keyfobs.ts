@@ -92,6 +92,15 @@ export function normalizeAddress(raw: unknown): string {
 }
 
 /** What a card payment for a fob comes to: the card fee is the member's. */
+/**
+ * May this request be canceled? Only before it's paid (Doug, 10/9, PLAN.md
+ * X2): waiting to be paid, or free. Paid by card, with the dues, or a Venmo
+ * the family says they sent: no cancel, on either side.
+ */
+export function canCancel(f: { status?: unknown; payment_status?: unknown }): boolean {
+  return f.status === 'requested' && (f.payment_status === 'unpaid' || f.payment_status === 'none');
+}
+
 export function fobCardTotal(feeCents: number, pct = 0.029, fixed = 30): number {
   return feeCents > 0 ? Math.ceil((feeCents + fixed) / (1 - pct)) : 0;
 }

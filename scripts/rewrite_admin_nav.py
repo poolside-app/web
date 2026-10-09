@@ -78,7 +78,7 @@ PAGE_TO_TAB = {
     "settings.html":       "settings",
     "board.html":          "settings",
     "upcoming.html":       "money",
-    "keyfobs.html":        "settings",
+    "keyfobs.html":        "members",
     "billing.html":        "settings",
     # Deliberately no active tab: reached from the dashboard, a FAB, or an
     # emailed link rather than from the nav.
