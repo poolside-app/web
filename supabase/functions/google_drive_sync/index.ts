@@ -525,7 +525,10 @@ Deno.serve(async (req) => {
     const { data: rows } = await sb.from('drive_sync_queue')
       .select('id, application_id, attempts')
       .eq('tenant_id', payload.tid).eq('status', 'pending')
-      .lte('next_retry_at', new Date().toISOString())
+      // Only the board's "Retry failed syncs" button calls this, so it tries
+      // everything waiting now; next_retry_at's wait doesn't apply to a
+      // press (PLAN.md Z1: pressing it inside the wait did nothing).
+      .order('created_at')
       .limit(25);
     let attempted = 0, succeeded = 0, failed = 0, dropped = 0;
     for (const row of rows ?? []) {

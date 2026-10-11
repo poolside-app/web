@@ -19,6 +19,7 @@ const gd = read('supabase/functions/google_drive_sync/index.ts');
 const retry = between(gd, "action === 'retry_queue'", "return jsonResponse({ ok: true, attempted");
 check('a retry drops a backup whose signup was deleted, instead of retrying it forever',
   /application not found/.test(retry) && /drive_sync_queue'\)\.delete\(\)/.test(retry), retry.slice(0, 120));
+check('"Retry failed syncs" tries every waiting backup now, not only ones past their wait', !/lte\('next_retry_at'/.test(retry));
 const hh = read('supabase/functions/households_admin/index.ts');
 const purge = between(hh, "action === 'purge_household'", "action === 'add_member'");
 check('deleting a family for good also removes its waiting backups', /from\('drive_sync_queue'\)\.delete\(\)/.test(purge) && purge.indexOf("drive_sync_queue") < purge.indexOf("from('applications').delete()"));

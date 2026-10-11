@@ -657,7 +657,7 @@ Found: the pop-up works, but Bishop's was never turned on. On Money → Sponsors
 
 ### Z. Drive backup (Doug, 10/11)
 The Drive connection had been dead since May 23 (Google cancels a Testing-mode app's sign-in after 7 days). Doug reconnected on 10/11, as doug.frevele@gmail.com. One backup kept failing: the Frevele signup he had deleted, retried forever as "application not found".
-- **✅ Z1.** A retry drops a backup whose signup was deleted, and deleting a family for good removes its waiting backups. `node scripts/test_drive_queue.mjs`.
+- **✅ Z1.** A retry drops a backup whose signup was deleted, and deleting a family for good removes its waiting backups. "Retry failed syncs" now tries everything waiting right away; it used to skip items still inside their wait time, so a second press did nothing. `node scripts/test_drive_queue.mjs`.
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
