@@ -35,12 +35,13 @@
     ],
     // Money. Previously spread across four top tabs: dues under Members,
     // donations/sponsors/campaigns under Content, and billing nowhere at
-    // all. A treasurer had to learn three tabs and one secret URL.
+    // all. A treasurer had to learn three tabs and one secret URL. Sponsors
+    // went back to Content on 10/11 (Doug): it's advertising, run by
+    // whoever posts the news, not the club's books.
     money: [
       { key: 'payments',  label: 'Payments',  href: '/club/admin/payments.html',  scope: 'payments'      },
       { key: 'upcoming',  label: 'Upcoming',  href: '/club/admin/upcoming.html',  scope: 'payments'      },  // PLAN.md S: approve plan payments
       { key: 'donations', label: 'Donations', href: '/club/admin/donations.html', scope: 'payments'      },
-      { key: 'sponsors',  label: 'Sponsors',  href: '/club/admin/sponsors.html',  scope: 'announcements' },
     ],
     // Things that happen at the pool on a date. Lifeguards was a top-level
     // tab with the same weight as Settings, while Volunteer — the same job,
@@ -59,6 +60,7 @@
       { key: 'photos',        label: 'Photos',        href: '/club/admin/photos.html',         scope: 'photos'        },
       { key: 'meetings',      label: 'Board minutes', href: '/club/admin/board-meetings.html', scope: ''              },  // every board member
       { key: 'memberhelp',    label: 'Member help',   href: '/club/admin/member-help.html',    scope: ''              },  // every board member
+      { key: 'sponsors',      label: 'Sponsors',      href: '/club/admin/sponsors.html',       scope: 'announcements' },  // Doug 10/11: under Content (PLAN.md Y2)
     ],
     insights: [
       { key: 'audit',  label: 'Audit log', href: '/club/admin/audit.html',  scope: 'audit'    },
@@ -82,7 +84,7 @@
     'members.html': 'members', 'policies.html': 'members',
     'import.html': 'members', 'migrate.html': 'members',
     'payments.html': 'money',
-    'donations.html': 'money', 'sponsors.html': 'money', 'upcoming.html': 'money',
+    'donations.html': 'money', 'sponsors.html': 'content', 'upcoming.html': 'money',
     'events.html': 'calendar', 'programs.html': 'calendar', 'parties.html': 'calendar',
     'volunteer.html': 'calendar', 'lifeguards.html': 'calendar', 'my-shifts.html': 'calendar',
     'announcements.html': 'content', 'photos.html': 'content',

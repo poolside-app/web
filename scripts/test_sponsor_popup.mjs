@@ -25,5 +25,11 @@ check('it saves only the pop-up setting, never a stale copy of everything', /cal
 const pop = read('js/sponsor-popup.js');
 check('the pop-up still shows only when it\'s on, and only if there are sponsors', /if \(!config\.popup_enabled\) return;/.test(pop) && /if \(!sponsors\.length\) return;/.test(pop));
 
+console.log('Y2 · Sponsors under Content (offline)');
+const sub = read('js/admin-subtabs.js');
+const strip = key => sub.slice(sub.indexOf(`${key}: [`), sub.indexOf('],', sub.indexOf(`${key}: [`)));
+check('Sponsors is under Content, not Money (Doug, 10/11)', /sponsors\.html/.test(strip('content')) && !/sponsors\.html/.test(strip('money')) && /'sponsors\.html': 'content'/.test(sub));
+check('the nav generator agrees', /"sponsors\.html":\s+"content"/.test(read('scripts/rewrite_admin_nav.py')));
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
