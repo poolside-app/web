@@ -95,27 +95,24 @@
     <button class="btn" onclick="openCreate()">+ Add sponsor</button>
   </div>
 
+  <!-- The pop-up switch (PLAN.md Y, Doug 10/11). It used to be a select
+       that started at Off plus a separate save button, so adding a sponsor
+       never turned the pop-up on. Now it saves the moment it's flipped. -->
   <div class="card">
-    <h2>App-load popup</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Show one of your sponsors as a friendly pop-up when members or visitors open the app. Rotates round-robin through all active sponsors so each gets exposure.</p>
-    <div class="row2">
-      <div>
-        <label>Popup is</label>
-        <select id="popup_enabled">
-          <option value="false">Off — just show the sponsor strip</option>
-          <option value="true">On — also show a rotating popup</option>
-        </select>
-      </div>
-      <div>
-        <label>Popup frequency</label>
-        <select id="popup_frequency">
-          <option value="every_load">Every app load</option>
-          <option value="once_per_session">Once per session (recommended)</option>
-          <option value="once_per_day">Once per day per visitor</option>
-        </select>
-      </div>
+    <h2>Sponsor pop-up</h2>
+    <label style="display:flex;align-items:center;gap:10px;margin:4px 0 0;font-size:15px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:0;cursor:pointer">
+      <input type="checkbox" id="popup_on" onchange="savePopupConfig()" style="width:20px;height:20px;accent-color:var(--blue)">
+      Show a sponsor pop-up when people open the app
+    </label>
+    <p id="popup-status" style="font-size:13px;color:var(--muted);margin:8px 0 0"></p>
+    <div id="popup-freq-row" style="margin-top:4px">
+      <label for="popup_frequency">How often</label>
+      <select id="popup_frequency" onchange="savePopupConfig()">
+        <option value="once_per_session">Once each time they open the app (recommended)</option>
+        <option value="once_per_day">Once a day</option>
+        <option value="every_load">Every page load</option>
+      </select>
     </div>
-    <button class="btn btn-ghost" style="margin-top:12px" onclick="savePopupConfig()">Save popup settings</button>
   </div>
 
   <div id="list"><div class="empty">Loading…</div></div>
@@ -243,26 +240,47 @@ async function loadSettings() {
     if (s.ok) {
       LAST_SETTINGS = s.settings || {};
       const cfg = LAST_SETTINGS.sponsors_config || {};
-      setVal('popup_enabled',   cfg.popup_enabled ? 'true' : 'false');
+      document.getElementById('popup_on').checked = !!cfg.popup_enabled;
       setVal('popup_frequency', cfg.popup_frequency || 'once_per_session');
+      paintPopupStatus();
     }
   } catch (e) { toast(e.message, 'err'); }
 }
 
+// What members see, under the switch.
+function paintPopupStatus() {
+  const on = document.getElementById('popup_on').checked;
+  const active = SPONSORS.filter(s => s.active).length;
+  const how = { once_per_session: 'once each time they open the app', once_per_day: 'once a day', every_load: 'on every page' }[val('popup_frequency')] || 'once each time they open the app';
+  document.getElementById('popup-freq-row').style.display = on ? '' : 'none';
+  document.getElementById('popup-status').textContent = !on
+    ? 'Off. Members and visitors see your sponsors only in the strip at the top of the app.'
+    : !active ? 'On, but there are no active sponsors yet. Add one below.'
+    : `On. Members and visitors see one sponsor ${how}, taking turns${active > 1 ? ` between your ${active} sponsors` : ''}.`;
+}
+
+// Saves only the pop-up setting, the moment it changes. It used to send back
+// the whole settings copy loaded with the page, which could undo a setting
+// changed elsewhere since (the server merges what it's given).
 async function savePopupConfig() {
+  const sponsors_config = {
+    popup_enabled:   document.getElementById('popup_on').checked,
+    popup_frequency: val('popup_frequency') || 'once_per_session',
+  };
+  paintPopupStatus();
   try {
-    const value = {
-      ...LAST_SETTINGS,
-      sponsors_config: {
-        popup_enabled:   val('popup_enabled') === 'true',
-        popup_frequency: val('popup_frequency') || 'once_per_session',
-      },
-    };
-    const r = await call(SETTINGS_URL, 'save', { value });
+    const r = await call(SETTINGS_URL, 'save', { value: { sponsors_config } });
     if (!r.ok) throw new Error(r.error || 'Save failed');
-    LAST_SETTINGS = value;
-    toast('Popup settings saved.');
-  } catch (e) { toast(e.message, 'err'); }
+    LAST_SETTINGS = { ...LAST_SETTINGS, sponsors_config };
+    toast(sponsors_config.popup_enabled ? 'Pop-up on.' : 'Pop-up off.');
+  } catch (e) {
+    // Put the switch back the way it is on the server.
+    const cfg = LAST_SETTINGS.sponsors_config || {};
+    document.getElementById('popup_on').checked = !!cfg.popup_enabled;
+    setVal('popup_frequency', cfg.popup_frequency || 'once_per_session');
+    paintPopupStatus();
+    toast(e.message, 'err');
+  }
 }
 
 async function loadSponsors() {
@@ -271,6 +289,7 @@ async function loadSponsors() {
     if (!r.ok) throw new Error(r.error || 'Load failed');
     SPONSORS = r.sponsors || [];
     render();
+    paintPopupStatus();
   } catch (e) {
     document.getElementById('list').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }

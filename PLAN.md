@@ -650,6 +650,10 @@ Steps (each one: a failing test first, then the fix, then proof):
 - **✅ X2.** `keyfobs` `cancel` for the family and the board, only before payment; the buttons on both sides; the webhook's late-payment task.
 - **✅ X3.** Proof: `test_keyfobs` (offline, and live with a temporary family: cancel an unpaid request from each side, refused once paid). `ONLY=cancel node scripts/test_keyfobs.mjs --live` runs just this part (about 12 calls). The late-payment task goes to the Treasurer (the `payments` alert), linked to Money.
 
+### Y. The sponsor pop-up (Doug, 10/11: "the advertising pop up thing doesn't seem to work") — ✅ done 10/11
+Found: the pop-up works, but Bishop's was never turned on. On Money → Sponsors the On/Off choice sat in its own box, started at Off, and only took effect after a separate "Save popup settings" button, so adding Ace Hardware on 10/10 didn't turn it on. That button also sent back the whole settings copy loaded with the page, which could undo other settings changed since.
+- **✅ Y1.** A switch, "Show a sponsor pop-up when people open the app", that saves the moment it's flipped (and the how-often choice too), with a line saying what members see. It saves only the pop-up setting. `node scripts/test_sponsor_popup.mjs`.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
