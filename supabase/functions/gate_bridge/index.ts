@@ -1,7 +1,8 @@
 // =============================================================================
 // gate_bridge — Pi-bridge polling protocol
 // =============================================================================
-// The Pi sitting on the club's LAN polls this endpoint every 1-2 seconds.
+// The bridge on the club's LAN checks in here. Since PLAN.md AA it asks
+// with `wait` and the check-in is held open up to 20 seconds.
 // Cloud → bridge: pending unlock commands.
 // Bridge → cloud: command results + heartbeat.
 //
@@ -14,10 +15,12 @@
 //   X-Bridge-Secret: <plaintext bridge secret>
 //
 // Body actions:
-//   { action: 'poll' }
+//   { action: 'poll', wait? }
 //     → returns the oldest pending unlock for this tenant (and flips it
 //       to 'in_flight'), OR null if no work. Updates bridge_last_seen_at.
 //       Always returns the panel config so the bridge has fresh creds.
+//       With `wait` (seconds, up to 20; PLAN.md AA1) the check-in is held
+//       open and answered the moment an unlock is waiting.
 //
 //   { action: 'complete', unlock_id, result_code, result_detail? }
 //     → bridge reports an unlock finished (ok or failed)
@@ -27,6 +30,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { pollWait } from '../_shared/bridge_poll.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -101,7 +105,7 @@ Deno.serve(async (req) => {
     // Atomically claim the oldest pending unlock for this tenant by flipping
     // to 'in_flight'. If two bridges (impossible today, but future-proof) ever
     // poll concurrently, only one wins this update.
-    const { data: pickedUp } = await sb.from('gate_unlocks')
+    const claim = async () => (await sb.from('gate_unlocks')
       .update({
         status: 'in_flight',
         picked_up_at: new Date().toISOString(),
@@ -111,7 +115,20 @@ Deno.serve(async (req) => {
       .eq('status', 'pending')
       .order('requested_at', { ascending: true })
       .limit(1)
-      .select('id, requested_at, member_id, is_test, actor_kind');
+      .select('id, requested_at, member_id, is_test, actor_kind')).data;
+    // Hold the check-in open (PLAN.md AA1): look every half second for a
+    // waiting unlock, until the bridge's wait runs out. A cheap look first,
+    // then the claim. If the bridge has hung up, stop without claiming, so
+    // an unlock is never marked picked up by a bridge that isn't listening.
+    const deadline = Date.now() + pollWait(body.wait) * 1000;
+    let pickedUp = await claim();
+    while (!pickedUp?.length && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+      if (req.signal.aborted) return new Response(null, { status: 499 });
+      const { count } = await sb.from('gate_unlocks').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', panel.tenant_id).eq('status', 'pending');
+      if (count) pickedUp = await claim();
+    }
 
     const command = (pickedUp && pickedUp.length) ? {
       id: pickedUp[0].id,

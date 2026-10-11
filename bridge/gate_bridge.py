@@ -1,9 +1,12 @@
 """
 Poolside gate bridge — runs on the club's on-site Windows PC.
 
-Polls the Poolside cloud every POLL_SEC seconds for pending gate-unlock
-commands and runs the proven 2-step HTTP recipe against the panel on the
-club's LAN. Translated from the field-tested Bishop Estates v0.4 bridge,
+Checks in with the Poolside cloud for gate-unlock commands and runs the
+proven 2-step HTTP recipe against the panel on the club's LAN. Since 1.1
+(PLAN.md AA) each check-in asks the cloud to wait up to WAIT_SEC for an
+unlock, so the bridge calls about once every 20 seconds instead of every
+1.5 (which used up the free Supabase plan in September 2026), and the gate
+still opens within a second of a tap. Translated from the field-tested Bishop Estates v0.4 bridge,
 re-pointed at Poolside's per-bridge auth model (X-Bridge-Id +
 X-Bridge-Secret) instead of using the service-role key.
 
@@ -52,10 +55,16 @@ BRIDGE_ID     = os.environ["BRIDGE_ID"]
 BRIDGE_SECRET = os.environ["BRIDGE_SECRET"]
 
 # ── Tunables (defaults work for typical small clubs) ───────────────────
-POLL_SEC          = float(os.environ.get("POLL_SEC", "1.5"))
-HEARTBEAT_SEC     = int(os.environ.get("HEARTBEAT_SEC", "30"))
+# WAIT_SEC: how long the cloud may hold each check-in open (it caps it at 20).
+# MIN_LOOP_SEC: never call more often than this, even if the cloud answers at
+#   once (an older cloud, or a hiccup). The guard against September's bill.
+# POLL_SEC: the first wait after an error; it doubles up to MAX_BACKOFF_SEC.
+WAIT_SEC          = int(os.environ.get("WAIT_SEC", "20"))
+MIN_LOOP_SEC      = float(os.environ.get("MIN_LOOP_SEC", "5"))
+POLL_SEC          = max(1.0, float(os.environ.get("POLL_SEC", "5")))
+MAX_BACKOFF_SEC   = 60.0
 STALE_COMMAND_SEC = int(os.environ.get("STALE_COMMAND_SEC", "60"))
-BRIDGE_VERSION    = "1.0.0-poolside"
+BRIDGE_VERSION    = "1.1.0-poolside"
 
 # ── Cloud endpoint ─────────────────────────────────────────────────────
 CLOUD_URL = f"{SUPABASE_URL}/functions/v1/gate_bridge"
@@ -116,14 +125,19 @@ def unlock_panel(host: str, user: str, pwd: str, door: int = 1) -> tuple[bool, s
 # Cloud client — talks to Poolside's gate_bridge edge function.
 # =============================================================================
 
+_CLOUD = None
+
 def cloud(action: str, **extra) -> tuple[int, dict]:
     """POST to the gate_bridge endpoint. Returns (status_code, body_dict).
-    Never raises — returns (0, {error: ...}) on network failure."""
-    body = {"action": action, **extra}
-    if action == "heartbeat":
-        body["version"] = BRIDGE_VERSION
+    Never raises — returns (0, {error: ...}) on network failure. One kept-
+    alive connection, so check-ins don't each pay for a new TLS handshake."""
+    global _CLOUD
+    if _CLOUD is None:
+        _CLOUD = requests.Session()
+    body = {"action": action, "version": BRIDGE_VERSION, **extra}
     try:
-        r = requests.post(CLOUD_URL, headers=CLOUD_HEADERS, data=json.dumps(body), timeout=10)
+        # A held check-in can take WAIT_SEC; leave room before giving up.
+        r = _CLOUD.post(CLOUD_URL, headers=CLOUD_HEADERS, data=json.dumps(body), timeout=WAIT_SEC + 15)
         try:
             return r.status_code, r.json()
         except ValueError:
@@ -153,92 +167,94 @@ def is_stale(requested_at_iso: str | None) -> bool:
         return False
 
 
+def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None) -> None:
+    """The check-in loop. Takes its cloud, clock and panel as arguments so it
+    can be tested against a fake (scripts/test_gate_bridge_loop.py).
+
+    Each check-in asks the cloud to wait up to WAIT_SEC for an unlock. Never
+    more often than every MIN_LOOP_SEC, and after an error it waits POLL_SEC,
+    doubling up to a minute. No separate heartbeat: every check-in tells the
+    cloud the bridge is alive."""
+    errors = 0
+    while until is None or clock_fn() < until:
+        started = clock_fn()
+        code, resp = cloud_fn("poll", wait=WAIT_SEC)
+        if code != 200:
+            errors += 1
+            wait = min(MAX_BACKOFF_SEC, POLL_SEC * (2 ** (errors - 1)))
+            LOG.warning(f"poll {code}: {resp.get('error', resp)} (trying again in {wait:.0f}s)")
+            sleep_fn(wait)
+            continue
+        errors = 0
+
+        command = resp.get("command")
+        if not command:
+            # The cloud held the check-in and nothing came. If it answered
+            # early (an older cloud), don't call again too soon.
+            sleep_fn(max(0.0, MIN_LOOP_SEC - (clock_fn() - started)))
+            continue
+
+        cmd_id = command.get("id") or ""
+        tenant = resp.get("tenant", {})
+
+        # Stale guard — if we've been offline and the cloud handed us a
+        # ten-minute-old request, don't fire it. Mark as 'stale' so the
+        # admin sees it in the audit log but the gate stays closed.
+        if is_stale(command.get("requested_at")):
+            LOG.info(f"Skipping stale command {cmd_id[:8]}... (queued before bridge came online)")
+            cloud_fn("complete", unlock_id=cmd_id, result_code="stale",
+                     result_detail=f"command older than {STALE_COMMAND_SEC}s when bridge polled")
+            continue
+
+        is_test = bool(command.get("is_test"))
+        LOG.info(f"Picked up unlock {cmd_id[:8]}... {'(admin test)' if is_test else ''}")
+
+        # Run the proven recipe.
+        ok, detail = unlock_fn(
+            host=tenant.get("panel_host") or "",
+            user=tenant.get("panel_admin_user") or "admin",
+            pwd=tenant.get("panel_admin_password") or "",
+        )
+        result_code = "ok" if ok else "panel_unreachable" if "unreachable" in detail else "panel_failed"
+        cloud_fn("complete", unlock_id=cmd_id, result_code=result_code, result_detail=detail)
+        LOG.info(f"  → {result_code}: {detail}")
+
+
 def main() -> None:
     LOG.info(f"Poolside gate bridge {BRIDGE_VERSION} starting")
     LOG.info(f"  cloud:  {CLOUD_URL}")
     LOG.info(f"  bridge: {BRIDGE_ID}")
-    LOG.info(f"  poll every {POLL_SEC}s, heartbeat every {HEARTBEAT_SEC}s")
+    LOG.info(f"  check-ins held up to {WAIT_SEC}s, never more often than every {MIN_LOOP_SEC:.0f}s")
 
     # First contact — also serves as a sanity check that creds are right.
     # 401 is fatal: bridge_id/secret are wrong, no point burning CPU on a
     # cred that will never start working. 403 is NON-fatal as of 2026-05-23:
     # it means the platform admin hasn't flipped this tenant to 'active'
-    # yet, but they probably will soon — the bridge just sits there polling
-    # and picks up the moment activation happens. Exiting on 403 used to
-    # cause "service failed to start" right after install, because the
-    # natural flow is install → start service → THEN activate.
+    # yet, but they probably will soon — the bridge keeps checking in (with
+    # back-off) and picks up the moment activation happens.
     code, resp = cloud("heartbeat")
     if code == 401:
         LOG.error("Auth failed (401). Check BRIDGE_ID and BRIDGE_SECRET in .env.")
         LOG.error("If your secret was lost, rotate it in Poolside admin → Settings → 🔐 Remote keyfob access.")
         sys.exit(2)
     if code == 403:
-        LOG.warning("Tenant gate add-on is not 'active' yet — staying alive and polling.")
+        LOG.warning("Tenant gate add-on is not 'active' yet — staying alive and checking in.")
         LOG.warning("Once the platform admin clicks '🟢 Activate gate' in /admin/gate-integrations.html,")
-        LOG.warning("the next poll succeeds automatically. No restart needed.")
+        LOG.warning("the next check-in succeeds automatically. No restart needed.")
     elif code != 200:
         LOG.warning(f"First heartbeat returned {code}: {resp.get('error', resp)}. Will keep trying...")
     else:
         LOG.info("First heartbeat ok — credentials accepted.")
 
-    last_hb = time.time()
     while True:
         try:
-            now = time.time()
-
-            # Heartbeat tick (poll itself updates last_seen, so this is mostly
-            # for runs where there's no work for long stretches AND we want
-            # the admin UI to keep showing 🟢 online). Cheap.
-            if now - last_hb >= HEARTBEAT_SEC:
-                cloud("heartbeat")
-                last_hb = now
-
-            # Poll for work. This call ALSO updates last_seen on the cloud
-            # side, which is why most clubs won't ever hit the heartbeat path.
-            code, resp = cloud("poll")
-            if code != 200:
-                LOG.warning(f"poll {code}: {resp.get('error', resp)}")
-                time.sleep(POLL_SEC)
-                continue
-
-            command = resp.get("command")
-            if not command:
-                time.sleep(POLL_SEC)
-                continue
-
-            cmd_id = command.get("id")
-            tenant = resp.get("tenant", {})
-
-            # Stale guard — if we've been offline and the cloud handed us a
-            # ten-minute-old request, don't fire it. Mark as 'stale' so the
-            # admin sees it in the audit log but the gate stays closed.
-            if is_stale(command.get("requested_at")):
-                LOG.info(f"Skipping stale command {cmd_id[:8]}... (queued before bridge came online)")
-                cloud("complete", unlock_id=cmd_id, result_code="stale",
-                      result_detail=f"command older than {STALE_COMMAND_SEC}s when bridge polled")
-                continue
-
-            is_test = bool(command.get("is_test"))
-            LOG.info(f"Picked up unlock {cmd_id[:8]}... {'(admin test)' if is_test else ''}")
-
-            # Run the proven recipe.
-            ok, detail = unlock_panel(
-                host=tenant.get("panel_host") or "",
-                user=tenant.get("panel_admin_user") or "admin",
-                pwd=tenant.get("panel_admin_password") or "",
-            )
-            result_code = "ok" if ok else "panel_unreachable" if "unreachable" in detail else "panel_failed"
-            cloud("complete", unlock_id=cmd_id, result_code=result_code, result_detail=detail)
-            LOG.info(f"  → {result_code}: {detail}")
-
-            time.sleep(POLL_SEC)
-
+            run_loop(cloud, time.sleep, time.time, unlock_panel)
         except KeyboardInterrupt:
             LOG.info("Interrupted, exiting cleanly")
             return
         except Exception as e:
             LOG.exception(f"Loop error (continuing): {e}")
-            time.sleep(POLL_SEC)
+            time.sleep(MAX_BACKOFF_SEC)
 
 
 if __name__ == "__main__":

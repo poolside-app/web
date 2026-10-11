@@ -2,8 +2,12 @@
 
 This is the on-site Python service that bridges the Poolside cloud to the
 gate panel on the club's LAN. It runs on a Windows PC inside the club,
-polls the Poolside cloud every ~1.5 seconds, and runs the proven 2-step
-HTTP recipe against the panel when there's an unlock to fire.
+checks in with the Poolside cloud, and runs the proven 2-step HTTP recipe
+against the panel when there's an unlock to fire. Since 1.1 each check-in
+is held open by the cloud for up to 20 seconds and answered the moment
+someone taps Unlock: about 4,300 calls a day instead of 60,000 (the 1.0
+bridge's 1.5-second polling used up the free Supabase plan in September
+2026). Never run 1.0 again.
 
 > **For Bishop Estates specifically — migrating from the old single-tenant
 > bridge:** scroll to the bottom **"Bishop Estates migration"** section.
@@ -87,10 +91,10 @@ venv\Scripts\python gate_bridge.py
 
 You should see within 2 seconds:
 ```
-INFO Poolside gate bridge 1.0.0-poolside starting
+INFO Poolside gate bridge 1.1.0-poolside starting
 INFO   cloud:  https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/gate_bridge
 INFO   bridge: <your-bridge-id>
-INFO   poll every 1.5s, heartbeat every 30s
+INFO   check-ins held up to 20s, never more often than every 5s
 INFO First heartbeat ok — credentials accepted.
 ```
 
@@ -129,7 +133,7 @@ nssm start PoolsideGateBridge
 # Should say RUNNING
 nssm status PoolsideGateBridge
 
-# Tail the log — you should see new heartbeat lines every 30 seconds
+# Tail the log — it's quiet between unlocks (check-ins aren't logged)
 Get-Content C:\PoolsideGateBridge\bridge.log -Tail 20 -Wait
 ```
 

@@ -659,6 +659,17 @@ Found: the pop-up works, but Bishop's was never turned on. On Money → Sponsors
 The Drive connection had been dead since May 23 (Google cancels a Testing-mode app's sign-in after 7 days). Doug reconnected on 10/11, as doug.frevele@gmail.com. One backup kept failing: the Frevele signup he had deleted, retried forever as "application not found".
 - **✅ Z1.** A retry drops a backup whose signup was deleted, and deleting a family for good removes its waiting backups. "Retry failed syncs" now tries everything waiting right away; it used to skip items still inside their wait time, so a second press did nothing. `node scripts/test_drive_queue.mjs`.
 
+### AA. The gate back on, without burning Supabase (Doug, 10/11)
+Doug wants the phone unlock working again for a few days to show someone, then to try the keyfob panel integration (the `uhppoted` library, PLAN.md P5). In September the bridge's check-in every 1.5 seconds (about 60,000 calls a day) used up the free Supabase plan and the project was blocked. Supabase is still on the free plan (500,000 calls a month); a normal day now is about 1,000.
+
+The fix: the bridge asks "anything to open?" and the cloud holds the question open for up to 20 seconds, answering the moment someone taps Unlock. One call every 20 seconds instead of every 1.5: about 4,300 a day, around 130,000 a month even if it's never turned off, with the gate opening in a second or two instead of waiting for the next check-in.
+- **AA1.** `gate_bridge` `poll` with `wait` (up to 20 s): checks every half second for a waiting unlock and returns it straight away. An old bridge that doesn't send `wait` gets today's instant answer.
+- **AA2.** The bridge 1.1 (`bridge/gate_bridge.py`): asks with `wait`, drops the separate heartbeat (each check-in counts), never loops faster than every 5 seconds even if the cloud answers early, and backs off up to a minute after errors. Tested offline against a fake cloud that counts calls.
+- **AA3.** Doug, on the club PC through TeamViewer: download the new `gate_bridge.py` from www.poolsideapp.com/bridge/gate_bridge.py over the old one, add `POLL_SEC=20` to its `.env` (a safety net if the old file is ever run), and start the PoolsideGateBridge service.
+- **AA4.** Proof: the board home shows the gate online, Unlock opens it, and the next day's call count stays near 5,000.
+- Safe to turn on now: Bishop has no families, unlocks waiting from before are skipped (anything over 60 seconds old is never fired), and the 4 stuck from June aren't picked up.
+- Later: the read-only keyfob panel check (`bridge/panel_check_readonly.py`) on the same PC, which writes nothing to the panels.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
