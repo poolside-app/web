@@ -209,7 +209,7 @@
       @media (max-width: 767px) {
         body.has-btabs nav.tabs { display: none !important; }
         body.has-btabs header .who { display: none !important; }
-        .btabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; background: #fff; border-top: 1px solid var(--border, #e5e7eb); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); transform: translateZ(0); }
+        .btabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: #fff; border-top: 1px solid var(--border, #e5e7eb); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); transform: translateZ(0); }
         .btabs a { flex: 1; max-width: 200px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; font: 600 11px 'Inter', system-ui, sans-serif; color: var(--muted, #5d6b81); border-radius: 10px; text-decoration: none; position: relative; }
         .btabs a .i { font-size: 21px; line-height: 1.1; }
         .btabs a.on { color: var(--blue, #0a3b5c); background: var(--blue-l, #e6eef5); }
@@ -248,6 +248,46 @@
     document.querySelector('#btabs [data-btab="more"]').addEventListener('click', e => { e.preventDefault(); openMore(more.rest); });
     paintBarBadges();
   }
+  // ── Pop-ups and the bar (PLAN.md AD1, Doug 10/11) ─────────────────────
+  // The bar sat above most pop-ups (they start at stacking level 50) and
+  // covered their Save buttons, and a swipe inside a pop-up could scroll the
+  // page behind it. Now the bar sits below them (40), steps aside while one
+  // is open, and the page behind stays still. Pop-ups are `.scrim.open`, an
+  // element whose id ends in -scrim that's showing, or the More sheet.
+  function modalOpen() {
+    if (document.getElementById('btabs-more')) return true;
+    if (document.querySelector('.scrim.open')) return true;
+    for (const el of document.querySelectorAll('[id$="-scrim"]')) {
+      const cs = getComputedStyle(el);
+      if (cs.display !== 'none' && cs.visibility !== 'hidden') return true;
+    }
+    return false;
+  }
+  function injectModalCss() {
+    if (document.getElementById('admin-modal-css')) return;
+    const style = document.createElement('style');
+    style.id = 'admin-modal-css';
+    style.textContent = `
+      html.ps-modal-open, html.ps-modal-open body { overflow: hidden !important; }
+      body.ps-modal-open .btabs { display: none !important; }
+      .scrim, [id$="-scrim"], #btabs-more .btabs-sheet { overscroll-behavior: contain; }`;
+    document.head.appendChild(style);
+  }
+  let modalTick = 0;
+  function syncModal() {
+    modalTick = 0;
+    const open = modalOpen();
+    document.documentElement.classList.toggle('ps-modal-open', open);
+    if (document.body) document.body.classList.toggle('ps-modal-open', open);
+  }
+  function watchModals() {
+    injectModalCss();
+    syncModal();
+    new MutationObserver(() => { if (!modalTick) modalTick = requestAnimationFrame(syncModal); })
+      .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  if (document.body) watchModals(); else document.addEventListener('DOMContentLoaded', watchModals, { once: true });
+
   // The numbers come from admin-flags.js (paintFromTasks).
   document.addEventListener('poolside:badges', e => { navCounts = e.detail || null; paintBarBadges(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMore(); });

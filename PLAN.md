@@ -681,6 +681,11 @@ Saving the app to a home screen labeled it "Bishop Estat": the manifest cut the 
 - **AC1.** Settings → the app icon gets "Name under the app icon" (`branding.app_name`). The manifest's short name and the iPhone title use it. Without one, Poolside uses as many whole words of the club's name as fit in 12 characters ("Bishop"), never half a word. Families who already added the app keep the old label until they add it again.
 `node scripts/test_signup_notes.mjs --offline`.
 
+### AD. Pop-ups and the bottom bar (Doug, 10/11)
+On a phone, the board's bottom bar (PLAN.md W3) sat above most pop-ups (stacking level 70 over 50 or 60), covering their bottom, usually the Save button; and while a pop-up was open, a swipe could scroll the page behind it instead. The member app's bar (9000, over pop-ups at 200) has the same problem.
+- **AD1.** While any pop-up is open, the bottom bar steps aside and the page behind stays still (board pages: `js/admin-subtabs.js`; member app: `m/index.html`). The bar also sits below every pop-up, and pop-ups keep a swipe to themselves (`overscroll-behavior: contain`).
+`node scripts/test_board_home.mjs`, `node scripts/test_season_home.mjs`, and a check on a phone-size screen with a pop-up open.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

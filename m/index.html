@@ -93,7 +93,10 @@ window.addManifestLink = function (href) {
   main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
   /* The app tabs (PLAN.md U4, V): a bar fixed to the bottom of the screen
      on every device, attached straight to <body> so nothing can move it. */
-  .mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9000; display: flex; justify-content: center; background: #fff; border-top: 1px solid var(--border); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); transform: translateZ(0); }
+  /* Below every pop-up (sponsor 180, pop-ups 200, photos 220), and out of the
+     way while one is open (PLAN.md AD1): at 9000 it covered their Save
+     buttons. */
+  .mtabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; display: flex; justify-content: center; background: #fff; border-top: 1px solid var(--border); padding: 4px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(10,59,92,.06); transform: translateZ(0); }
   .mtabs button { flex: 1; max-width: 200px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; background: none; border: 0; font: 600 11px 'Inter', sans-serif; color: var(--muted); cursor: pointer; border-radius: 10px; }
   .mtabs button .ti { font-size: 21px; line-height: 1.1; }
   .mtabs button.on { color: var(--blue); background: var(--blue-l, #e6eef5); }
@@ -297,6 +300,11 @@ window.addManifestLink = function (href) {
   @media (display-mode: standalone), (display-mode: minimal-ui) {
     #install-card-host { display: none !important; }
   }
+  /* While a pop-up is open the page behind stays still and the tab bar
+     steps aside (PLAN.md AD1). */
+  html.ps-modal-open, html.ps-modal-open body { overflow: hidden !important; }
+  body.ps-modal-open .mtabs { display: none !important; }
+  .scrim, [id$="-scrim"] { overscroll-behavior: contain; }
 </style>
 </head>
 <body>
@@ -1935,6 +1943,34 @@ async function cancelFob(id) {
 // ── The weather at the pool, for the banner (PLAN.md V) ──────────────────
 // js/pool-weather.js, shared with the board home (PLAN.md W).
 function loadWeather(loc) { return PoolWeather.load(loc, document.getElementById('hero-weather')); }
+
+// ── Pop-ups and the tab bar (PLAN.md AD1, Doug 10/11) ────────────────────
+// A pop-up is `.scrim.open` or an element whose id ends in -scrim that's
+// showing (the pool pass, the sponsor). While one is open the page behind
+// stays still and the tab bar steps aside, so it can't cover a Save button.
+function modalOpen() {
+  if (document.querySelector('.scrim.open')) return true;
+  for (const el of document.querySelectorAll('[id$="-scrim"]')) {
+    const cs = getComputedStyle(el);
+    if (cs.display !== 'none' && cs.visibility !== 'hidden') return true;
+  }
+  return false;
+}
+(function watchModals() {
+  let tick = 0;
+  const sync = () => {
+    tick = 0;
+    const open = modalOpen();
+    document.documentElement.classList.toggle('ps-modal-open', open);
+    document.body.classList.toggle('ps-modal-open', open);
+  };
+  const start = () => {
+    sync();
+    new MutationObserver(() => { if (!tick) tick = requestAnimationFrame(sync); })
+      .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] });
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
+})();
 
 // ── The app tabs (PLAN.md U4) ────────────────────────────────────────────
 // Old links still land in the right place: #parties on Calendar, #plan and

@@ -110,7 +110,9 @@ console.log('W3 · the bottom bar on every board page (offline)');
   const src = read('js/admin-subtabs.js');
   // Run the nav script with a bare page around it, as if on the dashboard.
   const sandbox = { window: {}, document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], head: { appendChild() {} }, createElement: () => ({ style: {} }), addEventListener() {}, readyState: 'complete', body: { classList: { add() {}, remove() {}, toggle() {} }, insertAdjacentHTML() {} } }, localStorage: { getItem: () => null, setItem() {} }, location: { pathname: '/club/admin/', hash: '' }, console };
-  sandbox.window = Object.assign(sandbox, { matchMedia: () => ({ matches: false, addEventListener() {} }) });
+  sandbox.document.documentElement = { classList: { toggle() {} } };
+  sandbox.window = Object.assign(sandbox, { matchMedia: () => ({ matches: false, addEventListener() {} }),
+    MutationObserver: class { observe() {} }, requestAnimationFrame: () => 0, getComputedStyle: () => ({ display: 'none' }) });
   let nav = null;
   try { vm.runInNewContext(src, sandbox); nav = sandbox.AdminNav; } catch (e) { check('the nav script runs', false, e.message); }
   check('AdminNav works out the sections each person can use', !!(nav && nav.sectionsFor && nav.render));
@@ -132,6 +134,12 @@ console.log('W3 · the bottom bar on every board page (offline)');
   check('More has the rest, help, member view and sign out', /Help and guides/.test(src) && /Member view/.test(src) && /Sign out/.test(src));
   check('the bar shows the waiting numbers', /poolside:badges/.test(src) && /poolside:badges/.test(read('js/admin-flags.js')));
   check('the "?" button steps aside for the bar on phones', /has-btabs #poolside-help-fab/.test(src));
+  // PLAN.md AD1 (Doug, 10/11): pop-ups were covered by the bar, and a swipe moved the page behind.
+  const z = (src.match(/\.btabs \{[^}]*z-index: (\d+)/) || [])[1];
+  check('AD1: the bar sits below every pop-up (theirs start at 50)', Number(z) > 0 && Number(z) < 50, String(z));
+  check('AD1: while a pop-up is open the bar steps aside and the page behind stays still',
+    /ps-modal-open \.btabs \{ display: none/.test(src) && /html\.ps-modal-open[^{]*\{ overflow: hidden/.test(src) && /MutationObserver/.test(src.slice(src.indexOf('function modalOpen'))));
+  check('AD1: a pop-up keeps a swipe to itself', /overscroll-behavior: contain/.test(src));
   const flags = read('js/admin-flags.js');
   check('every page draws it once it knows who is signed in', /AdminNav\.render\(/.test(flags) && /poolside_tenant_features/.test(flags));
   const fs = await import('node:fs');

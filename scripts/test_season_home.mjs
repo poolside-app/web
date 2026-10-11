@@ -89,6 +89,9 @@ console.log('U4/V · the member app (offline)');
   check('an unpaid family sees "Pay for" and the calendar', /Pay for \$\{/.test(home) && /: calendarHtml\}/.test(pane));
   check('the banner shows the season they\'re a member for', /✓ \$\{escapeHtml\(String\(acc\.season\)\)\} member/.test(home) && /Renew for \$\{escapeHtml\(String\(acc\.season\)\)\} →/.test(home));
   check('closed for the season: a thank-you in place of the hours', /Thanks for a great \$\{poolSeason\} season! We look forward to seeing you next summer\./.test(home) && /closed_message/.test(home));
+  // PLAN.md AD1: the member app's bar (z 9000) covered its pop-ups (z 200).
+  check('AD1: while a pop-up is open the tab bar steps aside and the page behind stays still',
+    /ps-modal-open \.mtabs \{ display: none/.test(home) && /html\.ps-modal-open[^{]*\{ overflow: hidden/.test(home) && /overscroll-behavior: contain/.test(home) && /function modalOpen/.test(home));
   check('remote unlock offline is one quiet line', /Remote unlock is offline right now\. Use your keyfob\./.test(home));
 }
 
