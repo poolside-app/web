@@ -168,7 +168,25 @@
     return true;
   }
 
+  // The name under the app icon (PLAN.md AC1): the club's own
+  // (branding.app_name), or whole words of its name up to 12 characters.
+  // Same rule as supabase/functions/_shared/app_name.ts.
+  function homeName(displayName, appName) {
+    const own = String(appName == null ? '' : appName).trim();
+    if (own) return own;
+    const words = String(displayName == null ? '' : displayName).trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return 'Poolside';
+    let out = '';
+    for (const w of words) {
+      const next = out ? out + ' ' + w : w;
+      if (next.length > 12) break;
+      out = next;
+    }
+    return out || words[0].slice(0, 12);
+  }
+
   window.Pwa = {
+    homeName,
     isStandalone,
     detectPlatform,
     detectInstallEnv,
@@ -185,7 +203,7 @@
 
       setEl('apple-touch-icon',  'href',    icon192);
       setEl('meta-theme-color',  'content', themeColor);
-      setEl('meta-apple-title',  'content', displayName);
+      setEl('meta-apple-title',  'content', homeName(displayName, branding.app_name));
 
       // Register the SW from the root scope so it's shared across /m/, /club/,
       // /apply.html etc. Path is /sw.js — Vercel serves it at that root URL.

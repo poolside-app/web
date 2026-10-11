@@ -188,5 +188,26 @@ if (LIVE) {
   }
 }
 
+console.log('AC1 · the name under the app icon (offline)');
+{
+  let an = null;
+  try { an = await importTs(new URL('supabase/functions/_shared/app_name.ts', root)); } catch (e) { check('the rule lives in _shared/app_name.ts', false, e.message); }
+  const vm = await import('node:vm');
+  const box = { window: {}, document: { getElementById: () => null, querySelector: () => null, head: { appendChild() {} }, createElement: () => ({ style: {} }), addEventListener() {} }, navigator: { userAgent: '' }, localStorage: { getItem: () => null, setItem() {} } };
+  box.window = Object.assign(box, { matchMedia: () => ({ matches: false, addEventListener() {} }), addEventListener() {} });
+  try { vm.runInNewContext(read('js/pwa.js'), box); } catch (e) { check('js/pwa.js runs', false, e.message); }
+  const js = box.Pwa && box.Pwa.homeName;
+  const cases = [['Bishop Estates Cabana Club', 'Cabana Club', 'Cabana Club'], ['Bishop Estates Cabana Club', null, 'Bishop'], ['Oak Pool', null, 'Oak Pool'],
+    ['Supercalifragilistic Pool', null, 'Supercalifra'], ['  ', null, 'Poolside'], ['Bishop Estates', '  ', 'Bishop']];
+  if (an) check('the club\'s own name wins; otherwise whole words up to 12 letters, never half a word', cases.every(([n, a, want]) => an.homeScreenName(n, a) === want), JSON.stringify(cases.map(([n, a]) => an.homeScreenName(n, a))));
+  check('the page and the manifest agree', !!js && cases.every(([n, a, want]) => js(n, a) === want), JSON.stringify(js ? cases.map(([n, a]) => js(n, a)) : 'no Pwa.homeName'));
+  const mf = read('supabase/functions/tenant_manifest/index.ts');
+  check('the manifest uses it', /homeScreenName\(/.test(mf) && /app_name/.test(mf) && !/name\.slice\(0, 12\)/.test(mf));
+  check('the club page gets it', /app_name:\s+v\.branding\?\.app_name/.test(read('supabase/functions/tenant_public/index.ts')));
+  check('the iPhone title uses it', /homeName\(/.test(read('js/pwa.js')) && /app_name/.test(read('js/pwa.js')));
+  const st = read('club/admin/settings.html');
+  check('Settings has "Name under the app icon", saved and loaded', /id="app_name"/.test(st) && (st.match(/app_name:\s+val\('app_name'\)/g) || []).length === 2 && /setVal\('app_name'/.test(st));
+}
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

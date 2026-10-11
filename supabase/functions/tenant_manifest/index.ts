@@ -17,6 +17,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { homeScreenName } from '../_shared/app_name.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -36,7 +37,7 @@ type ManifestKind = 'member' | 'admin' | 'kiosk';
 
 function manifest(
   name: string, themeColor: string, icon192: string, icon512: string,
-  opts?: { admin?: boolean; kiosk?: boolean; handoff?: string | null },
+  opts?: { admin?: boolean; kiosk?: boolean; handoff?: string | null; appName?: string | null },
 ) {
   // Three variants, because they are three genuinely different things:
   //
@@ -56,7 +57,9 @@ function manifest(
   const kind: ManifestKind = opts?.kiosk ? 'kiosk' : opts?.admin ? 'admin' : 'member';
   const suffix = { member: '', admin: ' — Board', kiosk: ' — Check-in' }[kind];
   const start  = { member: '/m/', admin: '/club/admin/', kiosk: '/club/admin/checkin.html' }[kind];
-  const base   = name.length > 12 ? name.slice(0, 12) : name;
+  // The name under the icon (PLAN.md AC1): the club's own, or whole words
+  // of its name up to 12 characters. It used to cut mid-word ("Bishop Estat").
+  const base   = homeScreenName(name, opts?.appName);
   return {
     id: `/poolside-${kind}`,
     name: `${name}${suffix}`,
@@ -129,7 +132,7 @@ Deno.serve(async (req) => {
   const icon512    = (branding.icon_512_url as string | null) || DEFAULT_ICON_512;
   const name       = tenant.display_name || 'Poolside';
 
-  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk, handoff })), {
+  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk, handoff, appName: (branding.app_name as string | null) ?? null })), {
     headers: {
       ...cors,
       'content-type': 'application/manifest+json; charset=utf-8',

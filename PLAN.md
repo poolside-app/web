@@ -676,6 +676,11 @@ The first real signup (iPhone, Chrome) never saw how to add the club to her home
 - **AB2.** The payment screen says one line instead: sign in, and the next screen shows how to add it (adding it from the member home is the version that keeps people signed in).
 `node scripts/test_season_home.mjs`.
 
+### AC. The name under the app icon (Doug, 10/11)
+Saving the app to a home screen labeled it "Bishop Estat": the manifest cut the club's name at 12 characters, mid-word. Doug picked "Cabana Club".
+- **AC1.** Settings → the app icon gets "Name under the app icon" (`branding.app_name`). The manifest's short name and the iPhone title use it. Without one, Poolside uses as many whole words of the club's name as fit in 12 characters ("Bishop"), never half a word. Families who already added the app keep the old label until they add it again.
+`node scripts/test_signup_notes.mjs --offline`.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

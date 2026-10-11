@@ -148,6 +148,7 @@
 <div id="admin-subtabs"></div>
 <script src="/js/admin-subtabs.js"></script>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/pwa.js"></script>
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 
@@ -344,6 +345,14 @@
         <!-- Hidden second bg-color input for non-text modes so the same
              input id is referenced by drawIconAt. Synced from primary_color. -->
         <input type="hidden" id="icon_bg_color_alt" value="#0a3b5c">
+
+        <!-- The name under the icon (PLAN.md AC1, Doug 10/11): "Bishop Estat"
+             was the club's name cut at 12 characters. -->
+        <div>
+          <label for="app_name" style="margin:0 0 4px">Name under the app icon</label>
+          <input type="text" id="app_name" maxlength="20" placeholder="Cabana Club" oninput="paintAppNameHint()">
+          <div id="app-name-hint" style="font-size:11.5px;color:var(--muted);margin-top:4px"></div>
+        </div>
 
         <div class="icon-actions">
           <span class="icon-status" id="icon-status">Changes preview live — click below to apply.</span>
@@ -678,6 +687,18 @@ let ICON_FONT_READY = false;
   document.fonts.ready.then(() => { ICON_FONT_READY = true; paintIconPreview(); });
 })();
 
+// What the name under the icon will say (PLAN.md AC1). About 12 letters fit
+// under an iPhone icon; longer ones get cut off with "…".
+function paintAppNameHint() {
+  const el = document.getElementById('app-name-hint');
+  if (!el) return;
+  const own = val('app_name');
+  const shown = window.Pwa && window.Pwa.homeName ? window.Pwa.homeName(val('display_name') || (TENANT && TENANT.display_name) || '', own) : own;
+  el.textContent = own && own.length > 12
+    ? `${own.length} letters: some phones will cut it off. About 12 fit.`
+    : `Shows as "${shown}". About 12 letters fit under an iPhone icon. Families who already added the app see it after adding it again.`;
+}
+
 // Custom-icon state. icon_mode picks the source pipeline; the rest are
 // per-mode tweaks. Persisted on save into settings.value.branding so the
 // admin doesn't lose their picks across visits.
@@ -927,6 +948,7 @@ async function regenerateAndSaveIcons() {
       ...(LAST_SETTINGS.branding || {}),
       ...icons,
       icon_mode:       currentIconMode(),
+      app_name:        val('app_name') || null,
       icon_text:       val('icon_text') || null,
       icon_bg_color:   val('icon_bg_color') || null,
       icon_fg_color:   val('icon_fg_color') || null,
@@ -1054,6 +1076,8 @@ function populate(s) {
   const savedMode = s.branding?.icon_mode
     || (s.branding?.logo_url ? 'logo' : 'initials');
   setVal('icon_text',     s.branding?.icon_text || '');
+  setVal('app_name',      s.branding?.app_name || '');
+  paintAppNameHint();
   setVal('icon_bg_color', s.branding?.icon_bg_color || s.branding?.primary_color || '#0a3b5c');
   setVal('icon_fg_color', s.branding?.icon_fg_color || '#ffffff');
   setIconMode(savedMode);
@@ -1126,6 +1150,7 @@ function collect(prevSettings) {
       // re-opens with their choices next time + so save() can regenerate
       // when any of these change.
       icon_mode:            currentIconMode(),
+      app_name:             val('app_name') || null,
       icon_text:            val('icon_text') || null,
       icon_bg_color:        val('icon_bg_color') || null,
       icon_fg_color:        val('icon_fg_color') || null,

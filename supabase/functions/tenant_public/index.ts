@@ -96,6 +96,8 @@ Deno.serve(async (req) => {
       // are unreliable.
       icon_192_url:         v.branding?.icon_192_url ?? null,
       icon_512_url:         v.branding?.icon_512_url ?? null,
+      // The name under the app icon (PLAN.md AC1).
+      app_name:             v.branding?.app_name ?? null,
     },
     club: {
       location: v.club?.location ?? null,
