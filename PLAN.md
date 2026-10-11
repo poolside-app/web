@@ -670,6 +670,12 @@ The fix: the bridge asks "anything to open?" and the cloud holds the question op
 - Safe to turn on now: Bishop has no families, unlocks waiting from before are skipped (anything over 60 seconds old is never fired), and the 4 stuck from June aren't picked up.
 - Later: the read-only keyfob panel check (`bridge/panel_check_readonly.py`) on the same PC, which writes nothing to the panels.
 
+### AB. Home Screen steps where people see them (Doug, 10/11)
+The first real signup (iPhone, Chrome) never saw how to add the club to her home screen: on the payment screen the steps sat under the "Sign in" button she tapped right away, and in the member app they were at the very bottom of Home, after the calendar (PLAN.md V put them there).
+- **AB1.** On the member home, the "Add this club to your home screen" card goes right under the top banner, open, for anyone on a phone who isn't using the installed app. "Not now" tucks it away for two weeks. It's gone in the installed app.
+- **AB2.** The payment screen says one line instead: sign in, and the next screen shows how to add it (adding it from the member home is the version that keeps people signed in).
+`node scripts/test_season_home.mjs`.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

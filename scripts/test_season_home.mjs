@@ -76,6 +76,14 @@ console.log('U4/V · the member app (offline)');
   const pane = home.slice(home.indexOf('<section data-pane="home">'), home.indexOf('<section data-pane="help"'));
   const order = ['hero-card compact', 'gate-card', 'todo-host', 'Latest news', 'renderFundraiserCard', 'photos-card', 'calendarHtml'].map(k => pane.indexOf(k));
   check('Home: banner, unlock, to-dos, news, fundraiser, photos, calendar', order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1])), short(order));
+  // PLAN.md AB1 (Doug, 10/11): the Home Screen steps right under the banner.
+  const inst = pane.indexOf('id="install-card-host"');
+  check('AB1: "Add this club to your home screen" sits right under the banner', inst > pane.indexOf('hero-card compact') && inst < pane.indexOf('gate-card'), short({ inst, hero: pane.indexOf('hero-card compact'), gate: pane.indexOf('gate-card') }));
+  const card = home.slice(home.indexOf('const INSTALL_LATER'), home.indexOf('async function prepareHandoff'));
+  check('AB1: it opens by itself, and "Not now" tucks it away for two weeks', /<details class="card"[^>]*open/.test(card) && /Not now/.test(card) && /poolside_install_later/.test(card) && /14 \* 864e5/.test(card));
+  const apply = read('apply.html');
+  const paid = apply.slice(apply.indexOf('async function renderPostPaymentSuccess'), apply.indexOf('for (let attempt = 0; attempt < 6'));
+  check('AB2: the payment screen says the next screen shows how, instead of the steps under the button', !/renderInstallGuide/.test(paid) && /home screen/i.test(paid));
   check('the banner has the date, the weather and today', /hero-date/.test(pane) && /id="hero-weather"/.test(pane) && /todayLine/.test(pane) && /\/js\/pool-weather\.js/.test(home) && /api\.open-meteo\.com/.test(read('js/pool-weather.js')));
   check('keyfobs only on My family', !/renderFobCard|keyfob/i.test(pane) && /renderFobCard\(me\.keyfobs\)/.test(home.slice(home.indexOf('<section data-pane="family"'))));
   check('an unpaid family sees "Pay for" and the calendar', /Pay for \$\{/.test(home) && /: calendarHtml\}/.test(pane));

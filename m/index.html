@@ -1613,19 +1613,31 @@ function isComputer() {
   if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false;
   return true;
 }
+// The Home Screen steps sit right under the banner, open (PLAN.md AB1): the
+// first real signup never saw them at the bottom of Home. "Not now" tucks
+// them away for two weeks.
+const INSTALL_LATER = 'poolside_install_later';
+function installLater() {
+  try { localStorage.setItem(INSTALL_LATER, String(Date.now())); } catch (_) {}
+  const h = document.getElementById('install-card-host');
+  if (h) h.innerHTML = '';
+}
 function renderInstallCard() {
   const host = document.getElementById('install-card-host');
   if (!host || !window.Pwa) return;
   if (window.Pwa.isStandalone() || isComputer()) { host.innerHTML = ''; return; }
+  let later = 0;
+  try { later = Number(localStorage.getItem(INSTALL_LATER) || 0); } catch (_) {}
+  if (later && Date.now() - later < 14 * 864e5) { host.innerHTML = ''; return; }
   // The shared guide (js/pwa.js) knows Safari, Chrome on iPhone and Android;
   // this card used to show Safari's steps to everyone on an iPhone.
   host.innerHTML = `
-    <details class="card" style="padding:14px 16px">
+    <details class="card" open style="padding:14px 16px">
       <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px">
         <span style="font-family:'Fraunces',Georgia,serif;font-size:16px;font-weight:600;color:var(--blue)">📲 Add this club to your home screen</span>
-        <span style="font-size:12px;color:var(--muted)">Tap to expand</span>
       </summary>
       <div id="install-guide"></div>
+      <button type="button" onclick="installLater()" style="background:none;border:0;padding:6px 0 0;font:600 13px 'Inter';color:var(--muted);cursor:pointer">Not now</button>
     </details>`;
   window.Pwa.renderInstallGuide(document.getElementById('install-guide'), {
     title: 'How to add it',
@@ -2838,6 +2850,9 @@ async function submitProfile() {
         <div class="hero-line"><span id="hero-weather"></span>${todayLine}</div>` : ''}
       </div>
       ${payNow}
+      <!-- How to add the club to the home screen (PLAN.md AB1, Doug 10/11):
+           right under the banner, where a new member sees it. -->
+      <div id="install-card-host"></div>
       ${acc.member ? `
       <!-- Remote unlock, only when the club has it (loadGateCard). -->
       <div class="card" id="gate-card" style="display:none;background:linear-gradient(135deg,#0a3b5c,#134b73);color:#fff;text-align:center;padding:20px 22px">
@@ -2870,8 +2885,7 @@ async function submitProfile() {
         <h2>Volunteer</h2>
         <div id="volunteer-body" class="empty">Loading…</div>
       </div>
-      <div id="today-block" style="display:none"></div>
-      <div id="install-card-host"></div>` : calendarHtml}
+      <div id="today-block" style="display:none"></div>` : calendarHtml}
     </section>
 
     <section data-pane="help" style="display:none">
