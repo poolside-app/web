@@ -340,6 +340,8 @@ Deno.serve(async (req) => {
     if (appIds.length) {
       await sb.from('admin_tasks').delete()
         .eq('tenant_id', TID).eq('source_kind', 'application').in('source_id', appIds);
+      // Their waiting Drive backups too (PLAN.md Z1), or they retry forever.
+      await sb.from('drive_sync_queue').delete().eq('tenant_id', TID).in('application_id', appIds);
       await sb.from('applications').delete().eq('tenant_id', TID).in('id', appIds);
     }
 

@@ -655,6 +655,10 @@ Found: the pop-up works, but Bishop's was never turned on. On Money → Sponsors
 - **✅ Y1.** A switch, "Show a sponsor pop-up when people open the app", that saves the moment it's flipped (and the how-often choice too), with a line saying what members see. It saves only the pop-up setting. `node scripts/test_sponsor_popup.mjs`.
 - **✅ Y2.** Sponsors moves from Money to Content (Doug, 10/11: "sponsors should be under content not money"): Announcements, Photos, Board minutes, Member help, Sponsors.
 
+### Z. Drive backup (Doug, 10/11)
+The Drive connection had been dead since May 23 (Google cancels a Testing-mode app's sign-in after 7 days). Doug reconnected on 10/11, as doug.frevele@gmail.com. One backup kept failing: the Frevele signup he had deleted, retried forever as "application not found".
+- **✅ Z1.** A retry drops a backup whose signup was deleted, and deleting a family for good removes its waiting backups. `node scripts/test_drive_queue.mjs`.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

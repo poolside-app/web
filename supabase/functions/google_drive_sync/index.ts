@@ -527,7 +527,7 @@ Deno.serve(async (req) => {
       .eq('tenant_id', payload.tid).eq('status', 'pending')
       .lte('next_retry_at', new Date().toISOString())
       .limit(25);
-    let attempted = 0, succeeded = 0, failed = 0;
+    let attempted = 0, succeeded = 0, failed = 0, dropped = 0;
     for (const row of rows ?? []) {
       attempted++;
       try {
@@ -538,6 +538,11 @@ Deno.serve(async (req) => {
         if (r.ok) {
           await sb.from('drive_sync_queue').update({ status: 'done' }).eq('id', row.id as string);
           succeeded++;
+        } else if (r.error === 'application not found') {
+          // The signup was deleted (PLAN.md Z1): nothing left to back up, so
+          // drop it rather than retrying it forever.
+          await sb.from('drive_sync_queue').delete().eq('id', row.id as string);
+          dropped++;
         } else {
           failed++;
           const attempts = (row.attempts as number ?? 0) + 1;
@@ -560,7 +565,7 @@ Deno.serve(async (req) => {
         }).eq('id', row.id as string);
       }
     }
-    return jsonResponse({ ok: true, attempted, succeeded, failed });
+    return jsonResponse({ ok: true, attempted, succeeded, failed, dropped });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
