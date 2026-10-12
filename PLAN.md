@@ -730,6 +730,48 @@ Doug: "if you are on the board can you have it unlock each specific door? access
 - Doug's step: download the new bridge on the club PC and restart the service (PowerShell, as for 1.1).
 `node scripts/test_gate_doors.mjs`, `node scripts/test_gate_poll.mjs` (both offline). ✅ Bridge 1.2 on the club PC; Doug tapped all four doors on 10/12 and each opened (9 of 9 unlocks ok, each under a second).
 
+### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
+Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
+- **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).
+- **AL2. Code: `bridge/install_pi.sh`.** One script that creates a `poolside` user, a venv in `/opt/poolside-bridge` with `requests`, `python-dotenv` and `uhppoted`, downloads `gate_bridge.py` and `panel_check_readonly.py`, and installs a systemd service (`Restart=always`, after `network-online.target` and `time-sync.target`, so it waits for the network and the right time). Logs go to the system journal, not a file on the SSD (`gate_bridge.py` writes `bridge.log`, and nothing trims it).
+- **AL3. Code: two small bridge changes.**
+  - A `--check` mode. It sends one heartbeat (claims nothing), confirms uhppoted loads, looks for controllers read-only, prints what it found and exits. Safe at Doug's house with Bishop's real `.env`. Running the full bridge at home is not safe: it could take an unlock and then fail to reach a door it can't see from there.
+  - The stale guard uses the cloud's `server_time` instead of the PC's own clock. A Pi has no clock battery, so for a moment after power comes back its time can be wrong.
+- **AL4. At home.** Run `install_pi.sh`, copy the `.env` from `C:\PoolsideGateBridge`, run `--check`: "credentials accepted, uhppoted ready, no controllers (not at the pool)". Leave the service off.
+- **AL5. At the club (plug and play).**
+  - On the Windows PC (admin PowerShell): `Stop-Service PoolsideGateBridge`.
+  - Plug the Pi into the pool network and power. It starts by itself.
+  - From here I check that it's checking in (SQL, no extra calls). Then Doug taps all four doors and runs `panel_check_readonly.py` on the Pi.
+  - To go back: unplug the Pi and run `Start-Service PoolsideGateBridge`.
+  - Never leave both running. Two bridges with the same key both check in, which doubles the calls.
+- Afterward: decide which one stays. If it's the Pi, set the Windows service to Manual.
+
+### AM. More clubs with gates — parked until Bishop is right (Doug, 10/12)
+What has to change before the gate and doors go to other clubs, in order. Nothing here is built.
+- **AM1. Supabase Pro.**
+  - Each bridge makes about 130,000 calls a month, and the free plan has 500,000 for everything, so it runs out at two or three clubs.
+  - Pro includes 2 million, then about $2 a million.
+  - Code: raise the held check-in from 20 s to about 55 s (`_shared/bridge_poll.ts` cap, `WAIT_SEC` in `gate_bridge.py`, `scripts/test_gate_poll.mjs`), about 45,000 calls a month per bridge. That stays well inside the Edge Function time limit.
+- **AM2. Set up a club's doors on a screen, not in SQL.**
+  - Code: the bridge reports what it finds on the club's network (uhppoted `get_all_controllers`, read-only: serial, address, firmware, door count) in a new `gate_bridge` action, stored on `gate_panels` (a `controllers` list).
+  - Code: a door editor on `/admin/gate-integrations.html` that names each controller's doors and writes `gate_panels.doors` (checked by `doorsFor` in `_shared/gate_doors.ts`).
+  - Code: each club's door rules, held on each door (e.g. `members: true`, `staff: true`, hours). Today the rule is fixed: board all doors, members the front gate. `unlock_gate` would then offer members their doors, and `gate_admin` would check the board's.
+- **AM3. A box you ship, not a remote-in install.**
+  - The Pi from AL, pre-loaded.
+  - Code: pairing. A club's first boot has no `.env`. The provider admin shows a short code, the box sends it to a new `gate_bridge` `pair` action and gets its bridge ID and secret back, so nobody pastes secrets.
+  - Code: self-update. Each check-in answers with the latest bridge version, its download address and its checksum (signed). The bridge downloads it, checks it, swaps itself in and restarts. If the new one can't check in within a few minutes, it goes back to the old one. Then an update never needs anyone at the club.
+- **AM4. Other door systems.**
+  - The bridge picks how to open a door by `panel_type`: `mengqi_hxc7000` (the web-page recipe) or UHPPOTE-type controllers (uhppoted, most cheap 2- and 4-door boards).
+  - Each new kind is one more adapter in `gate_bridge.py`, built only when a paying club has it.
+  - Cloud systems (Brivo, Openpath/Avigilon, Kisi) need no bridge: an Edge Function calls their service with the club's key.
+  - The gate request form already asks what a club has.
+- **AM5. Before about ten clubs: a live connection instead of check-ins.**
+  - Today, while a check-in waits, `gate_bridge` asks the database twice a second for each bridge, which adds up across clubs.
+  - Code: the bridge keeps a Supabase Realtime connection open (a private channel per club, with a short-lived token from a new `gate_bridge` action), and a new unlock reaches it instantly.
+  - A slow check-in every few minutes stays, as the heartbeat and to catch anything missed. The bridge falls back to held check-ins if the connection drops.
+  - Realtime counts connections, not calls (500 at once on Pro).
+- **AM6. One screen for every bridge.** Provider admin: each club's bridge, its version, when it last checked in, and recent failed unlocks. The `gate_bridge_monitor` cron already raises an alarm when one goes quiet.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
