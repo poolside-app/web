@@ -112,6 +112,8 @@
   .sub-h { font: 700 11.5px 'Inter', sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
   .todo { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); }
   .todo:first-child { border-top: 0; padding-top: 2px; }
+  .todo[data-href] { cursor: pointer; border-radius: 10px; }
+  .todo[data-href]:hover { background: var(--bg-2); }
   .ti { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 19px; flex: none; background: var(--blue-l); }
   .ti.money { background: #dcfce7; } .ti.fob { background: #fef3c7; } .ti.ask { background: #ede9fe; } .ti.party { background: #fce7f3; }
   .tt { flex: 1; min-width: 0; }
@@ -502,8 +504,9 @@ function taskRank(kind) {
     const look = taskLook(t.kind);
     // A position's alert, for the position they hold, is simply theirs.
     const forWho = t.for_position && titles.includes(t.for_position) ? 'For you' : taskFor(t, tdata.me);
+    // The whole row opens it, not just the button (PLAN.md AF2).
     return `
-      <div class="todo">
+      <div class="todo"${t.link_url ? ` data-href="${escapeHtml(t.link_url)}" role="link" tabindex="0"` : ''}>
         <div class="ti ${look.tone}">${look.icon}</div>
         <div class="tt"><b>${escapeHtml(look.title)}</b><span>${escapeHtml(t.summary)}</span>
           <span class="meta">${escapeHtml(age(t))}${forWho === 'For you' ? '' : ' · ' + escapeHtml(forWho)} · <button type="button" onclick="completeTask('${escapeHtml(t.id)}')">Mark done</button></span></div>
@@ -572,6 +575,14 @@ function taskRank(kind) {
         ${rowsHtml}
       </div>
     </div>`;
+
+  // Tap anywhere on a to-do to open it; its button and "Mark done" still do
+  // their own thing (PLAN.md AF2).
+  document.querySelectorAll('.todo[data-href]').forEach(row => {
+    const go = () => { location.href = row.dataset.href; };
+    row.addEventListener('click', e => { if (!e.target.closest('a, button')) go(); });
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === row) go(); });
+  });
 
   if (home.pool && home.pool.location) PoolWeather.load(home.pool.location, document.getElementById('hero-weather'));
   paintMyJob(tdata);

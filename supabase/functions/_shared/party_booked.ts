@@ -92,7 +92,7 @@ export async function partyBookedAlert(sb: SupabaseClient, args: { tenantId: str
     const { enqueueAdminTask } = await import('./enqueue_task.ts');
     await enqueueAdminTask(sb, {
       tenant_id: args.tenantId, target_scopes: ['parties'], kind: 'party.booked', summary,
-      link_url: '/club/admin/parties.html', source_kind: 'party_booking', source_id: p.id as string,
+      link_url: `/club/admin/parties.html#p=${p.id}`, source_kind: 'party_booking', source_id: p.id as string,
       push_title: `🎉 Party booked: ${p.title || 'a party'}`, push_body: `${when(party, tz)}. Get in touch with ${contact.name || 'the family'}.`,
     });
 

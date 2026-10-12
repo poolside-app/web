@@ -77,6 +77,11 @@ if (bh) {
   check('today and coming up use the shared calendar rules', /PoolsideToday\.items\(/.test(page) && /items: /.test(read('js/today.js')));
   check('each quick button opens its form', /location\.hash === '#text'\) openBlast\(\)/.test(read('club/admin/announcements.html')) && /location\.hash === '#new'\) openCreate\(\)/.test(read('club/admin/announcements.html'))
     && /location\.hash === '#new'\) openCreate\(\)/.test(read('club/admin/events.html')) && /location\.hash === '#upload'/.test(read('club/admin/photos.html')));
+  // PLAN.md AF (Doug, 10/11).
+  const bhs = read('supabase/functions/_shared/board_home.ts');
+  check('AF1: families paid includes test-card families and says how many', /\(dues\?\.paid \?\? 0\) \+ \(dues\?\.test_paid \?\? 0\)/.test(bhs) && /test\)/.test(bhs));
+  check('AF1: the dues bar on other pages counts them the same way', /paid \+ tests/.test(read('js/admin-flags.js')));
+  check('AF2: tapping anywhere on a to-do opens it; Mark done stays separate', /data-href=/.test(page) && /closest\('a, button'\)/.test(page) && /location\.href = /.test(page));
   const flags = read('js/admin-flags.js');
   check('no dues bar on the home (the banner has the numbers)', /dues-ticker/.test(flags) && /isDashboard/.test(flags));
 }

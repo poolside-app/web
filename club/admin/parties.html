@@ -477,7 +477,15 @@ async function adminCancel() {
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   } catch { logout(); return; }
   loadPartyHours();
+  // A to-do's link opens one party: #p=<id> (PLAN.md AF2). It may not be
+  // pending, so show them all, then open it.
+  const deep = (location.hash.match(/^#p=([0-9a-f-]{36})$/) || [])[1];
+  if (deep) {
+    STATUS = 'all';
+    document.querySelectorAll('#status-filter button').forEach(x => x.classList.toggle('on', x.dataset.status === 'all'));
+  }
   await refresh();
+  if (deep && CACHE.some(b => b.id === deep)) openModal(deep, CACHE);
 })();
 </script>
 </body>

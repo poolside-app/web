@@ -205,7 +205,9 @@ export async function loadHome(sb: SupabaseClient, ctx: {
   const value: Record<string, number | string | null> = {};
   const jobs: Promise<void>[] = [];
   const job = (k: string, f: () => Promise<number | string | null>) => { if (wants(k)) jobs.push(f().then(v => { value[k] = v; })); };
-  job('paid', async () => dues?.paid ?? 0);
+  // Test-card families count as paid (they're members), and the label says
+  // how many (PLAN.md AF1); "collected" stays real money only.
+  job('paid', async () => (dues?.paid ?? 0) + (dues?.test_paid ?? 0));
   job('collected', async () => dues?.collected_cents ?? 0);
   job('owed', async () => unpaid.reduce((n, r) => n + Number(r.amount_cents ?? 0), 0));
   job('on_plan', async () => planIds.length);
@@ -271,7 +273,8 @@ export async function loadHome(sb: SupabaseClient, ctx: {
     season, today,
     stats: statKeys.map(k => {
       const s = byKey(STATS, k);
-      return { key: k, label: s.label, href: s.href, value: value[k] ?? null, money: k === 'collected' || k === 'owed' } as HomeStat;
+      const label = k === 'paid' && dues?.test_paid ? `${s.label} (${dues.test_paid} test)` : s.label;
+      return { key: k, label, href: s.href, value: value[k] ?? null, money: k === 'collected' || k === 'owed' } as HomeStat;
     }),
     quick: quickKeys.map(k => { const q = byKey(QUICK, k); return { key: k, icon: q.icon, label: q.label, href: q.href }; }),
     signup_link: showSignupLink(caller),
