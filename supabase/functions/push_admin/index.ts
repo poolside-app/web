@@ -218,6 +218,18 @@ Deno.serve(async (req) => {
       }, { onConflict: 'admin_user_id,endpoint' })
       .select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // The same phone gets their member pop-ups too, for the family this board
+    // login belongs to (PLAN.md AH2: one switch, both kinds).
+    try {
+      const { data: me } = await sb.from('admin_users').select('linked_member_id, phone_e164, email').eq('id', payload.sub).maybeSingle();
+      const { membersForAdmin } = await import('../_shared/board_member.ts');
+      for (const mem of me ? await membersForAdmin(sb as never, TID, me) : []) {
+        await sb.from('member_push_subscriptions').upsert({
+          tenant_id: TID, member_id: mem.id, household_id: mem.household_id,
+          endpoint, p256dh, auth, user_agent: ua, last_seen_at: new Date().toISOString(),
+        }, { onConflict: 'member_id,endpoint' });
+      }
+    } catch (e) { console.error('member pop-ups for a board member (non-fatal):', (e as Error).message); }
     return jsonResponse({ ok: true, id: data.id });
   }
 

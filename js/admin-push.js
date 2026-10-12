@@ -120,9 +120,9 @@
       if (reg) {
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          // Tell the server first so it stops trying to push to a dead endpoint.
+          // Only the board's pop-ups stop. The phone's connection stays: a
+          // board member's member pop-ups use it too (PLAN.md AH2).
           await call('unsubscribe', { endpoint: sub.endpoint });
-          await sub.unsubscribe();
         }
       }
     } catch (_) { /* best-effort */ }

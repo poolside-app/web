@@ -10,7 +10,7 @@
 // notifications surface in the OS without a follow-up code change.
 // =============================================================================
 
-const CACHE_NAME = 'poolside-shell-v1';
+const CACHE_NAME = 'poolside-shell-v2';   // v2: member pop-ups open the member side (PLAN.md AH3)
 
 self.addEventListener('install', (event) => {
   // Activate immediately on first install so the user sees PWA behavior
@@ -51,7 +51,14 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || '/m/';
+  let target = (event.notification.data && event.notification.data.url) || '/m/';
+  // The app opens to the board for board members (PLAN.md AH1); a member
+  // pop-up says it's for the member side so it isn't sent on to the board.
+  if (/^\/m(\/|$)/.test(target) && !/[?&]view=member/.test(target)) {
+    const hash = target.indexOf('#') >= 0 ? target.slice(target.indexOf('#')) : '';
+    const base = hash ? target.slice(0, target.indexOf('#')) : target;
+    target = base + (base.includes('?') ? '&' : '?') + 'view=member' + hash;
+  }
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of all) {

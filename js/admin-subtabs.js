@@ -186,7 +186,7 @@
           <div class="grab"></div>
           ${rest.map(x => row(x.href, x.icon, x.label, x.items.map(i => i.label).join(', '))).join('')}
           ${row('/club/admin/help.html', '❓', 'Help and guides')}
-          ${memberView ? row('/m/', '👤', 'Member view') : ''}
+          ${memberView ? row('/m/?view=member', '👤', 'Member view') : ''}
           ${row('#signout', '↪️', 'Sign out', '', ' data-signout="1"')}
         </div>
       </div>`);

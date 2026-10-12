@@ -127,6 +127,19 @@ Deno.serve(async (req) => {
       last_seen_at: new Date().toISOString(),
     }, { onConflict: 'member_id,endpoint' });
     if (error) return j({ ok: false, error: error.message }, 500);
+    // A board member's phone gets their board pop-ups too (PLAN.md AH2: one
+    // switch, both kinds).
+    try {
+      const { data: me } = await sb.from('household_members').select('id, phone_e164, email').eq('id', m.sub).maybeSingle();
+      const { adminsForMember } = await import('../_shared/board_member.ts');
+      for (const adminId of me ? await adminsForMember(sb as never, m.tid as string, me as never) : []) {
+        await sb.from('admin_push_subscriptions').upsert({
+          tenant_id: m.tid, admin_user_id: adminId, endpoint, p256dh, auth: authKey,
+          user_agent: body.user_agent ? String(body.user_agent).slice(0, 240) : null,
+          last_seen_at: new Date().toISOString(),
+        }, { onConflict: 'admin_user_id,endpoint' });
+      }
+    } catch (e) { console.error('board pop-ups for a member (non-fatal):', (e as Error).message); }
     return j({ ok: true });
   }
 

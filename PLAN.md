@@ -703,6 +703,13 @@ Doug: "When a pool party is paid for, Venmo or credit card, the party person on 
 Doug's one Home Screen app was added from the member side, so it opens there. Since his family was deleted it showed the member sign-in page every time ("keeps logging me out"), though his board sign-in in the same app was fine. Now the member sign-in page, finding no member sign-in but a board one, opens the board straight away when that board login isn't linked to a member; a board member who is also a member gets a "Go to the board" button instead (no bouncing between the two).
 `node scripts/test_board_home.mjs`.
 
+### AH. One app for board members who are also members (Doug, 10/11)
+Doug: "if I sign in as a member, I still want the board to take priority… board notifications, but also member notifications… if you get removed from the board, the default goes back to member side… if a member gets invited to the board, it should then default to board."
+- **AH1. Board first.** The Home Screen app opens to the board whenever it has a board sign-in. "Member view" (board home and More) switches to the member side for the rest of that visit; "Board tools" on the member side switches back. Removed from the board: the board sign-in stops working, so the app drops it and opens the member side from then on. Invited to the board: "Board tools" appears on their member side; once they sign in to the board there, the app opens to the board. (Replaces AG's button-only case.)
+- **AH2. Both kinds of pop-ups, one switch.** Turning on pop-ups on either side signs the phone up for board and member pop-ups, for a board login matched to the family (linked, or the same phone or email, as `is_board_member`). Turning off board pop-ups no longer cuts off member ones on the same phone.
+- **AH3. Each pop-up opens its side.** Member pop-ups open the member side even though the app is board first.
+`node scripts/test_one_app.mjs`, plus a check in a browser.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

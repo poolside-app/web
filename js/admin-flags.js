@@ -554,11 +554,16 @@
   //   if (!me) return;   // page already redirected to /login.html
   //   // use me.user, me.tenant, me.usage, me.renewed_token (already persisted)
   function poolsideLogout() {
+    let member = null;
     try {
       localStorage.removeItem('poolside_tenant_token');
       localStorage.removeItem('poolside_tenant_user');
       localStorage.removeItem('poolside_tenant_tenant');
+      member = localStorage.getItem('poolside_member_token');
     } catch (_) {}
+    // Removed from the board, but a member in this app: the app goes back
+    // to the member side, and opens there from now on (PLAN.md AH1).
+    if (member) { window.location.replace('/m/'); return; }
     window.location.href = '/club/admin/login.html';
   }
 

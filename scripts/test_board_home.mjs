@@ -154,8 +154,9 @@ console.log('W3 · the bottom bar on every board page (offline)');
   check('AD1: a pop-up keeps a swipe to itself', /overscroll-behavior: contain/.test(src));
   // PLAN.md AG (Doug, 10/11): the app opened to the member sign-in for a board-only person.
   const ml = read('m/login.html');
-  check('AG: member sign-in with a board sign-in and no member: straight to the board; a member too: a button',
-    /poolside_tenant_token/.test(ml) && /linked_member_id/.test(ml) && /location\.replace\('\/club\/admin\/'\)/.test(ml) && /Go to the board/.test(ml));
+  // Superseded by PLAN.md AH1 (board first for everyone with a board sign-in; scripts/test_one_app.mjs).
+  check('AG→AH1: member sign-in with a board sign-in opens the board unless they chose Member view',
+    /poolside_tenant_token/.test(ml) && /poolside_view/.test(ml) && /location\.replace\('\/club\/admin\/'\)/.test(ml) && /Go to the board/.test(ml));
   const flags = read('js/admin-flags.js');
   check('every page draws it once it knows who is signed in', /AdminNav\.render\(/.test(flags) && /poolside_tenant_features/.test(flags));
   const fs = await import('node:fs');

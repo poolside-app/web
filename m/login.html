@@ -153,22 +153,21 @@ const SLUG = getSlugFromHostname();
 // circuit straight to /m/. Avoids the "click brand → land on public →
 // come back → why am I logging in again?" loop. If the token is stale or
 // from a different tenant, drop it quietly and show the form.
-// Signed in to the board but not as a member, in this same app (PLAN.md AG,
-// Doug 10/11: his Home Screen app opened here and showed this page every
-// time). If that board login isn't linked to a member, they're board only:
-// open the board. If it is, offer the board without taking them there, so
-// the board's "Member view" never bounces back.
+// Board first (PLAN.md AH1, replacing AG): with a board sign-in in this app,
+// open the board, unless they picked "Member view" for this visit. Then they
+// see the member sign-in with a way back to the board.
 function boardInstead() {
-  let tok = null, user = null;
+  let tok = null, chosen = null;
   try {
+    if (new URLSearchParams(location.search).get('view') === 'member') sessionStorage.setItem('poolside_view', 'member');
     tok = localStorage.getItem('poolside_tenant_token');
-    user = JSON.parse(localStorage.getItem('poolside_tenant_user') || 'null');
+    chosen = sessionStorage.getItem('poolside_view');
   } catch (_) { return false; }
   if (!tok) return false;
-  if (!user || !user.linked_member_id) { location.replace('/club/admin/'); return true; }
+  if (chosen !== 'member') { location.replace('/club/admin/'); return true; }
   const form = document.querySelector('main form') || document.querySelector('main');
   if (form && !document.getElementById('board-instead')) {
-    form.insertAdjacentHTML('afterbegin', `<a id="board-instead" href="/club/admin/" style="display:block;margin:0 0 16px;padding:12px 14px;border-radius:12px;background:#e6eef5;color:#0a3b5c;font:600 14px Inter,sans-serif;text-decoration:none">You're signed in to the board. Go to the board &rarr;</a>`);
+    form.insertAdjacentHTML('afterbegin', `<a id="board-instead" href="/club/admin/" onclick="try{sessionStorage.removeItem('poolside_view')}catch(_){}" style="display:block;margin:0 0 16px;padding:12px 14px;border-radius:12px;background:#e6eef5;color:#0a3b5c;font:600 14px Inter,sans-serif;text-decoration:none">You're signed in to the board. Go to the board &rarr;</a>`);
   }
   return false;
 }

@@ -1944,6 +1944,29 @@ async function cancelFob(id) {
 // js/pool-weather.js, shared with the board home (PLAN.md W).
 function loadWeather(loc) { return PoolWeather.load(loc, document.getElementById('hero-weather')); }
 
+// ── Board first (PLAN.md AH1, Doug 10/11) ────────────────────────────────
+// "The app should default to board side if you are on the board." With a
+// board sign-in in this app, the member side hands over to the board unless
+// they picked "Member view" (?view=member, kept for the visit). Removed from
+// the board, the board drops its dead sign-in (admin-flags poolsideLogout)
+// and this page stays put. A member pop-up arrives with ?view=member (sw.js).
+function boardFirst() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('view') === 'member') {
+    try { sessionStorage.setItem('poolside_view', 'member'); } catch (_) {}
+    q.delete('view');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    return false;
+  }
+  let chosen = null, board = null;
+  try { chosen = sessionStorage.getItem('poolside_view'); board = localStorage.getItem('poolside_tenant_token'); } catch (_) {}
+  if (board && chosen !== 'member') { location.replace('/club/admin/'); return true; }
+  return false;
+}
+document.getElementById('board-switch')?.addEventListener('click', () => {
+  try { sessionStorage.removeItem('poolside_view'); } catch (_) {}
+});
+
 // ── Pop-ups and the tab bar (PLAN.md AD1, Doug 10/11) ────────────────────
 // A pop-up is `.scrim.open` or an element whose id ends in -scrim that's
 // showing (the pool pass, the sponsor). While one is open the page behind
@@ -2581,6 +2604,9 @@ async function submitProfile() {
       } catch (_) { /* fall through to the sign-in page */ }
     }
   }
+  // Board first (PLAN.md AH1): with a board sign-in in this app, open the
+  // board, unless they chose "Member view" for this visit.
+  if (boardFirst()) return;
   if (!token()) { logout(); return; }
 
   let me;
