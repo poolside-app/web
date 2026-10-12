@@ -699,6 +699,10 @@ Doug: "When a pool party is paid for, Venmo or credit card, the party person on 
 - **AF2.** Only the button on a to-do opened it. Now tapping anywhere on the row opens it ("Mark done" stays separate), and a party to-do opens that party on the Parties page (`parties.html#p=<id>`).
 `node scripts/test_board_home.mjs`, `node scripts/test_party_booked.mjs`.
 
+### AG. The Home Screen app opens to the board for board-only people (Doug, 10/11)
+Doug's one Home Screen app was added from the member side, so it opens there. Since his family was deleted it showed the member sign-in page every time ("keeps logging me out"), though his board sign-in in the same app was fine. Now the member sign-in page, finding no member sign-in but a board one, opens the board straight away when that board login isn't linked to a member; a board member who is also a member gets a "Go to the board" button instead (no bouncing between the two).
+`node scripts/test_board_home.mjs`.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
