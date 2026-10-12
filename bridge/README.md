@@ -3,11 +3,13 @@
 This is the on-site Python service that bridges the Poolside cloud to the
 gate panel on the club's LAN. It runs on a Windows PC inside the club,
 checks in with the Poolside cloud, and runs the proven 2-step HTTP recipe
-against the panel when there's an unlock to fire. Since 1.1 each check-in
-is held open by the cloud for up to 20 seconds and answered the moment
-someone taps Unlock: about 4,300 calls a day instead of 60,000 (the 1.0
-bridge's 1.5-second polling used up the free Supabase plan in September
-2026). Never run 1.0 again.
+against the panel when there's an unlock to fire. Each check-in is held
+open by the cloud and answered the moment someone taps Unlock, so taps
+never wait for a check-in. Since 1.3 a check-in lasts up to 2 minutes and
+the cloud says how long to hold the next one: about 720 calls a day (1.1
+held 20 seconds, about 4,300; the 1.0 bridge's 1.5-second polling, 60,000
+a day, used up the free Supabase plan in September 2026). Never run 1.0
+again.
 
 Since 1.2 the board can open other doors too (PLAN.md AK): the cloud says
 which door, and any door but the front gate goes straight to its keyfob
@@ -99,10 +101,10 @@ venv\Scripts\python gate_bridge.py
 
 You should see within 2 seconds:
 ```
-INFO Poolside gate bridge 1.2.0-poolside starting
+INFO Poolside gate bridge 1.3.0-poolside starting
 INFO   cloud:  https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/gate_bridge
 INFO   bridge: <your-bridge-id>
-INFO   check-ins held up to 20s, never more often than every 5s
+INFO   check-ins held up to 120s at first (then as the cloud says), never more often than every 5s
 INFO   other doors: ready (uhppoted installed)
 INFO First heartbeat ok — credentials accepted.
 ```

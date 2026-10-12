@@ -105,7 +105,7 @@ check('an older bridge only claims front-gate unlocks', /doorsReady\(/.test(poll
 check('the command carries the door', /door:\s*commandDoor\(/.test(poll));
 check('the bridge check-in reads the doors', /select\('[^']*doors[^']*'\)/.test(gb) && /door_key/.test(poll));
 const py = read('bridge/gate_bridge.py');
-check('the bridge is version 1.2', /BRIDGE_VERSION\s*=\s*"1\.2/.test(py));
+check('the bridge is version 1.2 or later', /BRIDGE_VERSION\s*=\s*"1\.([2-9]|\d{2,})/.test(py));
 check('it opens the other doors with uhppoted open_door', /open_door\(/.test(py) && /import uhppoted|from uhppoted/.test(py));
 
 console.log('AK4 · the unlock log');

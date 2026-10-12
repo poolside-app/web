@@ -21,11 +21,15 @@ let bp = null;
 try { bp = await importTs(new URL('supabase/functions/_shared/bridge_poll.ts', root)); } catch (e) { check('the rules live in _shared/bridge_poll.ts', false, e.message); }
 if (bp) {
   check('no wait asked for: answer at once (an old bridge works as before)', bp.pollWait(undefined) === 0 && bp.pollWait('x') === 0 && bp.pollWait(-5) === 0);
-  check('wait is capped at 20 seconds', bp.pollWait(20) === 20 && bp.pollWait(300) === 20 && bp.pollWait(7) === 7);
+  check('AO1: a check-in can be held 2 minutes, never more (the free plan ends calls at 150 s)', bp.pollWait(120) === 120 && bp.pollWait(300) === 120 && bp.pollWait(20) === 20 && bp.MAX_WAIT_SEC === 120);
+  check('AO1: while holding, it looks once a second (inside the 2 s CPU limit per call)', bp.LOOK_EVERY_MS === 1000);
+  check('AO1: and stamps "last seen" at least every 30 seconds', bp.STAMP_EVERY_MS > 0 && bp.STAMP_EVERY_MS <= 30000);
 }
 const gb = read('supabase/functions/gate_bridge/index.ts');
 const poll = gb.slice(gb.indexOf("action === 'poll'"), gb.indexOf("action === 'complete'"));
-check('a check-in waits for an unlock, looking every half second', /pollWait\(body\.wait\)/.test(poll) && /setTimeout\([^,]+,\s*500\)/.test(poll));
+check('a check-in waits for an unlock, looking every second', /pollWait\(body\.wait\)/.test(poll) && /setTimeout\([^,]+,\s*LOOK_EVERY_MS\)/.test(poll));
+check('AO1: a long hold keeps "last seen" fresh', /STAMP_EVERY_MS/.test(poll) && /bridge_last_seen_at/.test(poll.slice(poll.indexOf('while ('))));
+check('AO2: the answer tells the bridge how long to wait next time', /next_wait:\s*MAX_WAIT_SEC/.test(poll));
 check('it stops waiting if the bridge hung up, so no unlock is lost', /req\.signal\.aborted/.test(poll));
 
 console.log('AA2 · the bridge (offline, fake cloud)');
@@ -35,8 +39,8 @@ for (const line of (py.stdout || '').split('\n').filter(l => /^\s+[✓✗]/.test
 }
 if (py.status !== 0 && !/[✓✗]/.test(py.stdout || '')) check('the bridge loop test runs', false, (py.stderr || '').slice(-300));
 const bridge = read('bridge/gate_bridge.py');
-check("the bridge is version 1.1 or later", /BRIDGE_VERSION\s*=\s*"1\.([1-9]|\d{2,})/.test(bridge));
-check('its HTTP timeout outlasts the wait', /timeout=WAIT_SEC \+ 15/.test(bridge));
+check("the bridge is version 1.3 or later", /BRIDGE_VERSION\s*=\s*"1\.([3-9]|\d{2,})/.test(bridge));
+check('each call\'s time limit outlasts its own wait', /timeout=wait \+ 15/.test(bridge));
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

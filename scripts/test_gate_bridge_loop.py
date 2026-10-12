@@ -33,8 +33,11 @@ if not hasattr(gb, "run_loop"):
 
 class Sim:
     """A fake clock and cloud. `hold` is how long the cloud keeps a poll open."""
-    def __init__(self, hold=0.0, status=200, commands=None):
+    def __init__(self, hold=0.0, status=200, commands=None, next_wait=None, cut_after=None):
+        # next_wait: what the cloud tells the bridge to ask for next (PLAN.md AO2).
+        # cut_after: a held check-in is cut short after this many seconds (a 546).
         self.t = 0.0; self.hold = hold; self.status = status
+        self.next_wait = next_wait; self.cut_after = cut_after
         # Each command is a time, or (time, door) for PLAN.md AK.
         self.calls = []; self.commands = [c if isinstance(c, tuple) else (c, None) for c in (commands or [])]
         self.unlocks = 0; self.opened = []
@@ -45,13 +48,18 @@ class Sim:
         if action == "poll":
             if self.status != 200:
                 return self.status, {"error": "down"}
+            if self.cut_after is not None:
+                self.t += self.cut_after
+                return 546, {"error": "wall clock"}
             if self.commands and self.t >= self.commands[0][0]:
                 _, door = self.commands.pop(0)
                 cmd = {"id": "cmd-12345678", "requested_at": None}
                 if door is not None: cmd["door"] = door
                 return 200, {"ok": True, "command": cmd, "tenant": {"panel_host": "10.0.0.5"}}
-            self.t += self.hold
-            return 200, {"ok": True, "command": None, "tenant": {}}
+            self.t += min(self.hold, extra.get("wait") or 0) if self.hold else 0
+            out = {"ok": True, "command": None, "tenant": {}}
+            if self.next_wait is not None: out["next_wait"] = self.next_wait
+            return 200, out
         return 200, {"ok": True}
     def unlock(self, **kw):
         self.unlocks += 1; return True, "panel returned 200"
@@ -65,11 +73,26 @@ def run(sim, seconds):
         gb.run_loop(sim.cloud, sim.sleep, sim.clock, sim.unlock, until=seconds)
     return [a for a, _ in sim.calls]
 
-# The cloud holds each check-in up to 20 seconds.
-s = Sim(hold=20.0); calls = run(s, 600)
-check("with the new cloud: about one call every 20 seconds (≤ 31 in 10 minutes)", calls.count("poll") <= 31, f"{calls.count('poll')} polls")
-check("each check-in asks the cloud to wait 20 seconds", all(e.get("wait") == 20 for a, e in s.calls if a == "poll"), str(s.calls[:2]))
+# The cloud holds each check-in up to 2 minutes (PLAN.md AO).
+s = Sim(hold=120.0, next_wait=120); calls = run(s, 600)
+check("AO: about one call every 2 minutes (≤ 6 in 10 minutes)", calls.count("poll") <= 6, f"{calls.count('poll')} polls")
+check("AO: each check-in asks the cloud to wait 120 seconds", all(e.get("wait") == 120 for a, e in s.calls if a == "poll"), str(s.calls[:2]))
 check("no separate heartbeat calls (each check-in counts)", "heartbeat" not in calls, str(set(calls)))
+
+# The club PC's settings file may still say WAIT_SEC=20: the cloud's word wins after the first call.
+gb_wait = gb.WAIT_SEC; gb.WAIT_SEC = 20
+s = Sim(hold=120.0, next_wait=120); calls = run(s, 600)
+waits = [e.get("wait") for a, e in s.calls if a == "poll"]
+check("AO2: after the first check-in it asks for what the cloud says", waits[:1] == [20] and set(waits[1:]) == {120}, str(waits))
+gb.WAIT_SEC = gb_wait
+s = Sim(hold=200.0, next_wait=999); run(s, 600)
+s2 = Sim(hold=0.0, next_wait=1); run(s2, 60)
+check("AO3: a strange answer is kept between 5 and 130 seconds",
+      max(e.get("wait") for a, e in s.calls if a == "poll") <= 130 and min(e.get("wait") for a, e in s2.calls if a == "poll")  >= 5)
+
+# A long hold cut short by the cloud isn't an outage: ask again at once.
+s = Sim(cut_after=60.0); calls = run(s, 600)
+check("AO3: a hold cut short after a minute is retried straight away (about 10 in 10 minutes)", 9 <= calls.count("poll") <= 11, f"{calls.count('poll')} polls")
 
 # An old cloud answers at once: the bridge still never loops faster than 5 s.
 s = Sim(hold=0.0); calls = run(s, 600)
@@ -82,7 +105,7 @@ s = Sim(status=503); calls = run(s, 1800)
 check("same for an error answer", calls.count("poll") <= 40, f"{calls.count('poll')} polls")
 
 # Someone taps Unlock: it's fired once and reported.
-s = Sim(hold=20.0, commands=[45.0]); calls = run(s, 120)
+s = Sim(hold=120.0, next_wait=120, commands=[45.0]); calls = run(s, 300)
 check("an unlock is fired once and reported back", s.unlocks == 1 and calls.count("complete") == 1, f"unlocks={s.unlocks} calls={calls}")
 
 # PLAN.md AK: the board opens the other doors through the controller itself.

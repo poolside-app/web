@@ -6,7 +6,9 @@ proven 2-step HTTP recipe against the panel on the club's LAN. Since 1.2
 (PLAN.md AK) the board can open the other wired doors too: those go
 straight to their controller with uhppoted's open_door (pip install
 uhppoted, as for the read-only keyfob check); the front gate keeps the
-HTTP recipe. Since 1.1
+HTTP recipe. Since 1.3 (PLAN.md AO) a check-in is held up to 2 minutes
+(about 720 calls a day) and the cloud says how long to ask for next time,
+so that can change without touching this PC. Since 1.1
 (PLAN.md AA) each check-in asks the cloud to wait up to WAIT_SEC for an
 unlock, so the bridge calls about once every 20 seconds instead of every
 1.5 (which used up the free Supabase plan in September 2026), and the gate
@@ -59,16 +61,19 @@ BRIDGE_ID     = os.environ["BRIDGE_ID"]
 BRIDGE_SECRET = os.environ["BRIDGE_SECRET"]
 
 # ── Tunables (defaults work for typical small clubs) ───────────────────
-# WAIT_SEC: how long the cloud may hold each check-in open (it caps it at 20).
+# WAIT_SEC: how long to ask the cloud to hold the first check-in. After that
+#   the cloud says (next_wait, PLAN.md AO2), kept between 5 and 130 seconds.
 # MIN_LOOP_SEC: never call more often than this, even if the cloud answers at
 #   once (an older cloud, or a hiccup). The guard against September's bill.
 # POLL_SEC: the first wait after an error; it doubles up to MAX_BACKOFF_SEC.
-WAIT_SEC          = int(os.environ.get("WAIT_SEC", "20"))
+WAIT_SEC          = int(os.environ.get("WAIT_SEC", "120"))
+WAIT_MIN_SEC      = 5
+WAIT_MAX_SEC      = 130   # Supabase ends any call at 150 s
 MIN_LOOP_SEC      = float(os.environ.get("MIN_LOOP_SEC", "5"))
 POLL_SEC          = max(1.0, float(os.environ.get("POLL_SEC", "5")))
 MAX_BACKOFF_SEC   = 60.0
 STALE_COMMAND_SEC = int(os.environ.get("STALE_COMMAND_SEC", "60"))
-BRIDGE_VERSION    = "1.2.0-poolside"
+BRIDGE_VERSION    = "1.3.0-poolside"
 
 # ── Cloud endpoint ─────────────────────────────────────────────────────
 CLOUD_URL = f"{SUPABASE_URL}/functions/v1/gate_bridge"
@@ -176,9 +181,10 @@ def cloud(action: str, **extra) -> tuple[int, dict]:
     if _CLOUD is None:
         _CLOUD = requests.Session()
     body = {"action": action, "version": BRIDGE_VERSION, **extra}
+    wait = int(extra.get("wait") or 0)
     try:
-        # A held check-in can take WAIT_SEC; leave room before giving up.
-        r = _CLOUD.post(CLOUD_URL, headers=CLOUD_HEADERS, data=json.dumps(body), timeout=WAIT_SEC + 15)
+        # A held check-in can take its whole wait; leave room before giving up.
+        r = _CLOUD.post(CLOUD_URL, headers=CLOUD_HEADERS, data=json.dumps(body), timeout=wait + 15)
         try:
             return r.status_code, r.json()
         except ValueError:
@@ -212,15 +218,23 @@ def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None
     """The check-in loop. Takes its cloud, clock, panel and controllers as
     arguments so it can be tested against a fake (scripts/test_gate_bridge_loop.py).
 
-    Each check-in asks the cloud to wait up to WAIT_SEC for an unlock. Never
-    more often than every MIN_LOOP_SEC, and after an error it waits POLL_SEC,
-    doubling up to a minute. No separate heartbeat: every check-in tells the
-    cloud the bridge is alive."""
+    Each check-in asks the cloud to wait for an unlock: WAIT_SEC the first
+    time, then as long as the cloud says (next_wait). Never more often than
+    every MIN_LOOP_SEC, and after an error it waits POLL_SEC, doubling up to
+    a minute. No separate heartbeat: every check-in tells the cloud the
+    bridge is alive."""
     open_fn = open_fn or open_door_udp
     errors = 0
+    wait = max(WAIT_MIN_SEC, min(WAIT_MAX_SEC, WAIT_SEC))
     while until is None or clock_fn() < until:
         started = clock_fn()
-        code, resp = cloud_fn("poll", wait=WAIT_SEC)
+        code, resp = cloud_fn("poll", wait=wait)
+        if code != 200 and clock_fn() - started >= MIN_LOOP_SEC:
+            # A long hold cut short (Supabase ended the call). Not an outage:
+            # the cloud was answering, so ask again straight away.
+            LOG.info(f"check-in ended early ({code}); asking again")
+            errors = 0
+            continue
         if code != 200:
             errors += 1
             wait = min(MAX_BACKOFF_SEC, POLL_SEC * (2 ** (errors - 1)))
@@ -228,6 +242,10 @@ def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None
             sleep_fn(wait)
             continue
         errors = 0
+        try:
+            wait = max(WAIT_MIN_SEC, min(WAIT_MAX_SEC, int(resp.get("next_wait") or wait)))
+        except (TypeError, ValueError):
+            pass
 
         command = resp.get("command")
         if not command:
@@ -271,7 +289,7 @@ def main() -> None:
     LOG.info(f"Poolside gate bridge {BRIDGE_VERSION} starting")
     LOG.info(f"  cloud:  {CLOUD_URL}")
     LOG.info(f"  bridge: {BRIDGE_ID}")
-    LOG.info(f"  check-ins held up to {WAIT_SEC}s, never more often than every {MIN_LOOP_SEC:.0f}s")
+    LOG.info(f"  check-ins held up to {WAIT_SEC}s at first (then as the cloud says), never more often than every {MIN_LOOP_SEC:.0f}s")
     try:
         _uhppote_client()
         LOG.info("  other doors: ready (uhppoted installed)")

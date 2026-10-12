@@ -2,7 +2,7 @@
 // gate_bridge — Pi-bridge polling protocol
 // =============================================================================
 // The bridge on the club's LAN checks in here. Since PLAN.md AA it asks
-// with `wait` and the check-in is held open up to 20 seconds.
+// with `wait` and the check-in is held open, up to 2 minutes since AO.
 // Cloud → bridge: pending unlock commands.
 // Bridge → cloud: command results + heartbeat.
 //
@@ -19,8 +19,9 @@
 //     → returns the oldest pending unlock for this tenant (and flips it
 //       to 'in_flight'), OR null if no work. Updates bridge_last_seen_at.
 //       Always returns the panel config so the bridge has fresh creds.
-//       With `wait` (seconds, up to 20; PLAN.md AA1) the check-in is held
-//       open and answered the moment an unlock is waiting.
+//       With `wait` (seconds, up to 120; PLAN.md AA1, AO) the check-in is
+//       held open and answered the moment an unlock is waiting. The answer's
+//       `next_wait` tells the bridge how long to ask for next time.
 //       The command's `door` says which door (PLAN.md AK): the front gate
 //       by key alone, any other with its controller, address and door
 //       number. A bridge before 1.2 is only handed front-gate unlocks.
@@ -33,7 +34,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { pollWait } from '../_shared/bridge_poll.ts';
+import { pollWait, MAX_WAIT_SEC, LOOK_EVERY_MS, STAMP_EVERY_MS } from '../_shared/bridge_poll.ts';
 import { doorsReady, findDoor, commandDoor, OLD_BRIDGE_DOORS } from '../_shared/gate_doors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -125,18 +126,25 @@ Deno.serve(async (req) => {
       .order('requested_at', { ascending: true })
       .limit(1)
       .select('id, requested_at, member_id, is_test, actor_kind, door_key')).data;
-    // Hold the check-in open (PLAN.md AA1): look every half second for a
+    // Hold the check-in open (PLAN.md AA1): look every second for a
     // waiting unlock, until the bridge's wait runs out. A cheap look first,
     // then the claim. If the bridge has hung up, stop without claiming, so
     // an unlock is never marked picked up by a bridge that isn't listening.
     const deadline = Date.now() + pollWait(body.wait) * 1000;
     let pickedUp = await claim();
+    let stamped = Date.now();
     while (!pickedUp?.length && Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, LOOK_EVERY_MS));
       if (req.signal.aborted) return new Response(null, { status: 499 });
       const { count } = await mine(sb.from('gate_unlocks').select('id', { count: 'exact', head: true })
         .eq('tenant_id', panel.tenant_id).eq('status', 'pending'));
       if (count) pickedUp = await claim();
+      // A 2-minute hold (PLAN.md AO1): the bridge is still on the line, so
+      // keep "last seen" as fresh as when it checked in every 20 seconds.
+      else if (Date.now() - stamped >= STAMP_EVERY_MS) {
+        stamped = Date.now();
+        await sb.from('gate_panels').update({ bridge_last_seen_at: new Date().toISOString() }).eq('id', panel.id);
+      }
     }
 
     // A door taken off the list after the tap: never let it fall back to
@@ -169,6 +177,8 @@ Deno.serve(async (req) => {
       // Server time so the bridge can detect clock skew (its UNCLOSE call
       // depends on a fresh timestamp for some panels).
       server_time: new Date().toISOString(),
+      // How long to ask for next time (PLAN.md AO2): set here, not on the club PC.
+      next_wait: MAX_WAIT_SEC,
     });
   }
 
