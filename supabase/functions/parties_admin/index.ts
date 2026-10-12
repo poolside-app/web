@@ -319,6 +319,11 @@ Deno.serve(async (req) => {
       .eq('tenant_id', TID).eq('source_kind', 'party_booking').eq('source_id', id)
       .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
 
+    // The party person: a to-do to get in touch, a pop-up and an email
+    // (PLAN.md AE1).
+    const { partyBookedAlert } = await import('../_shared/party_booked.ts');
+    await partyBookedAlert(sb as never, { tenantId: TID, partyId: id, how: method === 'stripe' ? 'card' : 'venmo' });
+
     // Confirmation email to the host: party is officially booked.
     try {
       const { data: requester } = await sb.from('household_members')

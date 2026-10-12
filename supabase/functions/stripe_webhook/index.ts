@@ -595,6 +595,10 @@ Deno.serve(async (req) => {
           await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
             .eq('tenant_id', tenantId).eq('source_kind', 'party_booking').eq('source_id', md.party_id)
             .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
+          // The party person hears about it (PLAN.md AE1): before, a card
+          // payment told only the family.
+          const { partyBookedAlert } = await import('../_shared/party_booked.ts');
+          await partyBookedAlert(sb as never, { tenantId, partyId: md.party_id, how: 'card' });
 
           // Confirmation email to the host. Mirrors what parties_admin.verify_payment
           // sends on the Venmo path — single email when the date officially locks.

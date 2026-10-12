@@ -338,13 +338,23 @@ document.querySelectorAll('#status-filter button').forEach(b => {
   });
 });
 
+// The family's phone and email, tap to call, text or email (PLAN.md AE3):
+// the party person gets in touch from here.
+function contactLinks(r) {
+  if (!r || (!r.phone_e164 && !r.email)) return '';
+  const tel = String(r.phone_e164 || '').replace(/[^\d+]/g, '');
+  const a = (href, label) => `<a href="${escapeHtml(href)}" style="display:inline-block;margin:6px 6px 0 0;padding:6px 11px;border-radius:8px;background:var(--blue-l,#e6eef5);color:var(--blue);font:600 12.5px Inter,sans-serif;text-decoration:none">${label}</a>`;
+  return `<div>${tel ? a(`tel:${tel}`, `📞 ${escapeHtml(formatPhone(r.phone_e164))}`) + a(`sms:${tel}`, '💬 Text') : ''}${r.email ? a(`mailto:${r.email}`, `✉️ ${escapeHtml(r.email)}`) : ''}</div>`;
+}
+
 function openModal(id, rows) {
   const b = rows.find(x => x.id === id);
   if (!b) return;
   SELECTED = b;
   document.getElementById('m-title').textContent = b.title || 'Party request';
   document.getElementById('m-info').innerHTML = `
-    <div><b>${escapeHtml(b.household?.family_name || 'Household')}</b> · requested by <b>${escapeHtml(b.requester?.name || '—')}</b>${b.requester?.phone_e164 ? ' · ' + escapeHtml(formatPhone(b.requester.phone_e164)) : ''}${b.requester?.email ? ' · ' + escapeHtml(b.requester.email) : ''}</div>
+    <div><b>${escapeHtml(b.household?.family_name || 'Household')}</b> · requested by <b>${escapeHtml(b.requester?.name || '—')}</b></div>
+    ${contactLinks(b.requester)}
     <div style="margin-top:6px"><b>When:</b> ${escapeHtml(fmtDate(b.starts_at))}${b.ends_at ? ' → ' + escapeHtml(fmtDate(b.ends_at)) : ''}</div>
     ${b.expected_guests ? `<div style="margin-top:4px"><b>Guests:</b> ~${b.expected_guests}</div>` : ''}
     <div style="margin-top:6px"><b>Status:</b> <span class="pill ${escapeHtml(b.status)}">${escapeHtml(b.status)}</span></div>

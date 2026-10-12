@@ -269,7 +269,9 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     placeholders: ['primary_name', 'tenant_name', 'party_title'],
     adds: 'the date and time, and a button to their member page',
     heading: () => '🎉 It\'s booked!',
-    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''}`) + button('Open my member page', memberHome(v)),
+    // Questions go through Ask the board, to the party person (PLAN.md AE2).
+    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''}`) + button('Open my member page', memberHome(v))
+      + small('Questions about your party? Tap <b>Ask the board</b> in the app and pick <b>Parties &amp; events</b>. It goes straight to the board member who handles parties.'),
   },
   {
     key: 'party_rejected', section: 'parties',

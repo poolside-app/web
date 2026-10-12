@@ -119,7 +119,7 @@ Members pick a date and start time; every party runs the club's length (`_shared
 - A 2-day hold for unpaid approved parties. The daily `payment_plans` run releases them.
 - Card totals: the card fee is always the member's.
 
-Card payment books the party in the webhook. Venmo waits for the board's `verify_payment`.
+Card payment books the party in the webhook. Venmo waits for the board's `verify_payment`. Whenever a party turns paid (card, an approved Venmo, or free at an open time), `_shared/party_booked.ts` `partyBookedAlert` gives the party person (the "rentals" alert: Events & Rentals Director, else the President) a `party.booked` to-do until they mark it done, a pop-up and an email with the family's tap-to-call, text and email; the family's confirmation points them to Ask the board → Parties & events (PLAN.md AE). `node scripts/test_party_booked.mjs`.
 
 ### Keyfobs
 

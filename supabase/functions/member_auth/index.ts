@@ -1041,11 +1041,15 @@ Deno.serve(async (req) => {
         starts_at: startsDate.toISOString(), ends_at: endsAt, all_day: false,
       }).select('id').single();
       if (ev) await sb.from('party_bookings').update({ event_id: ev.id }).eq('id', data.id);
+      // Booked with nothing to pay: the party person hears now (PLAN.md AE1).
+      const { partyBookedAlert } = await import('../_shared/party_booked.ts');
+      await partyBookedAlert(sb as never, { tenantId: payload.tid as string, partyId: data.id as string, how: 'free' });
     }
 
     // Approved on the spot: tell the board (a pop-up, no task to act on).
+    // A free one already sent its "booked" to-do and pop-up above.
     if (autoApprove) {
-      try {
+      if (priceCents > 0) try {
         const { pushBoard } = await import('../_shared/enqueue_task.ts');
         const { data: hh } = await sb.from('households').select('family_name').eq('id', member.household_id as string).maybeSingle();
         const when = fmtPoolDate(startsDate, tz, { dateStyle: 'medium', timeStyle: 'short' });

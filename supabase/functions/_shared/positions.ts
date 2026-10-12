@@ -83,6 +83,8 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'referral.reward_request': 'referrals',
   'party.requested': 'rentals',
   'party.venmo_claim': 'rentals',
+  // Every paid party: get in touch with the family (PLAN.md AE1).
+  'party.booked': 'rentals',
   'party.refund_needed': 'rentals',
   'photo.pending_approval': 'photos',
   'gate.bridge_offline': 'gate',

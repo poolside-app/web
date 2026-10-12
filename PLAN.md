@@ -686,6 +686,13 @@ On a phone, the board's bottom bar (PLAN.md W3) sat above most pop-ups (stacking
 - **AD1.** While any pop-up is open, the bottom bar steps aside and the page behind stays still (board pages: `js/admin-subtabs.js`; member app: `m/index.html`). The bar also sits below every pop-up, and pop-ups keep a swipe to themselves (`overscroll-behavior: contain`).
 `node scripts/test_board_home.mjs`, `node scripts/test_season_home.mjs`, and a check on a phone-size screen with a pop-up open.
 
+### AE. The party person hears about every paid party (Doug, 10/11)
+Doug: "When a pool party is paid for, Venmo or credit card, the party person on the board needs to be notified… and be in contact." Before: a card payment booked the party and told only the family; Venmo made a to-do only because it needs approving; an automatically approved request was a phone pop-up only.
+- **AE1.** Whenever a party is paid (card, a Venmo the board approves, or free at an open time), the party person (the "rentals" alert: Events & Rentals Director, else the President) gets a to-do on their board home ("Needs you", with the number on Home and Calendar) until they mark it done, plus a phone pop-up and an email. Each says the party, date, time and guests, and the family's contact with tap-to-call, text and email.
+- **AE2.** The family's "Your party is booked" email says: questions about your party? Ask the board in the app (Parties & events), which goes straight to the board member who handles parties. No board phone numbers are shared.
+- **AE3.** The Parties page shows the family's phone and email as tap-to-call, text and email.
+`node scripts/test_party_booked.mjs`.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
