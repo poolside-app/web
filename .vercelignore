@@ -1,3 +1,17 @@
-# Not served by the website (Vercel skips these on deploy).
-# docs/: internal how-tos, e.g. the club's keyfob panels (docs/keyfob-panels.md).
+# Not served by the website (Vercel skips these on deploy). They're internal:
+# plans, notes, scripts, server code and how-tos about the club's systems.
+# Pages, js/, the help articles (club/admin/help/articles/*.md) and the two
+# gate bridge downloads (bridge/*.py) stay public.
 docs/
+/PLAN.md
+/CLAUDE.md
+/INTEGRATIONS.md
+/VERIFICATION.md
+/README.md
+scripts/
+supabase/
+Poolside design/
+.github/
+.claude/
+bridge/README.md
+bridge/.env.example
