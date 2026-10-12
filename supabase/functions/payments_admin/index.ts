@@ -218,6 +218,11 @@ Deno.serve(async (req) => {
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
       // The payment cleared: count any code use and spend any credit (H5).
       await recordDiscountUse(sb, source_id);
+      // In test mode it's a test payment, not money in (PLAN.md AF1b).
+      const { clubInTestMode, SIM_NOTE } = await import('../_shared/test_payments.ts');
+      if (await clubInTestMode(sb as never, TID)) {
+        await sb.from('application_actions').insert({ application_id: source_id, tenant_id: TID, kind: 'venmo_verified', body: SIM_NOTE, actor_id: payload.sub });
+      }
       // Application.verify_payment also flips household.dues_paid_for_year — replicate that here
       const { data: app } = await sb.from('applications').select('household_id')
         .eq('id', source_id).maybeSingle();

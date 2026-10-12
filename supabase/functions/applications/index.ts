@@ -1481,11 +1481,13 @@ Deno.serve(async (req) => {
       }).eq('id', id).eq('tenant_id', TID);
       const { recordDiscountUse } = await import('../_shared/membership_price.ts');
       await recordDiscountUse(sb, id);
-      // Per-application audit
+      // Per-application audit. In test mode it's a test payment, whichever
+      // button approved it (PLAN.md AF1b).
+      const { clubInTestMode, SIM_NOTE } = await import('../_shared/test_payments.ts');
       await sb.from('application_actions').insert({
         application_id: id, tenant_id: TID,
         kind: 'venmo_verified',
-        body: strOrNull(body.venmo_note) ?? 'Verified at approval',
+        body: (await clubInTestMode(sb as never, TID)) ? SIM_NOTE : (strOrNull(body.venmo_note) ?? 'Verified at approval'),
         actor_id: verified_by_pre,
       });
     }
@@ -1925,11 +1927,13 @@ Deno.serve(async (req) => {
       }).eq('id', app.household_id).eq('tenant_id', TID);
     }
 
-    // Audit log (per-application)
+    // Audit log (per-application). In test mode it's a test payment,
+    // whichever button verified it (PLAN.md AF1b).
+    const { clubInTestMode, SIM_NOTE } = await import('../_shared/test_payments.ts');
     await sb.from('application_actions').insert({
       application_id: id, tenant_id: TID,
       kind: method === 'stripe' ? 'stripe_paid' : 'venmo_verified',
-      body: strOrNull(body.note) ?? null,
+      body: (await clubInTestMode(sb as never, TID)) ? SIM_NOTE : (strOrNull(body.note) ?? null),
       actor_id: verified_by,
     });
     // Audit log (tenant-wide)

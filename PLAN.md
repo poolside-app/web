@@ -695,6 +695,7 @@ Doug: "When a pool party is paid for, Venmo or credit card, the party person on 
 
 ### AF. The paid count, and tapping a to-do (Doug, 10/11)
 - **AF1.** "1 family paid" when 3 had: the count left out the two families who paid with the test card (test payments aren't money in), and the home banner, unlike the old dues bar, didn't say so. Now the count includes them and says how many were test ("3 families paid (2 test)"); "collected" still counts only real money. Same on the dues bar on other pages.
+- **AF1b.** Doug, 10/11: the Wood family's Venmo was a test too; he approved it with the regular button. While a club is in test mode, every payment the board marks received (approving a Venmo at signup, verifying one later, or "mark paid" on Money) now counts as a test payment, like the Simulate button. Wood's is marked as a test.
 - **AF2.** Only the button on a to-do opened it. Now tapping anywhere on the row opens it ("Mark done" stays separate), and a party to-do opens that party on the Parties page (`parties.html#p=<id>`).
 `node scripts/test_board_home.mjs`, `node scripts/test_party_booked.mjs`.
 

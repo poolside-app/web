@@ -16,6 +16,15 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export const SIM_NOTE = 'Simulated payment (test mode)';
 
+/** Is the club in test mode? Then a payment the board marks received is a
+ *  test payment too (PLAN.md AF1b: Doug approved a friend's pretend Venmo
+ *  with the regular button, and it was counted as money in). */
+export async function clubInTestMode(sb: SupabaseClient, tenantId: string): Promise<boolean> {
+  const { data } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+  const pay = ((data?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined) ?? {};
+  return pay.test_mode === true;
+}
+
 export async function testPaidHouseholds(sb: SupabaseClient, tenantId: string): Promise<Set<string>> {
   const [{ data: card }, { data: venmo }] = await Promise.all([
     sb.from('applications').select('household_id')
