@@ -146,13 +146,22 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, post: data });
   }
 
+  // Delete means gone (Doug, 10/12, PLAN.md AN): it used to only hide the
+  // post, which then sat in the board's list with no way to remove it.
   if (action === 'delete') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { error } = await sb.from('posts')
-      .update({ active: false, updated_at: new Date().toISOString() })
-      .eq('id', id).eq('tenant_id', TID);
+    const { data: gone, error } = await sb.from('posts')
+      .delete()
+      .eq('id', id).eq('tenant_id', TID)
+      .select('id, title');
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!gone?.length) return jsonResponse({ ok: false, error: 'That post is already gone.' }, 404);
+    await sb.from('audit_log').insert({
+      tenant_id: TID, kind: 'post.deleted', entity_type: 'post', entity_id: id,
+      summary: `Deleted announcement: ${gone[0].title}`.slice(0, 200),
+      actor_id: payload.synthetic ? null : payload.sub, actor_kind: 'tenant_admin',
+    });
     return jsonResponse({ ok: true });
   }
 

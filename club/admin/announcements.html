@@ -206,7 +206,7 @@
     </div>
     <div class="err" id="m-err"></div>
     <div class="modal-foot">
-      <button id="m-delete" class="btn btn-danger left" style="display:none" onclick="del()">Remove post</button>
+      <button id="m-delete" class="btn btn-danger left" style="display:none" onclick="del()">Delete post</button>
       <button class="btn btn-ghost" onclick="closeM()">Cancel</button>
       <button class="btn" id="m-save" onclick="save()">Save</button>
     </div>
@@ -468,7 +468,7 @@ function render(posts) {
       <div class="post-body">${escapeHtml(p.body)}</div>
       <div class="post-actions">
         <button class="btn btn-ghost btn-sm" onclick='openEdit(${JSON.stringify(p).replace(/'/g, "&#39;")})'>Edit</button>
-        ${p.active ? `<button class="btn btn-ghost btn-sm" onclick="quickPin('${p.id}', ${!p.pinned})">${p.pinned ? 'Unpin' : 'Pin'}</button>` : ''}
+        ${p.active ? `<button class="btn btn-ghost btn-sm" onclick="quickPin('${p.id}', ${!p.pinned})">${p.pinned ? 'Unpin' : 'Pin'}</button>` : `<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="delPost('${p.id}').catch(e => alert(e.message))">Delete</button>`}
       </div>
     </div>
   `).join('');
@@ -514,7 +514,7 @@ function openEdit(p) {
   document.getElementById('m-body').value = p.body;
   document.getElementById('m-pinned').checked = !!p.pinned;
   document.getElementById('m-notify-row').style.display = 'none';
-  document.getElementById('m-delete').style.display = p.active ? 'inline-block' : 'none';
+  document.getElementById('m-delete').style.display = 'inline-block';
   document.getElementById('m-err').classList.remove('show');
   document.getElementById('scrim').classList.add('open');
 }
@@ -541,15 +541,19 @@ async function save() {
   finally { btn.disabled = false; btn.textContent = orig; }
 }
 
+// Delete means gone, from members and from this list (PLAN.md AN).
+async function delPost(id) {
+  if (!confirm('Delete this post for good? Members won\'t see it anymore, and it can\'t be undone.')) return false;
+  const data = await call('delete', { id });
+  if (!data.ok) throw new Error(data.error || 'Delete failed');
+  await refresh();
+  return true;
+}
 async function del() {
   const id = document.getElementById('m-id').value;
   if (!id) return;
-  if (!confirm('Remove this post? Members will no longer see it on the home page.')) return;
   try {
-    const data = await call('delete', { id });
-    if (!data.ok) throw new Error(data.error || 'Delete failed');
-    closeM();
-    await refresh();
+    if (await delPost(id)) closeM();
   } catch (e) {
     const err = document.getElementById('m-err');
     err.textContent = e.message; err.classList.add('show');

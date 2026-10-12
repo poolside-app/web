@@ -730,6 +730,12 @@ Doug: "if you are on the board can you have it unlock each specific door? access
 - Doug's step: download the new bridge on the club PC and restart the service (PowerShell, as for 1.1).
 `node scripts/test_gate_doors.mjs`, `node scripts/test_gate_poll.mjs` (both offline). ✅ Bridge 1.2 on the club PC; Doug tapped all four doors on 10/12 and each opened (9 of 9 unlocks ok, each under a second).
 
+### AN. Deleting an announcement deletes it (Doug, 10/12)
+Doug: "I can turn the announcement I made and delete it off the front page, but can't fully delete it off the announcement section in admin page… if it's off shouldn't it fully delete?" "Remove post" only hid a post (`posts.active = false`). It stayed in the board's list marked "Removed", with no way to get rid of it.
+- **AN1.** "Remove post" becomes "Delete post": after one confirm ("…for good, can't be undone"), `posts_admin` `delete` deletes the row and notes the title in the audit log.
+- **AN2.** Posts removed before this (Bishop has three: "Oktober Fest Today!" twice and "Bjj") get a Delete button on their card, so Doug clears them himself.
+`node scripts/test_posts_delete.mjs` (offline), then Doug deletes his three and I check they're gone.
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).
