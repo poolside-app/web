@@ -7,7 +7,10 @@
 <!-- Board manifest: name "… — Board", start_url /club/admin/. Without
      this the dashboard could not be installed at all, and iOS made a
      plain bookmark with no icon. -->
-<link rel="manifest" href="/manifest.webmanifest?admin=1">
+<!-- The app manifest, carrying this phone's one-time sign-ins (board and
+     member) into a newly added Home Screen app (PLAN.md AI). Must stay in
+     <head>: iPhone reads the first manifest link when it sees it. -->
+<script src="/js/handoff.js"></script>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Board">
@@ -265,6 +268,10 @@ function taskRank(kind) {
   // 401 or session-fatal error, not on every network blip. Random logouts
   // Doug hit during the 2026-05-20 test were caused by the old aggressive
   // catch-all logout pattern.
+  // Opened from the Home Screen with one-time sign-ins in the address
+  // (PLAN.md AI): sign in with them first (board and member).
+  await PoolsideHandoff.consume();
+
   let data;
   try { data = await PoolsideAuth.meOrLogout(); }
   catch (e) {
@@ -585,6 +592,8 @@ function taskRank(kind) {
   });
 
   if (home.pool && home.pool.location) PoolWeather.load(home.pool.location, document.getElementById('hero-weather'));
+  // Get the sign-ins a Home Screen app added from here brings along ready.
+  PoolsideHandoff.prepare();
   paintMyJob(tdata);
 
   // The signup link: copy it, and tick the setup step.

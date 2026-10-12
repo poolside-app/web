@@ -35,9 +35,17 @@ const DEFAULT_ICON_512 = 'https://poolsideapp.com/icon-512.png';
 
 type ManifestKind = 'member' | 'admin' | 'kiosk';
 
+/** The start address with the one-time sign-ins this phone carries. */
+function startWith(start: string, member?: string | null, board?: string | null): string {
+  const q: string[] = [];
+  if (member) q.push(`h=${member}`);
+  if (board) q.push(`ah=${board}`);
+  return q.length ? `${start}?${q.join('&')}` : start;
+}
+
 function manifest(
   name: string, themeColor: string, icon192: string, icon512: string,
-  opts?: { admin?: boolean; kiosk?: boolean; handoff?: string | null; appName?: string | null },
+  opts?: { admin?: boolean; kiosk?: boolean; handoff?: string | null; boardHandoff?: string | null; appName?: string | null },
 ) {
   // Three variants, because they are three genuinely different things:
   //
@@ -67,7 +75,8 @@ function manifest(
     description: `${name} — pool club app`,
     // A member's one-time sign-in rides in the start address, so the app
     // they add to an iPhone Home Screen opens signed in (PLAN.md N2).
-    start_url: kind === 'member' && opts?.handoff ? `${start}?h=${opts.handoff}` : start,
+    // And the board's (PLAN.md AI): an added app brings both sign-ins.
+    start_url: kind === 'kiosk' ? start : startWith(start, opts?.handoff, opts?.boardHandoff),
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
@@ -94,6 +103,9 @@ Deno.serve(async (req) => {
   // it's one person's.
   const hRaw = url.searchParams.get('h') ?? '';
   const handoff = /^[A-Za-z0-9_-]{20,100}$/.test(hRaw) ? hRaw : null;
+  // ?ah= → the board's one-time sign-in (tenant_admin_auth handoff, PLAN.md AI).
+  const ahRaw = url.searchParams.get('ah') ?? '';
+  const boardHandoff = /^[A-Za-z0-9_-]{20,100}$/.test(ahRaw) ? ahRaw : null;
 
   // Generic Poolside manifest if no slug — when someone hits poolsideapp.com root.
   if (!slug) {
@@ -132,14 +144,14 @@ Deno.serve(async (req) => {
   const icon512    = (branding.icon_512_url as string | null) || DEFAULT_ICON_512;
   const name       = tenant.display_name || 'Poolside';
 
-  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk, handoff, appName: (branding.app_name as string | null) ?? null })), {
+  return new Response(JSON.stringify(manifest(name, themeColor, icon192, icon512, { admin: isAdmin, kiosk: isKiosk, handoff, boardHandoff, appName: (branding.app_name as string | null) ?? null })), {
     headers: {
       ...cors,
       'content-type': 'application/manifest+json; charset=utf-8',
       // Short cache so a brand change shows up on the next install attempt;
       // already-installed apps cache the manifest themselves. One member's
       // sign-in is never cached anywhere.
-      'cache-control': handoff ? 'private, no-store' : 'public, max-age=300',
+      'cache-control': handoff || boardHandoff ? 'private, no-store' : 'public, max-age=300',
     },
   });
 });

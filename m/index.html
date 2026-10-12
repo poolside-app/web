@@ -10,42 +10,10 @@
 <!-- PWA / "Add to Home Screen" wiring. Manifest is per-tenant via Vercel
      rewrite; apple-touch-icon + theme-color get set by /js/pwa.js once the
      branding lands from tenant_public. -->
-<script>
-// The app manifest, and the iPhone Home Screen sign-in (PLAN.md N2).
-// iPhone reads the first manifest it sees, when it sees it, and ignores a
-// later change, and an added app starts at that manifest's start_url. So on
-// an iPhone that hasn't added the app, the manifest link is only put in once
-// it can carry the one-time sign-in: now, if this phone already has one, or
-// as soon as the member home has asked for one (prepareHandoff).
-(function () {
-  var link = '/manifest.webmanifest', wait = false;
-  try {
-    var standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-    if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !standalone && localStorage.getItem('poolside_member_token')) {
-      var c = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null');
-      // Only the sign-in of whoever is signed in on this phone now.
-      var me = JSON.parse(atob(localStorage.getItem('poolside_member_token').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
-      if (c && c.member === me && c.exp > Date.now() + 3600000) {
-        link += '?h=' + encodeURIComponent(c.token);
-        var u = new URL(location.href);
-        if (u.searchParams.get('h') !== c.token) { u.searchParams.set('h', c.token); history.replaceState(null, '', u.pathname + u.search + u.hash); }
-      } else wait = true;
-    }
-  } catch (e) { /* plain manifest */ }
-  window.__manifestHref = link;
-  if (wait) {
-    // A sign-in is on its way; if it isn't here in 8 seconds, use the plain one.
-    window.__manifestTimer = setTimeout(function () { window.addManifestLink(link); }, 8000);
-  } else document.write('<link rel="manifest" href="' + link + '">');
-})();
-window.addManifestLink = function (href) {
-  clearTimeout(window.__manifestTimer);
-  var l = document.querySelector('link[rel="manifest"]');
-  if (l) { l.href = href; return; }
-  l = document.createElement('link'); l.rel = 'manifest'; l.href = href;
-  document.head.appendChild(l);
-};
-</script>
+<!-- The app manifest, carrying this phone's one-time sign-ins (member and
+     board) into a newly added Home Screen app (PLAN.md N2, AI). Must stay in
+     <head>: iPhone reads the first manifest link when it sees it. -->
+<script src="/js/handoff.js"></script>
 <link rel="apple-touch-icon" id="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" id="meta-theme-color" content="#0a3b5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1651,7 +1619,6 @@ function renderInstallCard() {
     title: 'How to add it',
     lede: 'Use it like a regular app: full screen, your club\'s icon, and notifications. You stay signed in.',
   });
-  prepareHandoff();
   document.addEventListener('pwa-installed', () => {
     const h = document.getElementById('install-card-host');
     if (h) h.innerHTML = '';
@@ -1662,29 +1629,10 @@ function renderInstallCard() {
 // Chrome's), so the app asked members to sign in again. The app's start
 // address carries a one-time sign-in instead (PLAN.md N2): asked for once a
 // week at most, and only on an iPhone that hasn't added the app yet.
-async function prepareHandoff() {
-  if (!/iPad|iPhone|iPod/.test(navigator.userAgent) || !window.Pwa || window.Pwa.isStandalone()) return;
-  let h = null;
-  try {
-    const c = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null');
-    if (c && c.member === (ME_USER && ME_USER.id) && c.exp > Date.now() + 86400000) h = c.token;
-  } catch (_) { /* ask again */ }
-  if (!h) {
-    try {
-      const r = await callMember('handoff');
-      if (r.ok && r.token) {
-        h = r.token;
-        try { localStorage.setItem('poolside_member_handoff', JSON.stringify({ token: h, exp: Date.parse(r.expires_at), member: ME_USER && ME_USER.id })); } catch (_) {}
-      }
-    } catch (_) { /* the app falls back to signing in */ }
-  }
-  window.addManifestLink(h ? '/manifest.webmanifest?h=' + encodeURIComponent(h) : '/manifest.webmanifest');
-  // iPhone starts the added app at the page's own address, so it goes there too.
-  if (h) {
-    const u = new URL(location.href);
-    if (u.searchParams.get('h') !== h) { u.searchParams.set('h', h); history.replaceState(null, '', u.pathname + u.search + u.hash); }
-  }
-}
+// The one-time sign-ins a Home Screen app added from here brings along:
+// this member's, and the board's if this phone is signed in there too
+// (PLAN.md N2, AI; js/handoff.js).
+function prepareHandoff() { return window.PoolsideHandoff ? PoolsideHandoff.prepare() : null; }
 
 async function installAndroid() {
   if (!window.Pwa) return;
@@ -2578,32 +2526,11 @@ async function submitProfile() {
 }
 
 (async () => {
-  // Opened from the iPhone Home Screen with a one-time sign-in in the
-  // address (PLAN.md N2): sign in with it, unless already signed in here.
-  // Only the Home Screen app uses it. In a browser tab it stays in the
-  // address (so "Add to Home Screen" picks it up) only if it's this phone's
-  // own; a link someone shared is cleaned off and never used.
-  const handoff = new URLSearchParams(location.search).get('h');
-  const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-  let ownHandoff = false;
-  try { ownHandoff = JSON.parse(localStorage.getItem('poolside_member_handoff') || 'null')?.token === handoff; } catch (_) {}
-  if (handoff && (standalone || !ownHandoff)) {
-    const q = new URLSearchParams(location.search); q.delete('h');
-    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
-  }
-  if (handoff && standalone) {
-    if (!token()) {
-      try {
-        const r = await fetch(AUTH_URL, { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'verify', slug: getSlug(), token: handoff }) }).then(x => x.json());
-        if (r.ok && r.token) {
-          localStorage.setItem('poolside_member_token', r.token);
-          localStorage.setItem('poolside_member_user', JSON.stringify(r.user));
-          localStorage.setItem('poolside_member_tenant', JSON.stringify(r.tenant));
-        }
-      } catch (_) { /* fall through to the sign-in page */ }
-    }
-  }
+  // Opened from the iPhone Home Screen with one-time sign-ins in the address
+  // (PLAN.md N2, AI): sign in with them (member and board), unless already
+  // signed in here. A sign-in in a link someone shared is never used in a
+  // browser tab (js/handoff.js).
+  await PoolsideHandoff.consume();
   // Board first (PLAN.md AH1): with a board sign-in in this app, open the
   // board, unless they chose "Member view" for this visit.
   if (boardFirst()) return;
@@ -3148,6 +3075,8 @@ async function submitProfile() {
   // Populate the "Add to Home Screen" instruction card now that its host
   // div exists in the DOM (it lives inside the main innerHTML block above).
   renderInstallCard();
+  // Get the sign-ins an added app brings along ready, card or no card.
+  prepareHandoff();
   // If we just came back from a successful Stripe donation, give a quick
   // thank-you and clear the URL flag.
   if (new URLSearchParams(window.location.search).get('donated') === '1') {

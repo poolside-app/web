@@ -37,9 +37,11 @@ console.log('N2 · the iPhone Home Screen app opens signed in (offline)');
   const home = read('m/index.html');
   const man = read('supabase/functions/tenant_manifest/index.ts');
   const auth = read('supabase/functions/member_auth/index.ts');
-  check('the member home asks for a one-time sign-in on an iPhone', /callMember\('handoff'\)/.test(home) && /iPad\|iPhone\|iPod/.test(between(home, 'async function prepareHandoff', '\n}\n')));
-  check('it goes into the app\'s start address', /manifest\.webmanifest\?h=/.test(home) && /\?h=\$\{opts\.handoff\}/.test(man) && /no-store/.test(man));
-  check('the app signs in with it once, then drops it from the address', /get\('h'\)/.test(home) && /action: 'verify', slug: getSlug\(\), token: handoff/.test(home));
+  // PLAN.md AI moved this into js/handoff.js, shared with the board home.
+  const ho = read('js/handoff.js');
+  check('the member home asks for a one-time sign-in on an iPhone', /prepareHandoff\(\)/.test(home) && /PoolsideHandoff\.prepare\(\)/.test(home) && /action: 'handoff'/.test(ho) && /iPad\|iPhone\|iPod/.test(ho));
+  check('it goes into the app\'s start address', /param: 'h'/.test(ho) && /manifest\.webmanifest/.test(ho) && /h=\$\{member\}/.test(man) && /no-store/.test(man));
+  check('the app signs in with it once, then drops it from the address', /await PoolsideHandoff\.consume\(\)/.test(home) && /action: 'verify', slug: s, token: got\.member/.test(ho) && /searchParams\.delete/.test(ho));
   check('a handoff is an ordinary one-time sign-in link, 7 days', /action === 'handoff'/.test(auth) && /7 \* 86400_000/.test(between(auth, "action === 'handoff'", 'return jsonResponse')));
   check('the install card uses the shared guide (Chrome on iPhone too)', /Pwa\.renderInstallGuide\(document\.getElementById\('install-guide'\)/.test(home));
 }

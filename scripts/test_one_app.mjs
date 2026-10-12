@@ -16,8 +16,8 @@ function check(label, ok, detail = '') {
 
 console.log('AH1 · board first (offline)');
 const home = read('m/index.html');
-const start = home.slice(home.indexOf("const handoff = new URLSearchParams(location.search).get('h');"), home.indexOf("if (!token()) { logout(); return; }"));
-check('the member app opens the board when it has a board sign-in, after the Home Screen sign-in is kept', /boardFirst\(\)/.test(start) && start.indexOf('boardFirst()') > start.indexOf("action: 'verify'"));
+const start = home.slice(home.indexOf("await PoolsideHandoff.consume();"), home.indexOf("if (!token()) { logout(); return; }"));
+check('the member app opens the board when it has a board sign-in, after the Home Screen sign-ins are kept', /boardFirst\(\)/.test(start) && start.indexOf('boardFirst()') > 0);
 check('"Member view" keeps them on the member side for the visit', /view'\) === 'member'/.test(home) && /sessionStorage\.setItem\('poolside_view', 'member'\)/.test(home) && /location\.replace\('\/club\/admin\/'\)/.test(home));
 check('"Board tools" switches back', /board-switch[\s\S]{0,400}sessionStorage\.removeItem\('poolside_view'\)/.test(home) || /getElementById\('board-switch'\)[\s\S]{0,300}removeItem\('poolside_view'\)/.test(home));
 const login = read('m/login.html');

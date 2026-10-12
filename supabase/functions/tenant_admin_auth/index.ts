@@ -578,6 +578,26 @@ Deno.serve(async (req) => {
   const payload = token ? await verifyToken(token) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Invalid or expired session' }, 401);
 
+  // ── handoff (PLAN.md AI) ───────────────────────────────────────────────
+  // A one-time board sign-in for a Home Screen app being added on this
+  // iPhone (js/handoff.js): the new app keeps its own storage, so it trades
+  // this for a board sign-in on first opening (verify_link). An hour and
+  // once only, because a board sign-in can do more than a member's. Never
+  // for a provider visit.
+  if (action === 'handoff') {
+    if (payload.synthetic || payload.impersonated_by) return jsonResponse({ ok: false, error: 'Not for a provider visit' }, 403);
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+    const tok = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const expires_at = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const { error } = await sb.from('admin_magic_links').insert({
+      tenant_id: payload.tid, admin_user_id: payload.sub, token_hash: await sha256Hex(tok), expires_at,
+    });
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true, token: tok, expires_at });
+  }
+
   // ── me ─────────────────────────────────────────────────────────────────
   if (action === 'me') {
     const [{ data: user }, { data: tenant }, { data: settings }] = await Promise.all([
