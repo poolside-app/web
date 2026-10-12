@@ -1,0 +1,3 @@
+# Not served by the website (Vercel skips these on deploy).
+# docs/: internal how-tos, e.g. the club's keyfob panels (docs/keyfob-panels.md).
+docs/
