@@ -716,6 +716,11 @@ Doug deleted and re-added the Home Screen app and the board side asked him to si
 - **✅ AI2.** The newly added app, on its first opening, signs itself in to both, then opens to the board (board first, PLAN.md AH). A sign-in in a link someone shared is cleaned off and never used in a browser tab.
 `node scripts/test_handoff.mjs [--live]`, plus a check in a browser.
 
+### AJ. A read-only list of every keyfob (Doug, 10/12)
+The first read (10/12) found both controllers, 135 keyfobs each, 52 that never expire, 41 that open the Pump Room. Next, the list itself, to audit against the membership spreadsheet when it's imported (PLAN.md P5 audit design).
+- **AJ1.** `bridge/panel_check_readonly.py --export` writes one row per keyfob, combined across both controllers, to a CSV on the club PC: the number as stored and in both printed forms (10-digit and facility,card), valid from and until, never expires, expired, each door by name, and whether both controllers have it. No door PINs. Same read-only guard (three layers); nothing leaves the PC.
+`python3 scripts/test_panel_export.py` (offline, a fake controller).
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

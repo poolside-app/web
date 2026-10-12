@@ -14,10 +14,17 @@ Run it on a Windows PC at the pool, on the same network as the panels:
 Optional:
     --broadcast 10.1.10.255:60000   if the default broadcast finds nothing
     --show-cards                    list each card (card number shortened to its last 3 digits)
+    --export [FILE]                 also save every keyfob to a spreadsheet (CSV) on this PC:
+                                    one row per keyfob across both controllers, with both
+                                    printed forms of the number, dates and doors. No PINs.
+                                    Default file: keyfobs_<date>.csv next to this script.
+                                    (PLAN.md AJ1: to audit against the membership list.)
 """
 
 import argparse
+import csv
 import datetime
+import os
 import socket
 import sys
 
@@ -128,23 +135,22 @@ DOOR_NAMES = {
 
 NEVER_EXPIRES_AFTER = datetime.date(2090, 1, 1)
 
+# Which controller is where, for the export.
+CONTROLLER_NAMES = {423141044: "snack shack", 423150481: "pump room"}
+# The doors in the export, in this order. "(unused)" ones are left out.
+EXPORT_DOORS = ["Main Gate", "Snack", "Pump Room", "Swim Shack", "Mens", "Womens"]
+
 
 def door_label(serial, door):
     return DOOR_NAMES.get(serial, {}).get(door, f"door {door}")
 
 
-def summarize(client, serial, show_cards):
+def read_cards(client, serial):
+    """Every keyfob on one controller: (number, start, end, [door1..door4]).
+    Reads only: count cards (0x58) and read one card by position (0x5C)."""
     count = client.get_cards(serial)
     total = int(getattr(count, "cards", 0) or 0)
-    print(f"  cards stored:  {total}")
-    if total == 0:
-        return
-
-    today = datetime.date.today()
-    active = expired = never = 0
-    by_door = {1: 0, 2: 0, 3: 0, 4: 0}
-    rows = []
-
+    out = []
     for index in range(1, total + 1):
         rec = client.get_card_by_index(serial, index)
         if rec is None:
@@ -153,7 +159,56 @@ def summarize(client, serial, show_cards):
         # 0 = empty slot, 0xFFFFFFFF = a card that was deleted but not yet compacted
         if number in (0, 0xFFFFFFFF):
             continue
-        end = getattr(rec, "end_date", None)
+        out.append((number, getattr(rec, "start_date", None), getattr(rec, "end_date", None),
+                    [int(getattr(rec, f"door_{d}", 0) or 0) for d in (1, 2, 3, 4)]))
+    return total, out
+
+
+def export_cards(client, serials, path, today=None):
+    """Save every keyfob to a CSV: one row per keyfob across the controllers.
+    The two printed forms match what's on a blank fob: a 10-digit number like
+    0000786777, and facility,card like 012,00345 (facility x 65536 + card).
+    No PINs. Returns how many keyfobs were written."""
+    today = today or datetime.date.today()
+    cards = {}
+    for serial in serials:
+        _, rows = read_cards(client, serial)
+        for number, start, end, doors in rows:
+            c = cards.setdefault(number, {"start": start, "ends": set(), "doors": set(), "on": set()})
+            c["on"].add(serial)
+            if end:
+                c["ends"].add(end)
+            for d, v in enumerate(doors, 1):
+                if v:
+                    c["doors"].add(door_label(serial, d))
+    known = set(CONTROLLER_NAMES)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["card_number", "printed_10_digit", "facility_card", "valid_from", "valid_until",
+                    "never_expires", "expired", *EXPORT_DOORS, "on_controllers", "note"])
+        for number in sorted(cards):
+            c = cards[number]
+            end = max(c["ends"]) if c["ends"] else None
+            on = "both" if known <= c["on"] else " and ".join(sorted(CONTROLLER_NAMES.get(s, str(s)) for s in c["on"])) + " only"
+            note = "end dates differ: " + ", ".join(str(e) for e in sorted(c["ends"])) if len(c["ends"]) > 1 else ""
+            w.writerow([number, f"{number:010d}", f"{number >> 16:03d},{number & 0xFFFF:05d}",
+                        c["start"] or "", end or "",
+                        "yes" if end and end >= NEVER_EXPIRES_AFTER else "no",
+                        "yes" if end and end < today else "no",
+                        *["yes" if d in c["doors"] else "no" for d in EXPORT_DOORS], on, note])
+    return len(cards)
+
+
+def summarize(client, serial, show_cards):
+    total, rows = read_cards(client, serial)
+    print(f"  cards stored:  {total}")
+    if total == 0:
+        return
+
+    today = datetime.date.today()
+    active = expired = never = 0
+    by_door = {1: 0, 2: 0, 3: 0, 4: 0}
+    for number, start, end, doors in rows:
         if end and end < today:
             expired += 1
         else:
@@ -161,10 +216,8 @@ def summarize(client, serial, show_cards):
             if end and end >= NEVER_EXPIRES_AFTER:
                 never += 1
             for d in (1, 2, 3, 4):
-                if int(getattr(rec, f"door_{d}", 0) or 0) != 0:
+                if doors[d - 1] != 0:
                     by_door[d] += 1
-        rows.append((number, getattr(rec, "start_date", None), end,
-                     [int(getattr(rec, f"door_{d}", 0) or 0) for d in (1, 2, 3, 4)]))
 
     print(f"  still valid:   {active}")
     print(f"  expired:       {expired}")
@@ -184,6 +237,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Read-only look at the keyfob panels.")
     ap.add_argument("--broadcast", default="255.255.255.255:60000")
     ap.add_argument("--show-cards", action="store_true")
+    ap.add_argument("--export", nargs="?", const="", default=None, metavar="FILE",
+                    help="also save every keyfob to a CSV on this PC")
     args = ap.parse_args(argv)
 
     print("Read-only mode. This script cannot change a card, a door or a setting.\n")
@@ -207,6 +262,18 @@ def main(argv=None):
         except Exception as e:           # a slow panel should not look like a crash
             print(f"  could not read cards: {e}")
         print()
+
+    if args.export is not None:
+        path = args.export or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                           f"keyfobs_{datetime.date.today().isoformat()}.csv")
+        try:
+            n = export_cards(client, [int(c.controller) for c in found], path)
+            print(f"Saved {n} keyfobs to {path}")
+            print("It stays on this PC. It has the full keyfob numbers, so keep it private.\n")
+        except WriteBlocked as e:        # should never happen — reads only
+            print(f"Export STOPPED: {e}\n")
+        except Exception as e:
+            print(f"Could not save the keyfob list: {e}\n")
 
     print("Done. Nothing was changed.")
     return 0
