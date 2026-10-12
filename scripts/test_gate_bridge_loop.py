@@ -35,7 +35,9 @@ class Sim:
     """A fake clock and cloud. `hold` is how long the cloud keeps a poll open."""
     def __init__(self, hold=0.0, status=200, commands=None):
         self.t = 0.0; self.hold = hold; self.status = status
-        self.calls = []; self.commands = list(commands or []); self.unlocks = 0
+        # Each command is a time, or (time, door) for PLAN.md AK.
+        self.calls = []; self.commands = [c if isinstance(c, tuple) else (c, None) for c in (commands or [])]
+        self.unlocks = 0; self.opened = []
     def clock(self): return self.t
     def sleep(self, s): self.t += max(0.0, s)
     def cloud(self, action, **extra):
@@ -43,17 +45,24 @@ class Sim:
         if action == "poll":
             if self.status != 200:
                 return self.status, {"error": "down"}
-            if self.commands and self.t >= self.commands[0]:
-                self.commands.pop(0)
-                return 200, {"ok": True, "command": {"id": "cmd-12345678", "requested_at": None}, "tenant": {"panel_host": "10.0.0.5"}}
+            if self.commands and self.t >= self.commands[0][0]:
+                _, door = self.commands.pop(0)
+                cmd = {"id": "cmd-12345678", "requested_at": None}
+                if door is not None: cmd["door"] = door
+                return 200, {"ok": True, "command": cmd, "tenant": {"panel_host": "10.0.0.5"}}
             self.t += self.hold
             return 200, {"ok": True, "command": None, "tenant": {}}
         return 200, {"ok": True}
     def unlock(self, **kw):
         self.unlocks += 1; return True, "panel returned 200"
+    def open_door(self, **kw):
+        self.opened.append(kw); return True, "controller opened it"
 
 def run(sim, seconds):
-    gb.run_loop(sim.cloud, sim.sleep, sim.clock, sim.unlock, until=seconds)
+    if "open_fn" in gb.run_loop.__code__.co_varnames:
+        gb.run_loop(sim.cloud, sim.sleep, sim.clock, sim.unlock, until=seconds, open_fn=sim.open_door)
+    else:
+        gb.run_loop(sim.cloud, sim.sleep, sim.clock, sim.unlock, until=seconds)
     return [a for a, _ in sim.calls]
 
 # The cloud holds each check-in up to 20 seconds.
@@ -75,6 +84,41 @@ check("same for an error answer", calls.count("poll") <= 40, f"{calls.count('pol
 # Someone taps Unlock: it's fired once and reported.
 s = Sim(hold=20.0, commands=[45.0]); calls = run(s, 120)
 check("an unlock is fired once and reported back", s.unlocks == 1 and calls.count("complete") == 1, f"unlocks={s.unlocks} calls={calls}")
+
+# PLAN.md AK: the board opens the other doors through the controller itself.
+SNACK = {"key": "snack", "name": "Snack", "controller": 423141044, "address": "10.1.10.153", "door": 2}
+MAIN = {"key": "main_gate", "name": "Main Gate"}
+s = Sim(hold=20.0, commands=[(10.0, SNACK)]); calls = run(s, 60)
+check("another door opens through its controller, not the Main Gate recipe",
+      s.unlocks == 0 and len(s.opened) == 1 and s.opened[0].get("controller") == 423141044
+      and s.opened[0].get("address") == "10.1.10.153" and s.opened[0].get("door") == 2, f"unlocks={s.unlocks} opened={s.opened}")
+check("and it's reported back", calls.count("complete") == 1 and any(e.get("result_code") == "ok" for a, e in s.calls if a == "complete"), str(s.calls[-2:]))
+s = Sim(hold=20.0, commands=[(10.0, MAIN), 30.0]); calls = run(s, 60)
+check("the Main Gate (or an unlock with no door) keeps the proven recipe", s.unlocks == 2 and not s.opened, f"unlocks={s.unlocks} opened={s.opened}")
+
+has_open = hasattr(gb, "open_door_udp")
+check("the bridge has open_door_udp(controller, address, door)", has_open)
+if has_open:
+    class FakeClient:
+        def __init__(self, reply): self.reply = reply; self.asked = None
+        def open_door(self, controller, door, timeout=2.5):
+            self.asked = (controller, door)
+            if isinstance(self.reply, Exception): raise self.reply
+            return self.reply
+    yes = FakeClient(types.SimpleNamespace(controller=423141044, opened=True))
+    ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=2, make_client=lambda: yes)
+    check("it asks that controller, at that address, for that door", ok and yes.asked == ((423141044, "10.1.10.153", "udp"), 2), f"{ok} {detail} {yes.asked}")
+    ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=2, make_client=lambda: FakeClient(types.SimpleNamespace(opened=False)))
+    check("a controller that says no is a failure", not ok and detail, detail)
+    ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=2, make_client=lambda: FakeClient(None))
+    check("no answer is a failure", not ok and "no answer" in detail, detail)
+    ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=2, make_client=lambda: FakeClient(OSError("timed out")))
+    check("an error is caught and reported as unreachable", not ok and "unreachable" in detail, detail)
+    def missing(): raise ImportError("No module named 'uhppoted'")
+    ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=2, make_client=missing)
+    check("without uhppoted installed it says so (and the Main Gate still works)", not ok and "uhppoted" in detail, detail)
+    ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=9, make_client=lambda: yes)
+    check("a door number outside 1-4 is refused", not ok, detail)
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{'FAILED' if failed else 'PASSED'}: {failed} failed")

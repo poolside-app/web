@@ -48,6 +48,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
 import { bridgeOnline } from '../_shared/bridge_health.ts';
+import { findDoor, doorsReady, doorName, MAIN_GATE } from '../_shared/gate_doors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -817,21 +818,29 @@ Deno.serve(async (req) => {
 
   if (action === 'recent_unlocks') {
     const limit = Math.min(100, Math.max(1, Number(body.limit) || 25));
-    const { data, error } = await sb.from('gate_unlocks')
-      .select('id, member_id, status, requested_at, completed_at, result_code, result_detail, is_test, actor_kind')
-      .eq('tenant_id', payload.tid)
-      .order('requested_at', { ascending: false })
-      .limit(limit);
+    const [{ data, error }, { data: panelRow }] = await Promise.all([
+      sb.from('gate_unlocks')
+        .select('id, member_id, admin_user_id, door_key, status, requested_at, completed_at, result_code, result_detail, is_test, actor_kind')
+        .eq('tenant_id', payload.tid)
+        .order('requested_at', { ascending: false })
+        .limit(limit),
+      sb.from('gate_panels').select('doors').eq('tenant_id', payload.tid).maybeSingle(),
+    ]);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    // Resolve member names for display
+    // Resolve member and board member names, and the door (PLAN.md AK4)
     const memberIds = [...new Set((data ?? []).map(r => r.member_id).filter(Boolean))];
-    const { data: members } = memberIds.length
-      ? await sb.from('household_members').select('id, name').in('id', memberIds)
-      : { data: [] };
+    const adminIds = [...new Set((data ?? []).map(r => r.admin_user_id).filter(Boolean))];
+    const [{ data: members }, { data: admins }] = await Promise.all([
+      memberIds.length ? sb.from('household_members').select('id, name').in('id', memberIds) : Promise.resolve({ data: [] }),
+      adminIds.length ? sb.from('admin_users').select('id, display_name, email').eq('tenant_id', payload.tid).in('id', adminIds) : Promise.resolve({ data: [] }),
+    ]);
     const nameById = new Map((members ?? []).map(m => [m.id, m.name]));
+    const adminById = new Map(((admins ?? []) as Array<{ id: string; display_name: string | null; email: string | null }>)
+      .map(a => [a.id, a.display_name || a.email]));
     return jsonResponse({
       ok: true,
-      unlocks: (data ?? []).map(u => ({ ...u, member_name: nameById.get(u.member_id) ?? null })),
+      unlocks: (data ?? []).map(u => ({ ...u, member_name: nameById.get(u.member_id) ?? null,
+        admin_name: adminById.get(u.admin_user_id) ?? null, door_name: doorName(panelRow?.doors, u.door_key) })),
     });
   }
 
@@ -841,7 +850,9 @@ Deno.serve(async (req) => {
   // club has keyfobs and remote unlock on). Unlike test_unlock it never
   // queues while the bridge is off: the bridge takes the oldest waiting
   // unlock whenever it comes back, so a tap from hours ago would open the
-  // gate then. Each unlock records the board member who made it.
+  // gate then. Each unlock records the board member who made it. Since
+  // PLAN.md AK it takes `door` (a key from gate_panels.doors): every board
+  // member can open every wired door (Doug, 10/12).
   if (action === 'board_unlock') {
     const { data: me } = await sb.from('admin_users').select('id, active, role_template, roles')
       .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle();
@@ -852,19 +863,26 @@ Deno.serve(async (req) => {
     }
     const [{ data: st }, { data: row }] = await Promise.all([
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
-      sb.from('gate_panels').select('id, status, panel_host, bridge_last_seen_at').eq('tenant_id', payload.tid).maybeSingle(),
+      sb.from('gate_panels').select('id, status, panel_host, bridge_last_seen_at, bridge_version, doors').eq('tenant_id', payload.tid).maybeSingle(),
     ]);
     const features = (((st?.value ?? {}) as Record<string, unknown>).features ?? {}) as Record<string, unknown>;
     if (!features.keyfobs || !features.gate || !row || row.status !== 'active' || !row.panel_host) {
       return jsonResponse({ ok: false, error: 'Remote unlock isn\'t set up for your club.' }, 400);
     }
+    // Which door (PLAN.md AK): any wired door, for every board member. No
+    // door means the front gate, as before.
+    const door = findDoor(row.doors, body.door);
+    if (!door) return jsonResponse({ ok: false, error: 'That door can\'t be opened from here.' }, 400);
+    if (door.key !== MAIN_GATE && !doorsReady(row.bridge_version as string | null)) {
+      return jsonResponse({ ok: false, error: `The gate computer needs its update before it can open the ${door.name} door.`, reason: 'bridge_outdated' }, 409);
+    }
     if (!bridgeOnline(row.bridge_last_seen_at as string | null)) {
       return jsonResponse({ ok: false, error: 'Remote unlock is offline right now. Keyfobs still work.', reason: 'gate_offline' }, 409);
     }
-    // One tap at a time, and never a pile-up behind a slow bridge.
+    // One tap at a time per door, and never a pile-up behind a slow bridge.
     const since = new Date(Date.now() - 3000).toISOString();
     const [{ count: recent }, { count: waiting }] = await Promise.all([
-      sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('admin_user_id', payload.sub).gte('requested_at', since),
+      sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('admin_user_id', payload.sub).eq('door_key', door.key).gte('requested_at', since),
       sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('tenant_id', payload.tid).in('status', ['pending', 'in_flight']),
     ]);
     if ((recent ?? 0) > 0) return jsonResponse({ ok: false, error: 'You just opened it. Give it a moment.' }, 429);
@@ -873,13 +891,14 @@ Deno.serve(async (req) => {
       tenant_id: payload.tid,
       member_id: null,
       admin_user_id: payload.sub,
+      door_key: door.key,
       status: 'pending',
       is_test: false,
       actor_kind: 'admin',
       client_user_agent: req.headers.get('user-agent')?.slice(0, 200) || null,
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, unlock_id: unlock.id });
+    return jsonResponse({ ok: true, unlock_id: unlock.id, door: { key: door.key, name: door.name } });
   }
 
   if (action === 'test_unlock') {

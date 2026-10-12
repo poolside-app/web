@@ -1831,10 +1831,11 @@ async function loadRecentUnlocks() {
     if (!r.ok || !r.unlocks?.length) { box.textContent = 'No unlocks yet.'; return; }
     box.innerHTML = r.unlocks.map(u => {
       const when = new Date(u.requested_at).toLocaleString();
-      const who = u.is_test ? '(admin test)' : (u.member_name || '?');
+      const who = u.is_test ? '(admin test)' : (u.member_name || (u.admin_name ? `${u.admin_name} (board)` : '?'));
       const status = u.status === 'done' ? '✓' : u.status === 'failed' ? '✗' : u.status === 'timeout' ? '⏱' : '…';
       const detail = u.result_code ? ` · ${u.result_code}` : '';
-      return `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:12.5px"><b>${status}</b> ${escapeHtml(when)} — ${escapeHtml(who)}${detail}</div>`;
+      const door = u.door_name ? ` · ${u.door_name}` : '';
+      return `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:12.5px"><b>${status}</b> ${escapeHtml(when)} — ${escapeHtml(who)}${escapeHtml(door)}${escapeHtml(detail)}</div>`;
     }).join('');
   } catch { /* ignore */ }
 }

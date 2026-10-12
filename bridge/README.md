@@ -9,6 +9,14 @@ someone taps Unlock: about 4,300 calls a day instead of 60,000 (the 1.0
 bridge's 1.5-second polling used up the free Supabase plan in September
 2026). Never run 1.0 again.
 
+Since 1.2 the board can open other doors too (PLAN.md AK): the cloud says
+which door, and any door but the front gate goes straight to its keyfob
+controller with `uhppoted`'s `open_door` (UDP on the pool network, port
+60000). That needs `uhppoted` in the bridge's venv
+(`venv\Scripts\pip install uhppoted`, Python 3.10 or newer; Bishop's PC
+has it). Without it the bridge still opens the front gate and says so in
+its log. The doors are listed in `gate_panels.doors`.
+
 > **For Bishop Estates specifically — migrating from the old single-tenant
 > bridge:** scroll to the bottom **"Bishop Estates migration"** section.
 > The first half of this README is the generic install for any club.
@@ -91,10 +99,11 @@ venv\Scripts\python gate_bridge.py
 
 You should see within 2 seconds:
 ```
-INFO Poolside gate bridge 1.1.0-poolside starting
+INFO Poolside gate bridge 1.2.0-poolside starting
 INFO   cloud:  https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/gate_bridge
 INFO   bridge: <your-bridge-id>
 INFO   check-ins held up to 20s, never more often than every 5s
+INFO   other doors: ready (uhppoted installed)
 INFO First heartbeat ok — credentials accepted.
 ```
 

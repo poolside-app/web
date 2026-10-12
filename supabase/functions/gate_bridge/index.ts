@@ -21,6 +21,9 @@
 //       Always returns the panel config so the bridge has fresh creds.
 //       With `wait` (seconds, up to 20; PLAN.md AA1) the check-in is held
 //       open and answered the moment an unlock is waiting.
+//       The command's `door` says which door (PLAN.md AK): the front gate
+//       by key alone, any other with its controller, address and door
+//       number. A bridge before 1.2 is only handed front-gate unlocks.
 //
 //   { action: 'complete', unlock_id, result_code, result_detail? }
 //     → bridge reports an unlock finished (ok or failed)
@@ -31,6 +34,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { pollWait } from '../_shared/bridge_poll.ts';
+import { doorsReady, findDoor, commandDoor, OLD_BRIDGE_DOORS } from '../_shared/gate_doors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -71,7 +75,7 @@ Deno.serve(async (req) => {
 
   // Look up the gate_panels row by bridge_id, then verify secret hash.
   const { data: panel } = await sb.from('gate_panels')
-    .select('id, tenant_id, status, panel_type, panel_host, panel_admin_user, panel_admin_password, bridge_secret_hash')
+    .select('id, tenant_id, status, panel_type, panel_host, panel_admin_user, panel_admin_password, bridge_secret_hash, bridge_version, doors')
     .eq('bridge_id', bridgeId).maybeSingle();
   if (!panel) {
     return jsonResponse({ ok: false, error: 'Unknown bridge' }, 401);
@@ -105,17 +109,22 @@ Deno.serve(async (req) => {
     // Atomically claim the oldest pending unlock for this tenant by flipping
     // to 'in_flight'. If two bridges (impossible today, but future-proof) ever
     // poll concurrently, only one wins this update.
-    const claim = async () => (await sb.from('gate_unlocks')
+    // A bridge before 1.2 opens the front gate whatever it's handed, so it
+    // only ever gets front-gate unlocks (PLAN.md AK3); another door waits
+    // for the update (the board home doesn't offer one until then).
+    const allDoors = doorsReady(heartbeatVersion);
+    const mine = <T extends { or: (f: string) => T }>(q: T): T => allDoors ? q : q.or(OLD_BRIDGE_DOORS);
+    const claim = async () => (await mine(sb.from('gate_unlocks')
       .update({
         status: 'in_flight',
         picked_up_at: new Date().toISOString(),
         bridge_id: panel.id,
       })
       .eq('tenant_id', panel.tenant_id)
-      .eq('status', 'pending')
+      .eq('status', 'pending'))
       .order('requested_at', { ascending: true })
       .limit(1)
-      .select('id, requested_at, member_id, is_test, actor_kind')).data;
+      .select('id, requested_at, member_id, is_test, actor_kind, door_key')).data;
     // Hold the check-in open (PLAN.md AA1): look every half second for a
     // waiting unlock, until the bridge's wait runs out. A cheap look first,
     // then the claim. If the bridge has hung up, stop without claiming, so
@@ -125,9 +134,17 @@ Deno.serve(async (req) => {
     while (!pickedUp?.length && Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 500));
       if (req.signal.aborted) return new Response(null, { status: 499 });
-      const { count } = await sb.from('gate_unlocks').select('id', { count: 'exact', head: true })
-        .eq('tenant_id', panel.tenant_id).eq('status', 'pending');
+      const { count } = await mine(sb.from('gate_unlocks').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', panel.tenant_id).eq('status', 'pending'));
       if (count) pickedUp = await claim();
+    }
+
+    // A door taken off the list after the tap: never let it fall back to
+    // the front gate.
+    if (pickedUp?.length && pickedUp[0].door_key && !findDoor(panel.doors, pickedUp[0].door_key)) {
+      await sb.from('gate_unlocks').update({ status: 'failed', completed_at: new Date().toISOString(),
+        result_code: 'unknown_door', result_detail: `door ${pickedUp[0].door_key} is no longer on file` }).eq('id', pickedUp[0].id);
+      pickedUp = null;
     }
 
     const command = (pickedUp && pickedUp.length) ? {
@@ -135,6 +152,8 @@ Deno.serve(async (req) => {
       type: 'unlock',
       requested_at: pickedUp[0].requested_at,
       is_test: pickedUp[0].is_test,
+      // Which door, and for any but the front gate its controller (PLAN.md AK3).
+      door: commandDoor(findDoor(panel.doors, pickedUp[0].door_key)),
     } : null;
 
     return jsonResponse({

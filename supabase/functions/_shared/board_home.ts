@@ -18,6 +18,7 @@ import { sellingYear } from './membership_year.ts';
 import { poolDayBounds } from './pool_time.ts';
 import { duesTotals } from './dues_totals.ts';
 import { bridgeOnline } from './bridge_health.ts';
+import { openableDoors } from './gate_doors.ts';
 
 export type HomeCaller = { id: string; isOwner: boolean; scopes: string[] };
 export type HeldPosition = { scopes?: string[] | null };
@@ -144,11 +145,16 @@ export function showSignupLink(caller: HomeCaller): boolean {
 /** The gate unlock at the top of the home: only when the club has keyfobs
  *  and remote unlock on and the panel is set up. `online`: the bridge is
  *  answering, so a tap would open the gate now. */
-export type GatePanel = { status?: string | null; panel_host?: string | null; bridge_last_seen_at?: string | null };
-export function gateCard(features: Features, panel: GatePanel | null, _caller: HomeCaller): { show: boolean; online: boolean } {
+export type GatePanel = { status?: string | null; panel_host?: string | null; bridge_last_seen_at?: string | null;
+  bridge_version?: string | null; doors?: unknown };
+export function gateCard(features: Features, panel: GatePanel | null, _caller: HomeCaller):
+  { show: boolean; online: boolean; doors: Array<{ key: string; name: string }> } {
   // Every board member (Doug, 10/9), not only the President.
   const show = !!features.keyfobs && !!features.gate && !!panel && panel.status === 'active' && !!panel.panel_host;
-  return { show, online: show && bridgeOnline(panel?.bridge_last_seen_at ?? null) };
+  // Every wired door for every board member (Doug, 10/12, PLAN.md AK), once
+  // the club's bridge can open them. Names and keys only, never addresses.
+  const doors = show ? openableDoors(panel?.doors, panel?.bridge_version).map(d => ({ key: d.key, name: d.name })) : [];
+  return { show, online: show && bridgeOnline(panel?.bridge_last_seen_at ?? null), doors };
 }
 
 /** May they see family names on parties? Otherwise "Private party". */
@@ -193,7 +199,7 @@ export async function loadHome(sb: SupabaseClient, ctx: {
       .eq('tenant_id', T).eq('status', 'draft').gte('meeting_date', today)
       .order('meeting_date').order('created_at').limit(1).then(r => (r.data ?? [])[0] ?? null),
     (features.gate && features.keyfobs)
-      ? sb.from('gate_panels').select('status, panel_host, bridge_last_seen_at').eq('tenant_id', T).maybeSingle().then(r => r.data as GatePanel | null)
+      ? sb.from('gate_panels').select('status, panel_host, bridge_last_seen_at, bridge_version, doors').eq('tenant_id', T).maybeSingle().then(r => r.data as GatePanel | null)
       : Promise.resolve(null),
   ]);
   const planIds = ((plansRes as { data: { id: string }[] | null }).data ?? []).map(p => p.id);

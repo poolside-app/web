@@ -721,6 +721,15 @@ The first read (10/12) found both controllers, 135 keyfobs each, 52 that never e
 - **AJ1.** `bridge/panel_check_readonly.py --export` writes one row per keyfob, combined across both controllers, to a CSV on the club PC: the number as stored and in both printed forms (10-digit and facility,card), valid from and until, never expires, expired, each door by name, and whether both controllers have it. No door PINs. Same read-only guard (three layers); nothing leaves the PC.
 `python3 scripts/test_panel_export.py` (offline, a fake controller).
 
+### AK. The board opens every door; members open the front gate (Doug, 10/12)
+Doug: "if you are on the board can you have it unlock each specific door? access to all doors? then on the member side they can only unlock the front gate? (the mens and womens bathrooms are on there but they are not actually connected yet)". Answers: the wired doors are Main Gate, Snack, Pump Room and Swim Shack; every board member gets every door; members keep the front gate only.
+- **AK1. The doors on file.** `gate_panels.doors` lists each door Poolside can open: its name, its controller (serial and address) and its door number. Bishop: Main Gate (snack shack controller, door 1), Snack (door 2), Pump Room (pump room controller, door 1), Swim Shack (door 2). Mens and Womens stay off the list until they're wired. A club with no list has just the front gate, as before. `gate_unlocks.door_key` records which door was opened.
+- **AK2. The board home.** The gate card shows one button per door, for every board member. `gate_admin` `board_unlock` takes the door and refuses one that isn't on the list. Members: unchanged, the front gate only (`unlock_gate` never takes a door).
+- **AK3. Bridge 1.2.** The Main Gate keeps the proven web-page recipe. The other doors open with uhppoted's `open_door`, sent straight to that door's controller (the same way the read-only check reads them). Until the club PC runs 1.2 the board sees only the Main Gate, and `gate_bridge` never hands an older bridge another door (it would open the Main Gate instead).
+- **AK4.** Settings → Remote keyfob access → recent unlocks shows the door and the board member's name.
+- Doug's step: download the new bridge on the club PC and restart the service (PowerShell, as for 1.1).
+`node scripts/test_gate_doors.mjs`, `node scripts/test_gate_poll.mjs` (both offline). Then one tap per door at the pool with Doug.
+
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
 - Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.

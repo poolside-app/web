@@ -35,7 +35,7 @@ for (const line of (py.stdout || '').split('\n').filter(l => /^\s+[✓✗]/.test
 }
 if (py.status !== 0 && !/[✓✗]/.test(py.stdout || '')) check('the bridge loop test runs', false, (py.stderr || '').slice(-300));
 const bridge = read('bridge/gate_bridge.py');
-check('the bridge is version 1.1', /BRIDGE_VERSION\s*=\s*"1\.1/.test(bridge));
+check("the bridge is version 1.1 or later", /BRIDGE_VERSION\s*=\s*"1\.([1-9]|\d{2,})/.test(bridge));
 check('its HTTP timeout outlasts the wait', /timeout=WAIT_SEC \+ 15/.test(bridge));
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

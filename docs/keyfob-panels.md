@@ -24,10 +24,17 @@ door, allowed or not. A blank 125 kHz fob prints its number two ways: 10
 digits (0000786777) and facility,card (012,00345); the panel stores
 facility x 65536 + card. `_shared/keyfobs.ts` `parseFobNumber` accepts both.
 
-The phone "Unlock" today (gate bridge, `bridge/gate_bridge.py`) logs in to
-the web page built into the snack shack controller (10.1.10.153, panel type
-`mengqi_hxc7000` in `gate_panels`) and presses "Remote Open #1", so it can
-only open the Main Gate.
+The phone "Unlock" (gate bridge, `bridge/gate_bridge.py`) opens the Main
+Gate by logging in to the web page built into the snack shack controller
+(10.1.10.153, panel type `mengqi_hxc7000` in `gate_panels`) and pressing
+"Remote Open #1". Members only ever get the Main Gate.
+
+Since bridge 1.2 (PLAN.md AK, 2026-10-12) the board home has a button for
+every wired door: Main Gate, Snack, Pump Room, Swim Shack, for every board
+member. They're listed in `gate_panels.doors` (controller serial, address,
+door number). Every door but the Main Gate is opened with uhppoted's
+`open_door`, sent straight to its controller. To add Mens or Womens once
+they're wired, add them to that list (pump room controller, doors 3 and 4).
 
 ## How we reach them
 
@@ -89,9 +96,10 @@ to Excel) has the names.
 
 ## Rules for later (PLAN.md P5)
 
-- Writing to the panels (adding, changing, turning off keyfobs, opening
-  doors) goes through the gate bridge, behind Doug's "Auto keyfob
-  activations" switch, after the audit.
+- Writing keyfobs to the panels (adding, changing, turning them off) goes
+  through the gate bridge, behind Doug's "Auto keyfob activations" switch,
+  after the audit. Opening a door from the board home is the one write
+  that's on now.
 - Once Poolside manages the keyfob list, stop uploading from the Windows
   program: its copy would overwrite the panels.
 - Members never get the Pump Room.

@@ -2,7 +2,11 @@
 Poolside gate bridge — runs on the club's on-site Windows PC.
 
 Checks in with the Poolside cloud for gate-unlock commands and runs the
-proven 2-step HTTP recipe against the panel on the club's LAN. Since 1.1
+proven 2-step HTTP recipe against the panel on the club's LAN. Since 1.2
+(PLAN.md AK) the board can open the other wired doors too: those go
+straight to their controller with uhppoted's open_door (pip install
+uhppoted, as for the read-only keyfob check); the front gate keeps the
+HTTP recipe. Since 1.1
 (PLAN.md AA) each check-in asks the cloud to wait up to WAIT_SEC for an
 unlock, so the bridge calls about once every 20 seconds instead of every
 1.5 (which used up the free Supabase plan in September 2026), and the gate
@@ -64,7 +68,7 @@ MIN_LOOP_SEC      = float(os.environ.get("MIN_LOOP_SEC", "5"))
 POLL_SEC          = max(1.0, float(os.environ.get("POLL_SEC", "5")))
 MAX_BACKOFF_SEC   = 60.0
 STALE_COMMAND_SEC = int(os.environ.get("STALE_COMMAND_SEC", "60"))
-BRIDGE_VERSION    = "1.1.0-poolside"
+BRIDGE_VERSION    = "1.2.0-poolside"
 
 # ── Cloud endpoint ─────────────────────────────────────────────────────
 CLOUD_URL = f"{SUPABASE_URL}/functions/v1/gate_bridge"
@@ -122,6 +126,43 @@ def unlock_panel(host: str, user: str, pwd: str, door: int = 1) -> tuple[bool, s
 
 
 # =============================================================================
+# Other doors (PLAN.md AK) — straight to the door's controller.
+# =============================================================================
+# The two keyfob controllers speak the UHPPOTE protocol (64-byte UDP packets
+# on port 60000; docs/keyfob-panels.md). uhppoted's open_door asks one to
+# release one door, exactly like a keyfob at that door. No password: the
+# controllers only answer on the pool's own network.
+# =============================================================================
+
+def _uhppote_client():
+    from uhppoted.uhppote import Uhppote  # pip install uhppoted (in this venv)
+    return Uhppote(bind="0.0.0.0", broadcast="255.255.255.255:60000", listen="0.0.0.0:60001")
+
+
+def open_door_udp(controller, address, door, make_client=None) -> tuple[bool, str]:
+    """Open one door on one controller. Returns (ok, detail). Never raises."""
+    try:
+        controller, door = int(controller), int(door)
+    except (TypeError, ValueError):
+        return False, "door details missing"
+    if controller <= 0 or not 1 <= door <= 4 or not address:
+        return False, f"bad door details (controller {controller}, door {door})"
+    try:
+        client = (make_client or _uhppote_client)()
+    except ImportError:
+        return False, "uhppoted not installed on this PC (pip install uhppoted)"
+    try:
+        reply = client.open_door((controller, str(address), "udp"), door)
+    except Exception as e:  # a timeout, a closed network, a bad reply
+        return False, f"controller unreachable: {e}"
+    if reply is None:
+        return False, "no answer from the controller"
+    if not getattr(reply, "opened", False):
+        return False, "the controller said no"
+    return True, f"controller {controller} opened door {door}"
+
+
+# =============================================================================
 # Cloud client — talks to Poolside's gate_bridge edge function.
 # =============================================================================
 
@@ -167,14 +208,15 @@ def is_stale(requested_at_iso: str | None) -> bool:
         return False
 
 
-def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None) -> None:
-    """The check-in loop. Takes its cloud, clock and panel as arguments so it
-    can be tested against a fake (scripts/test_gate_bridge_loop.py).
+def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None, open_fn=None) -> None:
+    """The check-in loop. Takes its cloud, clock, panel and controllers as
+    arguments so it can be tested against a fake (scripts/test_gate_bridge_loop.py).
 
     Each check-in asks the cloud to wait up to WAIT_SEC for an unlock. Never
     more often than every MIN_LOOP_SEC, and after an error it waits POLL_SEC,
     doubling up to a minute. No separate heartbeat: every check-in tells the
     cloud the bridge is alive."""
+    open_fn = open_fn or open_door_udp
     errors = 0
     while until is None or clock_fn() < until:
         started = clock_fn()
@@ -207,14 +249,19 @@ def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None
             continue
 
         is_test = bool(command.get("is_test"))
-        LOG.info(f"Picked up unlock {cmd_id[:8]}... {'(admin test)' if is_test else ''}")
+        door = command.get("door") or {}
+        LOG.info(f"Picked up unlock {cmd_id[:8]}... {door.get('name') or 'front gate'} {'(admin test)' if is_test else ''}")
 
-        # Run the proven recipe.
-        ok, detail = unlock_fn(
-            host=tenant.get("panel_host") or "",
-            user=tenant.get("panel_admin_user") or "admin",
-            pwd=tenant.get("panel_admin_password") or "",
-        )
+        if door.get("key") not in (None, "main_gate"):
+            # Another door (PLAN.md AK): straight to its controller.
+            ok, detail = open_fn(controller=door.get("controller"), address=door.get("address"), door=door.get("door"))
+        else:
+            # The front gate: the proven recipe.
+            ok, detail = unlock_fn(
+                host=tenant.get("panel_host") or "",
+                user=tenant.get("panel_admin_user") or "admin",
+                pwd=tenant.get("panel_admin_password") or "",
+            )
         result_code = "ok" if ok else "panel_unreachable" if "unreachable" in detail else "panel_failed"
         cloud_fn("complete", unlock_id=cmd_id, result_code=result_code, result_detail=detail)
         LOG.info(f"  → {result_code}: {detail}")
@@ -225,6 +272,13 @@ def main() -> None:
     LOG.info(f"  cloud:  {CLOUD_URL}")
     LOG.info(f"  bridge: {BRIDGE_ID}")
     LOG.info(f"  check-ins held up to {WAIT_SEC}s, never more often than every {MIN_LOOP_SEC:.0f}s")
+    try:
+        _uhppote_client()
+        LOG.info("  other doors: ready (uhppoted installed)")
+    except ImportError:
+        LOG.warning("  other doors: uhppoted isn't installed, so only the front gate will open (pip install uhppoted)")
+    except Exception as e:
+        LOG.warning(f"  other doors: uhppoted didn't start ({e})")
 
     # First contact — also serves as a sanity check that creds are right.
     # 401 is fatal: bridge_id/secret are wrong, no point burning CPU on a
