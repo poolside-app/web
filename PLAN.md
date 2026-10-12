@@ -736,12 +736,12 @@ Doug: "I can turn the announcement I made and delete it off the front page, but 
 - **AN2.** Posts removed before this (Bishop has three: "Oktober Fest Today!" twice and "Bjj") get a Delete button on their card, so Doug clears them himself.
 `node scripts/test_posts_delete.mjs` (offline), then Doug deletes his three and I check they're gone.
 
-### AO. The bridge checks in every 2 minutes (Doug, 10/12)
+### AO. The bridge checks in every 2 minutes (Doug, 10/12) — ✅ done 10/12
 Doug: "lets change that and update to once every 5 minutes.. we dont need that quick of response". Taps don't wait for a check-in (each one is held open and answered the moment a tap comes), so fewer check-ins don't slow the doors. The free Supabase plan ends any call at 150 s, so the longest hold is about 2 minutes. Doug chose "every ~2 min, taps instant" over "every 5 min, taps can wait".
 - **AO1.** `gate_bridge` holds a check-in up to 120 s (was 20 s), about 720 calls a day instead of 4,200. While holding, it looks for a tap every second (was every half second, to stay inside the 2 s CPU limit per call) and stamps "last seen" every 30 s, so Online, the outage alarms and the Settings card read the same as before.
 - **AO2.** The cloud tells the bridge how long to ask for next time (`next_wait`), so this never needs another trip to the club PC.
 - **AO3.** Bridge 1.3: uses `next_wait` (kept between 5 and 130 s), sets each call's time limit from its wait, and retries straight away (no back-off) when a long hold is cut short, since that isn't an outage. Doug installs it with the same admin PowerShell steps as 1.2.
-`node scripts/test_gate_poll.mjs` (offline), then the call count from the logs after the update.
+`node scripts/test_gate_poll.mjs` (offline). ✅ Live 10/12: bridge 1.3 installed; after `gate_bridge` deployed (Supabase's deploy service failed for about 40 minutes first), "last seen" ticked every 30 s across 4 minutes, as a 2-minute hold does (20-second check-ins tick every 20 s). Supabase's function logs had stalled, so the call count is still to read from them later.
 
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
