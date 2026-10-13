@@ -6,7 +6,10 @@ proven 2-step HTTP recipe against the panel on the club's LAN. Since 1.2
 (PLAN.md AK) the board can open the other wired doors too: those go
 straight to their controller with uhppoted's open_door (pip install
 uhppoted, as for the read-only keyfob check); the front gate keeps the
-HTTP recipe. Since 1.3 (PLAN.md AO) a check-in is held up to 2 minutes
+HTTP recipe. Since 1.4 (PLAN.md AS4) it also puts Poolside's keyfobs on the
+controllers when the board asks ("Sync keyfobs now": read first, then
+send exactly the changes), card by card, so the doors never go down.
+Since 1.3 (PLAN.md AO) a check-in is held up to 2 minutes
 (about 720 calls a day) and the cloud says how long to ask for next time,
 so that can change without touching this PC. Since 1.1
 (PLAN.md AA) each check-in asks the cloud to wait up to WAIT_SEC for an
@@ -73,7 +76,7 @@ MIN_LOOP_SEC      = float(os.environ.get("MIN_LOOP_SEC", "5"))
 POLL_SEC          = max(1.0, float(os.environ.get("POLL_SEC", "5")))
 MAX_BACKOFF_SEC   = 60.0
 STALE_COMMAND_SEC = int(os.environ.get("STALE_COMMAND_SEC", "60"))
-BRIDGE_VERSION    = "1.3.0-poolside"
+BRIDGE_VERSION    = "1.4.0-poolside"
 
 # ── Cloud endpoint ─────────────────────────────────────────────────────
 CLOUD_URL = f"{SUPABASE_URL}/functions/v1/gate_bridge"
@@ -168,6 +171,126 @@ def open_door_udp(controller, address, door, make_client=None) -> tuple[bool, st
 
 
 # =============================================================================
+# Keyfob sync (PLAN.md AS4) — read what the controllers hold, write changes.
+# =============================================================================
+# A "check" job lists the cards and time windows Poolside manages; the
+# bridge reads each one (get_card, get_time_profile) and reports it. A
+# "send" job lists the writes Poolside worked out: put a card (dates, each
+# door's 0/1/window, the keypad PIN kept), delete a card, set a window. Each
+# is read back so the board sees what's actually live. Cards Poolside doesn't
+# manage are never in a job. A read that fails is reported as an error, never
+# as "missing", so Poolside never re-adds cards because a controller blinked.
+# =============================================================================
+
+import datetime as _dt
+
+def _d(s):
+    return _dt.date.fromisoformat(str(s)[:10])
+
+def _t(s):
+    h, m = str(s)[:5].split(":")
+    return _dt.time(int(h), int(m))
+
+def _hhmm(v):
+    return v.strftime("%H:%M") if v is not None else None
+
+def _card_have(rec):
+    if rec is None or not getattr(rec, "card_number", 0):
+        return None
+    return {"from": rec.start_date.isoformat(), "to": rec.end_date.isoformat(),
+            "doors": [int(rec.door_1), int(rec.door_2), int(rec.door_3), int(rec.door_4)], "pin": int(getattr(rec, "pin", 0) or 0)}
+
+def _profile_have(rec):
+    if rec is None or not getattr(rec, "profile_id", 0):
+        return None
+    days = [bool(getattr(rec, d)) for d in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")]
+    return {"from": rec.start_date.isoformat(), "to": rec.end_date.isoformat(), "days": days,
+            "start": _hhmm(rec.segment_1_start), "end": _hhmm(rec.segment_1_end)}
+
+def run_sync(job, make_client=None):
+    """Do a sync job. Returns (result, error). Never raises."""
+    try:
+        client = (make_client or _uhppote_client)()
+    except ImportError:
+        return None, "uhppoted not installed on this PC (pip install uhppoted)"
+    except Exception as e:
+        return None, f"couldn't start uhppoted: {e}"
+    plan = job.get("plan") or {}
+    addr = {int(c["serial"]): str(c["address"]) for c in plan.get("controllers", [])}
+    ctrl = lambda serial: (int(serial), addr.get(int(serial)), "udp")
+    # A controller that fails twice in a row is skipped for the rest of the
+    # job (each try waits 2.5 s), and reported as not answering.
+    fails, dead = {}, set()
+    def attempt(serial, fn):
+        if serial in dead:
+            raise RuntimeError("controller not answering")
+        try:
+            v = fn()
+            fails[serial] = 0
+            return v
+        except Exception:
+            fails[serial] = fails.get(serial, 0) + 1
+            if fails[serial] >= 2:
+                dead.add(serial)
+            raise
+    if job.get("kind") == "check":
+        cards, profiles = [], []
+        for c in plan.get("cards", []):
+            entry = {"card": c["card"], "controller": c["controller"]}
+            try:
+                entry["have"] = _card_have(attempt(int(c["controller"]), lambda: client.get_card(ctrl(c["controller"]), int(c["card"]))))
+            except Exception as e:
+                entry["have"], entry["error"] = None, str(e)[:200]
+            cards.append(entry)
+        for p in plan.get("profiles", []):
+            entry = {"controller": p["controller"], "id": p["id"]}
+            try:
+                entry["have"] = _profile_have(attempt(int(p["controller"]), lambda: client.get_time_profile(ctrl(p["controller"]), int(p["id"]))))
+            except Exception as e:
+                entry["have"], entry["error"] = None, str(e)[:200]
+            profiles.append(entry)
+        return {"cards": cards, "profiles": profiles}, None
+    done = []
+    for op in plan.get("ops", []):
+        out = dict(op)
+        try:
+            if int(op["controller"]) in dead:
+                raise RuntimeError("controller not answering")
+            c = ctrl(op["controller"])
+            if op["op"] == "put":
+                d = [int(x) for x in op["doors"]] + [0, 0, 0, 0]
+                r = client.put_card(c, int(op["card"]), _d(op["from"]), _d(op["to"]), d[0], d[1], d[2], d[3], int(op.get("pin") or 0))
+                out["ok"] = bool(getattr(r, "stored", False))
+                back = _card_have(client.get_card(c, int(op["card"])))
+                out["live"] = bool(back and back["from"] == op["from"] and back["to"] == op["to"] and back["doors"] == d[:4])
+            elif op["op"] == "delete":
+                r = client.delete_card(c, int(op["card"]))
+                out["ok"] = bool(getattr(r, "deleted", False))
+                out["live"] = _card_have(client.get_card(c, int(op["card"]))) is None
+            elif op["op"] == "profile":
+                days = list(op["days"])
+                s1, e1 = _t(op["start"]), _t(op["end"])
+                s2 = e2 = _dt.time(0, 0)
+                if e1 <= s1:                       # overnight: two segments
+                    s1, e1, s2, e2 = _t(op["start"]), _dt.time(23, 59), _dt.time(0, 0), _t(op["end"])
+                r = client.set_time_profile(c, int(op["id"]), _d(op["from"]), _d(op["to"]), *days,
+                                            s1, e1, s2, e2, _dt.time(0, 0), _dt.time(0, 0), 0)
+                out["ok"] = bool(getattr(r, "stored", False))
+                back = _profile_have(client.get_time_profile(c, int(op["id"])))
+                out["live"] = bool(back and back["from"] == op["from"] and back["to"] == op["to"] and back["days"] == days)
+            else:
+                out["ok"], out["error"] = False, "unknown change"
+            fails[int(op["controller"])] = 0
+        except Exception as e:
+            out["ok"], out["live"], out["error"] = False, False, str(e)[:200]
+            fails[int(op["controller"])] = fails.get(int(op["controller"]), 0) + 1
+            if fails[int(op["controller"])] >= 2:
+                dead.add(int(op["controller"]))
+        done.append(out)
+    return {"ops": done}, None
+
+
+# =============================================================================
 # Cloud client — talks to Poolside's gate_bridge edge function.
 # =============================================================================
 
@@ -214,7 +337,7 @@ def is_stale(requested_at_iso: str | None) -> bool:
         return False
 
 
-def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None, open_fn=None) -> None:
+def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None, open_fn=None, sync_fn=None) -> None:
     """The check-in loop. Takes its cloud, clock, panel and controllers as
     arguments so it can be tested against a fake (scripts/test_gate_bridge_loop.py).
 
@@ -224,6 +347,7 @@ def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None
     a minute. No separate heartbeat: every check-in tells the cloud the
     bridge is alive."""
     open_fn = open_fn or open_door_udp
+    sync_fn = sync_fn or run_sync
     errors = 0
     wait = max(WAIT_MIN_SEC, min(WAIT_MAX_SEC, WAIT_SEC))
     while until is None or clock_fn() < until:
@@ -246,6 +370,15 @@ def run_loop(cloud_fn, sleep_fn, clock_fn, unlock_fn, until: float | None = None
             wait = max(WAIT_MIN_SEC, min(WAIT_MAX_SEC, int(resp.get("next_wait") or wait)))
         except (TypeError, ValueError):
             pass
+
+        # A keyfob sync (1.4, PLAN.md AS4): handed out only when no door is waiting.
+        job = resp.get("sync")
+        if job:
+            LOG.info(f"Keyfob sync {str(job.get('id'))[:8]}... ({job.get('kind')})")
+            result, err = sync_fn(job)
+            cloud_fn("sync_done", id=job.get("id"), result=result or {}, error=err)
+            LOG.info(f"  → {'failed: ' + err if err else 'done'}")
+            continue
 
         command = resp.get("command")
         if not command:

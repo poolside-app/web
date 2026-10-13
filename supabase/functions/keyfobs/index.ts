@@ -33,6 +33,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, type AdminPayload } from '../_shared/auth.ts';
 import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs, liveFobCount, canCancel } from '../_shared/keyfobs.ts';
 import { accessConfig, cleanAccess, describeLevel } from '../_shared/access.ts';
+import { loadSyncPlan, syncReady } from '../_shared/keyfob_sync.ts';
 import { doorsFor } from '../_shared/gate_doors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -300,6 +301,64 @@ Deno.serve(async (req) => {
       summary: c.value.levels.map(l => `${l.name}: ${describeLevel(l, panel?.doors ?? [])}`).join('; ').slice(0, 500),
       actor_id: me.id, actor_kind: 'tenant_admin' });
     return j({ ok: true, levels: c.value.levels.map(l => ({ ...l, text: describeLevel(l, panel?.doors ?? []) })), party_doors: c.value.party_doors });
+  }
+
+  // ── The keyfob sync (PLAN.md AS4): check first, then send ─────────────
+  // Doug, 10/13: "i also want a manual dump button". "Sync keyfobs now" asks
+  // the gate computer to read what the controllers hold for the fobs
+  // Poolside manages; Poolside works out the changes; "Send to the doors"
+  // writes exactly those. Cards Poolside doesn't manage are never touched.
+  if (action === 'sync_status' || action === 'sync_check' || action === 'sync_send') {
+    const [{ data: panel }, { data: tenantRow }] = await Promise.all([
+      sb.from('gate_panels').select('status, doors, bridge_version').eq('tenant_id', TID).maybeSingle(),
+      sb.from('tenants').select('auto_keyfob_sync').eq('id', TID).maybeSingle(),
+    ]);
+    const ready = !!panel && panel.status === 'active' && syncReady(panel.bridge_version as string | null);
+    // A job the gate computer took but never finished (it went offline).
+    await sb.from('keyfob_syncs').update({ status: 'failed', error: 'The gate computer didn\'t finish. Try again.', completed_at: new Date().toISOString() })
+      .eq('tenant_id', TID).eq('status', 'in_flight').lt('picked_up_at', new Date(Date.now() - 10 * 60000).toISOString());
+
+    if (action === 'sync_status') {
+      const { data: jobs } = await sb.from('keyfob_syncs')
+        .select('id, kind, status, auto, check_id, result, error, created_at, picked_up_at, completed_at, requested_by')
+        .eq('tenant_id', TID).order('created_at', { ascending: false }).limit(8);
+      const trim = (jb: Record<string, unknown>) => {
+        const r = (jb.result ?? {}) as Record<string, unknown>;
+        return { ...jb, result: jb.kind === 'check'
+          ? { summary: r.summary ?? null, lines: ((r.lines as string[] | undefined) ?? []).slice(0, 200), ops: ((r.ops as unknown[] | undefined) ?? []).length }
+          : { summary: r.summary ?? null, failed: r.failed ?? 0 } };
+      };
+      return j({ ok: true, ready, bridge_version: panel?.bridge_version ?? null, auto: !!tenantRow?.auto_keyfob_sync, jobs: (jobs ?? []).map(trim) });
+    }
+
+    if (!ready) return j({ ok: false, error: 'The gate computer needs its 1.4 update before Poolside can sync keyfobs.' }, 409);
+    const { count: busy } = await sb.from('keyfob_syncs').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', TID).in('status', ['pending', 'in_flight']);
+    if (busy) return j({ ok: false, error: 'A sync is already running. It finishes in a minute or two.' }, 409);
+
+    if (action === 'sync_check') {
+      const plan = await loadSyncPlan(sb, TID);
+      const { data: job, error } = await sb.from('keyfob_syncs').insert({ tenant_id: TID, kind: 'check', plan, requested_by: me.id })
+        .select('id').single();
+      if (error) return j({ ok: false, error: error.message }, 500);
+      return j({ ok: true, job_id: job.id, cards: plan.cards.length, profiles: plan.profiles.length });
+    }
+
+    // sync_send: exactly the changes a finished, recent check found.
+    const { data: chk } = await sb.from('keyfob_syncs').select('id, status, plan, result, completed_at')
+      .eq('id', String(body.check_id ?? '')).eq('tenant_id', TID).eq('kind', 'check').maybeSingle();
+    if (!chk || chk.status !== 'done') return j({ ok: false, error: 'Check the doors first.' }, 400);
+    if (Date.now() - Date.parse(chk.completed_at as string) > 30 * 60000) return j({ ok: false, error: 'That check is more than 30 minutes old. Check again.' }, 409);
+    const ops = (((chk.result ?? {}) as Record<string, unknown>).ops as unknown[] | undefined) ?? [];
+    if (!ops.length) return j({ ok: false, error: 'Nothing to send: the doors already match.' }, 400);
+    const { data: job, error } = await sb.from('keyfob_syncs').insert({
+      tenant_id: TID, kind: 'send', check_id: chk.id, requested_by: me.id,
+      plan: { controllers: ((chk.plan ?? {}) as Record<string, unknown>).controllers ?? [], ops },
+    }).select('id').single();
+    if (error) return j({ ok: false, error: error.message }, 500);
+    await sb.from('audit_log').insert({ tenant_id: TID, kind: 'keyfob.sync_sent', entity_type: 'keyfob_sync', entity_id: job.id,
+      summary: `Keyfob changes sent to the doors: ${ops.length}`, actor_id: me.id, actor_kind: 'tenant_admin' });
+    return j({ ok: true, job_id: job.id, ops: ops.length });
   }
 
   if (action === 'set_level') {

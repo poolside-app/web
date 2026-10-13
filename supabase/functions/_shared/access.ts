@@ -21,7 +21,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { doorsFor, remoteDoors, doorsReady, MAIN_GATE, type Door } from './gate_doors.ts';
 import { wallParts, wallTimeToUtc, poolDate, zoneOrDefault } from './pool_time.ts';
 
-export type Level = { key: string; name: string; doors: string[]; days: number[]; start: string | null; end: string | null; until: string | null };
+export type Level = { key: string; name: string; doors: string[]; days: number[]; start: string | null; end: string | null; from?: string | null; until: string | null };
 export type AccessConfig = { levels: Level[]; party_doors: string[] };
 export type Pass = { id: string; doors: string[]; starts_at: string; ends_at: string; ended_at?: string | null; household_id?: string; note?: string | null };
 
@@ -35,8 +35,8 @@ function defaults(doorsRaw: unknown): AccessConfig {
   const all = doorsFor(doorsRaw).map(d => d.key);
   return {
     levels: [
-      { key: 'member', name: 'Member', doors: [MAIN_GATE], days: ALL_DAYS, start: null, end: null, until: null },
-      { key: 'board', name: 'Board', doors: all, days: ALL_DAYS, start: null, end: null, until: null },
+      { key: 'member', name: 'Member', doors: [MAIN_GATE], days: ALL_DAYS, start: null, end: null, from: null, until: null },
+      { key: 'board', name: 'Board', doors: all, days: ALL_DAYS, start: null, end: null, from: null, until: null },
     ],
     party_doors: [],
   };
@@ -56,8 +56,12 @@ function cleanLevel(raw: unknown, known: Set<string>): { ok: true; level: Level 
   if (start && end && start === end) return { ok: false, error: `${name}: the from and to times are the same.` };
   const until = (r.until === null || r.until === undefined || r.until === '') ? null : String(r.until);
   if (until && !DATE_RE.test(until)) return { ok: false, error: `${name}: the end date isn't a date.` };
+  // The first day (PLAN.md AS2): before it, the level is closed.
+  const from = (r.from === null || r.from === undefined || r.from === '') ? null : String(r.from);
+  if (from && !DATE_RE.test(from)) return { ok: false, error: `${name}: the first day isn't a date.` };
+  if (from && until && from > until) return { ok: false, error: `${name}: the first day is after the last day.` };
   if (!days.length) return { ok: false, error: `${name}: pick at least one day.` };
-  return { ok: true, level: { key, name, doors, days, start, end, until } };
+  return { ok: true, level: { key, name, doors, days, start, end, from, until } };
 }
 
 /** The club's levels and party doors, with defaults for anything not set. */
@@ -110,9 +114,15 @@ function daysText(days: number[]): string {
   if (s === '0,6') return 'weekends';
   return [...days].sort().map(d => DAY[d]).join(', ');
 }
-function dateText(key: string): string {
+function dateText(key: string, year = true): string {
   const [y, m, d] = key.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', ...(year ? { year: 'numeric' } : {}) });
+}
+function datesText(level: Level): string {
+  if (level.from && level.until) return `${dateText(level.from, false)}–${dateText(level.until)}`;
+  if (level.from) return `from ${dateText(level.from)}`;
+  if (level.until) return `until ${dateText(level.until)}`;
+  return '';
 }
 
 /** "Main Gate, Mens, Womens · every day 6:00 AM–8:30 PM · until Oct 31, 2026" */
@@ -122,13 +132,14 @@ export function describeLevel(level: Level, doorsRaw: unknown): string {
     : all.filter(d => level.doors.includes(d.key)).map(d => d.name).join(', ') || 'No doors';
   const when = level.start && level.end ? `${daysText(level.days)} ${hoursText(level)}`
     : level.days.length === 7 ? 'any time' : daysText(level.days);
-  return [doors, when, level.until ? `until ${dateText(level.until)}` : ''].filter(Boolean).join(' · ');
+  return [doors, when, datesText(level)].filter(Boolean).join(' · ');
 }
 
 /** Is a level open at an instant, at the pool? If not, why, and when it opens. */
-export function levelOpenAt(level: Level, tz: string, now: Date): { open: boolean; why?: 'ended' | 'day' | 'hours'; opens?: string } {
+export function levelOpenAt(level: Level, tz: string, now: Date): { open: boolean; why?: 'ended' | 'not_started' | 'day' | 'hours'; opens?: string; starts?: string } {
   const today = poolDate(now, tz);
   if (level.until && today > level.until) return { open: false, why: 'ended' };
+  if (level.from && today < level.from) return { open: false, why: 'not_started', starts: dateText(level.from, false) };
   const p = wallParts(now, tz);
   const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
   const opens = level.start ? clock(level.start) : undefined;
@@ -141,16 +152,73 @@ export function levelOpenAt(level: Level, tz: string, now: Date): { open: boolea
   return inside ? { open: true } : { open: false, why: 'hours', opens };
 }
 
+const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const addDay = (key: string, n: number) => { const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+
+/** When a closed level next opens, in words: "at 6:00 AM", "tomorrow at
+ *  6:00 AM", "Monday at 6:00 AM", "on May 23 at 6:00 AM". Null if not
+ *  within its dates. */
+export function nextOpening(level: Level, tz: string, now: Date): string | null {
+  const today = poolDate(now, tz);
+  const p = wallParts(now, tz);
+  const minute = p.hour * 60 + p.minute;
+  const startMin = level.start ? Number(level.start.slice(0, 2)) * 60 + Number(level.start.slice(3, 5)) : 0;
+  const at = level.start ? ` at ${clock(level.start)}` : '';
+  for (let i = 0; i < 15; i++) {
+    const day = addDay(today, i);
+    if (level.from && day < level.from) continue;
+    if (level.until && day > level.until) return null;
+    const [y, m, d] = day.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    if (!level.days.includes(dow)) continue;
+    if (i === 0 && minute >= startMin) continue;      // already past today's opening
+    if (i === 0) return at.trim() || 'now';
+    if (i === 1) return `tomorrow${at}`;
+    if (i < 7) return `${WEEKDAY[dow]}${at}`;
+    return `on ${dateText(day, false)}${at}`;
+  }
+  return null;
+}
+
+/** Why a level is closed, in a sentence for the app (PLAN.md AS2). */
+export function closedMessage(level: Level, tz: string, now: Date, season?: { open?: unknown; closed_message?: unknown } | null): string {
+  const extra = typeof season?.closed_message === 'string' && season.closed_message.trim() ? ' ' + season.closed_message.trim() : '';
+  if (season && season.open === false) return `The pool is closed for the season.${extra}`;
+  const st = levelOpenAt(level, tz, now);
+  if (st.why === 'ended') return `The pool is closed for the season.${extra}`;
+  if (st.why === 'not_started') return `Member access starts ${st.starts}.`;
+  const next = nextOpening(level, tz, now);
+  return next ? `The pool is closed. It opens ${next}.` : `The pool is closed for the season.${extra}`;
+}
+
+/** Board home: is the Board level open now, and if not, why. */
+export function boardOpenNow(config: AccessConfig, tz: string, now: Date): { open: boolean; message?: string } {
+  const board = config.levels.find(l => l.key === 'board');
+  if (!board) return { open: true };
+  const st = levelOpenAt(board, tz, now);
+  if (st.open) return { open: true };
+  const next = st.why === 'not_started' ? `Board access starts ${st.starts}.` : st.why === 'ended' ? 'Board access has ended.' : null;
+  const n = nextOpening(board, tz, now);
+  return { open: false, message: next ?? (n ? `Board access opens ${n}.` : 'Board access is closed.') };
+}
+
+/** Where a pass stands: not started, on now, or over (or ended early). */
+export function passState(p: { starts_at: string; ends_at: string; ended_at?: string | null }, now: Date): 'upcoming' | 'now' | 'ended' {
+  if (p.ended_at || Date.parse(p.ends_at) <= now.getTime()) return 'ended';
+  return Date.parse(p.starts_at) > now.getTime() ? 'upcoming' : 'now';
+}
+
 const activeAt = (p: Pass, now: Date) => !p.ended_at && Date.parse(p.starts_at) <= now.getTime() && now.getTime() < Date.parse(p.ends_at);
 
 /** What a member can open from the app right now, and, if the front gate
  *  is closed to members, when it opens. */
-export function memberDoorsNow(a: { config: AccessConfig; doorsRaw: unknown; bridgeVersion: string | null | undefined; passes: Pass[]; tz: string; now: Date }):
-  { doors: Array<{ key: string; name: string; via: 'member' | 'pass'; pass_id?: string; until?: string }>; gateClosed: null | { opens?: string; hours: string; why?: string } } {
+export function memberDoorsNow(a: { config: AccessConfig; doorsRaw: unknown; bridgeVersion: string | null | undefined; passes: Pass[]; tz: string; now: Date; season?: { open?: unknown; closed_message?: unknown } | null }):
+  { doors: Array<{ key: string; name: string; via: 'member' | 'pass'; pass_id?: string; until?: string }>; gateClosed: null | { opens?: string; hours: string; why?: string; message: string } } {
   const remote = remoteDoors(a.doorsRaw);
   const usable = (d: Door) => d.key === MAIN_GATE || doorsReady(a.bridgeVersion);
   const member = a.config.levels.find(l => l.key === 'member');
-  const state = member ? levelOpenAt(member, a.tz, a.now) : { open: false };
+  const seasonOff = !!a.season && a.season.open === false;     // the Season switch on Settings → Season
+  const state = member && !seasonOff ? levelOpenAt(member, a.tz, a.now) : { open: false };
   const out: Array<{ key: string; name: string; via: 'member' | 'pass'; pass_id?: string; until?: string }> = [];
   if (member && state.open) {
     for (const d of remote) if (member.doors.includes(d.key) && usable(d)) out.push({ key: d.key, name: d.name, via: 'member' });
@@ -165,7 +233,8 @@ export function memberDoorsNow(a: { config: AccessConfig; doorsRaw: unknown; bri
   out.sort((x, y) => order.indexOf(x.key) - order.indexOf(y.key));
   const gateOpen = out.some(o => o.key === MAIN_GATE);
   const gateClosed = member && member.doors.includes(MAIN_GATE) && !gateOpen
-    ? { opens: (state as { opens?: string }).opens, hours: hoursText(member), why: (state as { why?: string }).why } : null;
+    ? { opens: (state as { opens?: string }).opens, hours: hoursText(member), why: seasonOff ? 'season' : (state as { why?: string }).why,
+        message: closedMessage(member, a.tz, a.now, a.season) } : null;
   return { doors: out, gateClosed };
 }
 
@@ -204,7 +273,7 @@ export function partyPassWindow(a: { startsAt: string; endsAt?: string | null; p
 }
 
 // ── The few that touch the database ─────────────────────────────────────
-export async function loadAccess(sb: SupabaseClient, tenantId: string): Promise<{ config: AccessConfig; doorsRaw: unknown; bridgeVersion: string | null; settingsValue: Record<string, unknown>; tz: string }> {
+export async function loadAccess(sb: SupabaseClient, tenantId: string): Promise<{ config: AccessConfig; doorsRaw: unknown; bridgeVersion: string | null; settingsValue: Record<string, unknown>; tz: string; season: Record<string, unknown> | null }> {
   const [{ data: st }, { data: panel }, { data: tenant }] = await Promise.all([
     sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle(),
     sb.from('gate_panels').select('doors, bridge_version').eq('tenant_id', tenantId).maybeSingle(),
@@ -213,7 +282,7 @@ export async function loadAccess(sb: SupabaseClient, tenantId: string): Promise<
   const settingsValue = (st?.value ?? {}) as Record<string, unknown>;
   const doorsRaw = panel?.doors ?? [];
   return { config: accessConfig(settingsValue, doorsRaw), doorsRaw, bridgeVersion: (panel?.bridge_version as string | null) ?? null, settingsValue,
-    tz: zoneOrDefault(tenant?.timezone as string | null | undefined) };
+    tz: zoneOrDefault(tenant?.timezone as string | null | undefined), season: (settingsValue.season as Record<string, unknown> | undefined) ?? null };
 }
 
 /** A paid party: its family gets the party doors that day. Once per party. */

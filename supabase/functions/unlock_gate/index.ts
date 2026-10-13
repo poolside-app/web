@@ -32,7 +32,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { bridgeOnline } from '../_shared/bridge_health.ts';
-import { loadAccess, memberDoorsNow, type Pass } from '../_shared/access.ts';
+import { loadAccess, memberDoorsNow, passState, type Pass } from '../_shared/access.ts';
+import { remoteDoors, doorsReady } from '../_shared/gate_doors.ts';
+import { fmtPoolStamp } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -102,23 +104,76 @@ async function doorsNow(sb: ReturnType<typeof createClient>, payload: MemberPayl
     ? await sb.from('access_passes').select('id, doors, starts_at, ends_at, ended_at, note')
       .eq('tenant_id', payload.tid).eq('household_id', m.household_id).is('ended_at', null).gt('ends_at', nowIso).lte('starts_at', nowIso)
     : { data: [] };
-  return memberDoorsNow({ config: acc.config, doorsRaw: acc.doorsRaw, bridgeVersion: acc.bridgeVersion, passes: (passes ?? []) as Pass[], tz: acc.tz, now: new Date() });
+  return memberDoorsNow({ config: acc.config, doorsRaw: acc.doorsRaw, bridgeVersion: acc.bridgeVersion, passes: (passes ?? []) as Pass[], tz: acc.tz, now: new Date(), season: acc.season });
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
 
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch { /* keep empty */ }
+  const action = String(body.action ?? '');
+  const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // ── A guest's pass link (PLAN.md AS3): no sign-in; the private link is
+  //    the key. It opens only the pass's doors, only during the pass. ──
+  if (action === 'pass_info' || action === 'pass_tap' || action === 'pass_status') {
+    const tok = String(body.t ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(tok)) return jsonResponse({ ok: false, error: 'This pass link isn\'t right. Ask the board to text it again.' }, 400);
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tok));
+    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const { data: pass } = await sb.from('access_passes')
+      .select('id, tenant_id, guest_name, doors, starts_at, ends_at, ended_at, note').eq('token_hash', hash).maybeSingle();
+    if (!pass) return jsonResponse({ ok: false, error: 'This pass link isn\'t right, or the pass was removed.' }, 404);
+    const tid = pass.tenant_id as string;
+    const acc = await loadAccess(sb as never, tid);
+    const [{ data: tenant }, { data: panel }] = await Promise.all([
+      sb.from('tenants').select('display_name').eq('id', tid).maybeSingle(),
+      sb.from('gate_panels').select('status, bridge_last_seen_at').eq('tenant_id', tid).maybeSingle(),
+    ]);
+    const state = passState(pass as never, new Date());
+    const doors = remoteDoors(acc.doorsRaw).filter(d => (pass.doors as string[]).includes(d.key) && (d.key === 'main_gate' || doorsReady(acc.bridgeVersion)))
+      .map(d => ({ key: d.key, name: d.name }));
+    const online = panel?.status === 'active' && bridgeOnline(panel?.bridge_last_seen_at as string | null);
+
+    if (action === 'pass_info') {
+      return jsonResponse({ ok: true, club: tenant?.display_name ?? null, name: pass.guest_name, note: pass.note, doors, state, online,
+        starts_at: pass.starts_at, ends_at: pass.ends_at, starts_text: fmtPoolStamp(pass.starts_at as string, acc.tz), ends_text: fmtPoolStamp(pass.ends_at as string, acc.tz) });
+    }
+
+    if (action === 'pass_status') {
+      const id = String(body.id ?? '');
+      const { data: row } = await sb.from('gate_unlocks').select('id, status, result_code, result_detail, pass_id')
+        .eq('id', id).eq('tenant_id', tid).maybeSingle();
+      if (!row || row.pass_id !== pass.id) return jsonResponse({ ok: false, error: 'Unlock not found' }, 404);
+      return jsonResponse({ ok: true, status: row.status, result_code: row.result_code, result_detail: row.result_detail });
+    }
+
+    // pass_tap
+    if (state !== 'now') return jsonResponse({ ok: false, error: state === 'upcoming' ? `Your pass starts ${fmtPoolStamp(pass.starts_at as string, acc.tz)}.` : 'This pass has ended.' }, 403);
+    const door = doors.find(d => d.key === String(body.door ?? ''));
+    if (!door) return jsonResponse({ ok: false, error: 'That door isn\'t on your pass.' }, 403);
+    if (!online) return jsonResponse({ ok: false, error: 'Remote unlock is offline right now. Call the board.', reason: 'gate_offline' }, 409);
+    const since = new Date(Date.now() - 3000).toISOString();
+    const [{ count: recent }, { count: waiting }] = await Promise.all([
+      sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('pass_id', pass.id).gte('requested_at', since),
+      sb.from('gate_unlocks').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).in('status', ['pending', 'in_flight']),
+    ]);
+    if ((recent ?? 0) > 0) return jsonResponse({ ok: false, error: 'You just opened it. Give it a moment.' }, 429);
+    if ((waiting ?? 0) > 20) return jsonResponse({ ok: false, error: 'The gate is backed up. Try again in a moment.' }, 503);
+    const { data: row, error } = await sb.from('gate_unlocks').insert({
+      tenant_id: tid, member_id: null, status: 'pending', actor_kind: 'guest', door_key: door.key, pass_id: pass.id,
+      client_user_agent: req.headers.get('user-agent')?.slice(0, 200) || null,
+    }).select('id').single();
+    if (error || !row) return jsonResponse({ ok: false, error: error?.message || 'Could not open it' }, 500);
+    return jsonResponse({ ok: true, unlock_id: row.id, message: `Opening the ${door.name}…` });
+  }
+
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const token = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
   const payload = token ? await verifyMember(token) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
-
-  let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { /* keep empty */ }
-  const action = String(body.action ?? '');
-
-  const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   if (action === 'check') {
     const elig = await checkEligibility(sb, payload);
@@ -155,9 +210,8 @@ Deno.serve(async (req) => {
     const door = now.doors.find(d => d.key === want);
     if (!door) {
       const gc = now.gateClosed;
-      const error = want === 'main_gate' && gc
-        ? (gc.why === 'ended' ? 'Member gate access has ended for the season.' : `The gate opens for members${gc.opens ? ` at ${gc.opens}` : ''}. Member hours are ${gc.hours}.`)
-        : 'You can\'t open that door right now.';
+      // Why it's closed, in words (PLAN.md AS2): "The pool is closed. It opens at 6:00 AM."
+      const error = want === 'main_gate' && gc ? gc.message : 'You can\'t open that door right now.';
       return jsonResponse({ ok: false, error, reason: want === 'main_gate' && gc ? 'after_hours' : 'no_access' }, 403);
     }
 

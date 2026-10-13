@@ -30,7 +30,7 @@
       { key: 'applications', label: 'Pipeline',   href: '/club/admin/members.html#applications', scope: 'applications' },
       { key: 'households',   label: 'Households', href: '/club/admin/members.html#households',   scope: 'households'   },
       { key: 'renewals',     label: 'Renewals',   href: '/club/admin/members.html#renewals',     scope: 'households'   },
-      { key: 'keyfobs',      label: 'Keyfobs',    href: '/club/admin/keyfobs.html',              scope: 'keyfobs', feature: 'keyfobs' },  // Doug 10/9: under Members (PLAN.md X1)
+      { key: 'keyfobs',      label: 'Keyfobs & Access', href: '/club/admin/keyfobs.html',              scope: 'keyfobs', feature: 'keyfobs' },  // Doug 10/9: under Members (PLAN.md X1)
       { key: 'policies',     label: 'Policies',   href: '/club/admin/policies.html',             scope: 'policies'     },
     ],
     // Money. Previously spread across four top tabs: dues under Members,

@@ -518,11 +518,11 @@ function taskRank(kind) {
     <section class="card gate" id="gate-card">
       <div class="gate-top">
         <div class="gi">🚪</div>
-        <div class="gt">${manyDoors ? 'Gates and doors' : escapeHtml(doors[0].name)}${home.gate.online ? '<small>● Online</small>' : '<small class="off">Remote unlock is offline right now. Keyfobs still work.</small>'}<small id="gate-feedback" style="color:var(--muted)"></small></div>
-        ${home.gate.online && !manyDoors ? doorBtn(doors[0], 'Unlock now') : ''}
+        <div class="gt">${manyDoors ? 'Gates and doors' : escapeHtml(doors[0].name)}${home.gate.closed ? `<small class="off">${escapeHtml(home.gate.closed)}</small>` : home.gate.online ? '<small>● Online</small>' : '<small class="off">Remote unlock is offline right now. Keyfobs still work.</small>'}<small id="gate-feedback" style="color:var(--muted)"></small></div>
+        ${home.gate.online && !home.gate.closed && !manyDoors ? doorBtn(doors[0], 'Unlock now') : ''}
         <button type="button" class="hbtn ghost" id="passes-open" style="padding:7px 12px;font-size:12.5px">Passes</button>
       </div>
-      ${home.gate.online && manyDoors ? `<div class="doors">${doors.map(d => doorBtn(d, d.name)).join('')}</div>` : ''}
+      ${home.gate.online && !home.gate.closed && manyDoors ? `<div class="doors">${doors.map(d => doorBtn(d, d.name)).join('')}</div>` : ''}
     </section>` : '<section class="card gate" id="gate-card" style="display:none"></section>';
 
   // ── Needs you: their tasks, one button each ──

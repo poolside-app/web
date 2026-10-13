@@ -322,6 +322,16 @@
             </span>
           </span>
         </label>
+        <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:12px">
+          <input type="checkbox" id="edit-auto-keyfob" style="width:auto;margin-top:3px">
+          <span>
+            <span style="font-weight:600;font-size:13px">Auto keyfob activations</span>
+            <span style="display:block;font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px">
+              Every night, puts this club's keyfobs on its doors without anyone tapping Send (PLAN.md AS4).
+              Leave off until its fob list has been audited. The board's "Sync keyfobs now" works either way.
+            </span>
+          </span>
+        </label>
         <div id="edit-fees-waived-reason-wrap" style="display:none;margin-top:10px">
           <label style="font-weight:600;font-size:12px;display:block;margin:0 0 5px">Reason <span style="color:var(--red,#b91c1c)">*</span></label>
           <input id="edit-fees-waived-reason" type="text" maxlength="200"
@@ -595,6 +605,7 @@
     document.getElementById('edit-notes').value = t.notes || '';
     EDIT_TENANT_BEFORE = t;
     document.getElementById('edit-fees-waived').checked = !!t.platform_fees_waived;
+    document.getElementById('edit-auto-keyfob').checked = !!t.auto_keyfob_sync;
     document.getElementById('edit-fees-waived-reason').value = t.platform_fees_waived_reason || '';
     syncFeeWaiver();
     document.getElementById('edit-plan-label-override').value = t.plan_label_override || '';
@@ -725,9 +736,12 @@
         : `Start charging ${display_name} platform fees again?\n\nDues 1%, programs and parties 1.5%, and members will be charged the payment-plan fee.`;
       if (!confirm(msg)) return;
     }
+    const auto_keyfob_sync = document.getElementById('edit-auto-keyfob').checked;
+    if (auto_keyfob_sync && !(EDIT_TENANT_BEFORE && EDIT_TENANT_BEFORE.auto_keyfob_sync)
+        && !confirm(`Turn on nightly keyfob syncing for ${display_name}?\n\nEvery night Poolside will put its keyfobs on the doors (adding, changing and turning off the fobs it manages) without anyone tapping Send.`)) return;
     btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
     try {
-      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes, plan_label_override, household_cap_override, platform_fees_waived, platform_fees_waived_reason });
+      await callTenantsAdmin('update', { id, display_name, plan, status, custom_domain, notes, plan_label_override, household_cap_override, platform_fees_waived, platform_fees_waived_reason, auto_keyfob_sync });
       closeEditModal();
       await loadTenants();
     } catch (e) {

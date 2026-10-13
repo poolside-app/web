@@ -49,7 +49,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
 import { bridgeOnline } from '../_shared/bridge_health.ts';
 import { findDoor, doorsReady, doorName, remoteDoors, MAIN_GATE } from '../_shared/gate_doors.ts';
-import { loadAccess, validatePass } from '../_shared/access.ts';
+import { loadAccess, validatePass, boardOpenNow } from '../_shared/access.ts';
 import { fmtPoolStamp } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -891,6 +891,12 @@ Deno.serve(async (req) => {
     if (!bridgeOnline(row.bridge_last_seen_at as string | null)) {
       return jsonResponse({ ok: false, error: 'Remote unlock is offline right now. Keyfobs still work.', reason: 'gate_offline' }, 409);
     }
+    // The Board level's hours and dates (PLAN.md AS2): any time unless changed.
+    {
+      const acc = await loadAccess(sb as never, payload.tid);
+      const b = boardOpenNow(acc.config, acc.tz, new Date());
+      if (!b.open) return jsonResponse({ ok: false, error: b.message, reason: 'board_closed' }, 409);
+    }
     // One tap at a time per door, and never a pile-up behind a slow bridge.
     const since = new Date(Date.now() - 3000).toISOString();
     const [{ count: recent }, { count: waiting }] = await Promise.all([
@@ -934,11 +940,11 @@ Deno.serve(async (req) => {
     if (action === 'pass_list') {
       const since = new Date(Date.now() - 7 * 86400e3).toISOString();
       const { data, error } = await sb.from('access_passes')
-        .select('id, household_id, doors, starts_at, ends_at, ended_at, note, source_kind, created_by, created_at')
+        .select('id, household_id, guest_name, doors, starts_at, ends_at, ended_at, note, source_kind, created_by, created_at, texted_at')
         .eq('tenant_id', payload.tid).gt('ends_at', since).order('starts_at', { ascending: true }).limit(200);
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
       const rows = (data ?? []) as Array<Record<string, unknown>>;
-      const hids = [...new Set(rows.map(r => r.household_id as string))];
+      const hids = [...new Set(rows.map(r => r.household_id as string).filter(Boolean))];
       const aids = [...new Set(rows.map(r => r.created_by as string).filter(Boolean))];
       const [{ data: hhs }, { data: admins }] = await Promise.all([
         hids.length ? sb.from('households').select('id, family_name').in('id', hids) : Promise.resolve({ data: [] }),
@@ -947,35 +953,84 @@ Deno.serve(async (req) => {
       const fam = new Map(((hhs ?? []) as Array<{ id: string; family_name: string }>).map(h => [h.id, h.family_name]));
       const who = new Map(((admins ?? []) as Array<{ id: string; display_name: string | null; email: string | null }>).map(a => [a.id, a.display_name || a.email]));
       return jsonResponse({ ok: true, doors, tz: acc.tz, passes: rows.map(r => ({
-        ...r, family_name: fam.get(r.household_id as string) ?? 'Family', given_by: who.get(r.created_by as string) ?? null,
+        ...r, family_name: r.household_id ? (fam.get(r.household_id as string) ?? 'Family') : `${r.guest_name ?? 'Guest'} (guest)`, given_by: who.get(r.created_by as string) ?? null,
         door_names: (r.doors as string[]).map(k => doorName(acc.doorsRaw, k)),
       })) });
     }
 
     if (action === 'pass_create') {
-      const hid = String(body.household_id ?? '');
-      const { data: hh } = hid ? await sb.from('households').select('id, family_name')
-        .eq('id', hid).eq('tenant_id', payload.tid).eq('active', true).maybeSingle() : { data: null };
-      if (!hh) return jsonResponse({ ok: false, error: 'Pick a family.' }, 400);
+      // For a member family (pop-up, and a text when "Text it" is ticked), or
+      // for a guest by name and mobile, who's texted a private link that
+      // opens the doors during the pass (PLAN.md AS3).
+      const guest = body.who === 'guest';
+      let hh: { id: string; family_name: string } | null = null;
+      let guestName: string | null = null, guestPhone: string | null = null;
+      if (guest) {
+        guestName = String(body.guest_name ?? '').trim().slice(0, 80) || null;
+        const { toE164 } = await import('../_shared/phone.ts');
+        guestPhone = toE164(String(body.guest_phone ?? ''));
+        if (!guestName) return jsonResponse({ ok: false, error: 'Give their name.' }, 400);
+        if (!guestPhone) return jsonResponse({ ok: false, error: 'Give a mobile number they can get texts on.' }, 400);
+      } else {
+        const hid = String(body.household_id ?? '');
+        const { data } = hid ? await sb.from('households').select('id, family_name')
+          .eq('id', hid).eq('tenant_id', payload.tid).eq('active', true).maybeSingle() : { data: null };
+        hh = data as { id: string; family_name: string } | null;
+        if (!hh) return jsonResponse({ ok: false, error: 'Pick a family.' }, 400);
+      }
       const v = validatePass({ doors: body.doors, starts_at: body.starts_at, ends_at: body.ends_at }, acc.doorsRaw, new Date());
       if (!v.ok) return jsonResponse({ ok: false, error: v.error }, 400);
       if (v.doors.some(k => k !== MAIN_GATE && !doorsReady(acc.bridgeVersion))) {
         return jsonResponse({ ok: false, error: 'The gate computer needs its update before passes can open other doors.' }, 409);
       }
       const note = body.note ? String(body.note).trim().slice(0, 200) || null : null;
+      // A guest's private link; only its sha256 is kept.
+      let token: string | null = null, tokenHash: string | null = null;
+      if (guest) {
+        const raw = crypto.getRandomValues(new Uint8Array(24));
+        token = btoa(String.fromCharCode(...raw)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+        tokenHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
       const { data: pass, error } = await sb.from('access_passes').insert({
-        tenant_id: payload.tid, household_id: hh.id, doors: v.doors, starts_at: v.starts_at, ends_at: v.ends_at, note, created_by: me.id,
-      }).select('id, household_id, doors, starts_at, ends_at, note').single();
+        tenant_id: payload.tid, household_id: hh?.id ?? null, guest_name: guestName, guest_phone: guestPhone, token_hash: tokenHash,
+        doors: v.doors, starts_at: v.starts_at, ends_at: v.ends_at, note, created_by: me.id,
+      }).select('id, household_id, guest_name, doors, starts_at, ends_at, note').single();
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
       const names = v.doors.map(k => doorName(acc.doorsRaw, k)).join(', ');
-      await sb.from('audit_log').insert({ tenant_id: payload.tid, kind: 'access.pass_given', entity_type: 'household', entity_id: hh.id,
-        summary: `Pass for the ${hh.family_name}: ${names}, ${fmtPoolStamp(v.starts_at, acc.tz)} to ${fmtPoolStamp(v.ends_at, acc.tz)}${note ? ` (${note})` : ''}`,
-        actor_id: me.id, actor_kind: 'tenant_admin' });
-      // A pop-up, so they know the button's there (Doug, 10/7: pop-ups first).
-      const { pushMembers } = await import('../_shared/member_notify.ts');
-      await pushMembers({ tenant_id: payload.tid, household_ids: [hh.id], title: `🔑 You can open the ${names}`,
-        body: `From the app, until ${fmtPoolStamp(v.ends_at, acc.tz)}.${note ? ' ' + note : ''}`, url: '/m/', tag: `pass-${pass.id}` }).catch(() => null);
-      return jsonResponse({ ok: true, pass });
+      const span = `${fmtPoolStamp(v.starts_at, acc.tz)} to ${fmtPoolStamp(v.ends_at, acc.tz)}`;
+      const whoText = hh ? `the ${hh.family_name}` : `${guestName} (guest)`;
+      await sb.from('audit_log').insert({ tenant_id: payload.tid, kind: 'access.pass_given', entity_type: hh ? 'household' : 'access_pass', entity_id: hh?.id ?? pass.id,
+        summary: `Pass for ${whoText}: ${names}, ${span}${note ? ` (${note})` : ''}`, actor_id: me.id, actor_kind: 'tenant_admin' });
+
+      const { data: tenant } = await sb.from('tenants').select('slug, display_name, plan').eq('id', payload.tid).maybeSingle();
+      const club = (tenant?.display_name as string) || 'Your pool';
+      const base = tenant?.slug ? `https://${tenant.slug}.poolsideapp.com` : 'https://poolsideapp.com';
+      const link = token ? `${base}/pass.html?t=${encodeURIComponent(token)}` : null;
+      let texted = false, textError: string | null = null;
+      const { sendSms } = await import('../_shared/send_sms.ts');
+      const text = async (to: string, msg: string) => {
+        const r = await sendSms({ sb: sb as never, tenantId: payload.tid, tenantPlan: (tenant?.plan as string) ?? null, to, body: msg, kind: 'transactional', source: 'gate_admin.pass' });
+        if (r.sent) texted = true; else textError = r.error ?? 'not sent';
+      };
+      if (guest && guestPhone && link) {
+        await text(guestPhone, `${club}: ${guestName}, you have a pass for the ${names}, ${span}. Open it here: ${link}`);
+      } else if (hh) {
+        // A pop-up, so they know the button's there (Doug, 10/7: pop-ups first)…
+        const { pushMembers } = await import('../_shared/member_notify.ts');
+        await pushMembers({ tenant_id: payload.tid, household_ids: [hh.id], title: `🔑 You can open the ${names}`,
+          body: `From the app, until ${fmtPoolStamp(v.ends_at, acc.tz)}.${note ? ' ' + note : ''}`, url: '/m/', tag: `pass-${pass.id}` }).catch(() => null);
+        // …and a text when the board ticks "Text it" (Doug, 10/13).
+        if (body.text === true) {
+          const { data: primary } = await sb.from('household_members').select('phone_e164')
+            .eq('household_id', hh.id).eq('role', 'primary').eq('active', true).not('phone_e164', 'is', null).limit(1).maybeSingle();
+          if (primary?.phone_e164) await text(primary.phone_e164 as string, `${club}: you can open the ${names} from the app, ${span}. ${base}/m/`);
+          else textError = 'no mobile on file for the family';
+        }
+      }
+      if (texted) await sb.from('access_passes').update({ texted_at: new Date().toISOString() }).eq('id', pass.id);
+      // The board sees the guest link too, to share another way if the text doesn't arrive.
+      return jsonResponse({ ok: true, pass, texted, text_error: textError, link });
     }
 
     // pass_end: stops it now; the app's button goes away.

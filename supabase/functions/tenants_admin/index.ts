@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
   // ── list ───────────────────────────────────────────────────────────────
   if (action === 'list') {
     const { data, error } = await sb.from('tenants')
-      .select('id, slug, display_name, custom_domain, status, plan, plan_label_override, household_cap_override, trial_ends_at, stripe_customer_id, notes, created_at, updated_at, platform_fees_waived, platform_fees_waived_reason')
+      .select('id, slug, display_name, custom_domain, status, plan, plan_label_override, household_cap_override, trial_ends_at, stripe_customer_id, notes, created_at, updated_at, platform_fees_waived, platform_fees_waived_reason, auto_keyfob_sync')
       .order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
 
@@ -288,12 +288,27 @@ Deno.serve(async (req) => {
       if (want !== had) waiverChange = want ? 'granted' : 'revoked';
     }
 
+    // "Auto keyfob activations" (PLAN.md AS4, Doug only): the nightly
+    // keyfob sync for this club. Off by default.
+    let autoSyncChange: boolean | null = null;
+    if (body.auto_keyfob_sync !== undefined) {
+      const want = !!body.auto_keyfob_sync;
+      const { data: before } = await sb.from('tenants').select('auto_keyfob_sync').eq('id', id).maybeSingle();
+      patch.auto_keyfob_sync = want;
+      if (want !== !!before?.auto_keyfob_sync) autoSyncChange = want;
+    }
+
     if (Object.keys(patch).length === 0) {
       return jsonResponse({ ok: true, noop: true });
     }
 
     const { data, error } = await sb.from('tenants').update(patch).eq('id', id).select().single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+
+    if (autoSyncChange !== null) {
+      await sb.from('audit_log').insert({ tenant_id: id, kind: autoSyncChange ? 'keyfob.auto_sync_on' : 'keyfob.auto_sync_off',
+        entity_type: 'tenant', entity_id: id, summary: `Auto keyfob activations turned ${autoSyncChange ? 'on' : 'off'}`, actor_kind: 'provider' }).then(() => null, () => null);
+    }
 
     if (waiverChange) {
       try {

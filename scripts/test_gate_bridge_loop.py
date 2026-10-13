@@ -143,6 +143,85 @@ if has_open:
     ok, detail = gb.open_door_udp(controller=423141044, address="10.1.10.153", door=9, make_client=lambda: yes)
     check("a door number outside 1-4 is refused", not ok, detail)
 
+# PLAN.md AS4: keyfob sync jobs (bridge 1.4).
+import datetime as dt
+class Rec(types.SimpleNamespace): pass
+class FakeCtl:
+    """Two controllers' cards and time windows, as uhppoted shows them."""
+    def __init__(self, down=()):
+        self.cards = {(423141044, 786777): dict(start=dt.date(2026, 4, 7), end=dt.date(2026, 10, 30), d=[2, 0, 0, 0], pin=1234)}
+        self.profiles = {(423141044, 2): dict(start=dt.date(2025, 4, 7), end=dt.date(2026, 10, 31), days=[True] * 7, s=dt.time(6, 0), e=dt.time(20, 30))}
+        self.down = set(down); self.calls = []
+    def _c(self, c):
+        if c[0] in self.down:
+            self.calls.append(("try", c[0])); raise OSError("timed out")
+        return c[0]
+    def get_card(self, c, n):
+        s_ = self._c(c); self.calls.append(("get_card", s_, n)); x = self.cards.get((s_, n))
+        if not x: return Rec(card_number=0)
+        return Rec(card_number=n, start_date=x["start"], end_date=x["end"], door_1=x["d"][0], door_2=x["d"][1], door_3=x["d"][2], door_4=x["d"][3], pin=x["pin"])
+    def put_card(self, c, n, start, end, d1, d2, d3, d4, pin):
+        s_ = self._c(c); self.calls.append(("put_card", s_, n, start, end, [d1, d2, d3, d4], pin))
+        self.cards[(s_, n)] = dict(start=start, end=end, d=[d1, d2, d3, d4], pin=pin); return Rec(stored=True)
+    def delete_card(self, c, n):
+        s_ = self._c(c); self.calls.append(("delete_card", s_, n)); self.cards.pop((s_, n), None); return Rec(deleted=True)
+    def get_time_profile(self, c, pid):
+        s_ = self._c(c); self.calls.append(("get_time_profile", s_, pid)); x = self.profiles.get((s_, pid))
+        if not x: return Rec(profile_id=0)
+        names = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+        return Rec(profile_id=pid, start_date=x["start"], end_date=x["end"], segment_1_start=x["s"], segment_1_end=x["e"], **dict(zip(names, x["days"])))
+    def set_time_profile(self, c, pid, start, end, mo, tu, we, th, fr, sa, su, s1, e1, s2, e2, s3, e3, linked):
+        s_ = self._c(c); self.calls.append(("set_time_profile", s_, pid, start, end, [mo, tu, we, th, fr, sa, su], s1, e1, s2, e2))
+        self.profiles[(s_, pid)] = dict(start=start, end=end, days=[mo, tu, we, th, fr, sa, su], s=s1, e=e1); return Rec(stored=True)
+
+has_sync = hasattr(gb, "run_sync")
+check("AS4: the bridge has run_sync(job)", has_sync)
+if has_sync:
+    CTLS = [{"serial": 423141044, "address": "10.1.10.153"}, {"serial": 423150481, "address": "10.1.10.173"}]
+    chk = {"id": "s1", "kind": "check", "plan": {"controllers": CTLS,
+        "cards": [{"card": 786777, "controller": 423141044}, {"card": 786777, "controller": 423150481}],
+        "profiles": [{"controller": 423141044, "id": 2}, {"controller": 423150481, "id": 2}]}}
+    fc = FakeCtl(); res, err = gb.run_sync(chk, make_client=lambda: fc)
+    check("AS4 check: a card that's there is read with its dates, doors and PIN", not err and res["cards"][0]["have"] == {"from": "2026-04-07", "to": "2026-10-30", "doors": [2, 0, 0, 0], "pin": 1234}, str(res and res["cards"][0]))
+    check("AS4 check: a card that isn't there reads as none", res["cards"][1]["have"] is None and "error" not in res["cards"][1])
+    check("AS4 check: time windows are read (Monday first, HH:MM)", res["profiles"][0]["have"] == {"from": "2025-04-07", "to": "2026-10-31", "days": [True] * 7, "start": "06:00", "end": "20:30"} and res["profiles"][1]["have"] is None, str(res["profiles"]))
+    check("AS4 check: it only reads (no writes)", not any(c[0] in ("put_card", "delete_card", "set_time_profile") for c in fc.calls))
+    fc2 = FakeCtl(down=[423150481]); many = dict(chk, plan=dict(chk["plan"], cards=[{"card": n, "controller": 423150481} for n in range(1, 8)]))
+    res2, _ = gb.run_sync(many, make_client=lambda: fc2)
+    tries = sum(1 for c in fc2.calls if c == ("try", 423150481))
+    check("AS4 check: a controller that doesn't answer is reported as unreadable (never as empty), and tried only twice", all(e.get("error") for e in res2["cards"]) and tries == 2, f"tries={tries} {res2['cards'][:2]}")
+    send = {"id": "s2", "kind": "send", "plan": {"controllers": CTLS, "ops": [
+        {"op": "put", "controller": 423141044, "card": 786777, "from": "2027-05-23", "to": "2027-10-31", "doors": [2, 0, 0, 0], "pin": 1234},
+        {"op": "put", "controller": 423150481, "card": 786777, "from": "2027-05-23", "to": "2027-10-31", "doors": [0, 0, 2, 2], "pin": 0},
+        {"op": "delete", "controller": 423141044, "card": 700001},
+        {"op": "profile", "controller": 423141044, "id": 2, "from": "2027-05-23", "to": "2027-10-31", "days": [True] * 7, "start": "06:00", "end": "20:30"}]}}
+    fc3 = FakeCtl(); fc3.cards[(423141044, 700001)] = dict(start=dt.date(2026, 4, 7), end=dt.date(2026, 10, 30), d=[2, 0, 0, 0], pin=0)
+    res3, err3 = gb.run_sync(send, make_client=lambda: fc3)
+    puts = [c for c in fc3.calls if c[0] == "put_card"]
+    check("AS4 send: a card is written with its dates, each door's value, and its PIN kept", puts[0][3:] == (dt.date(2027, 5, 23), dt.date(2027, 10, 31), [2, 0, 0, 0], 1234), str(puts[0]))
+    check("AS4 send: a turned-off fob is deleted", ("delete_card", 423141044, 700001) in fc3.calls and (423141044, 700001) not in fc3.cards)
+    check("AS4 send: the Member window is set (dates, days, hours)", any(c[0] == "set_time_profile" and c[2] == 2 and c[6] == dt.time(6, 0) and c[7] == dt.time(20, 30) for c in fc3.calls))
+    check("AS4 send: every change is read back and reported live", not err3 and all(o["ok"] and o["live"] for o in res3["ops"]), str(res3["ops"]))
+    night = dict(send, plan=dict(send["plan"], ops=[{"op": "profile", "controller": 423141044, "id": 4, "from": "2027-05-23", "to": "2027-10-31", "days": [True] * 7, "start": "22:00", "end": "02:00"}]))
+    fc4 = FakeCtl(); gb.run_sync(night, make_client=lambda: fc4)
+    sp = [c for c in fc4.calls if c[0] == "set_time_profile"][0]
+    check("AS4 send: an overnight window becomes two segments", sp[6:10] == (dt.time(22, 0), dt.time(23, 59), dt.time(0, 0), dt.time(2, 0)), str(sp))
+    def no_lib(): raise ImportError("No module named 'uhppoted'")
+    _, err5 = gb.run_sync(chk, make_client=no_lib)
+    check("AS4: without uhppoted it says so", err5 and "uhppoted" in err5)
+
+    class SyncSim(Sim):
+        def cloud(self, action, **extra):
+            if action == "poll" and not getattr(self, "gave", False):
+                self.gave = True; self.calls.append((action, extra))
+                return 200, {"ok": True, "command": None, "sync": chk, "tenant": {}}
+            return Sim.cloud(self, action, **extra)
+    ss = SyncSim(hold=20.0); got = []
+    if "sync_fn" in gb.run_loop.__code__.co_varnames:
+        gb.run_loop(ss.cloud, ss.sleep, ss.clock, ss.unlock, until=60, open_fn=ss.open_door, sync_fn=lambda job: (got.append(job["id"]) or ({"cards": []}, None)))
+    done = [e for a, e in ss.calls if a == "sync_done"]
+    check("AS4 loop: a sync job from the cloud is done and reported (no door opened)", got == ["s1"] and len(done) == 1 and done[0].get("id") == "s1" and ss.unlocks == 0, f"got={got} done={done}")
+
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{'FAILED' if failed else 'PASSED'}: {failed} failed")
 sys.exit(1 if failed else 0)

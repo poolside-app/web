@@ -5,6 +5,9 @@
  * someone volunteers for something and needs to get into a pump room."
  * Any board member gives a family extra doors for a set time; the family
  * opens them from the app until it ends (or the board ends it early). A
+ * pass can also go to someone outside the club by name and mobile: they're
+ * texted a private link (/pass.html) that opens the doors during the pass
+ * (PLAN.md AS3). A
  * paid party gets the party doors for its day by itself. Calls gate_admin
  * pass_list / pass_families / pass_create / pass_end. Times are the pool's
  * (needs /js/pooltime.js).
@@ -56,7 +59,7 @@
       '@media (max-width:520px){.pp-two{grid-template-columns:1fr}}',
       '.pp-doors{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px}',
       '.pp-doors label{display:inline-flex;align-items:center;gap:6px;font-weight:500;color:#0f172a;margin:0;white-space:nowrap}',
-      '.pp-doors input[type=checkbox]{width:auto;margin:0;padding:0}',
+      '.pp-doors input[type=checkbox],.pp-doors input[type=radio]{width:auto;margin:0;padding:0}',
       '.pp-fams{border:1px solid #e5e7eb;border-radius:10px;margin-top:6px;max-height:190px;overflow:auto}',
       '.pp-fams button{display:block;width:100%;text-align:left;border:0;border-top:1px solid #f1f5f9;background:#fff;padding:8px 11px;font:14px Inter,sans-serif;cursor:pointer}',
       '.pp-fams button:first-child{border-top:0}.pp-fams button:hover{background:#f7f3eb}',
@@ -71,7 +74,7 @@
 
   function mount(el) {
     css();
-    var st = { passes: [], doors: [], families: null, giving: false, picked: null, err: '' };
+    var st = { passes: [], doors: [], families: null, giving: false, picked: null, err: '', who: 'family', given: null };
 
     async function load() {
       var r = await call('pass_list');
@@ -95,9 +98,15 @@
       var from = PoolTime.toInput(new Date().toISOString()).slice(0, 14) + '00';
       var to = PoolTime.toInput(PoolTime.atTime(today, 20, 30).toISOString());
       if (to <= from) to = PoolTime.toInput(new Date(Date.now() + 3 * 3600e3).toISOString());
+      var guest = st.who === 'guest';
       return '<div class="pp-form">'
-        + '<div><label for="pp-fam">Family</label><input id="pp-fam" type="search" autocomplete="off" placeholder="Type a family name or address"'
-        + (st.picked ? ' value="' + esc(st.picked.family_name) + '"' : '') + '><div class="pp-fams" id="pp-fams" style="display:none"></div></div>'
+        + '<div class="pp-doors" role="radiogroup" aria-label="Who"><label><input type="radio" name="pp-who" value="family"' + (guest ? '' : ' checked') + '> A member family</label>'
+        + '<label><input type="radio" name="pp-who" value="guest"' + (guest ? ' checked' : '') + '> Someone else</label></div>'
+        + (guest
+          ? '<div class="pp-two"><div><label for="pp-gname">Their name</label><input id="pp-gname" type="text" maxlength="80" placeholder="Sam (pool tech)"></div>'
+            + '<div><label for="pp-gphone">Their mobile</label><input id="pp-gphone" type="text" inputmode="tel" autocomplete="off" placeholder="(925) 555-0123"></div></div>'
+          : '<div><label for="pp-fam">Family</label><input id="pp-fam" type="search" autocomplete="off" placeholder="Type a family name or address"'
+            + (st.picked ? ' value="' + esc(st.picked.family_name) + '"' : '') + '><div class="pp-fams" id="pp-fams" style="display:none"></div></div>')
         + '<div><label>Doors</label><div class="pp-doors">'
         + (st.doors.length > 1 ? '<label><input type="checkbox" id="pp-all"> <b>All doors</b></label>' : '')
         + st.doors.map(function (d) { return '<label><input type="checkbox" class="pp-door" value="' + esc(d.key) + '"> ' + esc(d.name) + '</label>'; }).join('')
@@ -105,9 +114,21 @@
         + '<div class="pp-two"><div><label for="pp-from">From</label><input id="pp-from" type="datetime-local" value="' + esc(from) + '"></div>'
         + '<div><label for="pp-to">To</label><input id="pp-to" type="datetime-local" value="' + esc(to) + '"></div></div>'
         + '<div><label for="pp-note">Note (optional)</label><input id="pp-note" type="text" maxlength="200" placeholder="Pump room: pool chemicals"></div>'
+        + (guest
+          ? '<div class="pp-lede" style="margin:0">Text it: we\'ll text them a private link that opens these doors during the pass, no app needed. Anyone with the link can use it until it ends.</div>'
+          : '<div class="pp-doors"><label><input type="checkbox" id="pp-text"> Text it to them too (they always get a pop-up)</label></div>')
         + '<div class="pp-err" id="pp-err">' + esc(st.err) + '</div>'
         + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pp-btn go" id="pp-give">Give the pass</button><button type="button" class="pp-btn" id="pp-cancel">Cancel</button></div>'
         + '</div>';
+    }
+
+    function givenHtml() {
+      var g = st.given;
+      if (!g) return '';
+      return '<div class="pp-form" style="background:#f0fdf4;border-color:#bbf7d0">'
+        + '<div><b>Pass given.</b> ' + (g.texted ? 'We texted it.' : g.text_error ? 'The text didn\'t go out (' + esc(g.text_error) + ').' : '') + '</div>'
+        + (g.link ? '<div><label>Their link (to send another way if needed)</label><input type="text" readonly value="' + esc(g.link) + '" onclick="this.select()"></div>' : '')
+        + '<div><button type="button" class="pp-btn" id="pp-given-ok">OK</button></div></div>';
     }
 
     function paint() {
@@ -115,7 +136,7 @@
       var done = st.passes.filter(function (p) { return !(live.indexOf(p) >= 0); });
       el.innerHTML = '<div class="pp-head"><b>Passes</b>' + (st.giving ? '' : '<button type="button" class="pp-btn go" id="pp-new">Give a pass</button>') + '</div>'
         + '<p class="pp-lede">Extra doors for a set time, opened from the family\'s app: a volunteer job, all access for a day. A paid party gets its doors for the day by itself.</p>'
-        + (st.giving ? formHtml() : '')
+        + (st.giving ? formHtml() : '') + givenHtml()
         + (live.length ? '<div class="pp-list">' + live.map(rowHtml).join('') + '</div>' : (st.giving ? '' : '<div class="pp-lede" style="padding:10px 0">No passes right now.</div>'))
         + (done.length ? '<details style="margin-top:8px"><summary style="cursor:pointer;font:600 13px Inter,sans-serif;color:#0a3b5c">Ended this week (' + done.length + ')</summary><div class="pp-list" style="margin-top:6px">' + done.map(rowHtml).join('') + '</div></details>' : '');
       wire();
@@ -138,9 +159,14 @@
           load();
         };
       });
+      var ok = el.querySelector('#pp-given-ok');
+      if (ok) ok.onclick = function () { st.given = null; paint(); };
       if (!st.giving) return;
+      el.querySelectorAll('input[name="pp-who"]').forEach(function (r) {
+        r.onchange = function () { st.who = r.value; st.err = ''; paint(); };
+      });
       var fam = el.querySelector('#pp-fam'), list = el.querySelector('#pp-fams');
-      fam.oninput = function () {
+      if (fam) fam.oninput = function () {
         st.picked = null;
         var q = fam.value.trim().toLowerCase();
         var hits = q ? st.families.filter(function (h) { return (h.family_name || '').toLowerCase().indexOf(q) >= 0 || (h.address || '').toLowerCase().indexOf(q) >= 0; }).slice(0, 8) : [];
@@ -159,14 +185,20 @@
       el.querySelector('#pp-give').onclick = async function () {
         var errEl = el.querySelector('#pp-err');
         var doors = Array.prototype.map.call(el.querySelectorAll('.pp-door:checked'), function (c) { return c.value; });
-        if (!st.picked) { errEl.textContent = 'Pick a family from the list.'; return; }
+        var guest = st.who === 'guest';
+        var who = guest
+          ? { who: 'guest', guest_name: el.querySelector('#pp-gname').value.trim(), guest_phone: el.querySelector('#pp-gphone').value.trim() }
+          : { who: 'family', household_id: st.picked && st.picked.id, text: !!(el.querySelector('#pp-text') || {}).checked };
+        if (guest && (!who.guest_name || !who.guest_phone)) { errEl.textContent = 'Give their name and mobile.'; return; }
+        if (!guest && !st.picked) { errEl.textContent = 'Pick a family from the list.'; return; }
         if (!doors.length) { errEl.textContent = 'Pick at least one door.'; return; }
         var starts = PoolTime.fromInput(el.querySelector('#pp-from').value), ends = PoolTime.fromInput(el.querySelector('#pp-to').value);
         if (!starts || !ends) { errEl.textContent = 'Give a from and a to.'; return; }
         var btn = this; btn.disabled = true; btn.textContent = 'Giving…';
-        var r = await call('pass_create', { household_id: st.picked.id, doors: doors, starts_at: starts, ends_at: ends, note: el.querySelector('#pp-note').value });
+        var r = await call('pass_create', Object.assign(who, { doors: doors, starts_at: starts, ends_at: ends, note: el.querySelector('#pp-note').value }));
         if (!r.ok) { errEl.textContent = r.error || 'Could not give it'; btn.disabled = false; btn.textContent = 'Give the pass'; return; }
-        st.giving = false; st.err = '';
+        st.giving = false; st.err = ''; st.who = 'family';
+        st.given = (r.link || r.texted || r.text_error) ? { link: r.link, texted: r.texted, text_error: r.text_error } : null;
         load();
       };
     }

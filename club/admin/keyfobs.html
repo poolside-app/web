@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="/js/phone-fit.js"></script>
-<title>Keyfobs — Poolside</title>
+<title>Keyfobs &amp; Access — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -131,7 +131,7 @@
 <script src="/js/passes.js"></script>
 
 <main>
-  <h1>Keyfobs</h1>
+  <h1>Keyfobs &amp; Access</h1>
   <p class="lede">Families ask for fobs in the app. A new family's first fob is free; another fob, or a replacement, is paid for in the app before it shows up here. To issue one, program it at the panel, then type the number printed on it. When a fob is lost, turn it off at the panel and tap "Turned off".</p>
 
   <div id="off-wrap" style="display:none">
@@ -168,6 +168,10 @@
   <h2>Access</h2>
   <p class="lede" style="margin-top:-4px">Which doors each kind of fob opens, and when. The member app's Unlock follows the Member hours now; keyfobs will once Poolside updates the panels.</p>
   <div id="access-host"><div class="empty">Loading…</div></div>
+
+  <h2>Keyfob sync</h2>
+  <p class="lede" style="margin-top:-4px">Puts Poolside's keyfobs on the doors: new fobs, turned-off and lost fobs, and the hours and dates above. It checks first and shows you what would change; nothing is written until you tap Send. Cards Poolside doesn't manage are never touched, and the doors keep working while it runs.</p>
+  <div id="sync-host"><div class="empty">Loading…</div></div>
 
   <h2>Settings</h2>
   <div class="card">
@@ -302,6 +306,7 @@ function paint() {
       <div class="qact"><button class="btn btn-sm btn-ghost" onclick="cancelRequest('${escapeAttr(f.id)}')">Cancel request</button></div></div>`).join('')}</div>` : '';
   paintAll();
   paintAccess();
+  if (!document.getElementById('sync-host').dataset.on) { document.getElementById('sync-host').dataset.on = '1'; loadSync(); }
   // Passes (PLAN.md AR4): shared with the board home; once, when the club has doors to open.
   const ph = document.getElementById('passes-host');
   if (!ph.dataset.on && DATA.access && DATA.access.doors.some(d => d.remote)) { ph.dataset.on = '1'; PoolsidePasses.mount(ph); }
@@ -361,8 +366,8 @@ function paintAccess() {
         <div class="rowset">${DAYS.map((d, i) => `<label><input type="checkbox" data-day="${i}"${l.days.includes(i) ? ' checked' : ''}> ${d}</label>`).join('')}</div>
         <div class="m">Hours (leave both empty for any time)</div>
         <div class="times" style="margin:6px 0 10px"><input type="time" data-f="start" value="${escapeAttr(l.start || '')}"> to <input type="time" data-f="end" value="${escapeAttr(l.end || '')}"></div>
-        <div class="m">Last day (empty for no end)</div>
-        <div class="times" style="margin:6px 0 4px"><input type="date" data-f="until" value="${escapeAttr(l.until || '')}"></div>
+        <div class="m">First and last day (empty for no limit). Outside them the app says the pool is closed.</div>
+        <div class="times" style="margin:6px 0 4px"><input type="date" data-f="from" value="${escapeAttr(l.from || '')}" aria-label="First day"> to <input type="date" data-f="until" value="${escapeAttr(l.until || '')}" aria-label="Last day"></div>
       </details>
     </div>`).join('') + `
     <div class="card">
@@ -381,6 +386,7 @@ async function saveAccess() {
     days: [...c.querySelectorAll('[data-day]:checked')].map(x => Number(x.dataset.day)),
     start: c.querySelector('[data-f="start"]').value || null,
     end: c.querySelector('[data-f="end"]').value || null,
+    from: c.querySelector('[data-f="from"]').value || null,
     until: c.querySelector('[data-f="until"]').value || null,
   }));
   const party_doors = [...document.querySelectorAll('#party-doors input:checked')].map(x => x.value);
@@ -400,6 +406,70 @@ async function setLevel(id, level) {
   const f = DATA.fobs.find(x => x.id === id); if (f) f.level = level;
   toast('Level changed.');
   paintAccess();
+}
+
+// ── Keyfob sync (PLAN.md AS4): check first, then send ─────────────────
+// Doug, 10/13: "i also want a manual dump button in case something on the
+// keyfob side". Nightly only when Poolside turns on Auto keyfob activations.
+let SYNC_TIMER = null;
+const when = iso => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+async function loadSync() {
+  const host = document.getElementById('sync-host');
+  let r;
+  try { r = await call('sync_status'); } catch (e) { host.innerHTML = `<div class="empty" style="color:var(--red)">${escapeHtml(e.message)}</div>`; return; }
+  if (!r.ok) { host.innerHTML = `<div class="empty">${escapeHtml(r.error || 'Could not load')}</div>`; return; }
+  const jobs = r.jobs || [];
+  const running = jobs.find(j => j.status === 'pending' || j.status === 'in_flight');
+  const lastSend = jobs.find(j => j.kind === 'send' && (j.status === 'done' || j.status === 'failed'));
+  const check = jobs.find(j => j.kind === 'check' && j.status === 'done');
+  const freshCheck = check && (!lastSend || Date.parse(check.completed_at) > Date.parse(lastSend.created_at))
+    && Date.now() - Date.parse(check.completed_at) < 30 * 60000 ? check : null;
+  const failedCheck = jobs[0] && jobs[0].kind === 'check' && jobs[0].status === 'failed' ? jobs[0] : null;
+  const sum = s => s ? [s.add ? `${s.add} to add` : '', s.change ? `${s.change} to change` : '', s.remove ? `${s.remove} to turn off` : '',
+    s.profiles ? 'hours and dates to update' : '', s.unreadable ? `${s.unreadable} couldn't be read` : ''].filter(Boolean).join(' · ') : '';
+  let body = '';
+  if (!r.ready) {
+    body = `<div class="m">The gate computer needs its 1.4 update before Poolside can sync keyfobs${r.bridge_version ? ` (it has ${escapeHtml(r.bridge_version.replace('-poolside', ''))})` : ''}.</div>`;
+  } else if (running) {
+    body = `<div class="t">${running.kind === 'check' ? 'Reading the doors…' : 'Sending to the doors…'}</div>
+      <div class="m">${running.status === 'pending' ? 'The gate computer picks it up within 2 minutes.' : 'The gate computer is on it. A minute or two.'}</div>`;
+  } else if (freshCheck) {
+    const s = freshCheck.result && freshCheck.result.summary;
+    const n = (freshCheck.result && freshCheck.result.ops) || 0;
+    body = n
+      ? `<div class="t">${escapeHtml(sum(s))}</div>
+         <div class="m">Read ${escapeHtml(when(freshCheck.completed_at))}.${s && s.unchanged ? ` ${s.unchanged} already match.` : ''}</div>
+         <details style="margin-top:8px"><summary style="cursor:pointer;font:600 12.5px Inter;color:var(--blue)">See each change</summary>
+           <div class="m" style="margin-top:6px;line-height:1.7">${(freshCheck.result.lines || []).map(l => escapeHtml(l)).join('<br>')}</div></details>
+         <div class="issue-row"><button class="btn btn-success" onclick="syncSend('${escapeAttr(freshCheck.id)}', ${n})">Send to the doors</button></div>`
+      : `<div class="t">✓ The doors match Poolside</div><div class="m">Read ${escapeHtml(when(freshCheck.completed_at))}.${s && s.unreadable ? ` ${s.unreadable} couldn't be read.` : ''}</div>`;
+  }
+  const last = lastSend
+    ? `<div class="m" style="margin-top:8px">Last sent ${escapeHtml(when(lastSend.completed_at || lastSend.created_at))}${lastSend.auto ? ' (nightly)' : ''}: ${lastSend.status === 'done'
+        ? `${(lastSend.result.summary || {}).live ?? 0} change${((lastSend.result.summary || {}).live ?? 0) === 1 ? '' : 's'} live on the doors.`
+        : `<span style="color:var(--red)">${escapeHtml(lastSend.error || 'some changes didn\'t take')}</span>`}</div>` : '';
+  host.innerHTML = `<div class="card">
+    ${body}
+    ${failedCheck ? `<div class="m" style="color:var(--red);margin-top:6px">${escapeHtml(failedCheck.error || 'The check didn\'t finish.')}</div>` : ''}
+    ${last}
+    <div class="m" style="margin-top:8px">Nightly sync: ${r.auto ? 'on' : 'off (Poolside turns it on once your fob list is checked)'}.</div>
+    <div class="issue-row"><button class="btn${freshCheck && freshCheck.result && freshCheck.result.ops ? ' btn-ghost' : ''}" onclick="syncCheck()"${!r.ready || running ? ' disabled' : ''}>Sync keyfobs now</button></div>
+  </div>`;
+  clearTimeout(SYNC_TIMER);
+  if (running) SYNC_TIMER = setTimeout(loadSync, 5000);
+}
+async function syncCheck() {
+  const r = await call('sync_check');
+  if (!r.ok) { toast(r.error || 'Could not start it', 'err'); return; }
+  toast('Reading the doors…');
+  loadSync();
+}
+async function syncSend(checkId, n) {
+  if (!confirm(`Send ${n} change${n === 1 ? '' : 's'} to the doors? Each one is read back afterward.`)) return;
+  const r = await call('sync_send', { check_id: checkId });
+  if (!r.ok) { toast(r.error || 'Could not send', 'err'); loadSync(); return; }
+  toast('Sending to the doors…');
+  loadSync();
 }
 
 async function issue(id) {

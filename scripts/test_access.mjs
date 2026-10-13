@@ -140,5 +140,59 @@ const card = between(mi, 'async function loadGateCard', 'function resetUnlockBtn
 check('the member app shows a button for each door they can open now', /r\.doors/.test(card) && /data-door/.test(card) && /callMember\('tap', \{ door/.test(card));
 check('and after hours says when the gate opens', /after_hours/.test(card));
 
+console.log('AS1 · Keyfobs & Access');
+check('the tab is "Keyfobs & Access", only for clubs with keyfobs', /label: 'Keyfobs & Access'[^}]*feature: 'keyfobs'/.test(read('js/admin-subtabs.js')));
+check('the page says so too', /<title>Keyfobs &amp; Access/.test(page) && /<h1>Keyfobs &amp; Access<\/h1>/.test(page));
+
+console.log('AS2 · start and stop dates, and "the pool is closed"');
+if (A) {
+  const c = A.accessConfig({ access: { levels: [{ key: 'member', name: 'Member', doors: ['main_gate'], days: [0,1,2,3,4,5,6], start: '06:00', end: '20:30', from: '2027-05-23', until: '2027-10-31' }] } }, DOORS);
+  const m = c.levels[0];
+  check('a level keeps its first day', m.from === '2027-05-23');
+  check('a level reads with its dates', A.describeLevel(m, DOORS) === 'Main Gate · every day 6:00 AM–8:30 PM · May 23–Oct 31, 2027', A.describeLevel(m, DOORS));
+  const pre = A.levelOpenAt(m, TZ, new Date('2027-04-01T19:00:00Z'));
+  check('before its first day it\'s closed and says when it starts', !pre.open && pre.why === 'not_started' && pre.starts === 'May 23', JSON.stringify(pre));
+  check('saving refuses a first day after the last', !A.cleanAccess({ levels: [{ ...m, from: '2027-11-01' }] }, DOORS).ok);
+  const night = A.memberDoorsNow({ config: c, doorsRaw: DOORS, bridgeVersion: '1.3.0', passes: [], tz: TZ, now: new Date('2027-06-02T05:00:00Z') });   // 10 PM Jun 1
+  check('at night: "The pool is closed. It opens tomorrow at 6:00 AM."', night.gateClosed?.message === 'The pool is closed. It opens tomorrow at 6:00 AM.', night.gateClosed?.message);
+  const early = A.memberDoorsNow({ config: c, doorsRaw: DOORS, bridgeVersion: '1.3.0', passes: [], tz: TZ, now: new Date('2027-06-02T12:00:00Z') });  // 5 AM Jun 2
+  check('before opening: "The pool is closed. It opens at 6:00 AM."', early.gateClosed?.message === 'The pool is closed. It opens at 6:00 AM.', early.gateClosed?.message);
+  const pre2 = A.memberDoorsNow({ config: c, doorsRaw: DOORS, bridgeVersion: '1.3.0', passes: [], tz: TZ, now: new Date('2027-04-01T19:00:00Z') });
+  check('before the season: "Member access starts May 23."', pre2.gateClosed?.message === 'Member access starts May 23.', pre2.gateClosed?.message);
+  const post = A.memberDoorsNow({ config: c, doorsRaw: DOORS, bridgeVersion: '1.3.0', passes: [], tz: TZ, now: new Date('2027-11-05T19:00:00Z') });
+  check('after the last day: "The pool is closed for the season."', post.gateClosed?.message === 'The pool is closed for the season.', post.gateClosed?.message);
+  const off = A.memberDoorsNow({ config: c, doorsRaw: DOORS, bridgeVersion: '1.3.0', passes: [], tz: TZ, now: new Date('2027-06-02T19:00:00Z'), season: { open: false, closed_message: 'See you Memorial Day weekend!' } });
+  check('the Season switch off: closed for the season, with the club\'s message, even at noon', !off.doors.length && off.gateClosed?.message === 'The pool is closed for the season. See you Memorial Day weekend!', off.gateClosed?.message);
+  const wk = { ...m, days: [1, 2, 3, 4, 5] };
+  const sat = A.memberDoorsNow({ config: { ...c, levels: [wk] }, doorsRaw: DOORS, bridgeVersion: '1.3.0', passes: [], tz: TZ, now: new Date('2027-06-05T19:00:00Z') });   // Saturday noon
+  check('a day it\'s closed: "It opens Monday at 6:00 AM."', sat.gateClosed?.message === 'The pool is closed. It opens Monday at 6:00 AM.', sat.gateClosed?.message);
+  const b = A.boardOpenNow({ levels: [{ key: 'board', name: 'Board', doors: ['main_gate'], days: [0,1,2,3,4,5,6], start: null, end: null, from: null, until: null }], party_doors: [] }, TZ, new Date('2027-01-01T08:00:00Z'));
+  check('the board is open any time unless its level says otherwise', b.open === true);
+}
+check('the board unlock follows the Board level', /boardOpenNow\(/.test(between(ga, "action === 'board_unlock'", "action === 'test_unlock'")));
+check('the member app shows why it\'s closed instead of a button', /gc\.message/.test(card));
+
+console.log('AS3 · text a pass, to members and guests');
+const mig3 = readdirSync(new URL('supabase/migrations/', root)).filter(f => /guest_passes|keyfob_sync/.test(f)).map(f => read(`supabase/migrations/${f}`)).join('\n');
+check('a pass can be for a guest: name, mobile, a private link (stored hashed), no family',
+  /access_passes[\s\S]*alter column household_id drop not null/i.test(mig3) && /guest_name/.test(mig3) && /guest_phone/.test(mig3) && /token_hash/.test(mig3));
+check('guest unlocks are logged as guests', /actor_kind[\s\S]*'guest'/.test(mig3));
+if (A) {
+  check('a pass is upcoming, now, or ended', A.passState({ starts_at: '2026-10-13T15:00:00Z', ends_at: '2026-10-14T05:00:00Z' }, new Date('2026-10-13T14:00:00Z')) === 'upcoming'
+    && A.passState({ starts_at: '2026-10-13T15:00:00Z', ends_at: '2026-10-14T05:00:00Z' }, new Date('2026-10-13T16:00:00Z')) === 'now'
+    && A.passState({ starts_at: '2026-10-13T15:00:00Z', ends_at: '2026-10-14T05:00:00Z', ended_at: '2026-10-13T15:30:00Z' }, new Date('2026-10-13T16:00:00Z')) === 'ended');
+}
+const create = between(ga, "if (action === 'pass_create')", '// pass_end');
+check('giving a pass to a guest needs a name and a mobile, and texts them a private link', /guest_name/.test(create) && /normalizePhone|toE164|phoneE164/.test(create) && /pass\.html\?t=/.test(create) && /sendSms\(/.test(create));
+check('a member family gets a text too when "Text it" is ticked', /body\.text/.test(create));
+check('the link is stored only as a hash', /token_hash/.test(create) && /sha256/i.test(create));
+const ugx = read('supabase/functions/unlock_gate/index.ts');
+const guest = between(ugx, "action === 'pass_info'", 'const authHdr');
+check('the guest link works without signing in: info, open, status', /pass_info/.test(ugx) && /pass_tap/.test(ugx) && /pass_status/.test(ugx) && ugx.indexOf("'pass_info'") < ugx.indexOf('verifyMember(token)'));
+check('a guest can only open the pass\'s doors, only during it', /passState\(/.test(ugx) && /actor_kind: 'guest'/.test(ugx));
+const passPage = (() => { try { return read('pass.html'); } catch { return ''; } })();
+check('the guest page shows the doors with Unlock buttons only during the pass', /pass_info/.test(passPage) && /pass_tap/.test(passPage) && /data-door/.test(passPage) && /upcoming/.test(passPage) && /ended/.test(passPage));
+check('the passes panel gives a pass to a family or someone else, and can text it', /Someone else/.test(pj) && /guest_phone/.test(pj) && /Text it/.test(pj));
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

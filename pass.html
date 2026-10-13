@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Your pass — Poolside</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  A guest's pass (PLAN.md AS3, Doug 10/13): a board member gives someone
+  outside the club (landscaper, pool tech, a volunteer who isn't a member)
+  extra doors for a set time, and Poolside texts them this page's private
+  link. During the pass it shows an Unlock button per door; before it, when
+  it starts; after it, that it's over. No app, no sign-in: the link is the
+  key (unlock_gate pass_info / pass_tap / pass_status).
+-->
+<style>
+  :root { --blue:#0a3b5c; --blue-2:#134b73; --sun:#f59e0b; --bg:#fefdfb; --text:#0f172a; --muted:#5d6b81; --green:#16a34a; --red:#dc2626; }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  main { max-width:460px; margin:0 auto; padding:28px 18px 40px; }
+  .club { font:600 14px 'Inter'; color:var(--muted); letter-spacing:.02em; }
+  h1 { font:600 26px 'Fraunces',Georgia,serif; margin:6px 0 4px; letter-spacing:-.015em; }
+  .when { color:var(--muted); font-size:14.5px; }
+  .card { margin-top:18px; background:linear-gradient(135deg,var(--blue),var(--blue-2)); color:#fff; border-radius:18px; padding:20px; text-align:center; box-shadow:0 10px 30px rgba(10,59,92,.18); }
+  .door { display:block; width:100%; margin:10px 0 0; padding:16px 18px; border-radius:14px; border:0; background:var(--sun); color:var(--blue); font:700 17px 'Inter'; cursor:pointer; box-shadow:0 6px 18px rgba(245,158,11,.35); }
+  .door:first-child { margin-top:0; }
+  .door:disabled { opacity:.75; cursor:wait; }
+  .msg { font:600 16px 'Fraunces',Georgia,serif; }
+  .sub { margin-top:6px; font-size:13.5px; color:rgba(255,255,255,.85); }
+  #status { margin-top:12px; min-height:18px; font-size:13.5px; color:rgba(255,255,255,.9); }
+  .note { margin-top:14px; font-size:13.5px; color:var(--muted); }
+  .err { margin-top:30px; padding:16px; border-radius:14px; background:#fee2e2; color:#7f1d1d; font-size:14.5px; }
+  footer { text-align:center; font-size:12px; color:var(--muted); margin-top:30px; }
+</style>
+</head>
+<body>
+<main id="main"><p class="when">Loading your pass…</p></main>
+<footer>Powered by <a href="https://poolsideapp.com" style="color:var(--blue)">Poolside</a></footer>
+<script>
+const FN = 'https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/unlock_gate';
+const T = new URL(location.href).searchParams.get('t') || '';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function call(action, extra = {}) {
+  const r = await fetch(FN, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, t: T, ...extra }) });
+  return r.json();
+}
+let busy = false, refresh = null;
+
+async function load() {
+  const main = document.getElementById('main');
+  let p;
+  try { p = await call('pass_info'); } catch (_) { p = { ok: false, error: 'Couldn\'t reach the pool. Check your connection and try again.' }; }
+  if (!p.ok) { main.innerHTML = `<div class="err">${esc(p.error || 'This pass link isn\'t right.')}</div>`; return; }
+  document.title = `Your pass — ${p.club || 'Poolside'}`;
+  const doors = p.doors.map(d => d.name).join(', ');
+  let body;
+  if (p.state === 'ended') {
+    body = `<div class="msg">This pass has ended</div><div class="sub">Ask the board if you need to get in again.</div>`;
+  } else if (p.state === 'upcoming') {
+    body = `<div class="msg">Your pass starts ${esc(p.starts_text)}</div><div class="sub">The ${esc(doors)} button${p.doors.length === 1 ? ' shows' : 's show'} up here then.</div>`;
+    clearTimeout(refresh); refresh = setTimeout(load, 60000);
+  } else if (!p.online) {
+    body = `<div class="msg">Remote unlock is offline right now</div><div class="sub">The pool's gate connection is down. Try again in a few minutes, or call the board.</div>`;
+    clearTimeout(refresh); refresh = setTimeout(load, 60000);
+  } else {
+    body = p.doors.map(d => `<button type="button" class="door" data-door="${esc(d.key)}" data-label="🔓  ${esc(d.name)}">🔓 &nbsp;${esc(d.name)}</button>`).join('') + '<div id="status"></div>';
+    clearTimeout(refresh); refresh = setTimeout(load, 5 * 60000);   // notices when the pass ends
+  }
+  main.innerHTML = `
+    <div class="club">${esc(p.club || '')}</div>
+    <h1>${p.name ? `Hi ${esc(p.name.split(' ')[0])}` : 'Your pass'}</h1>
+    <div class="when">${esc(doors)} · ${esc(p.starts_text)} to ${esc(p.ends_text)}</div>
+    <div class="card">${body}</div>
+    ${p.note ? `<div class="note">${esc(p.note)}</div>` : ''}`;
+  document.querySelectorAll('[data-door]').forEach(b => b.addEventListener('click', () => tap(b)));
+}
+
+async function tap(btn) {
+  if (busy) return;
+  busy = true;
+  const status = document.getElementById('status');
+  btn.disabled = true; btn.textContent = 'Opening…'; status.textContent = '';
+  try {
+    const r = await call('pass_tap', { door: btn.dataset.door });
+    if (!r.ok) { status.textContent = r.error || 'Couldn\'t open it.'; return done(btn); }
+    poll(btn, r.unlock_id, 0);
+  } catch (_) { status.textContent = 'Network error. Try again.'; done(btn); }
+}
+
+async function poll(btn, id, n) {
+  const status = document.getElementById('status');
+  if (n > 16) { status.textContent = '⚠ The door didn\'t answer. Try again, or call the board.'; return done(btn); }
+  try {
+    const r = await call('pass_status', { id });
+    if (r.ok && r.status === 'done' && r.result_code === 'ok') {
+      status.textContent = '✓ Opened!'; btn.textContent = '✓ Opened'; btn.style.background = 'var(--green)'; btn.style.color = '#fff';
+      return setTimeout(() => done(btn), 4000);
+    }
+    if (r.ok && (r.status === 'failed' || r.status === 'timeout')) { status.textContent = '⚠ ' + (r.result_detail || 'The door didn\'t open.') + ' Try again.'; return done(btn); }
+  } catch (_) { /* keep trying */ }
+  setTimeout(() => poll(btn, id, n + 1), 600);
+}
+
+function done(btn) {
+  busy = false;
+  btn.disabled = false; btn.textContent = btn.dataset.label; btn.style.background = ''; btn.style.color = '';
+}
+
+if (!T) document.getElementById('main').innerHTML = '<div class="err">This pass link is missing its key. Open the link from your text again.</div>';
+else load();
+</script>
+</body>
+</html>

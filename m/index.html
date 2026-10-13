@@ -2414,7 +2414,7 @@ function renderGateEnabled(r) {
                    cursor:pointer;box-shadow:0 6px 18px rgba(245,158,11,.4);
                    letter-spacing:.01em">
       🚪 &nbsp;Unlock the gate
-    </button>` : gc ? `<div style="font-size:13px;color:rgba(255,255,255,.85);margin-bottom:6px">The front gate opens for members${gc.opens ? ` at ${escapeHtml(gc.opens)}` : ''}.</div>` : ''}
+    </button>` : gc ? `<div style="font-size:13px;color:rgba(255,255,255,.85);margin-bottom:6px">${escapeHtml(gc.message || 'The front gate is closed to members right now.')}</div>` : ''}
     ${extra.map(d => `<button type="button" class="gate-door-btn" data-door="${escapeAttr(d.key)}" data-label="🔑  ${escapeAttr(d.name)}"
             style="display:block;width:100%;max-width:360px;margin:10px auto 0;padding:13px 18px;border-radius:12px;border:1.5px solid rgba(255,255,255,.5);
                    background:rgba(255,255,255,.1);color:#fff;font:700 15px 'Inter',sans-serif;cursor:pointer">
@@ -2430,9 +2430,8 @@ function renderGateDisabled(reason, r) {
   const gc = (r && r.gate_closed) || {};
   const messages = {
     // Outside member hours, with no pass (PLAN.md AR3).
-    after_hours:            gc.why === 'ended'
-                              ? { line1: 'Member gate access has ended for the season', line2: 'It comes back when the next season opens.' }
-                              : { line1: `The gate opens for members${gc.opens ? ' at ' + gc.opens : ''}`, line2: `Member hours are ${gc.hours || 'set by the board'}. Your keyfob works the same hours.` },
+    // Closed (PLAN.md AS2): why, and when it opens, so nobody taps a dead button.
+    after_hours:            { line1: gc.message || 'The pool is closed', line2: gc.why === 'season' || gc.why === 'ended' || gc.why === 'not_started' ? '' : `Member hours are ${gc.hours || 'set by the board'}. Your keyfob works the same hours.` },
     member_inactive:        { line1: 'Your membership isn\'t active', line2: 'The membership chair can help you reactivate.',
                               ask: () => openHelp('membership', 'The app says my membership isn\'t active. Can you help me reactivate?') },
     member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'The board member who handles keyfobs can turn it on for you.',
@@ -2446,7 +2445,7 @@ function renderGateDisabled(reason, r) {
     ask: () => openHelp('keyfob', 'I can\'t unlock the gate from the app. Can you help?') };
   document.getElementById('gate-card-body').innerHTML = `
     <div style="font:600 16px 'Fraunces',Georgia,serif;color:#fff">🔒 ${escapeHtml(m.line1)}</div>
-    <div style="margin-top:6px;font-size:13px;color:rgba(255,255,255,.8);line-height:1.5">${escapeHtml(m.line2)}</div>
+    ${m.line2 ? `<div style="margin-top:6px;font-size:13px;color:rgba(255,255,255,.8);line-height:1.5">${escapeHtml(m.line2)}</div>` : ''}
     ${m.ask ? `<button type="button" id="gate-ask-btn" class="btn" style="margin-top:12px;background:#fff;color:#0a3b5c;font-weight:700">🙋 Ask the board</button>` : ''}
   `;
   if (m.ask) document.getElementById('gate-ask-btn').addEventListener('click', m.ask);

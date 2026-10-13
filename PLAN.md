@@ -790,6 +790,36 @@ Steps:
 - Later, with the panel automation (P5): levels and passes go onto the keyfobs themselves (doors, hours, dates on the controllers).
 `node scripts/test_access.mjs` (offline), plus a browser check with made-up data (Keyfobs access and passes, the board home's Passes, the member app's door buttons). Built from `_shared/access.ts`, `js/passes.js`, and the `gate_admin` pass actions.
 
+### AS. Keyfobs & Access: dates, "pool closed", texted passes, the keyfob sync (Doug, 10/13) — ✅ AS1–AS4 built 10/13 (needs bridge 1.4 for the sync)
+Doug: "how can we also update to the access control via app? … board app and the member apps have access at specific times/dates… when the pool is closed, on the app, it should say pool is closed, no access… and why… closed for the season? not open until X time… there should be a start and stop date for the access/fobs… when should you dump to the system… should we dump every night if there is something pending?… i also want a manual dump button".
+
+Writing to the panels doesn't take the doors down. The old program's upload rewrites every card, which causes the blip. Poolside writes only what changed, card by card (put_card), and member hours are one time-window write per controller.
+
+Doug's answers:
+- Rename the tab "Keyfobs & Access", with everything on it, only for clubs with keyfobs.
+- The app and keyfobs follow the same hours and dates.
+- Sync nightly plus a button.
+- Write the sync now with automatic syncing off.
+- Passes can be texted to members and guests.
+- The button checks first, then sends.
+
+Steps:
+- **AS1. The tab.** "Keyfobs & Access" (nav and page), shown only when the club has keyfobs.
+- **AS2. Start and stop dates, and "the pool is closed".** Each level gets a first day as well as a last day.
+  - The member app shows no button while the Member level is closed, only why and when it opens: "The pool is closed for the season" (the Season switch is off, or past the last day, with the club's closed message), "Member access starts May 23", or "The pool is closed. It opens tomorrow at 6:00 AM".
+  - The board home follows the Board level the same way (any time unless changed).
+- **AS3. Text a pass.**
+  - A pass can go to a member family (pop-up, and a text when ticked) or to anyone by name and mobile (a guest: landscaper, pool tech, a volunteer who isn't a member).
+  - A guest's text has a private link (`/pass.html?t=…`) that shows the pass's doors with Unlock buttons only during the pass, with no app or sign-in. The link stops working when the pass ends or is ended.
+  - Every guest unlock is logged with the pass.
+- **AS4. The keyfob sync (P5's writing), "check first, then send".**
+  - "Sync keyfobs now" on Keyfobs & Access asks the gate computer to read both controllers. Poolside then shows what would change for the fobs it manages: fobs to add, ones to change (doors, dates, hours), ones to turn off, and the Member hours window.
+  - Cards Poolside doesn't manage (today's 135, until the import) are never touched.
+  - "Send to the doors" writes exactly those changes, reads each card back, and reports what's live. A card's keypad PIN is kept.
+  - A nightly check-and-send runs only when the "Auto keyfob activations" switch is on (provider admin, off for now).
+  - Bridge 1.4 does the reading and writing. Doug downloads it like 1.3.
+`node scripts/test_access.mjs`, `node scripts/test_keyfob_sync.mjs`, `python3 scripts/test_gate_bridge_loop.py` (all offline), browser checks with made-up data, then a read-only "Check" at Bishop with Doug before any "Send".
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).

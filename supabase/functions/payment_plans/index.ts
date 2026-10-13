@@ -706,6 +706,29 @@ Deno.serve(async (req) => {
       enforced++;
     }
 
+    // 4a. Keyfobs onto the doors, nightly, only for clubs whose "Auto keyfob
+    //     activations" switch is on (provider admin; off by default, PLAN.md
+    //     AS4). A check job; when the gate computer reports, its changes are
+    //     sent by themselves (gate_bridge sync_done). Never two at once.
+    let keyfob_syncs_started = 0;
+    try {
+      const { data: autoClubs } = await sb.from('tenants').select('id').eq('auto_keyfob_sync', true).limit(500);
+      if (autoClubs?.length) {
+        const { syncReady, loadSyncPlan } = await import('../_shared/keyfob_sync.ts');
+        for (const t of autoClubs) {
+          const { data: panel } = await sb.from('gate_panels').select('status, bridge_version').eq('tenant_id', t.id).maybeSingle();
+          if (panel?.status !== 'active' || !syncReady(panel.bridge_version as string | null)) continue;
+          const { count: busy } = await sb.from('keyfob_syncs').select('id', { count: 'exact', head: true })
+            .eq('tenant_id', t.id).in('status', ['pending', 'in_flight']);
+          if (busy) continue;
+          const plan = await loadSyncPlan(sb as never, t.id as string);
+          if (!plan.cards.length && !plan.profiles.length) continue;
+          await sb.from('keyfob_syncs').insert({ tenant_id: t.id, kind: 'check', auto: true, plan });
+          keyfob_syncs_started++;
+        }
+      }
+    } catch (e) { console.error('keyfob sync (non-fatal):', (e as Error).message); }
+
     // 4b. Parties approved but not paid within the club's hold (2 days) give
     //     their time back (PLAN.md O). A Venmo the family says they sent
     //     holds it until the board confirms. The family is told.
@@ -886,7 +909,7 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, approval, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, approval, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';

@@ -36,6 +36,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { pollWait, MAX_WAIT_SEC, LOOK_EVERY_MS, STAMP_EVERY_MS } from '../_shared/bridge_poll.ts';
 import { doorsReady, findDoor, commandDoor, OLD_BRIDGE_DOORS } from '../_shared/gate_doors.ts';
+import { syncReady, diffSync, type SyncPlan, type SyncHave } from '../_shared/keyfob_sync.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -133,12 +134,20 @@ Deno.serve(async (req) => {
     const deadline = Date.now() + pollWait(body.wait) * 1000;
     let pickedUp = await claim();
     let stamped = Date.now();
-    while (!pickedUp?.length && Date.now() < deadline) {
+    // A keyfob sync waiting (PLAN.md AS4, bridge 1.4) also ends the hold;
+    // looked for every 5 seconds.
+    const canSync = syncReady(heartbeatVersion);
+    const syncWaiting = async () => (await sb.from('keyfob_syncs').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', panel.tenant_id).eq('status', 'pending')).count ?? 0;
+    let looks = 0;
+    if (!pickedUp?.length && canSync && await syncWaiting()) looks = -1;
+    while (!pickedUp?.length && Date.now() < deadline && looks >= 0) {
       await new Promise(r => setTimeout(r, LOOK_EVERY_MS));
       if (req.signal.aborted) return new Response(null, { status: 499 });
       const { count } = await mine(sb.from('gate_unlocks').select('id', { count: 'exact', head: true })
         .eq('tenant_id', panel.tenant_id).eq('status', 'pending'));
       if (count) pickedUp = await claim();
+      else if (canSync && ++looks % 5 === 0 && await syncWaiting()) break;
       // A 2-minute hold (PLAN.md AO1): the bridge is still on the line, so
       // keep "last seen" as fresh as when it checked in every 20 seconds.
       else if (Date.now() - stamped >= STAMP_EVERY_MS) {
@@ -164,9 +173,22 @@ Deno.serve(async (req) => {
       door: commandDoor(findDoor(panel.doors, pickedUp[0].door_key)),
     } : null;
 
+    // Doors first: a keyfob sync is handed out only when no unlock is waiting,
+    // and only to a 1.4 bridge (PLAN.md AS4).
+    let sync: { id: string; kind: string; plan: unknown } | null = null;
+    if (!command && syncReady(heartbeatVersion)) {
+      const { data: claimed } = await sb.from('keyfob_syncs')
+        .update({ status: 'in_flight', picked_up_at: new Date().toISOString() })
+        .eq('tenant_id', panel.tenant_id).eq('status', 'pending')
+        .order('created_at', { ascending: true }).limit(1)
+        .select('id, kind, plan');
+      if (claimed?.length) sync = { id: claimed[0].id as string, kind: claimed[0].kind as string, plan: claimed[0].plan };
+    }
+
     return jsonResponse({
       ok: true,
       command,
+      sync,
       tenant: {
         // The bridge needs panel info to actually execute the command.
         panel_type: panel.panel_type,
@@ -197,6 +219,40 @@ Deno.serve(async (req) => {
       result_detail: resultDetail,
     }).eq('id', id).eq('tenant_id', panel.tenant_id);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    return jsonResponse({ ok: true });
+  }
+
+  // ── sync_done: the gate computer read or wrote the keyfobs (PLAN.md AS4) ──
+  if (action === 'sync_done') {
+    const id = String(body.id ?? '');
+    const { data: job } = await sb.from('keyfob_syncs').select('id, kind, plan, auto, status')
+      .eq('id', id).eq('tenant_id', panel.tenant_id).maybeSingle();
+    if (!job) return jsonResponse({ ok: false, error: 'Unknown sync' }, 404);
+    const result = (body.result ?? {}) as Record<string, unknown>;
+    const now = new Date().toISOString();
+    if (body.error) {
+      await sb.from('keyfob_syncs').update({ status: 'failed', error: String(body.error).slice(0, 500), result, completed_at: now }).eq('id', id);
+      return jsonResponse({ ok: true });
+    }
+    if (job.kind === 'check') {
+      // What to write, worked out here from what it read.
+      const d = diffSync(job.plan as SyncPlan, result as unknown as SyncHave);
+      await sb.from('keyfob_syncs').update({ status: 'done', completed_at: now,
+        result: { have: result, ops: d.ops, summary: d.summary, lines: d.lines } }).eq('id', id);
+      // Automatic (the "Auto keyfob activations" switch is on): send them now.
+      if (job.auto && d.ops.length) {
+        await sb.from('keyfob_syncs').insert({ tenant_id: panel.tenant_id, kind: 'send', auto: true, check_id: id,
+          plan: { controllers: ((job.plan ?? {}) as Record<string, unknown>).controllers ?? [], ops: d.ops } });
+      }
+      return jsonResponse({ ok: true, ops: d.ops.length });
+    }
+    const ops = (result.ops as Array<{ ok?: boolean; live?: boolean }> | undefined) ?? [];
+    const failed = ops.filter(o => !o.ok || o.live === false).length;
+    await sb.from('keyfob_syncs').update({ status: failed ? 'failed' : 'done', completed_at: now,
+      error: failed ? `${failed} change${failed === 1 ? '' : 's'} didn't take. Check again.` : null,
+      result: { ...result, summary: { sent: ops.length, live: ops.length - failed }, failed } }).eq('id', id);
+    await sb.from('audit_log').insert({ tenant_id: panel.tenant_id, kind: 'keyfob.sync_done', entity_type: 'keyfob_sync', entity_id: id,
+      summary: `Keyfobs on the doors: ${ops.length - failed} of ${ops.length} changes live${job.auto ? ' (nightly)' : ''}`, actor_kind: 'system' });
     return jsonResponse({ ok: true });
   }
 

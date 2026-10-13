@@ -41,11 +41,12 @@ function clean(raw: unknown): Door | null {
   const key = typeof r.key === 'string' ? r.key : '';
   const name = typeof r.name === 'string' ? r.name.trim().slice(0, 40) : '';
   if (!KEY_RE.test(key) || !name) return null;
-  if (key === MAIN_GATE) return { key, name };
   const controller = Number(r.controller), door = Number(r.door);
-  if (!Number.isInteger(controller) || controller <= 0) return null;
-  if (!Number.isInteger(door) || door < 1 || door > 4) return null;
-  if (!validAddress(r.address)) return null;
+  const onController = Number.isInteger(controller) && controller > 0 && Number.isInteger(door) && door >= 1 && door <= 4 && validAddress(r.address);
+  // The front gate opens through the panel's web page, so its controller is
+  // optional; it's kept when given, for the keyfob sync (PLAN.md AS4).
+  if (key === MAIN_GATE) return onController ? { key, name, controller, address: r.address as string, door } : { key, name };
+  if (!onController) return null;
   return { key, name, controller, address: r.address as string, door, ...(r.remote === false ? { remote: false as const } : {}) };
 }
 

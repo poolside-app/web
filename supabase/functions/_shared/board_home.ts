@@ -19,6 +19,7 @@ import { poolDayBounds } from './pool_time.ts';
 import { duesTotals } from './dues_totals.ts';
 import { bridgeOnline } from './bridge_health.ts';
 import { openableDoors } from './gate_doors.ts';
+import { accessConfig, boardOpenNow } from './access.ts';
 
 export type HomeCaller = { id: string; isOwner: boolean; scopes: string[] };
 export type HeldPosition = { scopes?: string[] | null };
@@ -284,7 +285,13 @@ export async function loadHome(sb: SupabaseClient, ctx: {
     }),
     quick: quickKeys.map(k => { const q = byKey(QUICK, k); return { key: k, icon: q.icon, label: q.label, href: q.href }; }),
     signup_link: showSignupLink(caller),
-    gate: gateCard(features, panel, caller),
+    // The Board level's hours and dates (PLAN.md AS2): any time unless changed.
+    gate: (() => {
+      const g = gateCard(features, panel, caller);
+      if (!g.show) return g;
+      const b = boardOpenNow(accessConfig(sv, panel?.doors ?? []), tz, new Date());
+      return b.open ? g : { ...g, closed: b.message };
+    })(),
     pool: { opens_at: pool.opens_at ?? null, closes_at: pool.closes_at ?? null, hours_by_day: pool.hours_by_day ?? null,
       location: Number.isFinite(lat) && Number.isFinite(lng) && (lat || lng) ? { lat, lng } : null },
     season_open: seasonSv.open !== false,
