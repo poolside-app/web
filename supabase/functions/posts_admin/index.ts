@@ -21,6 +21,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
+import { keepNewestPosts } from '../_shared/keep_newest.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -117,7 +118,9 @@ Deno.serve(async (req) => {
       notified = r.reached.length;
       await sb.from('posts').update({ notified_at: new Date().toISOString() }).eq('id', data.id);
     }
-    return jsonResponse({ ok: true, post: data, notified });
+    // Only the newest 15 are kept (Doug, 10/12, PLAN.md AQ5); pinned ones stay.
+    const trimmed = await keepNewestPosts(sb, TID, created_by).catch(() => 0);
+    return jsonResponse({ ok: true, post: data, notified, trimmed });
   }
 
   if (action === 'update') {

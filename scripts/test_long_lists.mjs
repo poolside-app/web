@@ -6,6 +6,7 @@
 // Usage: node scripts/test_long_lists.mjs
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { importTs } from './lib/importts.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = rel => readFileSync(new URL(rel, root), 'utf8');
@@ -80,6 +81,55 @@ check('without a search only the count and "Show all families"', /Show all \$\{/
 check('25 at a time, then "Show 25 more"', /PAGE\s*=\s*25/.test(kf) && /Show \$\{Math\.min\(PAGE/.test(all));
 check('"Add a fob a family already has" folds into one line', /<details[^>]*id="add-wrap"/.test(kf));
 check('the buttons on each fob still work (Broken, Turn off)', /swapFob\(/.test(all) && /turnedOff\(/.test(all));
+
+console.log('AQ2 · Hide');
+check('Keyfobs: once the families show, a Hide puts them away', /SHOWN = 0[^"]*paintAll\(\)">Hide</.test(all));
+
+console.log('AQ1 · Households like Keyfobs');
+const mem = read('club/admin/members.html');
+check('the Members page loads the folding rules', /<script src="\/js\/list-fold\.js"><\/script>/.test(mem));
+const hhs = between(mem, 'const Households = (() => {', '\n  function openEdit');
+check('search covers name, address, phone, email and fob number', /placeholder="Search name, address, phone, email or fob/.test(mem) && /h\.address/.test(hhs) && /PoolsideFold\.fobQuery\(/.test(hhs));
+check('counts you tap to filter: families, paid, unpaid, removed', /id="hh-counts"/.test(mem) && /'paid'/.test(hhs) && /'unpaid'/.test(hhs) && /'removed'/.test(hhs));
+check('nothing listed until asked, then 25 at a time, Show 25 more and Hide', /Show all \$\{/.test(hhs) && /PAGE\s*=\s*25/.test(hhs) && /Show \$\{Math\.min\(PAGE/.test(hhs) && />Hide</.test(hhs) && /PoolsideFold\.firstN\(/.test(hhs));
+if (F) {
+  check('a fob number reads either printed way', typeof F.fobQuery === 'function' && F.fobQuery('012,00345') === '786777' && F.fobQuery('0000786777') === '786777' && F.fobQuery('garcia') === null);
+}
+
+console.log('AQ3 · Signups 25 at a time');
+const apps = between(mem, 'const App = (() => {', '\n  function openModal');
+check('Approved, Rejected, Pending and All come 25 at a time; Needs attention shows whole', /STATUS !== 'needs_attention'/.test(apps) && /PoolsideFold\.firstN\(/.test(apps) && /Show \$\{Math\.min\(PAGE/.test(apps));
+check('opening one still steps through the whole list', /openModal\(el\.dataset\.id, all\)/.test(apps));
+
+console.log('AQ4/AQ5 · only the newest photos and announcements are kept');
+let K = null;
+try { K = await importTs(new URL('supabase/functions/_shared/keep_newest.ts', root)); } catch (e) { check('the rules live in _shared/keep_newest.ts', false, e.message); }
+if (K) {
+  check('30 photos and 15 announcements', K.MAX_PHOTOS === 30 && K.MAX_POSTS === 15);
+  const day = i => new Date(Date.UTC(2026, 0, 1) + i * 86400e3).toISOString();
+  const posts = Array.from({ length: 18 }, (_, i) => ({ id: `p${i}`, pinned: i === 1, published_at: day(i) }));   // p17 newest
+  const dropP = K.postsToDrop(posts, 15);
+  check('a 16th announcement deletes the oldest; a pinned one is never deleted', dropP.join() === 'p2,p0' || dropP.sort().join() === 'p0,p2', dropP.join());
+  const photos = [...Array.from({ length: 33 }, (_, i) => ({ id: `a${i}`, status: 'approved', active: true, created_at: day(i) })),
+    { id: 'w1', status: 'pending', active: true, created_at: day(0) }, { id: 'x1', status: 'rejected', active: false, created_at: day(40) },
+    { id: 'h1', status: 'approved', active: false, created_at: day(41) }];
+  const dropF = K.photosToDrop(photos, 30);
+  check('beyond the newest 30 approved photos, the oldest go; waiting ones stay', dropF.includes('a0') && dropF.includes('a2') && !dropF.includes('a3') && !dropF.includes('w1'), dropF.join());
+  check('rejected and hidden photos go too (they only take up space)', dropF.includes('x1') && dropF.includes('h1'));
+  check('a photo\'s file is found from its address, only in the club\'s own bucket',
+    K.storagePathOf('https://sdewylbddkcvidwosgxo.supabase.co/storage/v1/object/public/club-assets/t1/photos/a%20b.jpg') === 't1/photos/a b.jpg'
+    && K.storagePathOf('https://example.com/x.jpg') === null);
+}
+const pa = read('supabase/functions/posts_admin/index.ts');
+check('posting an announcement keeps the newest 15', /keepNewestPosts\(/.test(between(pa, "action === 'create'", "action === 'update'")));
+const ph = read('supabase/functions/photos_admin/index.ts');
+check('adding or approving a photo keeps the newest 30', /keepNewestPhotos\(/.test(between(ph, "action === 'create'", "action === 'update'")) && /keepNewestPhotos\(/.test(between(ph, "action === 'approve'", "action === 'reject'")));
+check('deleting a photo deletes it and its file', /deletePhotos\(/.test(between(ph, "action === 'delete'", 'Unknown action')) && !/active: false, updated_at/.test(between(ph, "action === 'delete'", 'Unknown action')));
+const pp = read('club/admin/photos.html'), mi = read('m/index.html');
+check('photos shrink to 1600 px on upload (board and members)', /<script src="\/js\/photo-shrink\.js"><\/script>/.test(pp) && /PoolsideShrink\.photo\(/.test(between(pp, 'async function uploadOne', '\n}\n'))
+  && /<script src="\/js\/photo-shrink\.js"><\/script>/.test(mi) && /PoolsideShrink\.photo\(/.test(between(mi, 'async function submitPhoto', '\n}\n')));
+check('the Photos page says it keeps the newest 30', /newest 30/.test(pp));
+check('the Announcements page says it keeps the newest 15', /newest 15/.test(read('club/admin/announcements.html')));
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

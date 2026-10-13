@@ -751,6 +751,16 @@ Doug: "with 100+ members the list will be so long.. shouldn't this list minimize
 - The folding rules are in `js/list-fold.js`, shared by both pages.
 `node scripts/test_long_lists.mjs` (offline), then both pages in a browser with 200 made-up fobs and 30 to-dos.
 
+### AQ. The rest of the long lists, and caps on photos and news (Doug, 10/12) — ✅ done 10/12
+Doug: "Under households we have the same problem? … show families under keyfobs works. But should we be able to hide as well? … Are we going to have these problems elsewhere?" Then: announcements "max out at 15"; photos "30? Then they auto delete?"; and "I don't want the web page or PWA or phone to crash if we load up the 150+ households". Answers: households are text, so 171 can't crash a phone; full-size photos can (each one takes about 40 MB of memory to show), and they'd fill the free plan's 1 GB at roughly 250–300. Doug chose to keep only the newest 30 photos and the newest 15 announcements, older ones deleted for good automatically.
+- **AQ1. Households like Keyfobs.** Search by name, address, phone, email or fob number. Counts you tap to filter ("171 families · 150 paid · 21 unpaid", "3 removed" when there are any). The list only shows after a search, a count or "Show all", then 25 at a time with "Show 25 more" and "Hide".
+- **AQ2. Hide.** On Keyfobs' family list, and on Households.
+- **AQ3. Signups 25 at a time** on Approved, Rejected, Pending and All. "Needs attention" is the work and always shows whole.
+- **AQ4. Photos.** Shrunk to 1600 px on upload, on the board's Photos page and the member app. Only the newest 30 approved photos are kept: adding or approving one deletes the rest, with their files, except photos still waiting for approval. Deleting a photo now deletes it and its file (it used to only hide it). The Photos page says so.
+- **AQ5. Announcements: the newest 15.** Posting one deletes older ones beyond the newest 15. Pinned posts are never deleted automatically. The Announcements page says so.
+- Shared rules: `js/list-fold.js` (pages), `_shared/keep_newest.ts` (which posts and photos go).
+`node scripts/test_long_lists.mjs` (offline), then the pages in a browser with made-up data, then one live post and photo check.
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).

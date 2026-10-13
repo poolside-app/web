@@ -15,13 +15,17 @@
 //   { action: 'update', id, caption?, sort_order?, active? }
 //     → { ok, photo }
 //
-//   { action: 'delete', id }      // soft delete (active=false)
+//   { action: 'delete', id }      // deletes the photo and its file (PLAN.md AQ4)
 //     → { ok }
+//
+// Only the newest 30 approved photos are kept: create and approve delete
+// the rest (_shared/keep_newest.ts).
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
+import { keepNewestPhotos, deletePhotos } from '../_shared/keep_newest.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -125,7 +129,9 @@ Deno.serve(async (req) => {
     // Close any pending-approval admin task
     await sb.from('admin_tasks').update({ completed_at: new Date().toISOString(), completed_by: approved_by })
       .eq('tenant_id', TID).eq('source_kind', 'photo').eq('source_id', id).is('completed_at', null);
-    return jsonResponse({ ok: true, photo: data });
+    // Only the newest 30 are kept (Doug, 10/12, PLAN.md AQ4).
+    const trimmed = await keepNewestPhotos(sb, TID, approved_by).catch(() => 0);
+    return jsonResponse({ ok: true, photo: data, trimmed });
   }
 
   if (action === 'reject') {
@@ -164,7 +170,9 @@ Deno.serve(async (req) => {
       approved_by: created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, photo: data });
+    // Only the newest 30 are kept (Doug, 10/12, PLAN.md AQ4).
+    const trimmed = await keepNewestPhotos(sb, TID, created_by).catch(() => 0);
+    return jsonResponse({ ok: true, photo: data, trimmed });
   }
 
   if (action === 'update') {
@@ -182,13 +190,14 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, photo: data });
   }
 
+  // Delete means gone, file too (PLAN.md AQ4); it used to only hide it.
   if (action === 'delete') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { error } = await sb.from('photos')
-      .update({ active: false, updated_at: new Date().toISOString() })
-      .eq('id', id).eq('tenant_id', TID);
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    try {
+      const n = await deletePhotos(sb, TID, [id]);
+      if (!n) return jsonResponse({ ok: false, error: 'That photo is already gone.' }, 404);
+    } catch (e) { return jsonResponse({ ok: false, error: (e as Error).message }, 500); }
     return jsonResponse({ ok: true });
   }
 

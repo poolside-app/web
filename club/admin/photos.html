@@ -7,6 +7,7 @@
 <title>Photos — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
+<script src="/js/photo-shrink.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -136,6 +137,7 @@
 <main>
   <div class="toolbar">
     <h1>Photos</h1>
+    <p style="font-size:13px;color:var(--muted);margin:6px 0 0">Poolside keeps the newest 30 photos. Adding more deletes the oldest for good, so save any you want to keep.</p>
     <p style="color:var(--muted);font-size:13px;margin:0">First 24 in your chosen order auto-scroll on the public landing page.</p>
   </div>
 
@@ -182,7 +184,6 @@ const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const PHOTOS_URL = `${SUPABASE_URL}/functions/v1/photos_admin`;
 const UPLOAD_URL = `${SUPABASE_URL}/functions/v1/tenant_upload`;
 const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
-const MAX_BYTES = 10 * 1024 * 1024;
 
 let CACHE = [];
 let SELECTED = null;
@@ -302,19 +303,15 @@ async function rejectPending(id) {
 
 // ── Upload ────────────────────────────────────────────────────────────
 async function uploadOne(file) {
-  if (file.size > MAX_BYTES) throw new Error(`${file.name}: too large (max 10 MB)`);
-  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) throw new Error(`${file.name}: not an image`);
-  const base64 = await new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',')[1] || '');
-    r.onerror = () => reject(new Error('Read failed'));
-    r.readAsDataURL(file);
-  });
+  if (!/^image\//.test(file.type)) throw new Error(`${file.name}: not an image`);
+  // Shrunk to 1600 px first (PLAN.md AQ4): a few hundred KB instead of 3–5 MB.
+  let shrunk;
+  try { shrunk = await PoolsideShrink.photo(file); } catch (e) { throw new Error(`${file.name}: ${e.message}`); }
   const t = token();
   const upRes = await fetch(UPLOAD_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
-    body: JSON.stringify({ filename: file.name, content_type: file.type, base64 }),
+    body: JSON.stringify({ filename: shrunk.name, content_type: shrunk.content_type, base64: shrunk.base64 }),
   });
   if (upRes.status === 401) { logout(); throw new Error('Signed out'); }
   const upData = await upRes.json();

@@ -156,6 +156,7 @@
 <script src="/js/admin-subtabs.js"></script>
 <script src="/js/admin-flags.js"></script>
 <script src="/js/focus-highlight.js"></script>
+<script src="/js/list-fold.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 
 <main>
@@ -164,12 +165,13 @@
     <div class="toolbar">
       <h1 id="hh-title">Households</h1>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <input id="hh-search" type="search" placeholder="Search by name, phone, fob…">
+        <input id="hh-search" type="search" placeholder="Search name, address, phone, email or fob…">
         <a href="/club/admin/import.html" class="btn-ghost btn" style="text-decoration:none" title="Import households from a CSV file (Google Sheets / Excel export)">📤 Import CSV</a>
         <button class="btn-ghost btn" onclick="exportCsv()" title="Download all households as CSV for board reports">📥 Export CSV</button>
         <button class="btn" onclick="openCreate()">+ Add household</button>
       </div>
     </div>
+    <div class="filter-row" id="hh-counts" style="margin-bottom:12px"></div>
     <div class="card" id="hh-card"><div class="empty">Loading…</div></div>
   </section>
 
@@ -504,9 +506,26 @@ const Households = (() => {
 
   function primaryOf(h) { return (h.members || []).find(m => m.role === 'primary'); }
 
-  function renderRows(rows) {
+  // 150+ families (PLAN.md AQ1, Doug: "prevent the list from super
+  // growing"): counts you tap, a search, then 25 at a time with Hide.
+  const PAGE = 25;
+  let SHOWN = 0;
+  let VIEW = 'all';
+  const VIEWS = {
+    all:     h => h.active !== false,
+    paid:    h => h.active !== false && !!h.dues_paid_for_year,
+    unpaid:  h => h.active !== false && !h.dues_paid_for_year,
+    removed: h => h.active === false,
+  };
+  const VIEW_LABEL = {
+    all: n => `${n} famil${n === 1 ? 'y' : 'ies'}`, paid: n => `${n} paid`,
+    unpaid: n => `${n} unpaid`, removed: n => `${n} removed`,
+  };
+
+  function renderRows(rows, total) {
     const card = document.getElementById('hh-card');
-    if (!rows.length) { card.innerHTML = `<div class="empty"><h2>No households yet</h2>Add your first household with the button above.</div>`; return; }
+    if (!CACHE.length) { card.innerHTML = `<div class="empty"><h2>No households yet</h2>Add your first household with the button above.</div>`; return; }
+    if (!rows.length) { card.innerHTML = `<div class="empty">No match.</div>`; return; }
     const fmtPaid = (h) => h.dues_paid_for_year
       ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>${h.test_paid ? ' <span class="pill test" title="Paid with a test payment, not real money">🧪 Test</span>' : ''}`
       : `<span class="pill unpaid">Unpaid</span>`;
@@ -516,36 +535,67 @@ const Households = (() => {
         const p = primaryOf(h);
         const cnt = (h.members || []).filter(m => m.active).length;
         return `<tr data-id="${h.id}">
-          <td data-label="Family"><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}</td>
+          <td data-label="Family"><b>${escapeHtml(h.family_name)}</b>${h.active === false ? ' <span class="pill unpaid">Removed</span>' : ''}${h.address ? `<br><span style="font-size:12px;color:var(--muted)">${escapeHtml(h.address)}</span>` : ''}</td>
           <td data-label="Primary">${p ? escapeHtml(p.name) : '<i>—</i>'}<br><span style="font-size:12px;color:var(--muted)">${p?.phone_e164 ? escapeHtml(formatPhone(p.phone_e164)) : ''}</span></td>
           <td data-label="Members">${cnt}</td>
           <td data-label="Level"><span class="pill tier">${escapeHtml(h.tier || 'family')}</span></td>
           <td data-label="Fob">${h.fob_number ? escapeHtml(h.fob_number) : '<i style="color:var(--muted)">—</i>'}</td>
           <td data-label="Dues">${fmtPaid(h)}</td>
         </tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('')}</tbody></table>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;font-size:12.5px;color:var(--muted)">
+        ${total > rows.length ? `<button type="button" class="btn-ghost btn" id="hh-more">Show ${Math.min(PAGE, total - rows.length)} more</button>` : ''}
+        <button type="button" class="btn-ghost btn" id="hh-hide">Hide</button>
+        <span>${rows.length} of ${total}</span>
+      </div>`;
     card.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => openEdit(tr.dataset.id)));
+    document.getElementById('hh-more')?.addEventListener('click', () => { SHOWN = rows.length + PAGE; applySearch(true); });
+    document.getElementById('hh-hide').addEventListener('click', () => { SHOWN = 0; VIEW = 'all'; document.getElementById('hh-search').value = ''; applySearch(true); });
   }
 
-  function applySearch() {
+  function paintCounts() {
+    const box = document.getElementById('hh-counts');
+    const n = k => CACHE.filter(VIEWS[k]).length;
+    const keys = ['all', 'paid', 'unpaid'].concat(n('removed') ? ['removed'] : []);
+    box.innerHTML = CACHE.length ? keys.map(k =>
+      `<button type="button" data-v="${k}" class="${(SHOWN || document.getElementById('hh-search').value.trim()) && VIEW === k ? 'on' : ''}">${VIEW_LABEL[k](n(k))}</button>`).join('') : '';
+    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { VIEW = b.dataset.v; SHOWN = PAGE; applySearch(true); }));
+  }
+
+  // Name, address, anyone in the family (name, phone, email), or a fob
+  // number either way it's printed.
+  function matches(h, q) {
+    if (h.family_name?.toLowerCase().includes(q)) return true;
+    if (h.address?.toLowerCase().includes(q)) return true;
+    const fob = PoolsideFold.fobQuery(q);
+    if (h.fob_number && (h.fob_number.toLowerCase().includes(q) || (fob && String(h.fob_number).split(/[^0-9]+/).some(n => n && String(Number(n)).includes(fob))))) return true;
+    const digits = q.replace(/\D/g, '');
+    return (h.members || []).some(m =>
+      m.name?.toLowerCase().includes(q) ||
+      m.email?.toLowerCase().includes(q) ||
+      (digits.length >= 3 && String(m.phone_e164 || '').replace(/\D/g, '').includes(digits)));
+  }
+
+  function applySearch(keepShown) {
     const q = document.getElementById('hh-search').value.trim().toLowerCase();
-    if (!q) { renderRows(CACHE); return; }
-    const matches = CACHE.filter(h => {
-      if (h.family_name?.toLowerCase().includes(q)) return true;
-      if (h.fob_number?.toLowerCase().includes(q)) return true;
-      return (h.members || []).some(m =>
-        m.name?.toLowerCase().includes(q) ||
-        m.phone_e164?.toLowerCase().includes(q) ||
-        m.email?.toLowerCase().includes(q));
-    });
-    renderRows(matches);
+    // Typing shows matches; clearing the search folds the list back up.
+    if (keepShown !== true) SHOWN = q ? Math.max(SHOWN, PAGE) : 0;
+    paintCounts();
+    const card = document.getElementById('hh-card');
+    if (CACHE.length && !q && !SHOWN) {
+      card.innerHTML = `<div style="padding:14px"><button type="button" class="btn-ghost btn" id="hh-showall">Show all ${CACHE.filter(VIEWS.all).length} families</button></div>`;
+      document.getElementById('hh-showall').addEventListener('click', () => { VIEW = 'all'; SHOWN = PAGE; applySearch(true); });
+      return;
+    }
+    const hits = CACHE.filter(VIEWS[VIEW]).filter(h => !q || matches(h, q));
+    renderRows(PoolsideFold.firstN(hits, q ? Math.max(SHOWN, 50) : SHOWN), hits.length);
   }
 
   async function refresh() {
     const data = await call(HH_URL, 'list');
     if (!data.ok) { document.getElementById('hh-card').innerHTML = `<div class="empty">${escapeHtml(data.error || 'Failed to load')}</div>`; return; }
     CACHE = data.households || [];
-    applySearch();
+    applySearch(true);   // keep what's open after an edit
   }
 
   function openEdit(id) {
@@ -761,11 +811,14 @@ function exportCsv() {
 const App = (() => {
   let STATUS = 'needs_attention';
   let FILTER = '';
+  const PAGE = 25;
+  let SHOWN = PAGE;     // PLAN.md AQ3: long lists 25 at a time
   let YEAR   = null;     // null = "all years"
   let SELECTED = null;
   let CACHE = [];
 
   function applySearch() {
+    SHOWN = PAGE;
     const q = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
     if (!q) { render(CACHE); return; }
     render(CACHE.filter(a =>
@@ -796,6 +849,10 @@ const App = (() => {
       list.innerHTML = `<div class="empty">${STATUS === 'needs_attention' ? '✓ Nothing needs attention — all applications are processed.' : 'No ' + (STATUS === 'all' ? '' : STATUS + ' ') + 'applications.'}</div>`;
       return;
     }
+    // "Needs attention" is the work and always shows whole; the other
+    // filters can run to 150+ (imported families), so 25 at a time.
+    const all = rows;
+    if (STATUS !== 'needs_attention') rows = PoolsideFold.firstN(all, SHOWN);
     list.innerHTML = rows.map(a => {
       const total = (a.num_adults || 0) + (a.num_kids || 0);
       const isPending = a.status === 'pending';
@@ -837,12 +894,14 @@ const App = (() => {
             <div style="text-align:right;font-size:11px;color:var(--muted);min-width:100px">submitted<br>${escapeHtml(new Date(a.created_at).toLocaleDateString())}</div>
           </div>
         </div>`;
-    }).join('');
+    }).join('') + (all.length > rows.length ? `<div style="display:flex;gap:10px;align-items:center;margin:10px 0;font-size:12.5px;color:var(--muted)">
+        <button type="button" class="btn-ghost btn" id="app-more">Show ${Math.min(PAGE, all.length - rows.length)} more</button><span>${rows.length} of ${all.length}</span></div>` : '');
+    document.getElementById('app-more')?.addEventListener('click', () => { SHOWN = rows.length + PAGE; render(all); });
     // Row click → modal, except for clicks inside .row-actions (handled below).
     list.querySelectorAll('.app').forEach(el => {
       el.addEventListener('click', (ev) => {
         if (ev.target.closest('.row-actions')) return;
-        openModal(el.dataset.id, rows);
+        openModal(el.dataset.id, all);
       });
     });
     list.querySelectorAll('.row-actions').forEach(box => {

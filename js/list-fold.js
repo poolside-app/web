@@ -14,6 +14,8 @@
  *   familyRows(fobs, households)   one row per family with its active/off fobs
  *   findFamilies(rows, q)          by family, address or fob number
  *   firstN(rows, n)                the first n (paging)
+ *   fobQuery(q)                    a search that's a fob number, as stored
+ * Households (club/admin/members.html) uses firstN and fobQuery (PLAN.md AQ).
  * ============================================================================= */
 (function () {
   'use strict';
@@ -102,6 +104,14 @@
     return null;
   }
 
+  /** A search that looks like a fob number, as the panel stores it ("012,00345" or "0000786777" -> "786777"), else null. */
+  function fobQuery(q) {
+    var t = String(q || '').trim();
+    var pair = fobNumber(t);
+    if (pair) return pair;
+    return /^\d{3,10}$/.test(t) ? String(Number(t)) : null;
+  }
+
   function findFamilies(rows, q) {
     q = String(q || '').trim().toLowerCase();
     if (!q) return rows || [];
@@ -121,6 +131,6 @@
 
   window.PoolsideFold = {
     groupTodos: groupTodos, todoLabel: todoLabel,
-    workQueue: workQueue, familyRows: familyRows, findFamilies: findFamilies, firstN: firstN,
+    workQueue: workQueue, familyRows: familyRows, findFamilies: findFamilies, firstN: firstN, fobQuery: fobQuery,
   };
 })();

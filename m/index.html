@@ -653,6 +653,7 @@
 <script src="/js/upcoming.js"></script>
 <script src="/js/today.js" defer></script>
 <script src="/js/pool-weather.js"></script>
+<script src="/js/photo-shrink.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
@@ -914,30 +915,23 @@ async function submitPhoto() {
   const fileInput = document.getElementById('photo-file');
   const file = fileInput.files && fileInput.files[0];
   if (!file) { errEl.textContent = 'Pick a photo first.'; errEl.classList.add('show'); return; }
-  if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
-    errEl.textContent = 'JPG, PNG, WebP, or GIF only.'; errEl.classList.add('show'); return;
-  }
-  if (file.size > 8 * 1024 * 1024) {
-    errEl.textContent = 'Image must be 8 MB or less.'; errEl.classList.add('show'); return;
+  if (!/^image\//.test(file.type)) {
+    errEl.textContent = 'Pick a photo.'; errEl.classList.add('show'); return;
   }
   const caption = document.getElementById('photo-caption').value.trim();
   const btn = document.getElementById('photo-submit');
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Uploading…';
   try {
-    const base64 = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result).split(',')[1] || '');
-      r.onerror = () => reject(new Error('Read failed'));
-      r.readAsDataURL(file);
-    });
+    // Shrunk to 1600 px first (PLAN.md AQ4): a few hundred KB instead of 3–5 MB.
+    const shrunk = await PoolsideShrink.photo(file);
     const res = await fetch(AUTH_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
       body: JSON.stringify({
         action: 'submit_photo',
-        content_type: file.type,
-        base64,
+        content_type: shrunk.content_type,
+        base64: shrunk.base64,
         caption: caption || null,
       }),
     });

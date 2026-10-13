@@ -312,8 +312,10 @@ function paintAll() {
           ${f.status === 'active' ? `<span class="acts"><button class="btn btn-sm btn-ghost" onclick="swapFob('${escapeAttr(f.id)}')">Broken</button><button class="btn btn-sm btn-ghost" onclick="turnedOff('${escapeAttr(f.id)}', true)">Turn off</button></span>` : ''}
         </div>`).join('')}</div>
     </div>`;
+  // Show 25 more, or Hide to put them away again (PLAN.md AQ2).
   host.innerHTML = `<div class="qlist">${shown.map(famRow).join('')}</div>`
-    + (hits.length > shown.length ? `<div class="more-row"><button class="btn btn-sm btn-ghost" onclick="SHOWN = ${shown.length} + PAGE; paintAll()">Show ${Math.min(PAGE, hits.length - shown.length)} more</button><span>${shown.length} of ${hits.length}</span></div>` : '');
+    + `<div class="more-row">${hits.length > shown.length ? `<button class="btn btn-sm btn-ghost" onclick="SHOWN = ${shown.length} + PAGE; paintAll()">Show ${Math.min(PAGE, hits.length - shown.length)} more</button>` : ''}`
+    + `<button class="btn btn-sm btn-ghost" onclick="SHOWN = 0; document.getElementById('search').value = ''; paintAll()">Hide</button><span>${shown.length} of ${hits.length}</span></div>`;
 }
 
 async function issue(id) {
