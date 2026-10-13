@@ -761,6 +761,34 @@ Doug: "Under households we have the same problem? … show families under keyfob
 - Shared rules: `js/list-fold.js` (pages), `_shared/keep_newest.ts` (which posts and photos go).
 `node scripts/test_long_lists.mjs` (offline), then the pages in a browser with made-up data, then one live post and photo check.
 
+### AR. Doors, access levels and passes (Doug, 10/13)
+Doug: "Shouldn't we put … when keyfobs are active… dates and times? And what doors? We should have a global doors and members and board access… then maybe a special all access? For a specific length? Like when someone volunteers … and needs to get into a pump room? … when someone has a party, they need to gain access to the snack shack. This will obviously not be at every club."
+
+What Bishop's old keyfob program does today (read 10/13):
+- Two time windows: "Members" every day 6:00 AM–8:30 PM, Apr 7, 2025–Oct 31, 2026, and "Board" any time.
+- 94 people have Main Gate, Mens and Womens on Members hours. 42 have all six doors any time.
+- "Swim Team" and "Pool Help" types exist, but nobody is on them.
+
+Doug's answers:
+- Passes open with the phone now and go on keyfobs later.
+- A paid party gives the host the Snack Shack automatically, from the pool's opening to closing time that day.
+- Members get 6:00 AM–8:30 PM, changeable on the Keyfobs tab.
+- Any board member can give a pass.
+
+Steps:
+- **AR1. The club's doors.** Bishop's list adds Mens and Womens as keyfob-only doors: they're on the controllers, but no remote lock is wired, so they never get an Unlock button.
+- **AR2. Access levels on the Keyfobs tab.** Each level has its doors, days and hours, and the date it ends. Bishop starts with the two it uses:
+  - Member: Main Gate, Mens, Womens, every day 6:00 AM–8:30 PM, until Oct 31.
+  - Board: every door, any time.
+  The board changes hours, doors and end dates there. Every fob shows its level (new families' fobs are Member; the board can set a fob to Board), with its doors, hours and end date. A club without doors sees none of this; a club with one gate has one Member level.
+- **AR3. The member app's Unlock follows the Member level.** Outside its hours it says when the gate opens for members, instead of opening. The board home stays any time.
+- **AR4. Passes.** Any board member, on the Keyfobs tab:
+  - "Give a pass": a family, any doors (all of them for "all access"), from and to dates and times, and a note ("Pump room: pool chemicals").
+  - During the pass, that family's app shows an Unlock button for each of those doors. It ends on its own, and the board can end it early.
+  - Every unlock is logged with the pass.
+- **AR5. Parties.** When a party is paid, its family gets a Snack Shack pass for that day, from the pool's opening to closing time (Settings → the pool's hours). A canceled party loses it.
+- Later, with the panel automation (P5): levels and passes go onto the keyfobs themselves (doors, hours, dates on the controllers).
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).
