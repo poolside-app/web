@@ -743,6 +743,14 @@ Doug: "lets change that and update to once every 5 minutes.. we dont need that q
 - **AO3.** Bridge 1.3: uses `next_wait` (kept between 5 and 130 s), sets each call's time limit from its wait, and retries straight away (no back-off) when a long hold is cut short, since that isn't an outage. Doug installs it with the same admin PowerShell steps as 1.2.
 `node scripts/test_gate_poll.mjs` (offline). ✅ Live 10/12: bridge 1.3 installed; after `gate_bridge` deployed (Supabase's deploy service failed for about 40 minutes first), "last seen" ticked every 30 s across 4 minutes, as a 2-minute hold does (20-second check-ins tick every 20 s). Supabase's function logs had stalled, so the call count is still to read from them later.
 
+### AP. Lists that stay short with 100+ families (Doug, 10/12) — ✅ done 10/12
+Doug: "with 100+ members the list will be so long.. shouldn't this list minimize? How can we prevent the list from super growing and doom scrolling". Two lists grow with the club: the board's "Needs you" (one row per fob to issue, signup, Venmo…) and the Keyfobs page's "All fobs" table (one row per fob, about 205 after the import). Rule: lists show work, not history; history is a lookup. Nothing is deleted, only folded.
+- **AP1. Needs you groups repeats.** Three or more to-dos of the same kind become one row ("🔑 12 keyfobs to issue", "📝 5 signups to review") with one Open button to their page. Tapping the row shows them one by one, each still with Mark done. The rows count toward the 6 shown before "Show N more".
+- **AP2. Keyfobs page: the work first, compact.** Lost fobs to turn off and fobs to issue are one compact entry each, oldest first, the first 10 shown, then "Show N more". "Waiting on payment" folds into one line you open.
+- **AP3. Keyfobs page: all fobs become a lookup.** Search by family, address or fob number (either printed form). Without a search only the count shows ("205 fobs · 171 families") and "Show all families". Then it's one row per family with its fobs and their buttons, 25 at a time. "Add a fob a family already has" folds into one line.
+- The folding rules are in `js/list-fold.js`, shared by both pages.
+`node scripts/test_long_lists.mjs` (offline), then both pages in a browser with 200 made-up fobs and 30 to-dos.
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).

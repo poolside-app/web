@@ -67,6 +67,32 @@
     .hide-sm { display:none; }
   }
   label.f { display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:4px; }
+  /* Short lists with 100+ families (PLAN.md AP): one compact entry each */
+  h2 .count { font:700 12px 'Inter'; background:var(--blue-l); color:var(--blue); border-radius:999px; padding:2px 9px; vertical-align:3px; margin-left:4px; }
+  .qlist { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden; }
+  .qrow { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:10px 14px; border-top:1px solid var(--border); }
+  .qrow:first-child { border-top:0; }
+  .qwho { flex:1; min-width:170px; font-size:14px; }
+  .qwho .m { font-size:12.5px; color:var(--muted); }
+  .qwho .note { margin-top:6px; }
+  .qact { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .qact input { width:160px; padding:7px 10px; }
+  .qlink { background:none; border:0; padding:0; color:var(--blue); font:600 12px 'Inter'; cursor:pointer; }
+  @media (max-width: 560px) { .qwho { min-width:140px; } .qact input { width:112px; } }
+  .fobs { flex:1.4; min-width:240px; display:flex; flex-direction:column; gap:6px; }
+  .fob { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13.5px; }
+  .fob .num { font-weight:600; font-variant-numeric:tabular-nums; }
+  .fob .m { font-size:12px; color:var(--muted); }
+  .fob.off { opacity:.55; }
+  .fob .acts { margin-left:auto; display:flex; gap:6px; }
+  details.fold { margin-bottom:10px; }
+  details.fold > summary { cursor:pointer; list-style:none; font:600 13.5px 'Inter'; color:var(--blue); padding:10px 14px; background:#fff; border:1px solid var(--border); border-radius:var(--r-md); }
+  details.fold > summary::-webkit-details-marker { display:none; }
+  details.fold[open] > summary { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  details.fold > .qlist, details.fold > .card { border-top-left-radius:0; border-top-right-radius:0; margin-top:-1px; }
+  .more-row { display:flex; gap:10px; align-items:center; margin:4px 0 10px; font-size:12.5px; color:var(--muted); }
+  details.more > summary { cursor:pointer; list-style:none; font:600 13px 'Inter'; color:var(--blue); padding:4px 2px 10px; }
+  details.more > summary::-webkit-details-marker { display:none; }
   .set-grid { display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end; }
   @media (max-width: 560px) { .set-grid { grid-template-columns: 1fr; } }
   .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:10px; background:var(--green); color:#fff; font:600 13px 'Inter'; opacity:0; transition:.22s; pointer-events:none; z-index:300; }
@@ -91,6 +117,7 @@
 <div id="admin-subtabs"></div>
 <script src="/js/admin-subtabs.js"></script>
 <script src="/js/admin-flags.js"></script>
+<script src="/js/list-fold.js"></script>
 
 <main>
   <h1>Keyfobs</h1>
@@ -101,25 +128,28 @@
     <div id="off-list"></div>
   </div>
 
-  <h2>🔑 Fobs to issue</h2>
+  <h2>🔑 Fobs to issue <span class="count" id="issue-count" style="display:none"></span></h2>
   <div id="issue-list"><div class="empty">Loading…</div></div>
 
-  <div id="wait-wrap" style="display:none">
-    <h2>⏳ Waiting on payment</h2>
+  <details id="wait-wrap" class="fold" style="display:none">
+    <summary>⏳ <span id="wait-count"></span> waiting on payment</summary>
     <div id="wait-list"></div>
-  </div>
+  </details>
 
   <h2>All fobs</h2>
-  <div class="card">
-    <div class="t">Add a fob a family already has</div>
-    <div class="m" style="margin-bottom:10px">For fobs handed out before Poolside. It's on right away.</div>
-    <div class="add-grid">
-      <div><label class="f" for="add-family">Family</label><select id="add-family"><option value="">Pick a family</option></select></div>
-      <div><label class="f" for="add-number">Number on the fob</label><input id="add-number" inputmode="numeric" autocomplete="off" placeholder="0000786777 or 012,00345"></div>
-      <button class="btn" id="add-btn" onclick="addFob()">Add</button>
+  <p class="lede" id="all-count" style="margin-top:-4px"></p>
+  <details id="add-wrap" class="fold">
+    <summary>＋ Add a fob a family already has</summary>
+    <div class="card">
+      <div class="m" style="margin-bottom:10px">For fobs handed out before Poolside. It's on right away.</div>
+      <div class="add-grid">
+        <div><label class="f" for="add-family">Family</label><select id="add-family"><option value="">Pick a family</option></select></div>
+        <div><label class="f" for="add-number">Number on the fob</label><input id="add-number" inputmode="numeric" autocomplete="off" placeholder="0000786777 or 012,00345"></div>
+        <button class="btn" id="add-btn" onclick="addFob()">Add</button>
+      </div>
     </div>
-  </div>
-  <div class="tools"><input id="search" type="search" placeholder="Search family or number" oninput="paintAll()"></div>
+  </details>
+  <div class="tools"><input id="search" type="search" placeholder="Search family, address or fob number" oninput="SHOWN = this.value.trim() ? PAGE : 0; paintAll()"></div>
   <div id="all-list"><div class="empty">Loading…</div></div>
 
   <h2>Settings</h2>
@@ -203,66 +233,87 @@ async function load() {
   }
 }
 
+// Lists stay short with 100+ families (PLAN.md AP): the work first, oldest
+// first, 10 at a time; every fob is a lookup by family, address or number.
+const WORK_SHOW = 10;
+const PAGE = 25;
+let SHOWN = 0;
+function moreFold(rows, render) {
+  if (rows.length <= WORK_SHOW) return rows.map(render).join('');
+  return rows.slice(0, WORK_SHOW).map(render).join('')
+    + `<details class="more"><summary>Show ${rows.length - WORK_SHOW} more</summary>${rows.slice(WORK_SHOW).map(render).join('')}</details>`;
+}
+
 function paint() {
   const req = DATA.fobs.filter(f => f.status === 'requested');
   // A Venmo the family says they sent is ready to issue: check it came in
   // when you hand the fob over (PLAN.md U1).
-  const ready = req.filter(f => f.included || ['paid', 'none', 'pending_verify'].includes(f.payment_status));
-  const venmo = [];
-  const unpaid = req.filter(f => !f.included && f.payment_status === 'unpaid');
-  const lost = DATA.fobs.filter(f => f.status === 'lost');
+  const ready = PoolsideFold.workQueue(req.filter(f => f.included || ['paid', 'none', 'pending_verify'].includes(f.payment_status)));
+  const unpaid = PoolsideFold.workQueue(req.filter(f => !f.included && f.payment_status === 'unpaid'));
+  const lost = PoolsideFold.workQueue(DATA.fobs.filter(f => f.status === 'lost'));
 
   document.getElementById('off-wrap').style.display = lost.length ? '' : 'none';
-  document.getElementById('off-list').innerHTML = lost.map(f => `
-    <div class="card">
-      <div class="t">${who(f)} · fob ${escapeHtml(f.tail)}</div>
-      <div class="m">Reported lost ${escapeHtml(day(f.lost_at))}. Turn it off at the panel so it can't open the gate.</div>
-      <div class="issue-row"><button class="btn btn-sm" onclick="turnedOff('${escapeAttr(f.id)}')">Turned off</button></div>
-    </div>`).join('');
+  document.getElementById('off-list').innerHTML = lost.length ? `<div class="qlist">${moreFold(lost, f => `
+    <div class="qrow">
+      <div class="qwho"><b>${who(f)}</b> · fob ${escapeHtml(f.tail)}<div class="m">Reported lost ${escapeHtml(day(f.lost_at))}. Turn it off at the panel so it can't open the gate.</div></div>
+      <div class="qact"><button class="btn btn-sm" onclick="turnedOff('${escapeAttr(f.id)}')">Turned off</button></div>
+    </div>`)}</div>` : '';
 
-  const issueCard = f => `
-    <div class="card">
-      <div class="t">${who(f)} ${payChip(f)}</div>
-      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · asked ${escapeHtml(day(f.requested_at))}</div>
-      ${f.check_note ? `<div class="note">⚠ ${escapeHtml(f.check_note)}</div>` : ''}
-      ${f.payment_status === 'pending_verify' ? `<div class="note">They say they sent ${escapeHtml(money(f.price_cents))} by Venmo. Check it came in before you hand it over; issuing it marks it paid.</div>` : ''}
-      <div class="issue-row">
-        <input id="n-${escapeAttr(f.id)}" inputmode="numeric" autocomplete="off" placeholder="Number on the fob" aria-label="Number on the fob">
+  const issueRow = f => `
+    <div class="qrow">
+      <div class="qwho"><b>${who(f)}</b> ${payChip(f)}
+        <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(day(f.requested_at))}${f.included ? ` · <button class="qlink" onclick="requirePayment('${escapeAttr(f.id)}')" title="Ask them to pay for it">Charge ${escapeHtml(money(DATA.settings.fee_cents))}</button>` : ''}${f.payment_status === 'none' ? ` · <button class="qlink" onclick="cancelRequest('${escapeAttr(f.id)}')" title="Cancel request">Cancel</button>` : ''}</div>
+        ${f.check_note ? `<div class="note">⚠ ${escapeHtml(f.check_note)}</div>` : ''}
+        ${f.payment_status === 'pending_verify' ? `<div class="note">They say they sent ${escapeHtml(money(f.price_cents))} by Venmo. Check it came in before you hand it over; issuing it marks it paid.</div>` : ''}
+      </div>
+      <div class="qact">
+        <input id="n-${escapeAttr(f.id)}" inputmode="numeric" autocomplete="off" placeholder="Fob number" aria-label="Number on the fob">
         <button class="btn btn-sm btn-success" onclick="issue('${escapeAttr(f.id)}')">Issue</button>
-        ${f.included ? `<button class="btn btn-sm btn-ghost" onclick="requirePayment('${escapeAttr(f.id)}')">Ask them to pay ${escapeHtml(money(DATA.settings.fee_cents))}</button>` : ''}
-        ${f.payment_status === 'none' ? `<button class="btn btn-sm btn-ghost" onclick="cancelRequest('${escapeAttr(f.id)}')">Cancel request</button>` : ''}
       </div>
     </div>`;
-  const venmoCard = f => `
-    <div class="card">
-      <div class="t">${who(f)} ${payChip(f)}</div>
-      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · says they sent ${escapeHtml(money(f.price_cents))} by Venmo. Check the club's Venmo, then confirm.</div>
-      <div class="issue-row"><button class="btn btn-sm" onclick="confirmVenmo('${escapeAttr(f.id)}')">Confirm Venmo</button></div>
-    </div>`;
-  const list = [...venmo.map(venmoCard), ...ready.map(issueCard)];
-  document.getElementById('issue-list').innerHTML = list.length ? list.join('') : '<div class="empty">Nothing to issue. Requests from the app show up here once they\'re paid.</div>';
+  const cnt = document.getElementById('issue-count');
+  cnt.textContent = ready.length; cnt.style.display = ready.length > 1 ? '' : 'none';
+  document.getElementById('issue-list').innerHTML = ready.length
+    ? `<div class="qlist">${moreFold(ready, issueRow)}</div>`
+    : '<div class="empty">Nothing to issue. Requests from the app show up here once they\'re paid.</div>';
 
   document.getElementById('wait-wrap').style.display = unpaid.length ? '' : 'none';
-  document.getElementById('wait-list').innerHTML = unpaid.map(f => `
-    <div class="card"><div class="t">${who(f)} ${payChip(f)}</div>
-      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(money(f.price_cents))} · asked ${escapeHtml(day(f.requested_at))}. They pay in the app.</div>
-      <div class="issue-row"><button class="btn btn-sm btn-ghost" onclick="cancelRequest('${escapeAttr(f.id)}')">Cancel request</button></div></div>`).join('');
+  document.getElementById('wait-count').textContent = unpaid.length;
+  document.getElementById('wait-list').innerHTML = unpaid.length ? `<div class="qlist">${unpaid.map(f => `
+    <div class="qrow"><div class="qwho"><b>${who(f)}</b> ${payChip(f)}
+      <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(money(f.price_cents))} · asked ${escapeHtml(day(f.requested_at))}. They pay in the app.</div></div>
+      <div class="qact"><button class="btn btn-sm btn-ghost" onclick="cancelRequest('${escapeAttr(f.id)}')">Cancel request</button></div></div>`).join('')}</div>` : '';
   paintAll();
 }
 
+// Every fob a family has on or turned off: a lookup, one row per family.
 function paintAll() {
-  const q = document.getElementById('search').value.trim().toLowerCase();
-  const rows = DATA.fobs.filter(f => f.status === 'active' || f.status === 'off')
-    .filter(f => !q || (f.family_name || '').toLowerCase().includes(q) || String(f.card_number || '').includes(q));
+  const rows = PoolsideFold.familyRows(DATA.fobs, DATA.households);
+  const q = document.getElementById('search').value.trim();
+  const nFobs = rows.reduce((n, r) => n + r.fobs.length, 0);
+  document.getElementById('all-count').textContent = rows.length
+    ? `${nFobs} fob${nFobs === 1 ? '' : 's'} · ${rows.length} famil${rows.length === 1 ? 'y' : 'ies'}. Search, or show them all.` : '';
   const host = document.getElementById('all-list');
-  if (!rows.length) { host.innerHTML = `<div class="empty">${q ? 'No match.' : 'No fobs yet.'}</div>`; return; }
-  host.innerHTML = `<table><thead><tr><th>Family</th><th>Number</th><th class="hide-sm">How</th><th></th></tr></thead><tbody>${rows.map(f => `
-    <tr${f.status === 'off' ? ' style="opacity:.55"' : ''}>
-      <td>${who(f)}</td>
-      <td>${escapeHtml(String(f.card_number ?? ''))}${f.status === 'off' ? ' <span class="chip lost">Off</span>' : ''}</td>
-      <td class="hide-sm">${escapeHtml(REASON[f.reason] || f.reason)}${f.issued_at ? ' · ' + escapeHtml(day(f.issued_at)) : ''}</td>
-      <td style="text-align:right;white-space:nowrap">${f.status === 'active' ? `<button class="btn btn-sm btn-ghost" onclick="swapFob('${escapeAttr(f.id)}')">Broken</button> <button class="btn btn-sm btn-ghost" onclick="turnedOff('${escapeAttr(f.id)}', true)">Turn off</button>` : ''}</td>
-    </tr>`).join('')}</tbody></table>`;
+  if (!rows.length) { host.innerHTML = '<div class="empty">No fobs yet.</div>'; return; }
+  if (!q && !SHOWN) {
+    host.innerHTML = `<button class="btn btn-ghost" onclick="SHOWN = PAGE; paintAll()">Show all ${rows.length} families</button>`;
+    return;
+  }
+  const hits = PoolsideFold.findFamilies(rows, q);
+  if (!hits.length) { host.innerHTML = '<div class="empty">No match.</div>'; return; }
+  const shown = PoolsideFold.firstN(hits, q ? Math.max(SHOWN, 50) : SHOWN);
+  const famRow = r => `
+    <div class="qrow">
+      <div class="qwho"><b>${escapeHtml(r.family_name)}</b>${r.address ? `<div class="m">${escapeHtml(r.address)}</div>` : ''}</div>
+      <div class="fobs">${r.fobs.map(f => `
+        <div class="fob${f.status === 'off' ? ' off' : ''}">
+          <span class="num">${escapeHtml(String(f.card_number ?? ''))}</span>${f.status === 'off' ? ' <span class="chip lost">Off</span>' : ''}
+          <span class="m">${f.member_name ? escapeHtml(f.member_name) + ' · ' : ''}<span class="hide-sm">${escapeHtml(REASON[f.reason] || f.reason || '')}${f.issued_at ? ' · ' + escapeHtml(day(f.issued_at)) : ''}</span></span>
+          ${f.status === 'active' ? `<span class="acts"><button class="btn btn-sm btn-ghost" onclick="swapFob('${escapeAttr(f.id)}')">Broken</button><button class="btn btn-sm btn-ghost" onclick="turnedOff('${escapeAttr(f.id)}', true)">Turn off</button></span>` : ''}
+        </div>`).join('')}</div>
+    </div>`;
+  host.innerHTML = `<div class="qlist">${shown.map(famRow).join('')}</div>`
+    + (hits.length > shown.length ? `<div class="more-row"><button class="btn btn-sm btn-ghost" onclick="SHOWN = ${shown.length} + PAGE; paintAll()">Show ${Math.min(PAGE, hits.length - shown.length)} more</button><span>${shown.length} of ${hits.length}</span></div>` : '');
 }
 
 async function issue(id) {

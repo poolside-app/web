@@ -128,6 +128,16 @@
   .tt span { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 1px; overflow-wrap: anywhere; }
   .tt .meta { font-size: 11.5px; margin-top: 3px; }
   .tt .meta button { background: none; border: 0; padding: 0; color: var(--blue); font: 600 11.5px 'Inter', sans-serif; cursor: pointer; }
+  /* 3+ to-dos of a kind fold into one row (PLAN.md AP1) */
+  .todo-group { border-top: 1px solid var(--border); }
+  .todo-group:first-child { border-top: 0; }
+  .todo-group > summary { list-style: none; cursor: pointer; border-top: 0; border-radius: 10px; }
+  .todo-group > summary::-webkit-details-marker { display: none; }
+  .todo-group > summary:hover { background: var(--bg-2); }
+  .todo-group:first-child > summary { padding-top: 2px; }
+  .todo-group .tt .more { display: inline; color: var(--blue); font-weight: 600; }
+  .todo-group[open] .tt .more { display: none; }
+  .grp-rows { margin: 0 0 8px 18px; padding-left: 12px; border-left: 3px solid var(--blue-l); }
   .ev { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); align-items: center; }
   .ev:first-child, .sub-h + .ev { border-top: 0; }
   .ev .when { width: 92px; flex: none; font: 600 12.5px 'Inter', sans-serif; color: var(--blue); }
@@ -184,6 +194,7 @@
 <script src="/js/admin-push.js" defer></script>
 <script src="/js/upcoming.js"></script>
 <script src="/js/today.js"></script>
+<script src="/js/list-fold.js"></script>
 <script src="/js/pool-weather.js"></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
@@ -531,12 +542,34 @@ function taskRank(kind) {
         ${t.link_url ? `<a class="hbtn${taskRank(t.kind) < 3 ? '' : ' ghost'}" href="${escapeHtml(t.link_url)}">${look.button}</a>` : ''}
       </div>`;
   };
+  // Three or more of a kind fold into one row with one Open button
+  // (PLAN.md AP1, Doug: "prevent the list from super growing"); tapping it
+  // shows each one, with its own Mark done.
+  const groupRow = g => {
+    const first = g.tasks[0], look = taskLook(first.kind);
+    const links = [...new Set(g.tasks.map(t => String(t.link_url || '')).filter(Boolean))];
+    const paths = [...new Set(links.map(l => l.split('#')[0].split('?')[0]))];
+    const href = links.length === 1 ? links[0] : paths.length === 1 ? paths[0] : '';
+    const oldest = g.tasks.reduce((a, t) => String(t.created_at) < String(a.created_at) ? t : a, first);
+    return `
+      <details class="todo-group">
+        <summary class="todo">
+          <div class="ti ${look.tone}">${look.icon}</div>
+          <div class="tt"><b>${escapeHtml(PoolsideFold.todoLabel(first.kind, g.tasks.length, look.title))}</b>
+            <span>Oldest ${escapeHtml(age(oldest))}<span class="more"> · Show each one</span></span></div>
+          ${href ? `<a class="hbtn${taskRank(first.kind) < 3 ? '' : ' ghost'}" href="${escapeHtml(href)}">Open</a>` : ''}
+        </summary>
+        <div class="grp-rows">${g.tasks.map(todoRow).join('')}</div>
+      </details>`;
+  };
+  const items = PoolsideFold.groupTodos(sorted);
+  const itemHtml = x => x.group ? groupRow(x) : todoRow(x.task);
   const SHOW = 6;
   const needsHtml = `
     <section class="card" id="needs-card">
       <div class="card-h"><h2>Needs you</h2>${tasks.length ? `<span class="count">${tasks.length}</span>` : ''}</div>
-      ${tasks.length ? `<div>${sorted.slice(0, SHOW).map(todoRow).join('')}</div>
-        ${sorted.length > SHOW ? `<details><summary style="cursor:pointer;font:600 13px Inter,sans-serif;color:var(--blue);padding-top:8px">Show ${sorted.length - SHOW} more</summary><div>${sorted.slice(SHOW).map(todoRow).join('')}</div></details>` : ''}`
+      ${tasks.length ? `<div>${items.slice(0, SHOW).map(itemHtml).join('')}</div>
+        ${items.length > SHOW ? `<details><summary style="cursor:pointer;font:600 13px Inter,sans-serif;color:var(--blue);padding-top:8px">Show ${items.length - SHOW} more</summary><div>${items.slice(SHOW).map(itemHtml).join('')}</div></details>` : ''}`
         : '<div class="placeholder">✓ All caught up. Nothing is waiting on you.</div>'}
     </section>`;
 
