@@ -93,7 +93,9 @@ check('it refuses another door until the bridge is 1.2', /doorsReady\([\s\S]{0,3
 check('it records the door', /door_key:\s*door\.key/.test(bu));
 check('the board unlock reads the doors and the bridge version', /select\('[^']*doors[^']*'\)/.test(bu) && /select\('[^']*bridge_version[^']*'\)/.test(bu));
 const ug = read('supabase/functions/unlock_gate/index.ts');
-check('members: the front gate only (unlock_gate never takes a door)', !/door_key|body\.door/.test(ug));
+// Since PLAN.md AR, members open the front gate in member hours and other
+// doors only with a pass: any door they ask for is checked against both.
+check('members: the front gate, other doors only with a pass (unlock_gate checks memberDoorsNow)', /memberDoorsNow\(/.test(ug) && /now\.doors\.find\(d => d\.key === want\)/.test(ug));
 const home = read('club/admin/index.html');
 check('the board home draws a button per door', /home\.gate\.doors/.test(home) && /data-door/.test(home));
 check('a tap sends that door', /action:\s*'board_unlock',\s*door/.test(home));

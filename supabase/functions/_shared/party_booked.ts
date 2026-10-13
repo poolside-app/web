@@ -73,6 +73,15 @@ export function bookedEmailHtml(p: Party, family: string | null, who: Contact, h
  * when the party turns paid (each caller only gets there once).
  */
 export async function partyBookedAlert(sb: SupabaseClient, args: { tenantId: string; partyId: string; how: PaidBy }): Promise<void> {
+  // The family gets the party doors that day (PLAN.md AR5, Bishop: the
+  // Snack Shack, from the pool's opening to closing). Its own try, so it
+  // never stops the alert.
+  try {
+    const { givePartyPass } = await import('./access.ts');
+    await givePartyPass(sb, args.tenantId, args.partyId);
+  } catch (e) {
+    console.error('party pass (non-fatal):', (e as Error).message);
+  }
   try {
     const { data: p } = await sb.from('party_bookings')
       .select('id, title, body, starts_at, ends_at, expected_guests, price_cents, household_id, requested_by')

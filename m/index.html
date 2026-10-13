@@ -2389,30 +2389,50 @@ async function loadGateCard() {
       return;
     }
     if (r.can_unlock) {
-      renderGateEnabled();
+      renderGateEnabled(r);
     } else {
-      renderGateDisabled(r.reason);
+      renderGateDisabled(r.reason, r);
     }
   } catch { /* gate function not deployed → silently leave hidden */ }
 }
 
-function renderGateEnabled() {
+// The front gate in member hours, plus any door a pass opens right now
+// (PLAN.md AR3, AR4). Every button opens its own door.
+function renderGateEnabled(r) {
+  const doors = (r && r.doors && r.doors.length) ? r.doors : [{ key: 'main_gate', name: 'the gate', via: 'member' }];
+  const main = doors.find(d => d.key === 'main_gate');
+  const extra = doors.filter(d => d.key !== 'main_gate');
+  // Ends today: its time; later: its date.
+  const until = d => !d.until ? '' : ` · until ${new Date(d.until) - Date.now() < 20 * 3600e3
+    ? new Date(d.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : new Date(d.until).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+  const gc = r && r.gate_closed;
   document.getElementById('gate-card-body').innerHTML = `
-    <button id="gate-unlock-btn" type="button"
+    ${main ? `<button id="gate-unlock-btn" type="button" data-door="main_gate" data-label="🚪  Unlock the gate"
             style="width:100%;max-width:360px;padding:18px 22px;border-radius:14px;border:0;
                    background:#f59e0b;color:#0a3b5c;font:700 18px 'Inter',sans-serif;
                    cursor:pointer;box-shadow:0 6px 18px rgba(245,158,11,.4);
                    letter-spacing:.01em">
       🚪 &nbsp;Unlock the gate
-    </button>
+    </button>` : gc ? `<div style="font-size:13px;color:rgba(255,255,255,.85);margin-bottom:6px">The front gate opens for members${gc.opens ? ` at ${escapeHtml(gc.opens)}` : ''}.</div>` : ''}
+    ${extra.map(d => `<button type="button" class="gate-door-btn" data-door="${escapeAttr(d.key)}" data-label="🔑  ${escapeAttr(d.name)}"
+            style="display:block;width:100%;max-width:360px;margin:10px auto 0;padding:13px 18px;border-radius:12px;border:1.5px solid rgba(255,255,255,.5);
+                   background:rgba(255,255,255,.1);color:#fff;font:700 15px 'Inter',sans-serif;cursor:pointer">
+      🔑 &nbsp;${escapeHtml(d.name)}<span style="font-weight:500;opacity:.8">${escapeHtml(until(d))}</span>
+    </button>`).join('')}
     <div id="gate-unlock-status" style="margin-top:14px;font-size:13px;color:rgba(255,255,255,.85);min-height:18px"></div>
   `;
-  document.getElementById('gate-unlock-btn').addEventListener('click', tapUnlock);
+  document.querySelectorAll('#gate-card-body [data-door]').forEach(b => b.addEventListener('click', () => tapUnlock(b)));
 }
 
-function renderGateDisabled(reason) {
+function renderGateDisabled(reason, r) {
   // `ask` opens Ask the board with the right topic and a starter message.
+  const gc = (r && r.gate_closed) || {};
   const messages = {
+    // Outside member hours, with no pass (PLAN.md AR3).
+    after_hours:            gc.why === 'ended'
+                              ? { line1: 'Member gate access has ended for the season', line2: 'It comes back when the next season opens.' }
+                              : { line1: `The gate opens for members${gc.opens ? ' at ' + gc.opens : ''}`, line2: `Member hours are ${gc.hours || 'set by the board'}. Your keyfob works the same hours.` },
     member_inactive:        { line1: 'Your membership isn\'t active', line2: 'The membership chair can help you reactivate.',
                               ask: () => openHelp('membership', 'The app says my membership isn\'t active. Can you help me reactivate?') },
     member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'The board member who handles keyfobs can turn it on for you.',
@@ -2433,15 +2453,18 @@ function renderGateDisabled(reason) {
 }
 
 let unlockInFlight = false;
-async function tapUnlock() {
+let unlockBtn = null;
+async function tapUnlock(btnEl) {
   if (unlockInFlight) return;
   unlockInFlight = true;
-  const btn = document.getElementById('gate-unlock-btn');
+  const btn = (btnEl && btnEl.dataset) ? btnEl : document.getElementById('gate-unlock-btn');
+  unlockBtn = btn;
+  const door = (btn && btn.dataset.door) || 'main_gate';
   const status = document.getElementById('gate-unlock-status');
   if (btn) { btn.disabled = true; btn.textContent = '🔓 Opening…'; btn.style.cursor = 'wait'; }
   if (status) status.textContent = '';
   try {
-    const r = await callMember('tap', null, '/functions/v1/unlock_gate');
+    const r = await callMember('tap', { door }, '/functions/v1/unlock_gate');
     if (!r.ok) {
       if (status) status.textContent = r.error || 'Couldn\'t open the gate.';
       resetUnlockBtn();
@@ -2466,9 +2489,10 @@ async function pollUnlock(id, attempt) {
     const r = await callMember('status', { id }, '/functions/v1/unlock_gate');
     if (r.ok) {
       if (r.status === 'done' && r.result_code === 'ok') {
-        if (status) status.textContent = '✓ Gate opened!';
-        const btn = document.getElementById('gate-unlock-btn');
-        if (btn) { btn.textContent = '✓ Gate opened'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; }
+        const btn = unlockBtn || document.getElementById('gate-unlock-btn');
+        const isGate = !btn || btn.dataset.door === 'main_gate';
+        if (status) status.textContent = isGate ? '✓ Gate opened!' : '✓ Opened!';
+        if (btn) { btn.textContent = isGate ? '✓ Gate opened' : '✓ Opened'; btn.style.background = '#16a34a'; btn.style.color = '#fff'; }
         setTimeout(resetUnlockBtn, 4000);
         return;
       }
@@ -2484,8 +2508,15 @@ async function pollUnlock(id, attempt) {
 
 function resetUnlockBtn() {
   unlockInFlight = false;
-  const btn = document.getElementById('gate-unlock-btn');
-  if (btn) { btn.disabled = false; btn.textContent = '🚪  Unlock the gate'; btn.style.cursor = 'pointer'; btn.style.background = '#f59e0b'; btn.style.color = '#0a3b5c'; }
+  const btn = unlockBtn || document.getElementById('gate-unlock-btn');
+  unlockBtn = null;
+  if (!btn) return;
+  btn.disabled = false; btn.style.cursor = 'pointer';
+  if (btn.dataset.door && btn.dataset.door !== 'main_gate') {
+    btn.textContent = btn.dataset.label || 'Open'; btn.style.background = 'rgba(255,255,255,.1)'; btn.style.color = '#fff';
+  } else {
+    btn.textContent = '🚪  Unlock the gate'; btn.style.background = '#f59e0b'; btn.style.color = '#0a3b5c';
+  }
 }
 
 // ── Profile flow ───────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
 import { partyWhen, fmtPoolDate, zoneOrDefault } from '../_shared/pool_time.ts';
+import { endPartyPass } from '../_shared/access.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -365,6 +366,7 @@ Deno.serve(async (req) => {
       .select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     if (!data) return jsonResponse({ ok: false, error: 'Booking not pending' }, 409);
+    await endPartyPass(sb as never, TID, id).catch(() => null);   // PLAN.md AR5
 
     // Close the party.requested admin task — board has decided.
     await sb.from('admin_tasks')
@@ -420,6 +422,9 @@ Deno.serve(async (req) => {
       decided_by,
       updated_at: new Date().toISOString(),
     }).eq('id', id).eq('tenant_id', TID);
+
+    // No more party doors (PLAN.md AR5).
+    await endPartyPass(sb as never, TID, id).catch(() => null);
 
     // If we already materialized an event, soft-delete it so it leaves the calendar.
     if (bk.event_id) {

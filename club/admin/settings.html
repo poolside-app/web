@@ -1834,7 +1834,7 @@ async function loadRecentUnlocks() {
       const who = u.is_test ? '(admin test)' : (u.member_name || (u.admin_name ? `${u.admin_name} (board)` : '?'));
       const status = u.status === 'done' ? '✓' : u.status === 'failed' ? '✗' : u.status === 'timeout' ? '⏱' : '…';
       const detail = u.result_code ? ` · ${u.result_code}` : '';
-      const door = u.door_name ? ` · ${u.door_name}` : '';
+      const door = u.door_name ? ` · ${u.door_name}${u.pass_id ? ' (pass)' : ''}` : '';
       return `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:12.5px"><b>${status}</b> ${escapeHtml(when)} — ${escapeHtml(who)}${escapeHtml(door)}${escapeHtml(detail)}</div>`;
     }).join('');
   } catch { /* ignore */ }

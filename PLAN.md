@@ -761,7 +761,7 @@ Doug: "Under households we have the same problem? … show families under keyfob
 - Shared rules: `js/list-fold.js` (pages), `_shared/keep_newest.ts` (which posts and photos go).
 `node scripts/test_long_lists.mjs` (offline), then the pages in a browser with made-up data, then one live post and photo check.
 
-### AR. Doors, access levels and passes (Doug, 10/13)
+### AR. Doors, access levels and passes (Doug, 10/13) — ✅ AR1–AR5 done 10/13
 Doug: "Shouldn't we put … when keyfobs are active… dates and times? And what doors? We should have a global doors and members and board access… then maybe a special all access? For a specific length? Like when someone volunteers … and needs to get into a pump room? … when someone has a party, they need to gain access to the snack shack. This will obviously not be at every club."
 
 What Bishop's old keyfob program does today (read 10/13):
@@ -788,6 +788,7 @@ Steps:
   - Every unlock is logged with the pass.
 - **AR5. Parties.** When a party is paid, its family gets a Snack Shack pass for that day, from the pool's opening to closing time (Settings → the pool's hours). A canceled party loses it.
 - Later, with the panel automation (P5): levels and passes go onto the keyfobs themselves (doors, hours, dates on the controllers).
+`node scripts/test_access.mjs` (offline), plus a browser check with made-up data (Keyfobs access and passes, the board home's Passes, the member app's door buttons). Built from `_shared/access.ts`, `js/passes.js`, and the `gate_admin` pass actions.
 
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.

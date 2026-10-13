@@ -195,6 +195,7 @@
 <script src="/js/upcoming.js"></script>
 <script src="/js/today.js"></script>
 <script src="/js/list-fold.js"></script>
+<script src="/js/passes.js"></script>
 <script src="/js/pool-weather.js"></script>
 <main id="main">
   <div class="card"><p>Loading…</p></div>
@@ -519,6 +520,7 @@ function taskRank(kind) {
         <div class="gi">🚪</div>
         <div class="gt">${manyDoors ? 'Gates and doors' : escapeHtml(doors[0].name)}${home.gate.online ? '<small>● Online</small>' : '<small class="off">Remote unlock is offline right now. Keyfobs still work.</small>'}<small id="gate-feedback" style="color:var(--muted)"></small></div>
         ${home.gate.online && !manyDoors ? doorBtn(doors[0], 'Unlock now') : ''}
+        <button type="button" class="hbtn ghost" id="passes-open" style="padding:7px 12px;font-size:12.5px">Passes</button>
       </div>
       ${home.gate.online && manyDoors ? `<div class="doors">${doors.map(d => doorBtn(d, d.name)).join('')}</div>` : ''}
     </section>` : '<section class="card gate" id="gate-card" style="display:none"></section>';
@@ -648,6 +650,9 @@ function taskRank(kind) {
     setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
     markApplyLinkShared();
   });
+
+  // Passes (PLAN.md AR4): any board member gives a family extra doors for a set time.
+  document.getElementById('passes-open')?.addEventListener('click', () => PoolsidePasses.open());
 
   // The gate: one tap opens a door.
   document.querySelectorAll('#gate-card [data-door]').forEach(b => b.addEventListener('click', async e => {

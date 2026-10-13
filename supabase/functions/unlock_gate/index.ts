@@ -3,8 +3,10 @@
 // =============================================================================
 // Auth: member JWT. Three actions:
 //
-//   { action: 'tap' }
-//     → validates eligibility, queues an unlock, returns its id
+//   { action: 'tap', door? }
+//     → validates eligibility, queues an unlock, returns its id. `door` is
+//       a door key: the front gate by default; any other only with a pass
+//       (PLAN.md AR4).
 //
 //   { action: 'status', id }
 //     → returns the latest state of an in-flight unlock (member polls this
@@ -12,7 +14,12 @@
 //
 //   { action: 'check' }
 //     → just returns whether THIS member can currently unlock (button
-//       enabled state on the home screen). No queue write.
+//       enabled state on the home screen), the doors they can open now
+//       and the member hours. No queue write.
+//
+// The front gate follows the club's Member level (days, hours, end date;
+// PLAN.md AR3, Bishop 6:00 AM-8:30 PM); a pass opens its doors for its
+// own time, after hours too (_shared/access.ts memberDoorsNow).
 //
 // Eligibility for tap:
 //   - tenant has gate_panels.status = 'active'
@@ -25,6 +32,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { bridgeOnline } from '../_shared/bridge_health.ts';
+import { loadAccess, memberDoorsNow, type Pass } from '../_shared/access.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -85,6 +93,18 @@ async function checkEligibility(
   return { can_unlock: true, reason: 'ok', tenant_active: true };
 }
 
+// The doors this member's family can open from the app right now.
+async function doorsNow(sb: ReturnType<typeof createClient>, payload: MemberPayload) {
+  const { data: m } = await sb.from('household_members').select('household_id').eq('id', payload.sub).maybeSingle();
+  const acc = await loadAccess(sb as never, payload.tid);
+  const nowIso = new Date().toISOString();
+  const { data: passes } = m?.household_id
+    ? await sb.from('access_passes').select('id, doors, starts_at, ends_at, ended_at, note')
+      .eq('tenant_id', payload.tid).eq('household_id', m.household_id).is('ended_at', null).gt('ends_at', nowIso).lte('starts_at', nowIso)
+    : { data: [] };
+  return memberDoorsNow({ config: acc.config, doorsRaw: acc.doorsRaw, bridgeVersion: acc.bridgeVersion, passes: (passes ?? []) as Pass[], tz: acc.tz, now: new Date() });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -102,7 +122,13 @@ Deno.serve(async (req) => {
 
   if (action === 'check') {
     const elig = await checkEligibility(sb, payload);
-    return jsonResponse({ ok: true, ...elig });
+    if (!elig.can_unlock) return jsonResponse({ ok: true, ...elig, doors: [] });
+    const now = await doorsNow(sb, payload);
+    // Paid and online, but outside member hours with no pass: say when.
+    if (!now.doors.length) {
+      return jsonResponse({ ok: true, ...elig, can_unlock: false, reason: 'after_hours', doors: [], gate_closed: now.gateClosed });
+    }
+    return jsonResponse({ ok: true, ...elig, doors: now.doors, gate_closed: now.gateClosed });
   }
 
   if (action === 'tap') {
@@ -122,6 +148,17 @@ Deno.serve(async (req) => {
         error: messages[elig.reason] || 'Not eligible to unlock the gate.',
         reason: elig.reason,
       }, 403);
+    }
+    // Which door, and may they open it now (member hours, or a pass).
+    const want = body.door ? String(body.door) : 'main_gate';
+    const now = await doorsNow(sb, payload);
+    const door = now.doors.find(d => d.key === want);
+    if (!door) {
+      const gc = now.gateClosed;
+      const error = want === 'main_gate' && gc
+        ? (gc.why === 'ended' ? 'Member gate access has ended for the season.' : `The gate opens for members${gc.opens ? ` at ${gc.opens}` : ''}. Member hours are ${gc.hours}.`)
+        : 'You can\'t open that door right now.';
+      return jsonResponse({ ok: false, error, reason: want === 'main_gate' && gc ? 'after_hours' : 'no_access' }, 403);
     }
 
     // Rate limit: refuse if this member triggered an unlock in the last 3 seconds
@@ -153,6 +190,8 @@ Deno.serve(async (req) => {
       client_ip: clientIp,
       client_user_agent: req.headers.get('user-agent')?.slice(0, 200) || null,
       actor_kind: 'member',
+      door_key: door.key,
+      pass_id: door.pass_id ?? null,
     }).select('id, requested_at').single();
     if (error || !row) return jsonResponse({ ok: false, error: error?.message || 'Insert failed' }, 500);
 
@@ -160,7 +199,7 @@ Deno.serve(async (req) => {
       ok: true,
       unlock_id: row.id,
       requested_at: row.requested_at,
-      message: 'Opening the gate…',
+      message: door.key === 'main_gate' ? 'Opening the gate…' : `Opening the ${door.name}…`,
     });
   }
 

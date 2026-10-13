@@ -48,7 +48,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyTenantAdmin, verifyTenantAdminOrProvider, requireOwner, requireSuper } from '../_shared/auth.ts';
 import { bridgeOnline } from '../_shared/bridge_health.ts';
-import { findDoor, doorsReady, doorName, MAIN_GATE } from '../_shared/gate_doors.ts';
+import { findDoor, doorsReady, doorName, remoteDoors, MAIN_GATE } from '../_shared/gate_doors.ts';
+import { loadAccess, validatePass } from '../_shared/access.ts';
+import { fmtPoolStamp } from '../_shared/pool_time.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -123,6 +125,16 @@ function publicGatePanel(row: Record<string, unknown> | null): Record<string, un
     invoice_paid_at:      row.invoice_paid_at ?? null,
     invoice_note:         row.invoice_note ?? null,
   };
+}
+
+// Any active board login, not a gate attendant (PLAN.md W2, AR4).
+async function boardMember(sb: ReturnType<typeof createClient>, payload: { sub: string; tid: string }): Promise<{ id: string } | null> {
+  const { data: me } = await sb.from('admin_users').select('id, active, role_template, roles')
+    .eq('id', payload.sub).eq('tenant_id', payload.tid).maybeSingle();
+  if (!me || !me.active) return null;
+  const roles = (me.roles as string[] | null) ?? [];
+  if (me.role_template === 'gate_attendant' || (roles.length && roles.every(r => r === 'gate_attendant'))) return null;
+  return { id: me.id as string };
 }
 
 // Compute bridge health from last_seen + status.
@@ -820,7 +832,7 @@ Deno.serve(async (req) => {
     const limit = Math.min(100, Math.max(1, Number(body.limit) || 25));
     const [{ data, error }, { data: panelRow }] = await Promise.all([
       sb.from('gate_unlocks')
-        .select('id, member_id, admin_user_id, door_key, status, requested_at, completed_at, result_code, result_detail, is_test, actor_kind')
+        .select('id, member_id, admin_user_id, door_key, pass_id, status, requested_at, completed_at, result_code, result_detail, is_test, actor_kind')
         .eq('tenant_id', payload.tid)
         .order('requested_at', { ascending: false })
         .limit(limit),
@@ -899,6 +911,80 @@ Deno.serve(async (req) => {
     }).select('id').single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     return jsonResponse({ ok: true, unlock_id: unlock.id, door: { key: door.key, name: door.name } });
+  }
+
+  // ── Passes (PLAN.md AR4) ──────────────────────────────────────────
+  // Any board member (Doug, 10/13) can give a family extra doors for a set
+  // time ("Pump room: pool chemicals"); the family opens them from the app
+  // until it ends, or the board ends it early. A paid party gets one by
+  // itself (_shared/access.ts givePartyPass). The Keyfobs tab and the board
+  // home share the panel (js/passes.js).
+  if (action === 'pass_list' || action === 'pass_families' || action === 'pass_create' || action === 'pass_end') {
+    const me = await boardMember(sb, payload as { sub: string; tid: string });
+    if (!me) return jsonResponse({ ok: false, error: 'Only board members can give passes.' }, 403);
+    const acc = await loadAccess(sb as never, payload.tid);
+    const doors = remoteDoors(acc.doorsRaw).filter(d => d.key === MAIN_GATE || doorsReady(acc.bridgeVersion)).map(d => ({ key: d.key, name: d.name }));
+
+    if (action === 'pass_families') {
+      const { data } = await sb.from('households').select('id, family_name, address')
+        .eq('tenant_id', payload.tid).eq('active', true).order('family_name').limit(2000);
+      return jsonResponse({ ok: true, families: data ?? [] });
+    }
+
+    if (action === 'pass_list') {
+      const since = new Date(Date.now() - 7 * 86400e3).toISOString();
+      const { data, error } = await sb.from('access_passes')
+        .select('id, household_id, doors, starts_at, ends_at, ended_at, note, source_kind, created_by, created_at')
+        .eq('tenant_id', payload.tid).gt('ends_at', since).order('starts_at', { ascending: true }).limit(200);
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      const hids = [...new Set(rows.map(r => r.household_id as string))];
+      const aids = [...new Set(rows.map(r => r.created_by as string).filter(Boolean))];
+      const [{ data: hhs }, { data: admins }] = await Promise.all([
+        hids.length ? sb.from('households').select('id, family_name').in('id', hids) : Promise.resolve({ data: [] }),
+        aids.length ? sb.from('admin_users').select('id, display_name, email').in('id', aids) : Promise.resolve({ data: [] }),
+      ]);
+      const fam = new Map(((hhs ?? []) as Array<{ id: string; family_name: string }>).map(h => [h.id, h.family_name]));
+      const who = new Map(((admins ?? []) as Array<{ id: string; display_name: string | null; email: string | null }>).map(a => [a.id, a.display_name || a.email]));
+      return jsonResponse({ ok: true, doors, tz: acc.tz, passes: rows.map(r => ({
+        ...r, family_name: fam.get(r.household_id as string) ?? 'Family', given_by: who.get(r.created_by as string) ?? null,
+        door_names: (r.doors as string[]).map(k => doorName(acc.doorsRaw, k)),
+      })) });
+    }
+
+    if (action === 'pass_create') {
+      const hid = String(body.household_id ?? '');
+      const { data: hh } = hid ? await sb.from('households').select('id, family_name')
+        .eq('id', hid).eq('tenant_id', payload.tid).eq('active', true).maybeSingle() : { data: null };
+      if (!hh) return jsonResponse({ ok: false, error: 'Pick a family.' }, 400);
+      const v = validatePass({ doors: body.doors, starts_at: body.starts_at, ends_at: body.ends_at }, acc.doorsRaw, new Date());
+      if (!v.ok) return jsonResponse({ ok: false, error: v.error }, 400);
+      if (v.doors.some(k => k !== MAIN_GATE && !doorsReady(acc.bridgeVersion))) {
+        return jsonResponse({ ok: false, error: 'The gate computer needs its update before passes can open other doors.' }, 409);
+      }
+      const note = body.note ? String(body.note).trim().slice(0, 200) || null : null;
+      const { data: pass, error } = await sb.from('access_passes').insert({
+        tenant_id: payload.tid, household_id: hh.id, doors: v.doors, starts_at: v.starts_at, ends_at: v.ends_at, note, created_by: me.id,
+      }).select('id, household_id, doors, starts_at, ends_at, note').single();
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      const names = v.doors.map(k => doorName(acc.doorsRaw, k)).join(', ');
+      await sb.from('audit_log').insert({ tenant_id: payload.tid, kind: 'access.pass_given', entity_type: 'household', entity_id: hh.id,
+        summary: `Pass for the ${hh.family_name}: ${names}, ${fmtPoolStamp(v.starts_at, acc.tz)} to ${fmtPoolStamp(v.ends_at, acc.tz)}${note ? ` (${note})` : ''}`,
+        actor_id: me.id, actor_kind: 'tenant_admin' });
+      // A pop-up, so they know the button's there (Doug, 10/7: pop-ups first).
+      const { pushMembers } = await import('../_shared/member_notify.ts');
+      await pushMembers({ tenant_id: payload.tid, household_ids: [hh.id], title: `🔑 You can open the ${names}`,
+        body: `From the app, until ${fmtPoolStamp(v.ends_at, acc.tz)}.${note ? ' ' + note : ''}`, url: '/m/', tag: `pass-${pass.id}` }).catch(() => null);
+      return jsonResponse({ ok: true, pass });
+    }
+
+    // pass_end: stops it now; the app's button goes away.
+    const id = String(body.id ?? '');
+    const { data: ended, error } = await sb.from('access_passes').update({ ended_at: new Date().toISOString() })
+      .eq('id', id).eq('tenant_id', payload.tid).is('ended_at', null).select('id, household_id');
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!ended?.length) return jsonResponse({ ok: false, error: 'That pass has already ended.' }, 404);
+    return jsonResponse({ ok: true });
   }
 
   if (action === 'test_unlock') {

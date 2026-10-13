@@ -32,6 +32,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, type AdminPayload } from '../_shared/auth.ts';
 import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs, liveFobCount, canCancel } from '../_shared/keyfobs.ts';
+import { accessConfig, cleanAccess, describeLevel } from '../_shared/access.ts';
+import { doorsFor } from '../_shared/gate_doors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -45,7 +47,7 @@ const cors = {
 const j = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
 
-const FIELDS = 'id, household_id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, replaces_id, check_note, requested_at, issued_at, lost_at, turned_off_at, paid_at';
+const FIELDS = 'id, household_id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, replaces_id, check_note, requested_at, issued_at, lost_at, turned_off_at, paid_at, level';
 type Sb = ReturnType<typeof createClient>;
 
 async function claims(token: string): Promise<Record<string, unknown> | null> {
@@ -257,18 +259,58 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'list') {
-    const [{ data: fobs }, { data: hhs }, { data: people }] = await Promise.all([
+    const [{ data: fobs }, { data: hhs }, { data: people }, { data: panel }] = await Promise.all([
       sb.from('keyfobs').select(FIELDS).eq('tenant_id', TID).order('requested_at', { ascending: false }).limit(2000),
       sb.from('households').select('id, family_name, address, active').eq('tenant_id', TID).order('family_name').limit(2000),
       sb.from('household_members').select('id, name, household_id').eq('tenant_id', TID).eq('active', true).limit(5000),
+      sb.from('gate_panels').select('doors').eq('tenant_id', TID).maybeSingle(),
     ]);
+    // Access levels (PLAN.md AR2): which doors each kind of fob opens, and when.
+    const doorsRaw = panel?.doors ?? [];
+    const acc = accessConfig(setRow?.value, doorsRaw);
+    const access = {
+      levels: acc.levels.map(l => ({ ...l, text: describeLevel(l, doorsRaw) })),
+      party_doors: acc.party_doors,
+      doors: doorsFor(doorsRaw).map(d => ({ key: d.key, name: d.name, remote: d.remote !== false })),
+    };
     const fam = new Map((hhs ?? []).map(h => [h.id as string, h.family_name as string]));
     const who = new Map((people ?? []).map(m => [m.id as string, m.name as string]));
     return j({
       ok: true, settings,
       fobs: (fobs ?? []).map(f => ({ ...shape(f), family_name: fam.get(f.household_id as string) ?? '', member_name: f.member_id ? who.get(f.member_id as string) ?? null : null })),
       households: (hhs ?? []).filter(h => h.active !== false).map(h => ({ id: h.id, family_name: h.family_name, address: h.address })),
+      access,
     });
+  }
+
+  // ── Access levels (PLAN.md AR2): edited on the Keyfobs tab ───────────
+  // Doug, 10/13: member hours "6am-830pm but we need to be able to
+  // change/update this on the keyfobs tab". The member app's Unlock follows
+  // the Member level now; keyfobs will when Poolside updates the panels.
+  if (action === 'levels_save') {
+    const { data: panel } = await sb.from('gate_panels').select('doors').eq('tenant_id', TID).maybeSingle();
+    const c = cleanAccess(body.access, panel?.doors ?? []);
+    if (!c.ok) return j({ ok: false, error: c.error }, 400);
+    const value = (setRow?.value as Record<string, unknown> | undefined) ?? {};
+    const next = { ...value, access: c.value };
+    const { error } = setRow ? await sb.from('settings').update({ value: next }).eq('tenant_id', TID)
+      : await sb.from('settings').insert({ tenant_id: TID, value: next });
+    if (error) return j({ ok: false, error: error.message }, 500);
+    await sb.from('audit_log').insert({ tenant_id: TID, kind: 'access.levels_saved', entity_type: 'settings', entity_id: TID,
+      summary: c.value.levels.map(l => `${l.name}: ${describeLevel(l, panel?.doors ?? [])}`).join('; ').slice(0, 500),
+      actor_id: me.id, actor_kind: 'tenant_admin' });
+    return j({ ok: true, levels: c.value.levels.map(l => ({ ...l, text: describeLevel(l, panel?.doors ?? []) })), party_doors: c.value.party_doors });
+  }
+
+  if (action === 'set_level') {
+    const f = await one(body.id);
+    if (!f) return j({ ok: false, error: 'Fob not found.' }, 404);
+    const { data: panel } = await sb.from('gate_panels').select('doors').eq('tenant_id', TID).maybeSingle();
+    const level = accessConfig(setRow?.value, panel?.doors ?? []).levels.find(l => l.key === String(body.level ?? ''));
+    if (!level) return j({ ok: false, error: 'Pick a level.' }, 400);
+    const { data, error } = await sb.from('keyfobs').update({ level: level.key }).eq('id', f.id).eq('tenant_id', TID).select(FIELDS).single();
+    if (error) return j({ ok: false, error: error.message }, 500);
+    return j({ ok: true, fob: shape(data) });
   }
 
   if (action === 'issue') {

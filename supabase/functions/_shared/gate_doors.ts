@@ -12,9 +12,14 @@
 // is opened by the bridge straight through its controller (uhppoted
 // `open_door`), which bridges before 1.2 can't do: an older bridge treats
 // any unlock as the front gate, so it is never handed another door.
+//
+// A door with `remote: false` is keyfob only (PLAN.md AR1): it's on a
+// controller and keyfobs open it (Bishop's restrooms), but no lock is wired
+// for opening it remotely, so it never gets an Unlock button. Access levels
+// list it; unlocks never touch it.
 // =============================================================================
 
-export type Door = { key: string; name: string; controller?: number; address?: string; door?: number };
+export type Door = { key: string; name: string; controller?: number; address?: string; door?: number; remote?: false };
 
 export const MAIN_GATE = 'main_gate';
 export const FRONT_GATE: Door = { key: MAIN_GATE, name: 'Front gate' };
@@ -41,7 +46,7 @@ function clean(raw: unknown): Door | null {
   if (!Number.isInteger(controller) || controller <= 0) return null;
   if (!Number.isInteger(door) || door < 1 || door > 4) return null;
   if (!validAddress(r.address)) return null;
-  return { key, name, controller, address: r.address as string, door };
+  return { key, name, controller, address: r.address as string, door, ...(r.remote === false ? { remote: false as const } : {}) };
 }
 
 /** The doors on file, cleaned: bad entries dropped, the front gate first. */
@@ -58,6 +63,11 @@ export function doorsFor(raw: unknown): Door[] {
   return [main, ...doors.filter(d => d.key !== MAIN_GATE)];
 }
 
+/** The doors that can be opened remotely (not keyfob only). */
+export function remoteDoors(raw: unknown): Door[] {
+  return doorsFor(raw).filter(d => d.remote !== false);
+}
+
 /** Can this bridge open doors other than the front gate? 1.2 and later. */
 export function doorsReady(version: string | null | undefined): boolean {
   const m = String(version ?? '').match(/^(\d+)\.(\d+)/);
@@ -68,14 +78,15 @@ export function doorsReady(version: string | null | undefined): boolean {
 
 /** The doors a tap can open right now, given the bridge at the club. */
 export function openableDoors(raw: unknown, bridgeVersion: string | null | undefined): Door[] {
-  const all = doorsFor(raw);
+  const all = remoteDoors(raw);
   return doorsReady(bridgeVersion) ? all : all.filter(d => d.key === MAIN_GATE);
 }
 
-/** The door with this key; no key means the front gate. Null if it isn't on file. */
+/** The door with this key to open remotely; no key means the front gate.
+ *  Null if it isn't on file or is keyfob only. */
 export function findDoor(raw: unknown, key: unknown): Door | null {
   const k = key === undefined || key === null || key === '' ? MAIN_GATE : String(key);
-  return doorsFor(raw).find(d => d.key === k) ?? null;
+  return remoteDoors(raw).find(d => d.key === k) ?? null;
 }
 
 /** What the bridge needs: the front gate by key alone, another door with its controller. */
@@ -87,5 +98,6 @@ export function commandDoor(d: Door | null): Door | null {
 
 /** The name for an unlock in the log. */
 export function doorName(raw: unknown, key: string | null | undefined): string {
-  return (findDoor(raw, key) ?? { name: String(key) }).name;
+  const k = key === undefined || key === null || key === '' ? MAIN_GATE : String(key);
+  return (doorsFor(raw).find(d => d.key === k) ?? { name: String(key) }).name;
 }
