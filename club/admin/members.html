@@ -81,7 +81,7 @@
   .pill.pending  { background: #fef3c7; color: #92400e; }
   .pill.approved { background: #dcfce7; color: #14532d; }
   .pill.rejected { background: #fee2e2; color: #7f1d1d; }
-  .pill.stripe   { background: #ddd6fe; color: #5b21b6; }
+  .pill.stripe, .pill.stripe_plan { background: #ddd6fe; color: #5b21b6; }
   .pill.venmo    { background: #cffafe; color: #155e75; }
   .pill.overdue  { background: #fee2e2; color: #7f1d1d; }
   .pill.ok       { background: #dcfce7; color: #14532d; }
@@ -514,12 +514,13 @@ const Households = (() => {
   const VIEWS = {
     all:     h => h.active !== false,
     paid:    h => h.active !== false && !!h.dues_paid_for_year,
-    unpaid:  h => h.active !== false && !h.dues_paid_for_year,
+    plan:    h => h.active !== false && !h.dues_paid_for_year && !!h.on_plan,
+    unpaid:  h => h.active !== false && !h.dues_paid_for_year && !h.on_plan,
     removed: h => h.active === false,
   };
   const VIEW_LABEL = {
     all: n => `${n} famil${n === 1 ? 'y' : 'ies'}`, paid: n => `${n} paid`,
-    unpaid: n => `${n} unpaid`, removed: n => `${n} removed`,
+    plan: n => `${n} on a plan`, unpaid: n => `${n} unpaid`, removed: n => `${n} removed`,
   };
 
   function renderRows(rows, total) {
@@ -528,7 +529,7 @@ const Households = (() => {
     if (!rows.length) { card.innerHTML = `<div class="empty">No match.</div>`; return; }
     const fmtPaid = (h) => h.dues_paid_for_year
       ? `<span class="pill paid">Paid ${h.paid_until_year ?? ''}</span>${h.test_paid ? ' <span class="pill test" title="Paid with a test payment, not real money">🧪 Test</span>' : ''}`
-      : `<span class="pill unpaid">Unpaid</span>`;
+      : h.on_plan ? `<span class="pill paid">On plan</span>` : `<span class="pill unpaid">Unpaid</span>`;
     card.innerHTML = `<table>
       <thead><tr><th>Family</th><th>Primary</th><th>Members</th><th>Level</th><th>Fob</th><th>Dues</th></tr></thead>
       <tbody>${rows.map(h => {
@@ -556,7 +557,7 @@ const Households = (() => {
   function paintCounts() {
     const box = document.getElementById('hh-counts');
     const n = k => CACHE.filter(VIEWS[k]).length;
-    const keys = ['all', 'paid', 'unpaid'].concat(n('removed') ? ['removed'] : []);
+    const keys = ['all', 'paid'].concat(n('plan') ? ['plan'] : [], ['unpaid'], n('removed') ? ['removed'] : []);
     box.innerHTML = CACHE.length ? keys.map(k =>
       `<button type="button" data-v="${k}" class="${(SHOWN || document.getElementById('hh-search').value.trim()) && VIEW === k ? 'on' : ''}">${VIEW_LABEL[k](n(k))}</button>`).join('') : '';
     box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { VIEW = b.dataset.v; SHOWN = PAGE; applySearch(true); }));
@@ -829,10 +830,28 @@ const App = (() => {
       (a.address || a.city || '').toLowerCase().includes(q)));
   }
 
+  // ── Payment labels (PLAN.md AT1) ──
+  // Doug, 10/13: a card plan showed as "Venmo". Each method has its own
+  // name. A plan family's signup stays 'pending' until the plan is paid off
+  // (only the plan's start sets it), and their payments are on Upcoming.
+  const PAY_METHOD = { stripe: '💳 Card', stripe_plan: '💳 Payment plan', venmo: '💸 Venmo', check: '🧾 Check', cash: '💵 Cash', free: 'Free' };
+  function payMethodName(m) { return PAY_METHOD[m] || String(m || ''); }
+  function onPlan(a) { return a.payment_method === 'stripe_plan' && a.payment_status === 'pending'; }
+  function planPill(a) {
+    const p = a.plan;
+    if (p && (p.status === 'cancelled' || p.status === 'lapsed')) return 'Plan ended';
+    if (!p || !p.total_cents) return 'On plan';
+    const d = c => '$' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 });
+    return `On plan · ${d(p.paid_cents || 0)} of ${d(p.total_cents)} paid`;
+  }
+  // ── end payment labels
+
   function paymentBadges(a) {
     const out = [];
-    if (a.payment_method) out.push(`<span class="pill ${escapeHtml(a.payment_method)}">${a.payment_method === 'stripe' ? '💳 Stripe' : '💸 Venmo'}</span>`);
-    if (a.status === 'approved' && a.payment_status !== 'paid') {
+    if (a.payment_method) out.push(`<span class="pill ${escapeHtml(a.payment_method)}">${escapeHtml(payMethodName(a.payment_method))}</span>`);
+    if (onPlan(a)) {
+      out.push(`<span class="pill ${a.plan && a.plan.status !== 'active' ? 'unpaid' : 'paid'}">${escapeHtml(planPill(a))}</span>`);
+    } else if (a.status === 'approved' && a.payment_status !== 'paid') {
       const ageDays = a.decided_at ? Math.floor((Date.now() - new Date(a.decided_at).getTime()) / 86400_000) : 0;
       out.push(`<span class="pill unpaid">Unpaid${ageDays >= 10 ? ' · ' + ageDays + 'd' : ''}</span>`);
       if (ageDays >= 10) out.push(`<span class="pill overdue">Overdue</span>`);
@@ -857,7 +876,7 @@ const App = (() => {
       const total = (a.num_adults || 0) + (a.num_kids || 0);
       const isPending = a.status === 'pending';
       const isVenmo   = a.payment_method === 'venmo';
-      const needsPaymentVerify = a.status === 'approved' && a.payment_status !== 'paid';
+      const needsPaymentVerify = a.status === 'approved' && a.payment_status !== 'paid' && !onPlan(a);
       // 2026-05-23 inline actions — same as the queue on applications.html.
       // Pending → one-click Approve & verify (Venmo) or Approve & create.
       // Approved-but-unpaid → one-click Verify payment so the legacy
@@ -1099,12 +1118,13 @@ const App = (() => {
     // combined one.
     const isPending = a.status === 'pending';
     const isVenmoUnpaid = a.payment_method === 'venmo' && a.payment_status !== 'paid';
+    const planFam = onPlan(a);
 
     document.getElementById('am-reject').style.display = isPending ? 'inline-block' : 'none';
     document.getElementById('am-approve').style.display = (isPending && !isVenmoUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-approve-venmo').style.display = (isPending && isVenmoUnpaid) ? 'inline-block' : 'none';
-    document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid') ? 'inline-block' : 'none';
-    document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid') || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
+    document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid' && !planFam) ? 'inline-block' : 'none';
+    document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid' && !planFam) || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
     // Permanently delete: hidden when the app already created a household
     // (use the household modal's delete instead — it nukes both at once).
     // Always available for pending/rejected apps with no household yet.
@@ -1119,6 +1139,12 @@ const App = (() => {
       if (a.status === 'approved' && a.payment_status === 'paid') {
         html = `<div style="background:#dcfce7;color:#14532d;padding:0;border:0">✓ <b>Active member.</b> Approved and paid — nothing left to do here.</div>`;
         explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#dcfce7;color:#14532d';
+      } else if (a.status === 'approved' && planFam) {
+        const ended = a.plan && a.plan.status !== 'active';
+        html = ended
+          ? `<b>${escapeHtml(planPill(a))}.</b> Their payment plan stopped before it was paid off, so their membership is canceled. To come back, they pay what's overdue from their app.`
+          : `<b>${escapeHtml(planPill(a))}.</b> ${escapeHtml(a.primary_name || a.family_name)} chose a payment plan. The rest is charged on billing days once a board member approves each payment on Money → Upcoming. Nothing to do here.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;' + (ended ? 'background:#fef3c7;color:#78350f' : 'background:#dcfce7;color:#14532d');
       } else if (a.status === 'approved' && a.payment_status !== 'paid') {
         const method = a.payment_method === 'venmo' ? 'Venmo' : a.payment_method === 'stripe_plan' ? 'a payment plan' : a.payment_method === 'stripe' ? 'a card' : 'their dues';
         html = `<b>Approved, awaiting payment.</b> Application is approved but ${method} hasn't been verified yet.<br><b>The green button below</b> marks this paid and flips their dues to ${CURRENT_YEAR}.`;

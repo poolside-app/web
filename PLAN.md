@@ -820,6 +820,19 @@ Steps:
   - Bridge 1.4 does the reading and writing. Doug downloads it like 1.3.
 `node scripts/test_access.mjs`, `node scripts/test_keyfob_sync.mjs`, `python3 scripts/test_gate_bridge_loop.py` (all offline), browser checks with made-up data, then a read-only "Check" at Bishop with Doug before any "Send".
 
+### AT. Payment-plan families show as on a plan, never "Venmo" or "Unpaid" (Doug, 10/13) — ✅ AT1–AT3 done 10/13
+Doug: "beaubains signed up, but they selected a payment plan along with venmo somehow?" They didn't. Beaubien chose the card payment plan ($200 today by test card, then $44.44 a month through July). Signups labels every payment that isn't a plain card payment "💸 Venmo". A plan family's signup stays "pending" until the plan is paid off (only the plan's start sets that), so Signups also called them Unpaid, then Overdue after 10 days. It kept them in Needs attention with a "Verify payment received" button, and that button would mark them paid in full by Venmo while the plan kept charging.
+- **AT1. Signups.**
+  - Each method has its own name: Card, Payment plan, Venmo, Check, Cash, Free.
+  - A plan family shows "On plan · $200 of $600 paid", or "Plan ended".
+  - They get no Unpaid or Overdue, no Verify or Remind button, and they're not in Needs attention. Their pop-up says the rest is charged on billing days after a board member approves it on Money → Upcoming.
+- **AT2. The server agrees.**
+  - `applications` `list` attaches each plan's status and amount paid. Needs attention, Unpaid and Overdue leave out plan families.
+  - `verify_payment` refuses a family on a plan.
+  - The board home's Signups number and Payments' outstanding list leave them out too; their payments are on Upcoming.
+- **AT3. Households.** A family on an active plan shows "On plan" instead of Unpaid, with its own count.
+`node scripts/test_flex_plan.mjs` (offline part).
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).

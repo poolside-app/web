@@ -219,7 +219,7 @@ export async function loadHome(sb: SupabaseClient, ctx: {
   job('owed', async () => unpaid.reduce((n, r) => n + Number(r.amount_cents ?? 0), 0));
   job('on_plan', async () => planIds.length);
   job('signups', () => count(sb.from('applications').select('id', { count: 'exact', head: true }).eq('tenant_id', T)
-    .or('status.eq.pending,and(status.eq.approved,payment_status.in.("unpaid","pending"))')));
+    .or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)')));   // plan families are on Upcoming (AT2)
   job('renewals_left', () => count(sb.from('households').select('id', { count: 'exact', head: true })
     .eq('tenant_id', T).eq('active', true).eq('paid_until_year', season - 1)));
   job('checkins', () => count(sb.from('pool_checkins').select('id', { count: 'exact', head: true })

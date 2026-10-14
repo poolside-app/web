@@ -103,7 +103,8 @@ Deno.serve(async (req) => {
       sb.from('applications')
         .select('id, family_name, household_id, payment_method, decided_at, created_at, amount_due_cents')
         .eq('tenant_id', TID).eq('status', 'approved')
-        .neq('payment_status', 'paid'),
+        // 'pending' is a family on a payment plan; its payments are on Upcoming (PLAN.md AT2).
+        .not('payment_status', 'in', '("paid","pending")'),
       sb.from('program_bookings')
         .select('id, household_id, participant_name, program_id, created_at')
         .eq('tenant_id', TID).eq('paid', false).neq('status', 'cancelled'),
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
         household_id: a.household_id,
         family_name: a.family_name,
         kind: 'Membership application',
-        label: `${a.payment_method === 'venmo' ? 'Venmo' : 'Stripe'} payment pending`,
+        label: `${({ venmo: 'Venmo', stripe: 'Card', check: 'Check', cash: 'Cash' } as Record<string, string>)[a.payment_method as string] ?? 'Dues'} payment pending`,
         // What they owe after any discount (H5).
         amount_cents: typeof a.amount_due_cents === 'number' ? a.amount_due_cents : null,
         age_days: ageDays(a.decided_at ?? a.created_at),

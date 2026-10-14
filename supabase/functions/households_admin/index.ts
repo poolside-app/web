@@ -165,10 +165,15 @@ Deno.serve(async (req) => {
     // Families paid with a test payment get a 🧪 Test tag in the list.
     const { testPaidHouseholds } = await import('../_shared/test_payments.ts');
     const testIds = await testPaidHouseholds(sb, TID);
+    // Families paying on an active plan show "On plan", not Unpaid (PLAN.md AT3).
+    const { data: plans } = await sb.from('payment_plans').select('household_id')
+      .eq('tenant_id', TID).eq('status', 'active').not('household_id', 'is', null).limit(5000);
+    const planIds = new Set((plans ?? []).map(p => p.household_id as string));
     const enriched = (households ?? []).map(h => ({
       ...h,
       members: byHh.get(h.id as string) ?? [],
       test_paid: testIds.has(h.id as string),
+      on_plan: planIds.has(h.id as string),
     }));
     return jsonResponse({ ok: true, households: enriched });
   }

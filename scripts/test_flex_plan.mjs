@@ -232,6 +232,48 @@ console.log('M3–M6 · the screens (offline)');
   check('payments.html: the gate rule and plan types are settings', /id="plan-access"/.test(read('club/admin/payments.html')) && /id="plan-tiers"/.test(read('club/admin/payments.html')));
 }
 
+// PLAN.md AT (Doug 10/13): Beaubien chose the card plan, and Signups called
+// it Venmo, then Unpaid, with a Verify button that would mark them paid in
+// full. Only the plan's start sets a signup's payment to 'pending'.
+console.log('AT · plan families on Signups, Households and Payments (offline)');
+{
+  const { readFileSync } = await import('node:fs');
+  const vm = await import('node:vm');
+  const read = rel => readFileSync(new URL(rel, root), 'utf8');
+  const mem = read('club/admin/members.html');
+  const block = mem.slice(mem.indexOf('// ── Payment labels (PLAN.md AT1)'), mem.indexOf('// ── end payment labels'));
+  let L = null;
+  try { const box = {}; vm.runInNewContext(block + '\nthis.L = { payMethodName, onPlan, planPill };', box); L = box.L; }
+  catch (e) { check('members.html: the payment labels live in one block', false, e.message); }
+  if (L) {
+    const names = ['stripe', 'stripe_plan', 'venmo', 'check', 'cash', 'free'].map(L.payMethodName);
+    check('each payment method has its own name (a plan is never "Venmo")', names.join('|') === '💳 Card|💳 Payment plan|💸 Venmo|🧾 Check|💵 Cash|Free', names.join('|'));
+    const beaubien = { status: 'approved', payment_method: 'stripe_plan', payment_status: 'pending', plan: { status: 'active', total_cents: 60000, paid_cents: 20000 } };
+    check('a plan family is on a plan', L.onPlan(beaubien) && !L.onPlan({ ...beaubien, payment_status: 'paid' }) && !L.onPlan({ ...beaubien, payment_method: 'venmo', payment_status: 'unpaid' }));
+    check('their pill says how much is paid', L.planPill(beaubien) === 'On plan · $200 of $600 paid', L.planPill(beaubien));
+    check('an ended plan says so', L.planPill({ ...beaubien, plan: { status: 'cancelled', total_cents: 60000, paid_cents: 20000 } }) === 'Plan ended');
+    check('without plan details it still says on plan', L.planPill({ ...beaubien, plan: null }) === 'On plan');
+  }
+  const badges = mem.slice(mem.indexOf('function paymentBadges'), mem.indexOf('function render(rows)'));
+  check('Signups: no Unpaid or Overdue for a plan family', /if \(onPlan\(a\)\)/.test(badges) && /planPill\(a\)/.test(badges) && /payMethodName\(a\.payment_method\)/.test(badges));
+  check('Signups: no inline Verify for a plan family', /needsPaymentVerify = a\.status === 'approved' && a\.payment_status !== 'paid' && !onPlan\(a\)/.test(mem));
+  check('Signups pop-up: no Verify or Remind for a plan family', /const planFam = onPlan\(a\)/.test(mem) && /'am-verify'\)\.style\.display = \(a\.status === 'approved' && a\.payment_status !== 'paid' && !planFam\)/.test(mem)
+    && /'am-remind'\)\.style\.display = \(\(a\.status === 'approved' && a\.payment_status !== 'paid' && !planFam\)/.test(mem));
+  check('Signups pop-up: explains the plan and where its payments are', /a\.status === .approved. && planFam\) \{[\s\S]{0,900}Money → Upcoming/.test(mem));
+  check('Households: an active plan shows "On plan", with its own count', /h\.on_plan/.test(mem) && /plan:\s+h => h\.active !== false && !h\.dues_paid_for_year && !!h\.on_plan/.test(mem)
+    && /unpaid:\s+h => h\.active !== false && !h\.dues_paid_for_year && !h\.on_plan/.test(mem));
+
+  const apps = read('supabase/functions/applications/index.ts');
+  check('applications list: Needs attention leaves out plan families', apps.includes(`q = q.or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)');`));
+  check('applications list: Unpaid and Overdue mean unpaid', /filter === 'unpaid'\)\s+q = q\.eq\('payment_status', 'unpaid'\)/.test(apps) && /\.eq\('status', 'approved'\)\.eq\('payment_status', 'unpaid'\)\.lt\('decided_at'/.test(apps));
+  check('applications list: attaches each plan\'s status and amount paid', /attachPlans\(sb, data/.test(apps));
+  check('verify_payment refuses a family on a plan', /if \(app\.payment_method === 'stripe_plan' && app\.payment_status === 'pending'\)[\s\S]{0,200}409/.test(apps));
+  check('board home: the Signups number leaves out plan families', read('supabase/functions/_shared/board_home.ts').includes(`.or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)')`));
+  const pay = read('supabase/functions/payments_admin/index.ts');
+  check('Payments: outstanding leaves out plan families, and names the method plainly', /\.not\('payment_status', 'in', '\("paid","pending"\)'\)/.test(pay) && !/'Venmo' : 'Stripe'/.test(pay));
+  check('households list: says which families are on an active plan', /on_plan: planIds\.has\(h\.id as string\)/.test(read('supabase/functions/households_admin/index.ts')));
+}
+
 if (LIVE) {
   const { runLive } = await import('./lib/flex_plan_live.mjs');
   const r = await runLive({ check, short });

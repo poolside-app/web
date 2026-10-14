@@ -106,6 +106,27 @@ function normalizePhoneE164(raw: string): string | null {
 
 const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, fob_review_note, fob_extra_count, fob_cents, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
 
+/** Signups list: each plan family's plan status and how much is paid
+ *  (PLAN.md AT2). Two small reads, only when the list has plan families. */
+async function attachPlans(sb: ReturnType<typeof createClient>, rows: Array<Record<string, unknown>>) {
+  const ids = rows.filter(r => r.payment_method === 'stripe_plan').map(r => r.id as string);
+  if (!ids.length) return rows;
+  const { data: plans } = await sb.from('payment_plans').select('id, application_id, status, total_cents, created_at')
+    .in('application_id', ids).order('created_at', { ascending: false });
+  const planIds = (plans ?? []).map(p => p.id as string);
+  const { data: paid } = planIds.length
+    ? await sb.from('payment_plan_installments').select('plan_id, amount_cents').in('plan_id', planIds).eq('status', 'paid')
+    : { data: [] };
+  const paidBy = new Map<string, number>();
+  for (const i of (paid ?? [])) paidBy.set(i.plan_id as string, (paidBy.get(i.plan_id as string) ?? 0) + Number(i.amount_cents ?? 0));
+  const byApp = new Map<string, Record<string, unknown>>();
+  for (const p of (plans ?? [])) if (!byApp.has(p.application_id as string)) byApp.set(p.application_id as string, p);   // newest
+  return rows.map(r => {
+    const p = byApp.get(r.id as string);
+    return p ? { ...r, plan: { status: p.status, total_cents: p.total_cents, paid_cents: paidBy.get(p.id as string) ?? 0 } } : r;
+  });
+}
+
 // stripe_plan is the pay-in-2 option offered on the apply form; it must be
 // accepted here or the plan radio submits a "400 Invalid payment method".
 const VALID_PAYMENT_METHODS = new Set(['stripe', 'stripe_plan', 'venmo']);
@@ -1408,7 +1429,9 @@ Deno.serve(async (req) => {
     // "Approve only" path and is now waiting on payment. Both surfaces
     // become a single one-click inline-button row in the UI.
     if (status === 'needs_attention') {
-      q = q.or('status.eq.pending,and(status.eq.approved,payment_status.in.("unpaid","pending"))');
+      // A plan family's payment reads 'pending' until the plan is paid off;
+      // their payments are on Money → Upcoming, not here (PLAN.md AT2).
+      q = q.or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)');
     } else if (status === 'renewals') {
       // Renewals in flight — existing members who owe money, not decisions.
       q = q.eq('is_renewal', true).neq('payment_status', 'paid');
@@ -1424,11 +1447,11 @@ Deno.serve(async (req) => {
     if (!includeRenewals) {
       q = q.or('is_renewal.is.false,is_renewal.is.null,payment_status.eq.paid');
     }
-    if (filter === 'unpaid')  q = q.in('payment_status', ['unpaid', 'pending']);
+    if (filter === 'unpaid')  q = q.eq('payment_status', 'unpaid');
     if (filter === 'overdue') {
       // approved + still unpaid + decided more than 10 days ago
       const tenDaysAgo = new Date(Date.now() - 10 * 86400_000).toISOString();
-      q = q.eq('status', 'approved').in('payment_status', ['unpaid','pending']).lt('decided_at', tenDaysAgo);
+      q = q.eq('status', 'approved').eq('payment_status', 'unpaid').lt('decided_at', tenDaysAgo);
     }
     if (year && Number.isFinite(year)) {
       // Year window in UTC — matches what list_years returns.
@@ -1438,7 +1461,7 @@ Deno.serve(async (req) => {
     }
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, applications: data ?? [] });
+    return jsonResponse({ ok: true, applications: await attachPlans(sb, data ?? []) });
   }
 
   if (action === 'list_years') {
@@ -1899,6 +1922,11 @@ Deno.serve(async (req) => {
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.status !== 'approved') {
       return jsonResponse({ ok: false, error: 'Approve the application first' }, 409);
+    }
+    // Marking a plan family paid here would end their plan's record as paid
+    // in full while it keeps charging (PLAN.md AT2).
+    if (app.payment_method === 'stripe_plan' && app.payment_status === 'pending') {
+      return jsonResponse({ ok: false, error: 'This family is on a payment plan. Their payments are on Money → Upcoming.' }, 409);
     }
 
     const verified_by = payload.synthetic ? null : payload.sub;
