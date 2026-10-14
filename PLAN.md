@@ -859,6 +859,54 @@ Steps:
   - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
 `node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
 
+### AV. Real payments: a free rehearsal, then $1 live tests (Doug, 10/14) — plan only, starts when Doug says
+Doug: "once i make a couple of more changes, I want to link a bank account and then test the payments... can I do this with like 1 payment weekly for like 1$ and then put it into my account? how reliable is this? I want to ensure all this payment stuff works".
+
+Where things stand (checked 10/14):
+- Every payment so far has been a Poolside test payment (`settings.payments.test_mode` on). A real Stripe Checkout has never run, so the webhook has never read a real card off a real payment.
+- Poolside's own Stripe key is still a test key (`sk_test_`).
+- Bishop's Stripe account is connected but unfinished: `stripe_charges_enabled` and `stripe_payouts_enabled` are both false. It's Standard Connect, so a family's payment lands in Bishop's own Stripe account and pays out to the bank on that account. Bishop's platform fee is waived.
+- Bishop passes the card fee on (`pass_stripe_fee`): $1 of dues charges $1.34, and the club nets $1. Stripe keeps its fee (about 34¢) even when a payment is refunded.
+- Plans can't charge weekly. A plan payment falls once a month on the billing day (the 1st), only after a board member approves it on Money → Upcoming, and Bishop's minimum plan payment is $25 (`min_installment_cents`, a setting). For a faster test, I move a test plan's next payment to today and the nightly run charges it the next morning. That's a data change on a test plan, not a code change, and only with Doug's OK each time.
+
+How reliable:
+- Stripe itself is very reliable. The risk is our side.
+- The real-Checkout webhook path is untested, which is what AV1 is for.
+- Poolside runs on the free Supabase plan. If the project is down or over its limit, Stripe's notices fail (Stripe retries for 3 days) and the nightly plan charges don't run. Supabase Pro removes that risk before real families pay.
+- `stripe_webhook` checks one signing secret (`STRIPE_WEBHOOK_SECRET`). Stripe gives each webhook endpoint its own secret. Family payments are events on Bishop's connected account, and Poolside's own billing events are on Poolside's account. If those need two endpoints, the webhook has to accept two secrets, which is a small code change. AV1 shows whether it's needed.
+- The event list in INTEGRATIONS.md is out of date. The webhook handles `checkout.session.completed`, `charge.refunded`, `charge.dispute.created`, `payment_intent.payment_failed`, `account.updated`, `customer.subscription.updated` and `customer.subscription.deleted`.
+
+Whose bank: payouts go to the bank on Bishop's Stripe account. Use the club's bank and EIN, not Doug's own, because Stripe reports the income on a 1099-K to whoever owns the account.
+
+Steps:
+- **AV1. Free rehearsal in Stripe's test mode (no real money).**
+  - Doug finishes Bishop's Stripe setup in test mode (Stripe accepts test details) and turns off Poolside's 🧪 Test payments, so the real Stripe Checkout runs on the test key.
+  - Doug pays with Stripe's test cards: 4242 4242 4242 4242 works, and 4000 0000 0000 0341 saves fine but declines when charged later.
+  - Each flow once:
+    - pay in full;
+    - a plan with money today;
+    - a plan with $0 today (card saved, charged later);
+    - an extra keyfob;
+    - a party;
+    - a donation;
+    - a plan payment approved on Upcoming and charged by the nightly run, with its due date moved to today;
+    - the declining card, through its retries;
+    - a refund from Stripe.
+  - After each one I check the database: the signup, household, plan and payments rows, the emails, and that Poolside shows the refund. No live calls beyond Doug's own taps.
+- **AV2. Go live.**
+  - Doug switches Poolside's Stripe account to live and sends me the live key and webhook secret. I set them as secrets; they never go in the repo.
+  - Doug adds the live webhook to `https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/stripe_webhook` with the events above, for connected accounts. The second secret is added only if AV1 showed it's needed.
+  - Bishop connects again in live mode with the club's bank and EIN. A new account's first payout takes about 7 to 14 days, then about 2 business days.
+  - Supabase Pro first, if Doug decides on it.
+- **AV3. Real $1 tests on Doug's card.**
+  - A one-use code takes $599 off the Family level, so dues are $1 ($1.34 by card). Pay in full, then see it in Stripe, in Poolside as paid, and later in the bank. Refund it from Stripe and check Poolside shows it refunded.
+  - A small plan: the minimum plan payment is lowered to $1, and a code brings the total to $3. Pay $1 today, then approve the next payment on Upcoming and let the nightly run charge it.
+  - Doug locks his card in his bank app before one charge to see a real decline and the retry 3 days later, then unlocks it.
+  - The cost is a few dollars in Stripe fees.
+- **AV4. Clean up.** Delete the test codes, put the minimum back to $25, refund whatever Doug wants back, and delete the test families when Doug says. Then real families can pay.
+
+While Poolside's test payments are off, anyone who signs up pays real money. That's fine before launch, but Doug should know.
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).
