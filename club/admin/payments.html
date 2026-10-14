@@ -282,23 +282,23 @@
            whichever saves more (the family is told). -->
       <div class="card" id="discounts-card" data-focus="discounts">
         <h2>🏷️ Discounts</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Codes families type under "Have a code?" when they sign up or renew. Early bird is a code with a last day. A family gets one discount: a code or the referral discount, whichever saves more.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">A discount code takes money off a family's dues, like an early-bird price. Families type it in "Have a discount code?" when they sign up or renew. Each family gets one discount: if they also joined through a friend's referral link, whichever saves more is used.</p>
         <div id="codes-list" style="font-size:13px"><div class="empty" style="padding:14px;border:none;color:var(--muted)">Loading…</div></div>
 
         <h3 style="margin:18px 0 4px;font-size:14px" id="code-form-title">Make a code</h3>
         <input type="hidden" id="code-id">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div><label>Code</label><input id="code-code" placeholder="EARLYBIRD" autocapitalize="characters" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff;text-transform:uppercase"></div>
-          <div><label>Name <span class="opt">(optional)</span></label><input id="code-label" placeholder="Early bird" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
-          <div><label>Takes off</label>
+          <div><label>Code families type</label><input id="code-code" placeholder="EARLYBIRD" autocapitalize="characters" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff;text-transform:uppercase"></div>
+          <div><label>What it's for <span class="opt">(optional)</span></label><input id="code-label" placeholder="Early bird" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
+          <div><label>Discount</label>
             <div style="display:flex;gap:6px">
               <select id="code-kind" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff;width:auto"><option value="amount">$</option><option value="percent">%</option></select>
               <input id="code-value" type="number" min="1" step="1" placeholder="50" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff">
             </div>
           </div>
-          <div><label>Last day <span class="opt">(optional)</span></label><input id="code-expires" type="date" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
-          <div><label>Up to how many families <span class="opt">(blank = no limit)</span></label><input id="code-max" type="number" min="1" step="1" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
-          <div style="display:flex;align-items:end"><label class="checkbox-row" style="margin:0 0 8px;display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;font-weight:500"><input type="checkbox" id="code-home" style="width:auto"> Show it on the member home</label></div>
+          <div><label>Last day to use it <span class="opt">(optional)</span></label><input id="code-expires" type="date" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
+          <div><label>How many families can use it <span class="opt">(blank for no limit)</span></label><input id="code-max" type="number" min="1" step="1" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px 'Inter';background:#fff"></div>
+          <div style="display:flex;align-items:end"><label class="checkbox-row" style="margin:0 0 8px;display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;font-weight:500"><input type="checkbox" id="code-home" style="width:auto"> Show it on the member app's home screen</label></div>
         </div>
         <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" id="code-save" type="button" onclick="Codes.save()" style="background:var(--blue)">Save code</button>
@@ -687,8 +687,8 @@ const Codes = (() => {
       return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);${c.active ? '' : 'opacity:.6'}">
         <div style="min-width:0">
           <div style="font-weight:700;letter-spacing:.02em">${escapeHtml(c.code)}${c.label ? ` <span style="font-weight:500;color:var(--muted)">· ${escapeHtml(c.label)}</span>` : ''}</div>
-          <div style="color:var(--muted);font-size:12.5px;margin-top:2px">${fmtOff(c)} · ${c.expires_on ? 'through ' + PoolTime.fmtDay(c.expires_on, { month: 'short', day: 'numeric', year: 'numeric' }) : 'no end date'}
-            · ${c.uses} ${c.uses === 1 ? 'family' : 'families'}${c.max_uses ? ' of ' + c.max_uses : ''}${c.show_on_home && c.active ? ' · on the member home' : ''}${state ? ` · <b>${state}</b>` : ''}</div>
+          <div style="color:var(--muted);font-size:12.5px;margin-top:2px">${fmtOff(c)} · ${c.expires_on ? 'until ' + PoolTime.fmtDay(c.expires_on, { month: 'short', day: 'numeric', year: 'numeric' }) : 'no end date'}
+            · ${c.uses ? `used by ${c.uses}${c.max_uses ? ' of ' + c.max_uses : ''} ${(c.max_uses || c.uses) === 1 ? 'family' : 'families'}` : `not used yet${c.max_uses ? ` (up to ${c.max_uses} ${c.max_uses === 1 ? 'family' : 'families'})` : ''}`}${c.show_on_home && c.active ? ' · shown in the app' : ''}${state ? ` · <b>${state}</b>` : ''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn" type="button" style="font-size:12px;padding:6px 10px" onclick="Codes.edit('${c.id}')">Edit</button>
@@ -1055,7 +1055,6 @@ async function loadPlansList() {
         return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--border)">
           <span>${escapeHtml(d(i.due_date))} · ${m(i.charge_cents)} ${paid ? '<span style="color:#15803d">paid</span>' : i.status === 'retrying' || i.status === 'failed' ? `<span style="color:#b91c1c">declined</span>` : ''}
             ${i.last_error && !paid ? `<div style="color:#7f1d1d;font-size:11px">${escapeHtml(i.last_error)}</div>` : ''}</span>
-          ${paid ? '' : `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="markPlanInstallmentPaid('${i.id}')">Mark paid</button>`}
         </div>`;
       }).join('');
       const extra = [
@@ -1091,14 +1090,6 @@ function togglePlanRow(id) {
 async function simulatePlanCharge(planId) {
   try {
     const r = await api(PLANS_URL, 'simulate_charge', { plan_id: planId });
-    if (!r.ok) throw new Error(r.error || 'failed');
-    await loadPlansList();
-  } catch (e) { alert(e.message); }
-}
-async function markPlanInstallmentPaid(installmentId) {
-  if (!confirm('Mark this installment paid? Use this only if the money has actually arrived (e.g. cash/check).')) return;
-  try {
-    const r = await api(PLANS_URL, 'mark_paid', { installment_id: installmentId });
     if (!r.ok) throw new Error(r.error || 'failed');
     await loadPlansList();
   } catch (e) { alert(e.message); }

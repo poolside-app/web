@@ -833,6 +833,32 @@ Doug: "beaubains signed up, but they selected a payment plan along with venmo so
 - **AT3. Households.** A family on an active plan shows "On plan" instead of Unpaid, with its own count.
 `node scripts/test_flex_plan.mjs` (offline part).
 
+### AU. Plans by card only; text sizes in the app; plain code wording (Doug, 10/13) — ✅ AU1–AU3 done 10/13
+Doug: "make sure that it is ONLY enables... payment plans for stripe only... no venmo allowed, even with deposit... also go check out the text sizes and font for the app.. some seem off... and the coupon code section doesn't sound right.. hard to understand".
+
+What's there now:
+- Plans are already card only for families. On the signup form the plan is its own choice, "charged to your card". Renewals have no Venmo at all. The server only builds a plan through card checkout, and the first payment ("pay today") is part of that checkout. Beaubien's "Venmo" was the Signups label (AT).
+- The one way around the card: on Payments → Families on a payment plan, a board member can "Mark paid" a single plan payment, meant for cash or a check.
+- Typing boxes are 14–15px, but iPhones don't zoom into them: `js/phone-fit.js` has stopped that since 10/7 (N8). So they stay as they are.
+- Codes appear in three places: the family's "Have a code?" (signup and renewal), the board's Discounts card on Payments, and the member home's code banner.
+
+Doug's answers: remove the board's "Mark paid" on plan payments, so plans are card only, period. For text, "dont remember... go check", so I check every member screen, the signup and renewal forms and the board's pop-ups at iPhone width. For codes, "its the coupon code narrative": the explaining sentences, written plainly everywhere they appear.
+
+Steps:
+- **AU1. Card only, locked in.** The board's "Mark paid" on a plan payment is gone, and `payment_plans` `mark_paid` refuses. Tests fail if a plan is ever offered with Venmo, or built without card checkout.
+- **AU2. Text.** I checked every member screen, the signup form and the board home and Passes pop-up at iPhone width, with the Frevele test family's real data. What's broken gets fixed:
+  - The member header ("Bishop Estates Cabana Club · Kristin Frevele · Sign out") squeezes "Sign out" onto two lines, and a board member's "Board tools →" makes it worse. Links stay on one line, and the member's name is hidden on phones (Home already says "Hi, Kristin!").
+  - On My family, "Refer a friend" is the only card title not in the heading font. It now matches Keyfobs.
+  - On the signup form, the description under every choice (app or no app, membership level, free keyfob) is semibold, because every label there is. Descriptions are regular weight, and titles stay bold.
+  - The pop-up's × and the photo arrows ‹ › fall back to Arial. They use the app's font.
+  - Left as tuned for phones: the calendar's small day numbers, the 14–15px typing boxes, and the rest of the sizes.
+  - Not mine to change: the signup form's heading reads "2026 Membership" while 2027 is on sale. That's the club's heading setting, so it's Doug's call.
+- **AU3. Code wording.** Plain sentences wherever codes are explained:
+  - The board's Discounts card: what a code does, how families use it, and that one discount counts. Its fields get plain labels ("What it's for", "Discount", "Last day to use it", "How many families can use it", "Show it on the member app's home screen"). Each code's line reads "$50 off · until May 1, 2027 · used by 3 of 10 families".
+  - The family's "Have a discount code?": "✓ EARLYBIRD: $50 off." The code-or-referral note becomes "You have a code and a friend's referral, and only one can count. We used your code because it saves more ($50 vs. $25)." The problem messages ("That code isn't valid. Check the spelling.") are already plain and stay.
+  - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
+`node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
+
 ### AL. A Raspberry Pi bridge at Bishop (Doug, 10/12) — parked, not started
 Doug: "test this on a raspberry pi at some point… at my house, setup a pi, and simply plug and play into the cabana club to see what happens." The Windows PC keeps running the bridge until the Pi has proven itself. The bridge's Python already runs on Linux; what's missing is the install and a safe way to try it at home.
 - **AL1. The Pi.** Raspberry Pi 4 or 5, booting from the USB SSD (SD cards die when a pump house loses power), Raspberry Pi OS Lite 64-bit, wired ethernet, a small UPS. Python 3.11 or newer is built in, which uhppoted needs (3.10+).

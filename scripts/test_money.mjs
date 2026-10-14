@@ -126,10 +126,12 @@ console.log('\nH5 · discounts come off the price (offline)');
 
     const c = pr.priceMembership({ baseCents: 60000, code: early, referralOffCents: 2500 });
     check('H5: code vs referral: the bigger one applies, and they\'re told',
-      c.discount_kind === 'code' && c.amount_due_cents === 55000 && /one discount/i.test(c.note || ''), short(c));
+      c.discount_kind === 'code' && c.amount_due_cents === 55000 && c.note === "You have a code and a friend's referral, and only one can count. We used your code because it saves more ($50 vs. $25).", short(c));
     const d = pr.priceMembership({ baseCents: 60000, code: small, referralOffCents: 2500 });
     check('H5: a smaller code loses to the referral discount',
-      d.discount_kind === 'referral' && d.amount_due_cents === 57500 && d.discount_code_id === null && /one discount/i.test(d.note || ''), short(d));
+      d.discount_kind === 'referral' && d.amount_due_cents === 57500 && d.discount_code_id === null && d.note === "You have a code and a friend's referral, and only one can count. We used the referral because it saves more ($25 vs. $10).", short(d));
+    const tie = pr.priceMembership({ baseCents: 60000, code: { ...small, amount_cents: 2500 }, referralOffCents: 2500 });
+    check('AU3: a tie says both save the same', tie.discount_kind === 'referral' && tie.note === "You have a code and a friend's referral, and only one can count. Both save $25, so we used the referral.", short(tie));
 
     const e = pr.priceMembership({ baseCents: 60000, code: early, creditCents: 10000 });
     check('H5: referral credit comes off too, after the discount', e.credit_cents === 10000 && e.amount_due_cents === 45000, short(e));
@@ -177,6 +179,29 @@ console.log('\nH7 · discount codes (offline)');
     /home_codes/.test(pub) && !/early_bird/.test(pub) && /home_codes/.test(read('m/index.html')) && !/early_bird/.test(read('m/index.html')), 'still early_bird');
   const ren = read('supabase/functions/renewals/index.ts');
   check('H7: the renewal blast mentions a home code instead of early bird', /show_on_home/.test(ren) && !/early_bird/.test(ren), 'renewals still reads early_bird');
+}
+
+// PLAN.md AU3 (Doug 10/13: "the coupon code narrative... hard to
+// understand"): the sentences that explain codes, in plain words.
+console.log('\nAU3 · the code wording (offline)');
+{
+  const money = read('club/admin/payments.html');
+  const card = between(money, '<div class="card" id="discounts-card"', '<h3 style="margin:22px 0 4px;font-size:14px">Referral program</h3>');
+  check('AU3: Discounts explains what a code does, how families use it, and that one discount counts',
+    card.includes("A discount code takes money off a family's dues, like an early-bird price. Families type it in \"Have a discount code?\" when they sign up or renew. Each family gets one discount: if they also joined through a friend's referral link, whichever saves more is used."), 'old wording');
+  check('AU3: Discounts fields have plain labels', ['Code families type', "What it's for", '>Discount<', 'Last day to use it', 'How many families can use it', "Show it on the member app's home screen"].every(t => card.includes(t))
+    && !/Takes off|Up to how many families|blank = no limit/.test(card), 'old labels');
+  const list = between(money, 'const Codes = (() => {', 'async function load()');
+  check('AU3: each code reads "$50 off · until May 1, 2027 · used by 3 of 10 families"', /'until ' \+ PoolTime\.fmtDay/.test(list) && /used by \$\{c\.uses\}\$\{c\.max_uses \? ' of ' \+ c\.max_uses : ''\}/.test(list) && /not used yet/.test(list), 'old line');
+  for (const page of ['apply.html', 'renew.html', 'm/renew.html']) {
+    const src = read(page);
+    check(`AU3: ${page} asks "Have a discount code?"`, src.includes('Have a discount code?') && !src.includes('>Have a code?<'));
+    check(`AU3: ${page} says what the code took off`, /✓ \$\{[^}]*code[^}]*\}: \$\{[^}]*\} off\./.test(src) && !/Code \$\{[^}]*\} applied\./.test(src));
+  }
+  check('AU3: the signup form says when a good code lost to the referral', read('apply.html').includes('works, but your referral saves more, so we used that.'));
+  const home = between(read('m/index.html'), 'const homeCodes =', '// Hero card');
+  check('AU3: the renewal message says it the same way', read('supabase/functions/renewals/index.ts').includes("save ${off} when you renew with code ${c.code}${until}."));
+  check('AU3: the member home banner says what you save and how', home.includes('save ${escapeHtml(off)} when you renew') && home.includes('Type it in "Have a discount code?" when you renew.') && !home.includes('Type it under'), 'old banner');
 }
 
 // ── H6: referral rewards (offline) ──────────────────────────────────────

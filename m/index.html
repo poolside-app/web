@@ -56,7 +56,9 @@
     display: flex; justify-content: space-between; align-items: center;
   }
   .who { font-size: 13px; color: var(--muted); display: flex; gap: 14px; align-items: center; }
-  .who a { cursor: pointer; }
+  .who a { cursor: pointer; white-space: nowrap; }
+  /* Phones: the club name, "Board tools" and "Sign out" need the room (PLAN.md AU2). */
+  @media (max-width: 520px) { #whoami { display: none; } }
 
   main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
   /* The app tabs (PLAN.md U4, V): a bar fixed to the bottom of the screen
@@ -2696,14 +2698,14 @@ async function submitProfile() {
   let earlyBirdBanner = '';
   if (homeCodes.length && !(me.renewal && me.renewal.already_paid)) {
     earlyBirdBanner = homeCodes.map(c => {
-      const off = c.amount_cents ? `$${(c.amount_cents / 100).toFixed(c.amount_cents % 100 ? 2 : 0)} off` : `${Number(c.percent_off)}% off`;
-      const until = c.expires_on ? ` through ${PoolTime.fmtDay(c.expires_on, { month: 'short', day: 'numeric' })}` : '';
+      const off = c.amount_cents ? `$${(c.amount_cents / 100).toFixed(c.amount_cents % 100 ? 2 : 0)}` : `${Number(c.percent_off)}%`;
+      const until = c.expires_on ? ` by ${PoolTime.fmtDay(c.expires_on, { month: 'short', day: 'numeric' })}` : '';
       return `
         <div style="margin:0 0 14px;padding:14px 16px;background:linear-gradient(90deg,#fef3c7,#fef08a);border:1px solid #fcd34d;border-radius:12px;display:flex;gap:10px;align-items:flex-start">
           <div style="font-size:20px;line-height:1">🏷️</div>
           <div style="flex:1">
-            <div style="font-weight:700;color:#7c2d12">${c.label ? escapeHtml(c.label) + ': ' : ''}${escapeHtml(off)} with code ${escapeHtml(c.code)}${escapeHtml(until)}</div>
-            <div style="font-size:13px;color:#92400e;margin-top:4px">Type it under "Have a code?" when you renew.</div>
+            <div style="font-weight:700;color:#7c2d12">${c.label ? escapeHtml(c.label) + ': ' : ''}save ${escapeHtml(off)} when you renew</div>
+            <div style="font-size:13px;color:#92400e;margin-top:4px">Use code <b>${escapeHtml(c.code)}</b>${escapeHtml(until)}. Type it in "Have a discount code?" when you renew.</div>
           </div>
         </div>`;
     }).join('');
@@ -2758,8 +2760,8 @@ async function submitProfile() {
           </div>
         `).join('')}
         ${photos.length > 1 ? `
-          <button class="cnav cprev" aria-label="Previous photo" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">‹</button>
-          <button class="cnav cnext" aria-label="Next photo" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">›</button>
+          <button class="cnav cprev" aria-label="Previous photo" style="font-family:inherit;position:absolute;left:8px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">‹</button>
+          <button class="cnav cnext" aria-label="Next photo" style="font-family:inherit;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">›</button>
           <div class="cdots" style="position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;gap:5px;z-index:3">
             ${photos.map((_, i) => `<button class="cdot" data-i="${i}" aria-label="Photo ${i + 1}" style="width:8px;height:8px;border-radius:50%;border:0;cursor:pointer;background:${i === 0 ? '#fff' : 'rgba(255,255,255,.5)'};padding:0"></button>`).join('')}
           </div>` : ''}
@@ -2922,7 +2924,7 @@ async function submitProfile() {
       ${planNeedsYou ? '' : renderPlanCard(me.plan)}
       ${acc.member ? renderFobCard(me.keyfobs) : ''}
       ${acc.member ? `<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <span><b>💌 Refer a friend</b><br><span style="font-size:13px;color:var(--muted)">Earn $${(referReward / 100).toFixed(referReward % 100 ? 2 : 0)} when a family you invite joins.</span></span>
+        <div><h2 style="margin:0 0 4px">💌 Refer a friend</h2><div style="font-size:13px;color:var(--muted)">Earn $${(referReward / 100).toFixed(referReward % 100 ? 2 : 0)} when a family you invite joins.</div></div>
         <button class="btn" onclick="openReferModal()" style="background:linear-gradient(90deg,#f59e0b,#fbbf24);color:#0a3b5c;font-weight:700">Invite a family</button>
       </div>` : ''}
     </section>

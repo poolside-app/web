@@ -310,6 +310,7 @@
       <input type="checkbox" id="e-dues_paid_for_year">
       <label for="e-dues_paid_for_year" style="margin:0;font-weight:500">Dues paid for current year</label>
     </div>
+    <div id="e-dues-plan-note" style="display:none;font-size:12px;color:var(--muted);margin:-2px 0 6px">On a payment plan: their card plan sets this. Plan payments are card only.</div>
     <label>Address</label>
     <input id="e-address" placeholder="123 Main St">
     <div class="row2" style="margin-top:6px">
@@ -609,6 +610,9 @@ const Households = (() => {
     document.getElementById('e-fob_number').value = h.fob_number || '';
     document.getElementById('e-paid_until_year').value = h.paid_until_year || CURRENT_YEAR;
     document.getElementById('e-dues_paid_for_year').checked = !!h.dues_paid_for_year;
+    // A plan family's dues are set by their card plan (PLAN.md AU1).
+    document.getElementById('e-dues_paid_for_year').disabled = !!h.on_plan;
+    document.getElementById('e-dues-plan-note').style.display = h.on_plan ? '' : 'none';
     document.getElementById('e-address').value = h.address || '';
     document.getElementById('e-city').value = h.city || '';
     document.getElementById('e-zip').value  = h.zip || '';

@@ -103,7 +103,7 @@ const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/stripe_checkout`;
 // treasurer would otherwise be phoning.
 const TOKEN = new URLSearchParams(location.search).get('t') || '';
 let OPTS = null;
-let CODE = '';          // "Have a code?" (H5, H7)
+let CODE = '';          // "Have a discount code?" (H5, H7, AU3)
 let choice = 'full';
 let CHOSE = false;       // the family picked how to pay; don't move it back to the saved card
 let PLAN_SEL = {};      // the plan they picked: pay today, paid off by (PLAN.md M)
@@ -294,9 +294,9 @@ const fobParam = () => FOB_EXTRA === null ? {} : { fob_extra: FOB_EXTRA };
 function codeHtml(p) {
   const msg = CODE && p ? (p.code_problem
     ? `<div style="color:var(--red);font-size:12.5px;margin-top:6px">${esc(p.code_problem)}</div>`
-    : p.code ? `<div style="color:#15803d;font-size:12.5px;margin-top:6px">Code ${esc(p.code)} applied.</div>` : '') : '';
+    : p.code ? `<div style="color:#15803d;font-size:12.5px;margin-top:6px">✓ ${esc(p.code)}: ${money(p.discount_cents)} off.</div>` : '') : '';
   return `<div style="margin-top:12px">
-    <a href="#" id="code-toggle" style="font-size:13px;font-weight:600;${CODE ? 'display:none' : ''}">Have a code?</a>
+    <a href="#" id="code-toggle" style="font-size:13px;font-weight:600;${CODE ? 'display:none' : ''}">Have a discount code?</a>
     <div id="code-box" style="${CODE ? '' : 'display:none'}">
       <div style="display:flex;gap:8px;margin-top:6px">
         <input id="code-in" value="${esc(CODE)}" placeholder="Code" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:15px 'Inter';text-transform:uppercase">

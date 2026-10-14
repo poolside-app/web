@@ -463,9 +463,10 @@ Deno.serve(async (req) => {
         .order('created_at', { ascending: false }).limit(5);
       const c = (codes ?? []).find(x => !x.expires_on || String(x.expires_on) >= today);
       if (c) {
-        const off = c.amount_cents ? `$${(Number(c.amount_cents) / 100).toFixed(0)} off` : `${Number(c.percent_off)}% off`;
-        const until = c.expires_on ? ` through ${fmtPoolDate(`${c.expires_on}T12:00:00Z`, tz, { month: 'short', day: 'numeric' })}` : '';
-        earlyBirdLine = `${c.label ? c.label + ': ' : ''}${off} with code ${c.code}${until}.`;
+        // Plain words (PLAN.md AU3): "Early bird: save $50 when you renew with code EARLYBIRD by May 1."
+        const off = c.amount_cents ? `$${(Number(c.amount_cents) / 100).toFixed(0)}` : `${Number(c.percent_off)}%`;
+        const until = c.expires_on ? ` by ${fmtPoolDate(`${c.expires_on}T12:00:00Z`, tz, { month: 'short', day: 'numeric' })}` : '';
+        earlyBirdLine = `${c.label ? c.label + ': ' : ''}save ${off} when you renew with code ${c.code}${until}.`;
       }
     }
 

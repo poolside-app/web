@@ -96,7 +96,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
     });
     check('H2: 1 adult → Single, 3 people → Family', pick.one === 'single' && pick.three === 'family', JSON.stringify(pick));
 
-    // H5: "Have a code?" checks the code with the server and says why not.
+    // H5: "Have a discount code?" checks the code with the server and says why not.
     await a.evaluate(async () => { APPLIED_CODE = 'NOSUCHCODE'; await refreshQuote(); });
     const codeMsg = await a.$eval('#code-msg', el => el.textContent.trim());
     const venmoPrice = await a.$eval('#venmo-price', el => el.textContent.trim());
@@ -300,7 +300,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
       (action, json) => action === 'renewal_options' && json ? { ...json, open: true, already_paid: false } : json);
     await rp.waitForSelector('.amount', { timeout: 20000 });
     const shown = await rp.evaluate(() => document.getElementById('root').innerText.replace(/\s+/g, ' '));
-    check('H5: the renewal page shows their $100 referral credit off', /Your referral credit/.test(shown) && /−\$100\.00/.test(shown) && /Have a code\?/.test(shown), shown.slice(0, 200));
+    check('H5: the renewal page shows their $100 referral credit off', /Your referral credit/.test(shown) && /−\$100\.00/.test(shown) && /Have a discount code\?/.test(shown), shown.slice(0, 200));
     await rp.evaluate(() => { document.getElementById('code-toggle').click(); document.getElementById('code-in').value = 'NOSUCHCODE'; document.getElementById('code-apply').click(); });
     await rp.waitForFunction(() => /isn't valid/.test(document.getElementById('root').innerText), { timeout: 15000 }).catch(() => {});
     const after = await rp.evaluate(() => document.getElementById('root').innerText.replace(/\s+/g, ' '));
@@ -350,8 +350,8 @@ export async function renderChecks({ check, read, sql, jwt }) {
     }));
     check('I: member home has no feedback card, pop-up or member-count line', !trimmed.feedback && !trimmed.popup && !trimmed.count, JSON.stringify(trimmed));
     check('D9: "Coming up" doesn\'t list the daily Pool Open', !/Pool Open/.test(coming), coming.slice(0, 160));
-    const banner = await h.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').match(/Early bird: [^.]*?EARLYBIRD[^.]*?2099|Early bird: \$50 off with code EARLYBIRD through [A-Z][a-z]{2} 1/)?.[0] || '');
-    check('H7: the member home shows the early-bird code', /\$50 off with code EARLYBIRD through Mar 1/.test(banner), banner || 'no banner');
+    const banner = await h.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').match(/Early bird: save \$50 when you renew Use code EARLYBIRD by [A-Z][a-z]{2} \d+/)?.[0] || '');
+    check('H7: the member home shows the early-bird code', /save \$50 when you renew Use code EARLYBIRD by Mar 1/.test(banner), banner || 'no banner');
     // H6: the Refer panel spells out the rules before anything else.
     await h.evaluate(() => openReferModal());
     await h.waitForFunction(() => /30 days/.test(document.getElementById('refer-rules')?.textContent || ''), { timeout: 15000 }).catch(() => {});

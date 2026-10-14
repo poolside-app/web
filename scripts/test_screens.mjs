@@ -323,6 +323,23 @@ if (process.argv.includes('--live')) {
   }
 }
 
+// PLAN.md AU2 (Doug 10/13: "text sizes and font for the app.. some seem
+// off"), found at iPhone width. Only what's broken; the phone tuning stays.
+console.log('\nAU2 · text that looked off on phones');
+for (const page of ['m/index.html', 'm/family.html', 'm/renew.html']) {
+  const src = read(page);
+  check(`${page}: "Sign out" and "Board tools" stay on one line`, /\.who a \{[^}]*white-space:\s*nowrap/.test(src));
+  check(`${page}: the member's name gives way on phones`, /@media \(max-width: 520px\) \{[^}]*#whoami \{ display: none; \}/.test(src));
+}
+check('My family: "Refer a friend" is a card title like Keyfobs', /<h2[^>]*>💌 Refer a friend<\/h2>/.test(read('m/index.html')) && !/<b>💌 Refer a friend<\/b>/.test(read('m/index.html')));
+check('signup: what a choice means is regular weight, its title stays bold',
+  /label:has\(> input\[type="radio"\]\), label:has\(> input\[type="checkbox"\]\) \{ font-weight: 400; \}/.test(read('apply.html')));
+check('the pop-up × uses the app\'s font', /#sponsor-popup \.close-x \{[^}]*font-family: inherit/.test(read('js/sponsor-popup.js')));
+for (const page of ['m/index.html', 'club/index.html']) {
+  const arrows = read(page).match(/<button class="cnav c(?:prev|next)"[^>]*>/g) || [];
+  check(`${page}: the photo arrows use the app's font`, arrows.length === 2 && arrows.every(b => /font-family:inherit/.test(b)), String(arrows.length));
+}
+
 if (process.argv.includes('--live')) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/google_oauth?action=status`);
   check('G1: the Google sign-in function is no longer deployed', r.status === 404, `status ${r.status}`);

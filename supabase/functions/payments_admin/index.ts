@@ -62,6 +62,24 @@ function ageDays(iso: string | null | undefined): number | null {
   return ms > 0 ? Math.floor(ms / 86400_000) : 0;
 }
 
+// A family on a payment plan pays by card only (PLAN.md AU1, Doug 10/13:
+// "payment plans for stripe only... no venmo allowed, even with deposit").
+// Their payments are on Upcoming, and nothing here marks them paid.
+const PLAN_CARD_ONLY = 'This family is on a payment plan, which is card only. Their payments are on Money → Upcoming.';
+// deno-lint-ignore no-explicit-any
+async function onCardPlan(sb: any, tid: string, source: string, id: string): Promise<boolean> {
+  if (source === 'application') {
+    const { data: a } = await sb.from('applications').select('payment_method, payment_status').eq('id', id).eq('tenant_id', tid).maybeSingle();
+    return a?.payment_method === 'stripe_plan' && a?.payment_status === 'pending';
+  }
+  if (source === 'dues') {
+    const { count } = await sb.from('payment_plans').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tid).eq('household_id', id).eq('status', 'active');
+    return (count ?? 0) > 0;
+  }
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -136,9 +154,13 @@ Deno.serve(async (req) => {
     const householdsWithOpenApp = new Set<string>(
       (apps ?? []).map(a => String(a.household_id)).filter(Boolean),
     );
+    // Families paying on a plan: their dues come in by card on Upcoming (AU1).
+    const { data: planRows } = await sb.from('payment_plans').select('household_id')
+      .eq('tenant_id', TID).eq('status', 'active').not('household_id', 'is', null).limit(5000);
+    const planHouseholds = new Set<string>((planRows ?? []).map(p => String(p.household_id)));
 
     for (const h of (dueHouseholds ?? [])) {
-      if (householdsWithOpenApp.has(h.id)) continue;
+      if (householdsWithOpenApp.has(h.id) || planHouseholds.has(h.id)) continue;
       items.push({
         source: 'dues',
         source_id: h.id,
@@ -191,6 +213,8 @@ Deno.serve(async (req) => {
     if (!source || !source_id) {
       return jsonResponse({ ok: false, error: 'source and source_id required' }, 400);
     }
+
+    if (await onCardPlan(sb, TID, source, source_id)) return jsonResponse({ ok: false, error: PLAN_CARD_ONLY }, 409);
 
     if (source === 'dues') {
       const { error } = await sb.from('households')
@@ -258,6 +282,7 @@ Deno.serve(async (req) => {
     const failed: Array<{ source_id: string; error: string }> = [];
     for (const it of items) {
       try {
+        if (await onCardPlan(sb, TID, it.source, it.source_id)) throw new Error(PLAN_CARD_ONLY);
         if (it.source === 'dues') {
           const { error } = await sb.from('households').update({ dues_paid_for_year: true, updated_at: new Date().toISOString() })
             .eq('id', it.source_id).eq('tenant_id', TID);

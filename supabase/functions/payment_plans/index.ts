@@ -1063,19 +1063,11 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, plans: views, test_mode: club.testMode, today: club.today });
   }
 
+  // Plan payments are card only (PLAN.md AU1, Doug 10/13: "payment plans
+  // for stripe only... no venmo allowed"). The board can't record one paid
+  // another way; a declined card is retried, then the family pays by card.
   if (action === 'mark_paid') {
-    const id = String(body.installment_id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'installment_id required' }, 400);
-    const { data: inst } = await sb.from('payment_plan_installments').select('*')
-      .eq('id', id).eq('tenant_id', payload.tid).maybeSingle();
-    if (!inst) return jsonResponse({ ok: false, error: 'Installment not found' }, 404);
-    await sb.from('payment_plan_installments').update({
-      status: 'manual', paid_at: new Date().toISOString(), last_error: null,
-    }).eq('id', id);
-    const club = await loadPlanClub(sb, payload.tid);
-    const { data: plan } = await sb.from('payment_plans').select('*').eq('id', inst.plan_id).maybeSingle();
-    if (club && plan) await afterPayment(sb, club, plan);
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: false, error: 'Plan payments are card only. A declined card is retried, then the family catches up by card.' }, 410);
   }
 
   // Test payments only: move a plan along without waiting a month. Marks

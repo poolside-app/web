@@ -36,7 +36,9 @@
   .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
   header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
   .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
-  .who a { cursor:pointer; }
+  .who a { cursor:pointer; white-space: nowrap; }
+  /* Phones: the club name, "Board tools" and "Sign out" need the room (PLAN.md AU2). */
+  @media (max-width: 520px) { #whoami { display: none; } }
   main { flex:1; padding:22px 16px 40px; max-width:640px; width:100%; margin:0 auto; }
   .back { display:inline-flex; align-items:center; gap:6px; font:600 13px 'Inter'; color:var(--blue); text-decoration:none; padding:8px 0 16px; }
   footer { padding:18px; text-align:center; font-size:12px; color:var(--muted); }
@@ -100,7 +102,7 @@ const AUTH_URL     = `${SUPABASE_URL}/functions/v1/member_auth`;
 const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/stripe_checkout`;
 
 let OPTS = null;        // renewal_options response
-let CODE = '';          // "Have a code?" (H5, H7)
+let CODE = '';          // "Have a discount code?" (H5, H7, AU3)
 let choice = 'full';
 let CHOSE = false;       // the family picked how to pay; don't move it back to the saved card    // 'full' | 'plan'
 let PLAN_SEL = {};      // the plan they picked: pay today, paid off by (PLAN.md M)
@@ -298,9 +300,9 @@ const fobParam = () => FOB_EXTRA === null ? {} : { fob_extra: FOB_EXTRA };
 function codeHtml(p) {
   const msg = CODE && p ? (p.code_problem
     ? `<div style="color:var(--red);font-size:12.5px;margin-top:6px">${esc(p.code_problem)}</div>`
-    : p.code ? `<div style="color:#15803d;font-size:12.5px;margin-top:6px">Code ${esc(p.code)} applied.</div>` : '') : '';
+    : p.code ? `<div style="color:#15803d;font-size:12.5px;margin-top:6px">✓ ${esc(p.code)}: ${money(p.discount_cents)} off.</div>` : '') : '';
   return `<div style="margin-top:12px">
-    <a href="#" id="code-toggle" style="font-size:13px;font-weight:600;${CODE ? 'display:none' : ''}">Have a code?</a>
+    <a href="#" id="code-toggle" style="font-size:13px;font-weight:600;${CODE ? 'display:none' : ''}">Have a discount code?</a>
     <div id="code-box" style="${CODE ? '' : 'display:none'}">
       <div style="display:flex;gap:8px;margin-top:6px">
         <input id="code-in" value="${esc(CODE)}" placeholder="Code" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:15px 'Inter';text-transform:uppercase">

@@ -46,6 +46,8 @@
   .lede { color: var(--muted); margin: 8px 0 22px; font-size: 14px; }
   label { display:block; font-weight:600; font-size: 12px; margin: 14px 0 4px; }
   label .opt { font-weight:500; color: var(--muted); text-transform: none; font-size: 11px; margin-left: 6px; }
+  /* A choice's title is bold; what it means under it is regular (PLAN.md AU2). */
+  label:has(> input[type="radio"]), label:has(> input[type="checkbox"]) { font-weight: 400; }
   /* Scope text-field styling to actual text fields. Radios/checkboxes must
      keep their native size — otherwise width:100% + padding balloons them and
      crushes their label text (Doug 2026-05-30). */
@@ -265,7 +267,7 @@
            same rules checkout uses. One discount per membership. -->
       <div id="price-box" style="display:none;margin-top:14px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;background:#fff;font-size:13.5px;line-height:1.6"></div>
       <div id="code-row" style="margin-top:10px">
-        <a href="#" id="code-toggle" onclick="toggleCode(event)" style="font-size:13px;font-weight:600">Have a code?</a>
+        <a href="#" id="code-toggle" onclick="toggleCode(event)" style="font-size:13px;font-weight:600">Have a discount code?</a>
         <div id="code-box" style="display:none;margin-top:6px">
           <div style="display:flex;gap:8px;align-items:center">
             <input id="discount_code" placeholder="Code" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1;text-transform:uppercase" onkeydown="if (event.key === 'Enter') { event.preventDefault(); applyCode(); }">
@@ -484,7 +486,9 @@ function paintPrice() {
   if (!PRICE) { box.style.display = 'none'; return; }
   if (APPLIED_CODE) {
     msg.style.color = PRICE.code_problem ? 'var(--red, #dc2626)' : '#15803d';
-    msg.textContent = PRICE.code_problem || (PRICE.code ? `Code ${PRICE.code} applied.` : '');
+    msg.textContent = PRICE.code_problem || (!PRICE.code ? ''
+      : PRICE.discount_kind === 'code' ? `✓ ${PRICE.code}: ${fmt(PRICE.discount_cents)} off.`
+      : `${PRICE.code} works, but your referral saves more, so we used that.`);
   } else { msg.textContent = ''; }
   if (!PRICE.discount_cents && !PRICE.fob_count) { box.style.display = 'none'; return; }
   const why = PRICE.discount_kind === 'code'

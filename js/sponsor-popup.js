@@ -101,7 +101,7 @@
       }
       #sponsor-popup .close-x {
         position: absolute; top: 10px; right: 12px; background: transparent;
-        border: 0; cursor: pointer; font-size: 22px; color: #94a3b8; line-height: 1;
+        border: 0; cursor: pointer; font-size: 22px; font-family: inherit; color: #94a3b8; line-height: 1;
         padding: 4px 8px; border-radius: 6px;
       }
       #sponsor-popup .close-x:hover { background: #f1f5f9; color: #475569; }

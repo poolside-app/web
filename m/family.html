@@ -35,7 +35,9 @@
   .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow:0 0 0 3px rgba(245,158,11,.18); }
   header { padding:14px 22px; border-bottom:1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
   .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
-  .who a { cursor: pointer; }
+  .who a { cursor: pointer; white-space: nowrap; }
+  /* Phones: the club name, "Board tools" and "Sign out" need the room (PLAN.md AU2). */
+  @media (max-width: 520px) { #whoami { display: none; } }
   main { flex:1; padding:22px 16px 30px; max-width:760px; width:100%; margin:0 auto; }
   .back { display:inline-flex; align-items:center; gap:6px; font:600 13px 'Inter'; color:var(--blue); text-decoration:none; padding:8px 0 16px; }
 

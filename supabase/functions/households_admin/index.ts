@@ -115,6 +115,13 @@ const HM_FIELDS = [
   'can_unlock_gate','can_book_parties','active','confirmed_at','last_seen_at','created_at',
 ].join(', ');
 
+// deno-lint-ignore no-explicit-any
+async function onActivePlan(sb: any, tid: string, householdId: string): Promise<boolean> {
+  const { count } = await sb.from('payment_plans').select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tid).eq('household_id', householdId).eq('status', 'active');
+  return (count ?? 0) > 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -278,7 +285,8 @@ Deno.serve(async (req) => {
       }
       patch.fob_number = v;
     }
-    if (body.dues_paid_for_year !== undefined) patch.dues_paid_for_year = !!body.dues_paid_for_year;
+    // A family on a payment plan has its dues set by the plan, by card only (PLAN.md AU1).
+    if (body.dues_paid_for_year !== undefined && !(await onActivePlan(sb, TID, id))) patch.dues_paid_for_year = !!body.dues_paid_for_year;
     if (body.paid_until_year !== undefined)    patch.paid_until_year    = intOrNull(body.paid_until_year);
     if (body.address !== undefined)            patch.address            = strOrNull(body.address);
     if (body.city !== undefined)               patch.city               = strOrNull(body.city);

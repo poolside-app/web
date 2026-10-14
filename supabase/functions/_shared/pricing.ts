@@ -94,10 +94,15 @@ export function priceMembership(args: {
   else if (refOff > 0) { kind = 'referral'; discount = refOff; }
 
   let note: string | null = null;
+  // Said plainly (PLAN.md AU3, Doug 10/13: "the coupon code narrative...
+  // hard to understand").
   if (codeOff > 0 && refOff > 0) {
+    const why = "You have a code and a friend's referral, and only one can count.";
     note = kind === 'code'
-      ? `Your code saves ${money(codeOff)}, more than the ${money(refOff)} referral discount, so the code is used. It's one discount per membership.`
-      : `The ${money(refOff)} referral discount saves more than your code (${money(codeOff)}), so it's used. It's one discount per membership.`;
+      ? `${why} We used your code because it saves more (${money(codeOff)} vs. ${money(refOff)}).`
+      : codeOff === refOff
+        ? `${why} Both save ${money(refOff)}, so we used the referral.`
+        : `${why} We used the referral because it saves more (${money(refOff)} vs. ${money(codeOff)}).`;
   }
 
   const after = base - discount;

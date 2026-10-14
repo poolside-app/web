@@ -752,8 +752,8 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
             </div>
           `).join('')}
           ${photos.length > 1 ? `
-          <button class="cnav cprev" aria-label="Previous photo" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">‹</button>
-          <button class="cnav cnext" aria-label="Next photo" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">›</button>
+          <button class="cnav cprev" aria-label="Previous photo" style="font-family:inherit;position:absolute;left:10px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">‹</button>
+          <button class="cnav cnext" aria-label="Next photo" style="font-family:inherit;position:absolute;right:10px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:24px;line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center">›</button>
           <div class="cdots" style="position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:6px;z-index:3">
             ${photos.map((_, i) => `<button class="cdot" data-i="${i}" aria-label="Photo ${i + 1}" style="width:9px;height:9px;border-radius:50%;border:0;cursor:pointer;background:${i === 0 ? '#fff' : 'rgba(255,255,255,.45)'};padding:0"></button>`).join('')}
           </div>` : ''}

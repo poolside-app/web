@@ -274,6 +274,37 @@ console.log('AT · plan families on Signups, Households and Payments (offline)')
   check('households list: says which families are on an active plan', /on_plan: planIds\.has\(h\.id as string\)/.test(read('supabase/functions/households_admin/index.ts')));
 }
 
+// PLAN.md AU1 (Doug 10/13): "payment plans for stripe only... no venmo
+// allowed, even with deposit". Every plan payment, the first included,
+// goes through the card; the board can't record one paid another way.
+console.log('AU1 · payment plans are card only (offline)');
+{
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const read = rel => readFileSync(new URL(rel, root), 'utf8');
+  check('Payments: no "Mark paid" on a plan payment', !/markPlanInstallmentPaid/.test(read('club/admin/payments.html')));
+  check('payment_plans: mark_paid refuses, plan payments are card only',
+    /if \(action === 'mark_paid'\) \{\s*return jsonResponse\(\{ ok: false, error: '[^']*card[^']*' \}, 410\);\s*\}/.test(read('supabase/functions/payment_plans/index.ts')));
+  const pa = read('supabase/functions/payments_admin/index.ts');
+  check('Payments: "Mark paid" (one or many) refuses a family on a plan', (pa.match(/if \(await onCardPlan\(sb, TID, [^)]*\)\)/g) || []).length === 2 && /PLAN_CARD_ONLY/.test(pa));
+  check('Payments: a plan family\'s dues aren\'t on the outstanding list', /if \(householdsWithOpenApp\.has\(h\.id\) \|\| planHouseholds\.has\(h\.id\)\) continue;/.test(pa));
+  check('Households: the board can\'t tick dues paid for a family on a plan', /if \(body\.dues_paid_for_year !== undefined && !\(await onActivePlan\(sb, TID, id\)\)\)/.test(read('supabase/functions/households_admin/index.ts'))
+    && /e-dues_paid_for_year'\)\.disabled = !!h\.on_plan/.test(read('club/admin/members.html')));
+  const apply = read('apply.html');
+  check('signup: the plan is its own choice, charged to a card', /value="stripe_plan"[\s\S]{0,200}charged to your card/.test(apply));
+  check('signup: "pay today" and the schedule show only with the plan picked', /const on = show && radio\.checked;\s*box\.style\.display = on \? '' : 'none';/.test(apply));
+  check('signup: Venmo details show only for Venmo', /if \(method !== 'venmo' \|\| !handle\) \{ block\.style\.display = 'none'; return; \}/.test(apply));
+  for (const page of ['renew.html', 'm/renew.html']) check(`${page}: renewing has no Venmo at all`, !/venmo/i.test(read(page)));
+  const files = [];
+  for (const d of readdirSync(new URL('supabase/functions/', root))) {
+    try { files.push([`${d}/index.ts`, read(`supabase/functions/${d}/index.ts`)]); } catch { /* _shared, not a function */ }
+  }
+  for (const f of readdirSync(new URL('supabase/functions/_shared/', root))) if (f.endsWith('.ts')) files.push([`_shared/${f}`, read(`supabase/functions/_shared/${f}`)]);
+  const makers = files.filter(([, src]) => /from\('payment_plans'\)\.insert\(/.test(src)).map(([n]) => n);
+  check('only card checkout creates a plan', makers.join() === 'stripe_checkout/index.ts', makers.join());
+  const setters = files.filter(([, src]) => /payment_method: 'stripe_plan'/.test(src)).map(([n]) => n).sort();
+  check('only card checkout and its webhook mark a signup as a plan', setters.join() === 'stripe_checkout/index.ts,stripe_webhook/index.ts', setters.join());
+}
+
 if (LIVE) {
   const { runLive } = await import('./lib/flex_plan_live.mjs');
   const r = await runLive({ check, short });
