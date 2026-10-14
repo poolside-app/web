@@ -274,12 +274,25 @@
     document.head.appendChild(style);
   }
   let modalTick = 0;
+  // Where the page was when a pop-up opened. On iPhone, the keyboard closing
+  // inside a pop-up can leave the page shifted, so taps land in the wrong
+  // place, and with the page locked nobody can scroll it back (Doug, 10/13:
+  // "i can't click on anything" after giving a pass). Put it back.
+  let lockY = null;
   function syncModal() {
     modalTick = 0;
     const open = modalOpen();
+    if (open && lockY === null) lockY = window.scrollY;
+    if (!open) lockY = null;
     document.documentElement.classList.toggle('ps-modal-open', open);
     if (document.body) document.body.classList.toggle('ps-modal-open', open);
   }
+  function unshift() {
+    if (lockY === null) return;
+    setTimeout(() => { if (lockY !== null) window.scrollTo(0, lockY); }, 120);
+  }
+  document.addEventListener('focusout', e => { if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) unshift(); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', unshift);
   function watchModals() {
     injectModalCss();
     syncModal();

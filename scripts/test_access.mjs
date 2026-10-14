@@ -194,5 +194,11 @@ const passPage = (() => { try { return read('pass.html'); } catch { return ''; }
 check('the guest page shows the doors with Unlock buttons only during the pass', /pass_info/.test(passPage) && /pass_tap/.test(passPage) && /data-door/.test(passPage) && /upcoming/.test(passPage) && /ended/.test(passPage));
 check('the passes panel gives a pass to a family or someone else, and can text it', /Someone else/.test(pj) && /guest_phone/.test(pj) && /Text it/.test(pj));
 
+console.log('AS3b · after "Pass given" on an iPhone (Doug, 10/13: "i can\'t click on anything")');
+const subtabs = read('js/admin-subtabs.js');
+check('board pages put the page back where it was when the keyboard closes inside a pop-up', /lockY/.test(subtabs) && /focusout/.test(subtabs) && /visualViewport/.test(subtabs) && /scrollTo\(/.test(subtabs));
+const pj2 = read('js/passes.js');
+check('the passes panel puts the keyboard away before it redraws', /activeElement[\s\S]{0,80}blur\(\)/.test(pj2) && /settle\(/.test(pj2));
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

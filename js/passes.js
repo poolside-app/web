@@ -35,6 +35,13 @@
     return a === b ? when(p.starts_at) + '–' + timeOnly(p.ends_at) : when(p.starts_at) + ' to ' + when(p.ends_at);
   }
 
+  // Put the keyboard away and let iPhone settle before redrawing, so the
+  // panel never redraws under a closing keyboard (Doug, 10/13).
+  function settle() {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    return new Promise(function (r) { setTimeout(r, 250); });
+  }
+
   function css() {
     if (document.getElementById('pp-css')) return;
     var s = document.createElement('style');
@@ -181,7 +188,7 @@
       };
       var all = el.querySelector('#pp-all');
       if (all) all.onchange = function () { el.querySelectorAll('.pp-door').forEach(function (c) { c.checked = all.checked; }); };
-      el.querySelector('#pp-cancel').onclick = function () { st.giving = false; st.err = ''; paint(); };
+      el.querySelector('#pp-cancel').onclick = async function () { st.giving = false; st.err = ''; await settle(); paint(); };
       el.querySelector('#pp-give').onclick = async function () {
         var errEl = el.querySelector('#pp-err');
         var doors = Array.prototype.map.call(el.querySelectorAll('.pp-door:checked'), function (c) { return c.value; });
@@ -195,10 +202,12 @@
         var starts = PoolTime.fromInput(el.querySelector('#pp-from').value), ends = PoolTime.fromInput(el.querySelector('#pp-to').value);
         if (!starts || !ends) { errEl.textContent = 'Give a from and a to.'; return; }
         var btn = this; btn.disabled = true; btn.textContent = 'Giving…';
+        if (document.activeElement && document.activeElement !== btn && document.activeElement.blur) document.activeElement.blur();
         var r = await call('pass_create', Object.assign(who, { doors: doors, starts_at: starts, ends_at: ends, note: el.querySelector('#pp-note').value }));
         if (!r.ok) { errEl.textContent = r.error || 'Could not give it'; btn.disabled = false; btn.textContent = 'Give the pass'; return; }
         st.giving = false; st.err = ''; st.who = 'family';
         st.given = (r.link || r.texted || r.text_error) ? { link: r.link, texted: r.texted, text_error: r.text_error } : null;
+        await settle();
         load();
       };
     }
