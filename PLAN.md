@@ -951,7 +951,7 @@ What has to change before the gate and doors go to other clubs, in order. Nothin
 
 ## Doug's own to-dos
 - Set `SMS_GLOBAL_DAILY_CAP` back to 25 (Supabase → Edge Functions → Secrets).
-- Decide on Supabase Pro ($25/mo): backups, and no pausing after 7 idle days.
+- Get Supabase Pro ($25/mo) when real families start signing up (decided 10/14): daily backups, and 4x the room before a lockout. Until then everything in it is test data.
 - Keep the bridge off until its polling is fixed and the test households are deleted.
 - Reconnect Google Drive (Settings → Drive backup). It has been disconnected since June. First publish the Google app (console.cloud.google.com → Poolside project → Google Auth Platform → Audience → Publish app), or it will drop again after 7 days.
 - Invite the other board members as admins (keyfob, parties, etc.). Only Doug and Kristin are in the app today. Each one turns on pop-ups once from the dashboard; on iPhone, the admin page has to be added to the Home Screen first.
