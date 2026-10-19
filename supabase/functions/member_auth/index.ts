@@ -266,6 +266,18 @@ async function completeMemberLogin(
   });
 }
 
+// Who in the family has signed in at least once (PLAN.md AZ): a used
+// sign-in link or code. My family shows "Using the app" for them and a
+// "Text them the app link" button for the rest.
+// deno-lint-ignore no-explicit-any
+async function withUsesApp(sb: any, members: Array<Record<string, unknown>>) {
+  const ids = members.map(m => m.id as string);
+  if (!ids.length) return members;
+  const { data } = await sb.from('member_magic_links').select('member_id').in('member_id', ids).not('used_at', 'is', null).limit(500);
+  const used = new Set((data ?? []).map((r: { member_id: string }) => r.member_id));
+  return members.map(m => ({ ...m, uses_app: used.has(m.id as string) }));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -649,7 +661,7 @@ Deno.serve(async (req) => {
       ok: true,
       user: member,
       tenant,
-      household: { ...household, members: housemates ?? [] },
+      household: { ...household, members: await withUsesApp(sb, housemates ?? []) },
       renewal,
       plan,
       keyfobs,
@@ -1427,12 +1439,35 @@ Deno.serve(async (req) => {
       console.error('add_household_member post-insert (non-fatal):', (e as Error).message);
     }
 
+    // "Text them a link to get the app" (PLAN.md AZ): adults and teens with a phone.
+    let invite: { sent: boolean; error?: string } | null = null;
+    if (b.invite === true && phone && (role === 'adult' || role === 'teen')) {
+      const { sendFamilyInvite } = await import('../_shared/family_invite.ts');
+      invite = await sendFamilyInvite(sb, { tenantId: me.data.tenant_id as string, memberId: created.id as string, addedBy: me.data.name as string, source: 'member_auth.add_member.invite' });
+    }
+
     return jsonResponse({
       ok: true,
       member_id: created.id, name: created.name, role: created.role,
       email_sent: emailSent,
       email_error: emailError,
+      invite_sent: invite?.sent ?? false, invite_error: invite?.error ?? null,
     });
+  }
+
+  // ── invite_member: text a family member a link to get the app (PLAN.md AZ) ──
+  // The primary or another adult in the family; adults and teens with a phone.
+  if (action === 'invite_member') {
+    const { data: meRow } = await sb.from('household_members')
+      .select('id, role, household_id, tenant_id, name, active').eq('id', payload.sub).maybeSingle();
+    if (!meRow || !meRow.active) return jsonResponse({ ok: false, error: 'Member not active' }, 403);
+    if (!['primary', 'adult'].includes(String(meRow.role))) return jsonResponse({ ok: false, error: 'Ask an adult in your family to send it.' }, 403);
+    const { data: target } = await sb.from('household_members')
+      .select('id, household_id, active').eq('id', String((body as Record<string, unknown>).member_id ?? '')).maybeSingle();
+    if (!target || target.household_id !== meRow.household_id || !target.active) return jsonResponse({ ok: false, error: 'Not in your family.' }, 404);
+    const { sendFamilyInvite } = await import('../_shared/family_invite.ts');
+    const r = await sendFamilyInvite(sb, { tenantId: meRow.tenant_id as string, memberId: target.id as string, addedBy: meRow.name as string, source: 'member_auth.invite_member' });
+    return jsonResponse(r.sent ? { ok: true } : { ok: false, error: r.error }, r.sent ? 200 : 400);
   }
 
   // ── update_my_profile ──────────────────────────────────────────────────

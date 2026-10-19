@@ -112,7 +112,7 @@
 
     <div id="addmem-step1">
       <label>Full name *</label>
-      <input id="am-name" placeholder="Sam Smith" autocomplete="off">
+      <input id="am-name" type="text" placeholder="Sam Smith" autocomplete="off">
       <div class="row2">
         <div>
           <label>Date of birth *</label>
@@ -120,7 +120,7 @@
         </div>
         <div>
           <label>Role *</label>
-          <select id="am-role">
+          <select id="am-role" onchange="syncAmInvite()">
             <option value="adult">Adult (18+)</option>
             <option value="teen">Teen (13–17)</option>
             <option value="child">Child (under 13)</option>
@@ -134,9 +134,15 @@
         </div>
         <div>
           <label>Phone <span style="color:var(--muted);font-weight:500;font-size:11px">(optional)</span></label>
-          <input id="am-phone" type="tel">
+          <input id="am-phone" type="tel" oninput="syncAmInvite()">
         </div>
       </div>
+      <!-- PLAN.md AZ (Doug 10/19): ticked automatically, saying plainly what it does. -->
+      <label id="am-invite-row" style="display:none;align-items:flex-start;gap:8px;margin:10px 0 2px;padding:9px 11px;border:1.5px solid var(--border);border-radius:10px;background:#f8fafc;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text)">
+        <input type="checkbox" id="am-invite" checked style="margin-top:2px;width:auto">
+        <span style="font-size:13px;line-height:1.45"><b>Text them a link to get the app</b>
+          <span style="display:block;font-size:11.5px;color:var(--muted)">We text them their own sign-in link so they can use the app on their phone. Untick if they don't want it.</span></span>
+      </label>
       <div class="perr" id="am-err"></div>
       <div class="pmodal-foot">
         <button class="btn btn-ghost" onclick="closeAddMember()">Cancel</button>
@@ -332,6 +338,28 @@ function syncBranding(me, publicData) {
   }
 }
 
+// Getting the rest of the family into the app (PLAN.md AZ): who already uses
+// it, and a button to text the others their own link.
+function appLine(m) {
+  if (m.id === ME.user.id || !['adult', 'teen'].includes(m.role) || !m.phone_e164) return '';
+  if (m.uses_app) return `<div style="font-size:12px;color:#15803d;margin-top:4px">✓ Using the app</div>`;
+  if (!['primary', 'adult'].includes(ME.user.role)) return '';
+  return `<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" onclick="inviteMember('${escapeAttr(m.id)}', this)">📲 Text them the app link</button></div>`;
+}
+async function inviteMember(id, btn) {
+  const m = (ME.household.members || []).find(x => x.id === id);
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const r = await callMember('invite_member', { member_id: id });
+    if (!r.ok) throw new Error(r.error || "Couldn't send it.");
+    btn.textContent = '✓ Sent';
+    toast(`✓ Texted ${m ? m.name.split(' ')[0] : 'them'} a link to the app.`);
+  } catch (e) {
+    toast(e.message, 'err');
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 function render() {
   const h = ME.household;
   const members = (h.members || []);
@@ -347,6 +375,7 @@ function render() {
         <div style="flex:1;min-width:0">
           <div class="name">${escapeHtml(m.name)}${youHint}<span class="pill ${m.role === 'primary' ? 'primary' : ''}">${escapeHtml(m.role)}</span></div>
           <div class="meta">${escapeHtml([phoneTxt, m.email].filter(Boolean).join(' · ') || '—')}</div>
+          ${appLine(m)}
         </div>
         ${IS_PRIMARY ? `<button class="btn btn-ghost btn-sm" onclick="openEditMember('${escapeAttr(m.id)}')">${editable ? 'Edit' : 'Edit me'}</button>` : ''}
       </div>`;
@@ -444,6 +473,8 @@ function openAddMember() {
   document.getElementById('am-role').value = 'adult';
   document.getElementById('am-email').value = '';
   document.getElementById('am-phone').value = '';
+  document.getElementById('am-invite').checked = true;
+  syncAmInvite();
   document.getElementById('am-err').classList.remove('show');
   document.getElementById('am-err').textContent = '';
   document.getElementById('addmem-step1').style.display = 'block';
@@ -451,6 +482,12 @@ function openAddMember() {
   AM_ACCEPTED = {};
   if (AM_SIG_PAD) { AM_SIG_PAD.off(); AM_SIG_PAD = null; }
   document.getElementById('addmem-scrim').classList.add('open');
+}
+// The "Text them a link" box shows for an adult or teen once a phone is typed.
+function syncAmInvite() {
+  const role = document.getElementById('am-role').value;
+  const phone = document.getElementById('am-phone').value.trim();
+  document.getElementById('am-invite-row').style.display = phone && (role === 'adult' || role === 'teen') ? 'flex' : 'none';
 }
 function closeAddMember() { document.getElementById('addmem-scrim').classList.remove('open'); }
 function addMemberBackToStep1() {
@@ -590,13 +627,15 @@ async function submitAddMember() {
   const btn = document.getElementById('am-submit');
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Adding…';
   try {
-    const payload = { name, dob, role, email: email || null, phone: phone || null, policies_accepted: { ...AM_ACCEPTED } };
+    const invite = document.getElementById('am-invite-row').style.display !== 'none' && document.getElementById('am-invite').checked;
+    const payload = { name, dob, role, email: email || null, phone: phone || null, invite, policies_accepted: { ...AM_ACCEPTED } };
     if (isMinor) payload.guardian_signature = signatureData;
     else         payload.signature = signatureData;
     const r = await callMember('add_household_member', payload);
     if (!r.ok) throw new Error(r.error || 'Failed to add member');
     closeAddMember();
-    toast(`✓ ${r.name} added${r.email_sent ? ' — confirmation PDF emailed' : ''}.`);
+    toast(`✓ ${r.name} added${r.invite_sent ? ' and texted a link to the app' : ''}${r.email_sent ? '. Confirmation PDF emailed' : ''}.`);
+    if (r.invite_error) setTimeout(() => toast(r.invite_error, 'err'), 2600);
     ME = await loadMe(); render();
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');

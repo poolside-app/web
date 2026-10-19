@@ -678,7 +678,7 @@ function onSignupModeChange() {
   // never sign in).
   document.querySelectorAll('.per-adult-app-hint').forEach((el) => {
     el.style.display = noApp ? 'none' : 'block';
-  });
+  });  if (typeof syncInvite === 'function') syncInvite();
 }
 
 // Real-time DOB sanity check. Browsers DON'T enforce min/max on typed
@@ -766,6 +766,31 @@ function applyTierDefault() {
 }
 document.addEventListener('change', e => { if (e.target && e.target.name === 'tier_slug') applyTierDefault(); });
 
+// Text a family member a link to get the app (PLAN.md AZ, Doug 10/19):
+// ticked automatically, but saying plainly what it does. Shown once a phone
+// is typed, for adults and for children 13 and older (who can open the gate).
+function inviteBox(kind, i) {
+  return `<label class="invite-row" data-invite-row="${kind}-${i}" style="display:none;align-items:flex-start;gap:8px;margin:8px 0 2px;padding:9px 11px;border:1.5px solid var(--border);border-radius:10px;background:#f8fafc;cursor:pointer;font-weight:400">
+    <input type="checkbox" data-${kind}="${i}" data-field="invite" checked style="margin-top:2px">
+    <span style="font-size:13px;line-height:1.45"><b>Text them a link to get the app</b>
+      <span style="display:block;font-size:11.5px;color:var(--muted)">We text them their own sign-in link when your membership is approved, so they can use the app on their phone. Untick if they don't want it.</span></span>
+  </label>`;
+}
+function syncInvite() {
+  const noApp = (document.querySelector('input[name="signup_mode"]:checked')?.value === 'no_app');
+  document.querySelectorAll('[data-invite-row]').forEach(row => {
+    const [kind, i] = row.dataset.inviteRow.split('-');
+    const phone = document.querySelector(`[data-${kind}="${i}"][data-field="phone"]`)?.value.trim();
+    let ok = !!phone && !noApp;
+    if (ok && kind === 'child') {
+      const dob = document.querySelector(`[data-child="${i}"][data-field="dob"]`)?.value;
+      const age = dob ? (Date.now() - Date.parse(dob)) / (365.25 * 86400000) : 0;
+      ok = age >= 13;
+    }
+    row.style.display = ok ? 'flex' : 'none';
+  });
+}
+
 // Step 2 — dynamic adult/child rows
 function rebuildPeople() {
   const a = parseInt(document.getElementById('acount').value, 10) || 1;
@@ -786,9 +811,11 @@ function rebuildPeople() {
         <input data-adult="${i}" data-field="name" placeholder="${i === 0 ? 'Jane Smith' : 'Other adult'}">
         <div class="row2">
           <div><label>Date of birth *</label><input data-adult="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)"></div>
-          <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
+          <div><label>Phone${i === 0 ? '' : ' (opt)'}</label><input data-adult="${i}" data-field="phone" oninput="formatPhoneInput(this); syncInvite()"></div>
         </div>
-        <div class="per-adult-app-hint" style="font-size:11px;color:var(--muted);margin:8px 0 2px;line-height:1.45">💡 Each adult can sign in with their own phone — we text a 1-tap link.</div>
+        ${i === 0
+          ? `<div class="per-adult-app-hint" style="font-size:11px;color:var(--muted);margin:8px 0 2px;line-height:1.45">💡 We'll text you your sign-in link when your membership is approved.</div>`
+          : inviteBox('adult', i)}
         <label>Email${i === 0 ? '' : ' (opt)'}</label>
         <input data-adult="${i}" data-field="email" type="email">
       </div>
@@ -803,10 +830,11 @@ function rebuildPeople() {
         <label>Full name *</label>
         <input data-child="${i}" data-field="name">
         <div class="row2">
-          <div><label>Date of birth *</label><input data-child="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this)"></div>
-          <div><label>Phone (optional)</label><input data-child="${i}" data-field="phone" oninput="formatPhoneInput(this)"></div>
+          <div><label>Date of birth *</label><input data-child="${i}" data-field="dob" type="date" min="${minDob}" max="${todayDob}" oninput="validateDob(this); syncInvite()"></div>
+          <div><label>Phone (optional)</label><input data-child="${i}" data-field="phone" oninput="formatPhoneInput(this); syncInvite()"></div>
         </div>
         <div style="font-size:11px;color:var(--muted);margin:6px 0 2px;line-height:1.45">Only if they have their own phone and you'd like them to sign in. 13 and over can also open the gate.</div>
+        ${inviteBox('child', i)}
       </div>
     `);
   }
@@ -1164,7 +1192,9 @@ function collectAdults() {
     const phone = document.querySelector(`[data-adult="${i}"][data-field="phone"]`)?.value.trim() || '';
     const email = document.querySelector(`[data-adult="${i}"][data-field="email"]`)?.value.trim().toLowerCase() || '';
     const sig = SIG_ADULTS[i] && !SIG_ADULTS[i].isEmpty() ? SIG_ADULTS[i].toDataURL('image/png') : null;
-    if (name) out.push({ name, dob: dob || null, phone: phone || null, email: email || null, signature_url: sig });
+    const invite = !!document.querySelector(`[data-adult="${i}"][data-field="invite"]`)?.checked
+      && document.querySelector(`[data-invite-row="adult-${i}"]`)?.style.display !== 'none';
+    if (name) out.push({ name, dob: dob || null, phone: phone || null, email: email || null, signature_url: sig, invite: invite && !!phone });
   }
   return out;
 }
@@ -1175,7 +1205,9 @@ function collectChildren() {
     const name  = document.querySelector(`[data-child="${i}"][data-field="name"]`)?.value.trim() || '';
     const dob   = document.querySelector(`[data-child="${i}"][data-field="dob"]`)?.value || null;
     const phone = document.querySelector(`[data-child="${i}"][data-field="phone"]`)?.value.trim() || '';
-    if (name) out.push({ name, dob: dob || null, phone: phone || null });
+    const invite = !!document.querySelector(`[data-child="${i}"][data-field="invite"]`)?.checked
+      && document.querySelector(`[data-invite-row="child-${i}"]`)?.style.display !== 'none';
+    if (name) out.push({ name, dob: dob || null, phone: phone || null, invite: invite && !!phone });
   }
   return out;
 }
@@ -1586,6 +1618,7 @@ async function prefillFromClaim(token) {
     const dob = document.querySelector(`[data-child="${i}"][data-field="dob"]`);  if (dob && ch.dob)  dob.value = ch.dob;
     const ph  = document.querySelector(`[data-child="${i}"][data-field="phone"]`); if (ph && ch.phone) ph.value = ch.phone;
   });
+  syncInvite();   // pre-filled phones show their "Text them a link" box (PLAN.md AZ)
   if (a.tier_slug) {
     try {
       const tierEl = document.querySelector(`input[name="tier_slug"][value="${CSS.escape(String(a.tier_slug))}"]`);

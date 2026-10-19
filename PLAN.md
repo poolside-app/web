@@ -859,6 +859,34 @@ Steps:
   - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
 `node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
 
+### AZ. Text family members a link to get the app (Doug, 10/19) — ✅ AZ1–AZ3 done 10/19
+Doug: "if someone signs up... dad signs up, his number works for a login... he wants the wife and kid to also have the app, he has to then share the link with them... can you put a checkbox under each name adding a phone number saying something like click checkbox to text this family member a link for login..? i want it easy to share the app with family members".
+
+What's there now:
+- The signup form asks for a phone for each extra adult (optional) and each child (optional, "only if they have their own phone"). Anyone with a phone or email on file can sign in with a code; teens 13+ and adults can also open the gate.
+- At approval only the primary is texted and emailed a sign-in link. Everyone else has to be told by the family. The form's hint "we text a 1-tap link" isn't true until they try to sign in.
+- My family → "+ Add a member" (primary only) takes a phone too, and sends nothing.
+
+Proposal:
+- **AZ1. On the signup form**, under each extra person's phone: "Text [name] a link to get the app". The texts go out when the family is approved, alongside the primary's welcome text, each with that person's own one-time sign-in link (7 days; after that they sign in with their number and a code). The misleading hint goes.
+- **AZ2. On My family**, the same box on "+ Add a member". Each person with a phone who hasn't used the app gets a "Text them the app link" button, and people who have used it show "Using the app". This covers families who already signed up, imported families and renewals.
+- **AZ3. Limits.** One link per person per day and a few per family per day. The text names the club and who added them (Twilio handles STOP). A family invite becomes an allowed text in the notification rule.
+Doug's answers:
+- Adults and teens 13+.
+- "ticked automatically, but make it clear as to what this box does".
+- Texts only.
+
+Built 10/19:
+- `_shared/family_invite.ts` holds the rules: `canInvite`, `inviteText`, `inviteBlocked`, `sendFamilyInvite`.
+- `household_members.app_invited_at` (migration `20261019000100_family_invite.sql`).
+- The signup form's box: "Text them a link to get the app".
+- At approval, `applications` texts the ticked adults and teens, unless the family chose no app.
+- `member_auth`: `add_household_member` takes `invite`, there's a new `invite_member` action, and `me` returns `uses_app`.
+- My family has the box, a "📲 Text them the app link" button and "✓ Using the app".
+- Found while testing: with Settings → Season closed, the signup page tells new families "Applications closed" even with "Memberships are" Open. Renewals still work. The help article now says so. Doug decides whether that's how it should work.
+
+`node scripts/test_signup_notes.mjs` (offline part); checked at iPhone width with made-up members; live: `me` returns `uses_app`, and inviting a child is refused with no text sent.
+
 ### AY. Board help: a complete FAQ, and "Still need help?" that reaches a person (Doug, 10/19)
 Doug: "its more benecifical to ask questions on how to do things... like a chat to me... and if i dont know i can come here and ask you... the FAQ area would be really helpful to QC this and make sure that everything is on there we need... then another chat section that would text me?... should we do this in an option for setting... like a service? text doug (from poolside, not bishop estates)... SLA? or an admin can set it up so that it texts a specific member that knows more about the app?" No AI helper (parked).
 

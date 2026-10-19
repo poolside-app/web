@@ -4,7 +4,7 @@
 // about 12 Edge Function calls on Bishop with a temporary family it removes.
 //
 // Usage: node scripts/test_signup_notes.mjs [--live]
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { importTs } from './lib/importts.mjs';
 import { makeTempMember, purgeTestFamilies } from './lib/testdata.mjs';
@@ -209,6 +209,52 @@ console.log('AC1 · the name under the app icon (offline)');
   check('the iPhone title uses it', /homeName\(/.test(read('js/pwa.js')) && /app_name/.test(read('js/pwa.js')));
   const st = read('club/admin/settings.html');
   check('Settings has "Name under the app icon", saved and loaded', /id="app_name"/.test(st) && (st.match(/app_name:\s+val\('app_name'\)/g) || []).length === 2 && /setVal\('app_name'/.test(st));
+}
+
+// PLAN.md AZ (Doug 10/19): "dad signs up... he wants the wife and kid to
+// also have the app... a checkbox under each name adding a phone number...
+// to text this family member a link". Adults and teens 13+, ticked
+// automatically but clear about what it does, texts only.
+console.log('AZ · text family members a link to get the app (offline)');
+{
+  let fi = null;
+  try { fi = await importTs(new URL('supabase/functions/_shared/family_invite.ts', root)); } catch (e) { check('the rules live in _shared/family_invite.ts', false, e.message); }
+  if (fi) {
+    check('adults and teens with a phone can be invited; children, the primary and people without a phone can\'t',
+      fi.canInvite({ role: 'adult', phone_e164: '+15555550100', active: true }) && fi.canInvite({ role: 'teen', phone_e164: '+15555550101', active: true })
+        && !fi.canInvite({ role: 'child', phone_e164: '+15555550102', active: true }) && !fi.canInvite({ role: 'primary', phone_e164: '+15555550103', active: true })
+        && !fi.canInvite({ role: 'adult', phone_e164: null, active: true }) && !fi.canInvite({ role: 'adult', phone_e164: '+15555550104', active: false }));
+    const t = fi.inviteText({ first: 'Sarah', addedBy: 'Doug', club: 'Bishop Estates Cabana Club', link: 'https://bishopestates.poolsideapp.com/m/verify.html#token=' + 'x'.repeat(43) });
+    check('the text says who added them, the club, and the link', t === 'Hi Sarah, Doug added you to the Bishop Estates Cabana Club app. Tap to sign in, then add it to your Home Screen: https://bishopestates.poolsideapp.com/m/verify.html#token=' + 'x'.repeat(43), t);
+    check('the text is plain characters and fits in two texts', /^[\x20-\x7e]+$/.test(t) && t.length <= 306, String(t.length));
+    const now = Date.parse('2026-10-19T18:00:00Z');
+    check('one link per person a day, a few per family a day',
+      fi.inviteBlocked({ lastInvitedAt: null, familyToday: 0, now }) === null
+        && /already/i.test(fi.inviteBlocked({ lastInvitedAt: '2026-10-19T09:00:00Z', familyToday: 1, now }) || '')
+        && fi.inviteBlocked({ lastInvitedAt: '2026-10-18T09:00:00Z', familyToday: 1, now }) === null
+        && /today/i.test(fi.inviteBlocked({ lastInvitedAt: null, familyToday: fi.PER_FAMILY_PER_DAY, now }) || ''));
+  }
+  const ap = read('apply.html');
+  check('signup: a box under each extra person\'s phone, ticked, saying what it does',
+    /data-field="invite"[^>]*checked/.test(ap) && /Text them a link to get the app/.test(ap) && /when your membership is approved/.test(ap));
+  check('signup: shown only once a phone is typed, and for children only 13 and older', /function syncInvite\(/.test(ap) && /age >= 13/.test(ap));
+  check('signup: the invite choice is sent with each person', /const invite = !!document\.querySelector\(`\[data-adult="\$\{i\}"\]\[data-field="invite"\]`\)\?\.checked/.test(ap)
+    && /const invite = !!document\.querySelector\(`\[data-child="\$\{i\}"\]\[data-field="invite"\]`\)\?\.checked/.test(ap)
+    && (ap.match(/invite: invite && !!phone/g) || []).length === 2);
+  check('signup: the old "we text a 1-tap link" promise is gone', !/we text a 1-tap link/.test(ap));
+  const apps = read('supabase/functions/applications/index.ts');
+  check('signup is stored with each person\'s invite choice', (apps.match(/invite: (a|c)\?\.invite === true/g) || []).length === 2);
+  check('approval texts the ticked adults and teens their own link, unless the family chose no app',
+    /if \(!app\.no_app_member\)[\s\S]{0,400}sendFamilyInvite\(/.test(apps) && /invitees\.push\(/.test(apps));
+  const ma = read('supabase/functions/member_auth/index.ts');
+  check('My family: adding a member can text them the link', /if \(b\.invite === true && phone && \(role === 'adult' \|\| role === 'teen'\)\)[\s\S]{0,300}sendFamilyInvite\(/.test(ma));
+  check('My family: "Text them the app link" for anyone in the family, by the primary or an adult', /action === 'invite_member'/.test(ma) && /\['primary', 'adult'\]\.includes/.test(ma));
+  check('My family: who already uses the app', /uses_app:/.test(ma));
+  const fam = read('m/family.html');
+  check('My family: the add form has the ticked box, the list a button and "Using the app"',
+    /id="am-invite"[^>]*checked/.test(fam) && /Text them the app link/.test(fam) && /Using the app/.test(fam) && /callMember\('invite_member'/.test(fam));
+  const mig = readdirSync(new URL('supabase/migrations/', root)).filter(f => /family_invite/.test(f)).map(f => read(`supabase/migrations/${f}`)).join('');
+  check('a family member remembers when they were last sent the link', /add column if not exists app_invited_at timestamptz/.test(mig));
 }
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

@@ -686,6 +686,8 @@ Deno.serve(async (req) => {
         email: a?.email ? String(a.email).trim().toLowerCase() : null,
         phone: apE,
         signature_url: sigData ? String(sigData).slice(0, 200000) : null,
+        // "Text them a link to get the app" (PLAN.md AZ), sent at approval.
+        invite: a?.invite === true,
       });
     }
     const children_json: Array<Record<string, unknown>> = [];
@@ -701,6 +703,7 @@ Deno.serve(async (req) => {
         // phone: teens (13+) get gate access, younger children do not.
         phone: c?.phone ? String(c.phone).trim().slice(0, 32) : null,
         allergies: c?.allergies ? String(c.allergies).slice(0, 500) : null,
+        invite: c?.invite === true,   // PLAN.md AZ: teens 13+ only, decided at approval
       });
     }
 
@@ -1660,6 +1663,8 @@ Deno.serve(async (req) => {
     // any other DB constraint) silently dropped someone. Previously these
     // errors were eaten and approval succeeded with a partial household.
     const insertErrors: Array<{ name: string; error: string }> = [];
+    // Family members to text a link to get the app (PLAN.md AZ).
+    const invitees: string[] = [];
     for (let i = 0; i < adults.length; i++) {
       const a = adults[i];
       const aName = String(a?.name ?? '').trim();
@@ -1669,7 +1674,7 @@ Deno.serve(async (req) => {
       const aPhone = toE164(a?.phone);
       // Skip if phone clashes with primary's phone (safety)
       if (aPhone && aPhone === app.primary_phone) continue;
-      const { error: spErr } = await sb.from('household_members').insert({
+      const { data: addedAdult, error: spErr } = await sb.from('household_members').insert({
         tenant_id: TID, household_id: hh.id,
         name: aName,
         phone_e164: aPhone,
@@ -1678,9 +1683,10 @@ Deno.serve(async (req) => {
         can_unlock_gate: true, can_book_parties: false,
         active: true,
         confirmed_at: new Date().toISOString(),
-      });
+      }).select('id').single();
       if (!spErr) createdExtraMembers++;
       else insertErrors.push({ name: aName, error: spErr.message });
+      if (addedAdult && a?.invite === true && aPhone) invitees.push(addedAdult.id as string);
     }
     for (const c of children) {
       const cName = String(c?.name ?? '').trim();
@@ -1698,7 +1704,7 @@ Deno.serve(async (req) => {
       const cPhone = toE164(c?.phone as string | null);
       const phoneTaken = !!cPhone && (cPhone === app.primary_phone
         || adults.some((a: Record<string, unknown>) => toE164(a?.phone as string | null) === cPhone));
-      const { error: chErr } = await sb.from('household_members').insert({
+      const { data: addedChild, error: chErr } = await sb.from('household_members').insert({
         tenant_id: TID, household_id: hh.id,
         name: cName,
         phone_e164: phoneTaken ? null : cPhone,
@@ -1707,9 +1713,10 @@ Deno.serve(async (req) => {
         can_book_parties: false,
         active: true,
         confirmed_at: new Date().toISOString(),
-      });
+      }).select('id').single();
       if (!chErr) createdExtraMembers++;
       else insertErrors.push({ name: cName, error: chErr.message });
+      if (addedChild && c?.invite === true && role === 'teen' && cPhone && !phoneTaken) invitees.push(addedChild.id as string);
     }
 
     const decided_by = payload.synthetic ? null : payload.sub;
@@ -1863,6 +1870,17 @@ Deno.serve(async (req) => {
       });
     }
 
+    // The rest of the family gets their own link to the app, after the
+    // primary's welcome (PLAN.md AZ). Not for a family that chose no app.
+    let invites_sent = 0;
+    if (!app.no_app_member) {
+      const { sendFamilyInvite } = await import('../_shared/family_invite.ts');
+      for (const memberId of invitees) {
+        const r = await sendFamilyInvite(sb, { tenantId: TID, memberId, addedBy: app.primary_name as string, source: 'applications.approve.invite' });
+        if (r.sent) invites_sent++;
+      }
+    }
+
     await audit(sb, TID, decided_by, 'tenant_admin', 'application.approve', id,
       `Approved ${app.family_name}; household + ${1 + createdExtraMembers} member${createdExtraMembers === 0 ? '' : 's'} created`);
 
@@ -1900,7 +1918,7 @@ Deno.serve(async (req) => {
       ok: true,
       household_id: hh.id, primary_id: pm.id,
       members_created: 1 + createdExtraMembers,
-      welcome_sent, welcome_dev_link,
+      welcome_sent, welcome_dev_link, invites_sent,
       // Non-empty list = some members the family submitted couldn't be
       // created (most commonly the per-household 8-member DB cap). Admin
       // sees this in the response and can fix it manually.
