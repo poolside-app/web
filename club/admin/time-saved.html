@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
+<title>Time saved — Poolside</title>
+<script src="/js/pooltime.js"></script>
+<script src="/js/errors.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+
+  main { flex:1; padding: 28px 22px; max-width: 980px; width:100%; margin: 0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .filter-row { display:flex; gap:6px; flex-wrap: wrap; }
+  .filter-row button { padding:8px 14px; border:1.5px solid var(--border); background:#fff; border-radius:999px; font:600 12px 'Inter'; cursor:pointer; color:var(--muted); }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  input[type="search"] { padding:9px 12px; border:1.5px solid var(--border); border-radius:var(--r-md); width:240px; font:14px 'Inter'; }
+
+  .day-group { margin-bottom: 22px; }
+  .day-head { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 0 6px 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+
+  .entry {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 10px 14px; background: #fff;
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    margin-bottom: 6px;
+  }
+  .entry .ts { color: var(--muted); font-size: 11px; min-width: 70px; flex-shrink: 0; padding-top: 2px; }
+  .entry .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--blue-l); font-size: 14px; }
+  .entry.public .icon  { background: #ddd6fe; }
+  .entry.member .icon  { background: #cffafe; }
+  .entry .body { flex: 1; min-width: 0; font-size: 13px; }
+  .entry .summary { color: var(--text); }
+  .entry .meta    { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.tenant_admin { background: var(--bg-2); color: var(--text); }
+  .pill.public       { background: #ddd6fe; color: #5b21b6; }
+  .pill.member       { background: #cffafe; color: #155e75; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* Time saved (PLAN.md BB) */
+  .ts-hero { background:linear-gradient(135deg,var(--blue),#134b73); color:#fff; border-radius:var(--r-lg,18px); padding:22px 22px 20px; margin:6px 0 18px; }
+  .ts-hero .big { font:600 34px/1.1 'Fraunces',Georgia,serif; }
+  .ts-hero .money { margin-top:8px; font-size:15px; line-height:1.5; color:rgba(255,255,255,.9); }
+  .ts-sub { color:var(--muted); font-size:13.5px; margin:4px 0 14px; line-height:1.5; }
+  .ts-row { display:flex; gap:12px; justify-content:space-between; align-items:flex-start; padding:12px 14px; background:#fff; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:8px; }
+  .ts-row .what { font-weight:600; font-size:14px; }
+  .ts-row .before { color:var(--muted); font-size:12.5px; margin-top:2px; line-height:1.45; }
+  .ts-row .math { text-align:right; flex-shrink:0; font-size:13px; color:var(--muted); white-space:nowrap; }
+  .ts-row .math b { display:block; color:var(--text); font-size:15px; }
+  .ts-row input { width:56px; padding:4px 6px; border:1.5px solid var(--border); border-radius:8px; font:13px 'Inter'; text-align:right; }
+  .ts-edit { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:14px 0 6px; font-size:13.5px; }
+  .ts-edit input { width:70px; padding:7px 9px; border:1.5px solid var(--border); border-radius:8px; font:14px 'Inter'; }
+  .ts-note { color:var(--muted); font-size:12.5px; line-height:1.5; margin-top:10px; }
+  .ts-edit .btn { padding:8px 16px; border:0; border-radius:10px; background:var(--blue); color:#fff; font:600 14px 'Inter'; cursor:pointer; }
+  .ts-edit .btn:disabled { opacity:.6; cursor:wait; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/payments.html">Money</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/audit.html" class="on">Insights</a>
+  <a href="/club/admin/settings.html">Settings</a>
+</nav>
+<div id="admin-subtabs"></div>
+<script src="/js/admin-subtabs.js"></script>
+
+<main>
+  <h1>Time saved</h1>
+  <p class="ts-sub">Work the board used to do by hand that Poolside now does, counted since your club started on Poolside.</p>
+  <div class="ts-hero" id="ts-hero"><div class="big">Loading…</div></div>
+  <div id="ts-rows"></div>
+  <div id="ts-edit"></div>
+  <p class="ts-note">These are estimates of how long each thing used to take. Only things Poolside actually did for your club are counted.</p>
+</main>
+
+<script src="/js/admin-flags.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const TASKS_URL = `${SUPABASE_URL}/functions/v1/admin_tasks`;
+const ME_URL    = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+let DATA = null;
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function logout() {
+  // Same self-healing sign-out as the other board pages: only sign out when
+  // the token is really bad, never on a network blip.
+  try {
+    const t = localStorage.getItem('poolside_tenant_token');
+    if (t) {
+      const vr = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` }, body: JSON.stringify({ action: 'me' }) });
+      if (vr.status !== 401) return;
+    }
+  } catch (_) { return; }
+  ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function callAt(url, action, extra = {}) {
+  const t = token();
+  if (!t) { logout(); throw new Error('Not signed in'); }
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` }, body: JSON.stringify({ action, ...extra }) });
+  if (res.status === 401) { logout(); throw new Error('Session expired'); }
+  return res.json();
+}
+
+const money = n => '$' + Math.round(n).toLocaleString('en-US');
+function hoursText(min) {
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'}`;
+  const h = min / 60;
+  return `${h < 10 ? (Math.round(h * 10) / 10).toLocaleString('en-US') : Math.round(h).toLocaleString('en-US')} hour${Math.round(h * 10) === 10 ? '' : 's'}`;
+}
+
+function render() {
+  const d = DATA;
+  document.getElementById('ts-hero').innerHTML = d.minutes
+    ? `<div class="big">About ${escapeHtml(hoursText(d.minutes))}</div>
+       <div class="money">If the club paid someone ${money(d.per_hour)} an hour to do this work, it would have cost about <b>${money(d.dollars)}</b>.</div>`
+    : `<div class="big">Nothing yet</div><div class="money">As signups, payments, keyfobs and parties go through Poolside, the time saved adds up here.</div>`;
+  document.getElementById('ts-rows').innerHTML = d.rows.map(r => `
+    <div class="ts-row">
+      <div style="min-width:0">
+        <div class="what">${escapeHtml(r.label)}</div>
+        <div class="before">Before: ${escapeHtml(r.before)}</div>
+      </div>
+      <div class="math">
+        <b>${escapeHtml(hoursText(r.total_minutes))}</b>
+        ${r.count} × ${d.can_edit ? `<input type="number" min="0" max="600" data-min="${escapeHtml(r.key)}" value="${r.minutes_each}" aria-label="Minutes each for ${escapeHtml(r.label)}">` : r.minutes_each} min
+      </div>
+    </div>`).join('');
+  document.getElementById('ts-edit').innerHTML = d.can_edit ? `
+    <div class="ts-edit">
+      <label for="ts-rate" style="margin:0">If we paid someone, per hour $</label>
+      <input id="ts-rate" type="number" min="0" max="200" value="${d.per_hour}">
+      <button class="btn" id="ts-save" type="button">Save</button>
+      <span id="ts-saved" style="color:var(--muted)"></span>
+    </div>` : '';
+  document.getElementById('ts-save')?.addEventListener('click', save);
+}
+
+async function save() {
+  const btn = document.getElementById('ts-save');
+  const minutes = {};
+  document.querySelectorAll('[data-min]').forEach(i => { minutes[i.dataset.min] = Number(i.value); });
+  btn.disabled = true;
+  try {
+    const r = await callAt(TASKS_URL, 'time_saved_save', { time_saved: { per_hour: Number(document.getElementById('ts-rate').value), minutes } });
+    if (!r.ok) throw new Error(r.error || "Couldn't save");
+    DATA = r; render();
+    document.getElementById('ts-saved').textContent = 'Saved.';
+  } catch (e) {
+    document.getElementById('ts-saved').textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+(async () => {
+  try {
+    const me = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` }, body: JSON.stringify({ action: 'me' }) }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    document.title = `Time saved — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
+  } catch { logout(); return; }
+  try {
+    const d = await callAt(TASKS_URL, 'time_saved');
+    if (!d.ok) throw new Error(d.error || "Couldn't load it");
+    DATA = d; render();
+  } catch (e) {
+    document.getElementById('ts-hero').innerHTML = `<div class="money">${escapeHtml(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

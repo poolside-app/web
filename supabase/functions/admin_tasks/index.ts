@@ -184,6 +184,28 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Insights → Time saved (PLAN.md BB, Doug 10/19). Every board member can
+  // see it; changing the minutes or the hourly rate needs Settings.
+  if (action === 'time_saved' || action === 'time_saved_save') {
+    try {
+      const { cleanTimeSaved, computeTimeSaved, countTimeSaved } = await import('../_shared/time_saved.ts');
+      const { data: st } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+      const value = (st?.value ?? {}) as Record<string, unknown>;
+      let settings = cleanTimeSaved(value.time_saved);
+      const canEdit = caller.isOwner || caller.scopes.includes('settings');
+      if (action === 'time_saved_save') {
+        if (!canEdit) return jsonResponse({ ok: false, error: 'Only board members who can use Settings can change these.' }, 403);
+        settings = cleanTimeSaved(body.time_saved);
+        const { error } = await sb.from('settings').update({ value: { ...value, time_saved: settings } }).eq('tenant_id', TID);
+        if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+      }
+      const counts = await countTimeSaved(sb as never, TID);
+      return jsonResponse({ ok: true, can_edit: canEdit, ...computeTimeSaved(counts, settings) });
+    } catch (e) {
+      return jsonResponse({ ok: false, error: (e as Error).message }, 500);
+    }
+  }
+
   if (action === 'count') {
     const { data, error } = await sb.from('admin_tasks').select('id, target_scopes, assigned_admin_id, notice, kind')
       .eq('tenant_id', TID).is('completed_at', null).is('dismissed_at', null);

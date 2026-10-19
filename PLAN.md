@@ -859,6 +859,53 @@ Steps:
   - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
 `node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
 
+### BA. A "Get the app" page that shows how (Doug, 10/19) — parked until Doug says
+Doug: "some people are not aware what a PWA app actually is... how can this be more user friendly to explain and show how this works". Not the App Store for now; switching later is a thin wrapper around the same app.
+- One short link and QR code for the welcome text, the renewal message and a pool poster. It goes to a page that detects the phone and shows the 3 steps with real screenshots for that phone.
+- If the page was opened inside Gmail, Facebook or Instagram, where "Add to Home Screen" isn't possible, it says "Open this in Safari first" with a button. `js/pwa.js` doesn't detect these today.
+- Plain words everywhere ("Get the app: open the gate, get notifications, stay signed in"), never "PWA".
+- Done 10/19 meanwhile: a printable flyer with a QR code to `/m/` and the steps, in `web/handouts/` (not in git).
+
+### BB. Show the time Poolside saves the board (Doug, 10/19) — ✅ done 10/19
+Doug: "We used to have this... i want to show how much time is saved by using this app... we currently have a link to jotform... probably an hour of my time to setup... our treasurer would then line by line (excel) see who signed up.. if they paid by venmo, she would cross reference each payment... if it was a credit card... verify from our paypal linked account... I would then... start activating each keyfob... at least an hour a week in batch keyfobs... is there a cost savings to any of this to show?"
+- History: an Impact page (`tenant_metrics`, commit 2959f7b, April) estimated hours from generic per-row minutes (posts, photos, events). Doug removed it on 9/26 with other extras (PLAN.md I3: "too many features… too convoluted").
+- This time it counts Bishop's real old work, only for things that actually happened in Poolside this season, with each estimate shown and editable. Proposed defaults:
+  - each signup the treasurer didn't key into Excel and check: 10 min
+  - each Venmo or card payment confirmed without cross-checking Venmo or PayPal: 5 min
+  - each keyfob issued or turned off without a remote session: 10 min
+  - the signup form for the season (was Jotform): 60 min
+  - each family reached by the renewal message: 2 min
+  - each party booked without phone tag: 20 min
+  - each door opened remotely or pass given (a trip to the pool avoided): 15 min
+  - each plan payment charged automatically: 5 min
+- Real money, kept separate from time: anything the club no longer pays (Jotform, PayPal card fees it used to absorb that families now pay through Stripe), and late fees collected. Only what Doug confirms.
+Doug's answers: a page under Insights; $20 an hour, "make it clear that if we were paying someone for it"; no other money (time only).
+
+Steps:
+- **BB1. Insights → Time saved.**
+  - A big number ("About 37 hours"), then "If the club paid someone $20 an hour to do this work, it would have cost about $740."
+  - It counts since the club started on Poolside.
+  - Each row shows what used to be done by hand, how many times Poolside did it, the minutes each, and the hours.
+  - Board members with Settings can change the minutes and the hourly rate (`settings.time_saved`).
+  - Every board member can see it.
+- **BB2. What counts:**
+  - signups and renewals approved (10 min);
+  - payments confirmed: dues, parties, keyfobs (5 min);
+  - keyfobs issued or turned off in Poolside, not fobs brought over from the old program (10 min);
+  - plan payments charged on their own (5 min);
+  - parties booked (20 min);
+  - doors opened remotely by the board and passes given, not test unlocks (15 min);
+  - the signup form, once per season (60 min).
+- `_shared/time_saved.ts` holds the rules; `admin_tasks` gets `time_saved` and `time_saved_save` actions.
+- A help article covers it.
+`node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
+
+### BC. Make Venmo easier to check (Doug, 10/19) — ideas only; Doug: "dont modify anything with it yet"
+Doug: "is there a way to streamline this process? is there a way to autoload a note in the venmo payment? anything would help with venmo".
+- Venmo has no public way for a club's app to see payments. Pay-with-Venmo through PayPal checkout would be automatic but costs about card fees, which defeats the point of Venmo.
+- **BC1. A matching note on every Venmo payment.** Every "Pay with Venmo" button (signup, parties, keyfobs) opens Venmo with the amount and a short note already filled in: "BECC 2027 dues · Frevele · #K7Q2". Poolside shows the same code next to the family on the board's Venmo checks, so the treasurer looks for the code and taps once.
+- **BC2. Venmo checks itself, the treasurer still confirms.** The treasurer's Gmail forwards Venmo's "paid you" emails to a Poolside address. Poolside reads the name, amount and code, and marks the matching family "Venmo arrived". The treasurer gets a pop-up and confirms with one tap (Doug's rule: Venmo always needs a board OK). Only genuine Venmo emails count.
+
 ### AZ. Text family members a link to get the app (Doug, 10/19) — ✅ AZ1–AZ3 done 10/19
 Doug: "if someone signs up... dad signs up, his number works for a login... he wants the wife and kid to also have the app, he has to then share the link with them... can you put a checkbox under each name adding a phone number saying something like click checkbox to text this family member a link for login..? i want it easy to share the app with family members".
 

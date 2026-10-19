@@ -64,6 +64,7 @@
     ],
     insights: [
       { key: 'audit',  label: 'Audit log', href: '/club/admin/audit.html',  scope: 'audit'    },
+      { key: 'timesaved', label: 'Time saved', href: '/club/admin/time-saved.html', scope: '' },  // PLAN.md BB: every board member
     ],
     // Plan & billing lives here rather than under Money: it is the club's
     // account with Poolside, not the club's own books. It was previously
@@ -89,7 +90,7 @@
     'volunteer.html': 'calendar', 'lifeguards.html': 'calendar', 'my-shifts.html': 'calendar',
     'announcements.html': 'content', 'photos.html': 'content',
     'board-meetings.html': 'content', 'member-help.html': 'content',
-    'audit.html': 'insights',
+    'audit.html': 'insights', 'time-saved.html': 'insights',
     'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'members', 'emails.html': 'settings', 'billing.html': 'settings',
   };
 

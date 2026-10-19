@@ -140,7 +140,8 @@ console.log('W3 · the bottom bar on every board page (offline)');
     check('Events & Rentals: Calendar opens Parties when Events is ticked off', nav.sectionsFor({ role_template: 'custom', scopes: ['parties'] }, F).some(x => x.key === 'calendar' && /parties\.html/.test(x.href)));
     const bar = nav.barFor(user('president'), F);
     check('the bar: Home, three sections, More', bar.length === 5 && bar[0].key === 'home' && bar[4].key === 'more', short(bar.map(b => b.key)));
-    check('the bar for Grounds (no screens): Home, Content, Settings, More', JSON.stringify(nav.barFor(user('grounds'), F).map(b => b.key)) === JSON.stringify(['home', 'content', 'settings', 'more']), short(nav.barFor(user('grounds'), F).map(b => b.key)));
+    // Insights → Time saved is for every board member (PLAN.md BB, 10/19).
+    check('the bar for Grounds (no screens): Home, Content, Settings, Insights, More', JSON.stringify(nav.barFor(user('grounds'), F).map(b => b.key)) === JSON.stringify(['home', 'content', 'settings', 'insights', 'more']), short(nav.barFor(user('grounds'), F).map(b => b.key)));
   }
   check('phones only, fixed to the bottom; the top tabs stay on computers', /@media \(max-width: 767px\)/.test(src) && /\.btabs \{[^}]*position: fixed[^}]*bottom: 0/.test(src) && /nav\.tabs \{ display: none/.test(src));
   check('More has the rest, help, member view and sign out', /Help and guides/.test(src) && /Member view/.test(src) && /Sign out/.test(src));
