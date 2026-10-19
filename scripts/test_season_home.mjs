@@ -110,6 +110,22 @@ console.log('AX · a closed season shows no hours on the calendar (offline)');
   }
 }
 
+// PLAN.md AX2 (Doug 10/19: "yes let new families sign up while closed"):
+// a closed season only changes the message; "Memberships are: Frozen" is
+// what stops new signups.
+console.log('AX2 · new families can sign up while the pool is closed (offline)');
+{
+  const { readFileSync } = await import('node:fs');
+  const rd = rel => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+  const ap = rd('apply.html');
+  check('signup: only "Memberships are: Frozen" closes the form', /if \(frozen\) \{/.test(ap) && !/if \(!seasonOpen \|\| frozen\)/.test(ap));
+  check('signup: while the pool is closed, a note says they can still sign up', /id="season-closed-note"/.test(ap) && /You can still sign up/.test(ap));
+  const st = rd('club/admin/settings.html');
+  check('Settings says which switch does what', /Season is: closed shows your message/.test(st) && /Memberships are: frozen stops new families signing up/.test(st));
+  const art = rd('club/admin/help/articles/close-the-season.md');
+  check('the help article says new families can still sign up', /New families can still sign up while the pool is closed/.test(art) && /Frozen — block new applications/.test(art));
+}
+
 if (LIVE) {
   console.log('\nLive (Bishop, temporary family)');
   const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));

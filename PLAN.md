@@ -883,7 +883,7 @@ Built 10/19:
 - At approval, `applications` texts the ticked adults and teens, unless the family chose no app.
 - `member_auth`: `add_household_member` takes `invite`, there's a new `invite_member` action, and `me` returns `uses_app`.
 - My family has the box, a "📲 Text them the app link" button and "✓ Using the app".
-- Found while testing: with Settings → Season closed, the signup page tells new families "Applications closed" even with "Memberships are" Open. Renewals still work. The help article now says so. Doug decides whether that's how it should work.
+- Found while testing: with Settings → Season closed, the signup page told new families "Applications closed" even with "Memberships are" Open. Fixed as AX2.
 
 `node scripts/test_signup_notes.mjs` (offline part); checked at iPhone width with made-up members; live: `me` returns `uses_app`, and inviting a child is refused with no text sent.
 
@@ -913,6 +913,7 @@ Steps:
 Doug: the board home said the pool is "Open 8–8" after it closed. Settings → Season → "Season is: Closed for the off-season" already switches the board home, the member app, the club's page and member unlocks to closed, and Doug sets it himself. One place ignored the switch: the month calendar printed each day's hours ("8A–8P") on every day. It does that in four copies (the member app, the club's page, and the board's Calendar, twice).
 - **AX1.** While the season is closed, the calendar shows no hours on any day. Events still show.
 - Opening day and Closing day (Settings → Season) still don't open or close anything by themselves; Doug didn't pick that.
+- **AX2. New families can sign up while the pool is closed (Doug, 10/19: "yes let new families sign up while closed... confirming this is an option in the settings correct?").** A closed season used to replace the signup form with "Applications closed" too, even with "Memberships are" Open. Now only "Memberships are: Frozen — block new applications" stops new signups. While closed, the form shows the club's closed message and "You can still sign up now for next season." Settings explains which switch does what, and the help article matches. ✅ Done 10/19.
 `node scripts/test_season_home.mjs` (offline part).
 
 ### AW. The keyfob sync's first real job was never handed out (10/18) — ✅ fixed 10/18

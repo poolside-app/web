@@ -19,7 +19,7 @@ When the pool closes, one setting changes everything members see.
 - Members can't unlock the gate from the app.
 - **Home** says "Closed for the season".
 
-While the season is closed, your signup page tells new families that applications are closed, with your message. Renewals still work. To take new signups again, set **Season is** back to **Open — show normal home page**.
+New families can still sign up while the pool is closed. Your signup page shows your message above the form. To stop new signups, set **Memberships are** to **Frozen — block new applications**.
 
 ### Keyfobs
 
