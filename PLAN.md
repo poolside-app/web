@@ -859,6 +859,23 @@ Steps:
   - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
 `node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
 
+### AY. Board help: a complete FAQ, and "Still need help?" that reaches a person (Doug, 10/19)
+Doug: "its more benecifical to ask questions on how to do things... like a chat to me... and if i dont know i can come here and ask you... the FAQ area would be really helpful to QC this and make sure that everything is on there we need... then another chat section that would text me?... should we do this in an option for setting... like a service? text doug (from poolside, not bishop estates)... SLA? or an admin can set it up so that it texts a specific member that knows more about the app?" No AI helper (parked).
+
+What's there now (Help, `club/admin/help.html`):
+- 14 articles in `club/admin/help/articles/*.md`, five of them unchanged since May. Nothing covers keyfobs and passes, the gate, payment plans and approving charges on Upcoming, parties, discount codes and referrals, the season switch, renewals and auto-renew, board positions and alerts, member questions (Ask the board), photos, Text all, emails, households, donations, programs, lifeguards or the calendar.
+- "Still need help?" only opens an email to support@poolsideapp.com, an address that may not reach anyone.
+
+Doug's answers (10/19):
+- Questions go to the board member the club picks as its app expert. If there's none, or they choose "Ask Poolside", they go to Poolside (Doug).
+- Answers happen inside Poolside, in a conversation like members' "Ask the board", never by personal phone number. The person answering is told by email (and a text from Poolside's number if Doug wants), and the reply reaches the asker as a pop-up and an email.
+- No SLA. The screen says "usually within a day" and promises nothing. A paid "Priority support" SLA for future paying clubs is saved in memory, not built.
+
+Steps:
+- **AY1. The FAQ, checked against the app.** Each of the 14 articles is reread against how the app works today and fixed or removed. The missing topics above get written, in plain steps that name the real buttons. A test fails if an article names a screen or button the app doesn't have.
+- **AY2. "Still need help?" becomes a conversation.** The board member types the question, and it reaches the club's expert in their board app (a pop-up and a to-do), with who asked and the screen they were on. Either side can hand it to Poolside. Replies arrive as pop-ups and email, and the history stays together.
+- **AY3. The setting.** On Settings → Board, the club picks its app expert, or "Poolside" (Doug).
+
 ### AX. A closed season shows no hours on the calendar (Doug, 10/19) — ✅ done 10/19
 Doug: the board home said the pool is "Open 8–8" after it closed. Settings → Season → "Season is: Closed for the off-season" already switches the board home, the member app, the club's page and member unlocks to closed, and Doug sets it himself. One place ignored the switch: the month calendar printed each day's hours ("8A–8P") on every day. It does that in four copies (the member app, the club's page, and the board's Calendar, twice).
 - **AX1.** While the season is closed, the calendar shows no hours on any day. Events still show.
