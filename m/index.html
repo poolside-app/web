@@ -2976,6 +2976,8 @@ async function submitProfile() {
   };
   const calLabel = (k => {
     // Each day's hours from Settings: that weekday's own, or the usual (J6).
+    // Closed for the season (Settings → Season): no hours on any day (PLAN.md AX).
+    if (publicData.public_settings?.season?.open === false) return null;
     const pool = publicData.public_settings?.pool;
     const day = pool && pool.hours_by_day && pool.hours_by_day[String(PoolTime.weekdayOfKey(k))];
     if (day && day.closed) return 'Closed';

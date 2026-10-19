@@ -857,6 +857,8 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
   // color. Re-renders once external data lands so the page doesn't block on it.
   const openHoursLabel = (k => {
     // Each day's hours from Settings: that weekday's own, or the usual (J6).
+    // Closed for the season (Settings → Season): no hours on any day (PLAN.md AX).
+    if (ps?.season?.open === false) return null;
     const pool = ps?.pool;
     const day = pool && pool.hours_by_day && pool.hours_by_day[String(PoolTime.weekdayOfKey(k))];
     if (day && day.closed) return 'Closed';

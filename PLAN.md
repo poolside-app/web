@@ -859,6 +859,12 @@ Steps:
   - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
 `node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
 
+### AX. A closed season shows no hours on the calendar (Doug, 10/19) — ✅ done 10/19
+Doug: the board home said the pool is "Open 8–8" after it closed. Settings → Season → "Season is: Closed for the off-season" already switches the board home, the member app, the club's page and member unlocks to closed, and Doug sets it himself. One place ignored the switch: the month calendar printed each day's hours ("8A–8P") on every day. It does that in four copies (the member app, the club's page, and the board's Calendar, twice).
+- **AX1.** While the season is closed, the calendar shows no hours on any day. Events still show.
+- Opening day and Closing day (Settings → Season) still don't open or close anything by themselves; Doug didn't pick that.
+`node scripts/test_season_home.mjs` (offline part).
+
 ### AW. The keyfob sync's first real job was never handed out (10/18) — ✅ fixed 10/18
 Bishop closed for the season. Doug ended the Members time window in the old Windows program and asked me to check that member fobs turn off tomorrow. Bridge 1.4 went on the club PC, and I queued a read-only check (both controllers' Members and Board windows, plus a few board and member fobs). The cloud never handed it over. The database only takes "update the oldest one" (sort plus limit) when the sort column is also returned, and the sync claim didn't return `created_at`. The unlock claim returns `requested_at`, so doors were never affected. Meanwhile the waiting job ended every 2-minute hold at once, so the bridge checked in every 5 seconds until I cancelled the job (about 6 minutes, roughly 70 calls).
 - **AW1.** The claim returns `created_at`. A job that can't be handed out fails at once with the reason, so it can never cut check-ins short again.

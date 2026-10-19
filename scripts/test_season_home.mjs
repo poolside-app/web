@@ -95,6 +95,21 @@ console.log('U4/V · the member app (offline)');
   check('remote unlock offline is one quiet line', /Remote unlock is offline right now\. Use your keyfob\./.test(home));
 }
 
+// PLAN.md AX (Doug 10/19): the season switch closes everything, and the
+// month calendar stops printing each day's hours ("8A–8P") while closed.
+console.log('AX · a closed season shows no hours on the calendar (offline)');
+{
+  const { readFileSync } = await import('node:fs');
+  const rd = rel => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+  const labels = [['m/index.html', 'const calLabel = (k => {'], ['club/index.html', 'const openHoursLabel = (k => {'], ['club/admin/events.html', 'const openHoursLabel = (k => {']];
+  for (const [page, start] of labels) {
+    const src = rd(page);
+    const bodies = src.split(start).slice(1).map(b => b.slice(0, b.indexOf('});')));
+    check(`${page}: the calendar's hours stop while the season is closed (${bodies.length})`,
+      bodies.length > 0 && bodies.every(b => /season\??\.open === false\) return null;/.test(b)));
+  }
+}
+
 if (LIVE) {
   console.log('\nLive (Bishop, temporary family)');
   const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
