@@ -1,43 +1,22 @@
 ---
-title: "When will the money hit our bank account? (Stripe payouts)"
-category: "Payments"
+title: "When does card money reach our bank account?"
+category: "Money"
 ---
 
-When members pay by card, the money doesn't land in your club's bank account instantly. Stripe holds it for a couple of days, then sends a **payout** to your bank. Here's how that works.
+When a family pays by card, the money lands in your club's Stripe account first. Stripe then sends it to your bank in a payout.
 
-### The timing
+### Timing
 
-- **First payout** — usually 7-10 business days after Stripe approves your account. They hold the very first one a bit longer to confirm everything's legitimate.
-- **After that** — payouts arrive about every 2 business days. Money you collected on Monday lands in the bank Wednesday or Thursday.
-- **Weekends & holidays** don't count. Payouts run on banking days only.
+- Your first payout takes about 7 to 14 days. Stripe holds the first one longer.
+- After that, payouts arrive about 2 business days after the payment.
+- Weekends and bank holidays don't count.
 
-### Where to see what's coming
+### Seeing what's coming
 
-1. Go to [dashboard.stripe.com](https://dashboard.stripe.com) and sign in.
-2. Click **Payments → Payouts** on the left.
-3. You'll see a list with dates and amounts. Click any row to see exactly which member payments are bundled into that payout.
+In your Stripe account (dashboard.stripe.com), the Payouts page lists each payout with its date and amount. Open one to see exactly which payments are in it. Match that against your bank statement.
 
-This is the source of truth for what hit your bank — match it against your bank statement, not against Poolside's totals.
+### Why it's less than families paid
 
-### Why the payout is less than what members paid
+Stripe takes its processing fee (about 2.9% + 30¢) from each payment, and Poolside's platform fee comes out too unless your club's fees are waived. If your club passes the card fee to families, they paid the extra, so your club gets the full dues.
 
-Two things get pulled out before payout:
-
-1. **Stripe's processing fee** — about 2.9% + 30¢ per charge. This is Stripe's industry-standard rate and is the same on every payment processor.
-2. **Poolside's platform fee** — 1.5% of each charge. This is what keeps Poolside running.
-
-So a $400 dues charge nets you about $389 in your bank.
-
-### "I see a payment in Poolside but not in my bank yet"
-
-That's expected for the first 1-3 banking days. Stripe is holding it until the next payout cycle. Check the Payouts page in your Stripe dashboard — if the payment is listed under "In transit" or in a future payout, it's on its way.
-
-### "I see money in my bank that I can't match to a member"
-
-Sometimes a parent pays for two things at once, or a refund offsets a charge. Click into the payout in Stripe — it shows the per-charge breakdown. That always matches up.
-
-### Still confused?
-
-Email support@poolsideapp.com with the date and amount and we'll trace it for you.
-
-> **Tip:** Reconcile once a month, not after every payment. Pick a Sunday, open Stripe → Payouts and your bank statement side by side, and tick off each line.
+> Tip: Reconcile once a month, not after every payment. Stripe's payout list and your bank statement side by side is all you need.

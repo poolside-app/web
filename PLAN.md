@@ -872,7 +872,12 @@ Doug's answers (10/19):
 - No SLA. The screen says "usually within a day" and promises nothing. A paid "Priority support" SLA for future paying clubs is saved in memory, not built.
 
 Steps:
-- **AY1. The FAQ, checked against the app.** Each of the 14 articles is reread against how the app works today and fixed or removed. The missing topics above get written, in plain steps that name the real buttons. A test fails if an article names a screen or button the app doesn't have.
+- **AY1. The FAQ, checked against the app.** Each of the 14 articles is reread against how the app works today and fixed or removed. The missing topics above get written, in plain steps that name the real buttons. A test fails if an article names a screen or button the app doesn't have. ✅ Done 10/19: 44 articles in 9 groups.
+  - All 14 old articles were rewritten; many named screens that had moved ("Settings → Admins", "Members → Applications", roles instead of positions).
+  - 30 new ones cover the missing topics.
+  - Search words are listed for every article.
+  - The page's "we reply the same business day" became "we usually reply within a day".
+  - `node scripts/test_help_articles.mjs` checks every bold menu path step by step against the board menu and pages, and every bold button against the app's screens.
 - **AY2. "Still need help?" becomes a conversation.** The board member types the question, and it reaches the club's expert in their board app (a pop-up and a to-do), with who asked and the screen they were on. Either side can hand it to Poolside. Replies arrive as pop-ups and email, and the history stays together.
 - **AY3. The setting.** On Settings → Board, the club picks its app expert, or "Poolside" (Doug).
 

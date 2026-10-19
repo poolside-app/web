@@ -1,40 +1,28 @@
 ---
-title: "How do I customize the welcome email?"
-category: "Email & Text"
+title: "How do I change the emails families get?"
+category: "News, Photos & Texts"
 ---
 
-The welcome email is what a new family gets when you approve them, or as soon as their card payment clears. A warm, specific greeting beats a generic "Welcome!" every time.
+Poolside sends families emails on its own: the welcome email, receipts, renewal emails and more. You can change the wording of each one.
 
-### Where to find it
+### Find an email
 
-1. Click **Settings** in the top nav, then the **Emails** tab.
-2. Under **Welcome**, tap **Welcome email**.
+1. Go to **Settings → Emails**.
+2. Emails are grouped by moment: signing up, welcome, payments, renewals, parties and family changes. Tap the one you want.
 
-### What you can change
+### Change it
 
-- **Subject:** keep it short. "Welcome to [Your Club]!" works well.
-- **Message:** a few short paragraphs. Good things to include:
-  - When the pool opens and closes
-  - How to get in (keyfob, the app)
-  - Who to email with questions
-  - Any rules they should know up front (no glass, etc.)
+- **Subject**: keep it short.
+- **Message**: a few short paragraphs. Use **B**, **I**, **• List** and **🔗 Link** for simple formatting.
 
-Use **B**, **I**, **• List** and **🔗 Link** for simple formatting.
+You don't write the payment details or the sign-in button; Poolside adds them to the right version of the email for you. The blue chips, like the member's name or club name, are filled in when the email is sent.
 
-You don't need to write the payment part or the sign-in button. **Poolside adds them** to the right version automatically: paid by card, nothing to pay, Venmo verified, Venmo still to send, payment plan, or a family who doesn't use the app.
+### Check it
 
-### The blue chips
-
-Chips like **Member's name** or **Club name** are filled in when the email is sent, so "Hi Member's name," becomes "Hi Linda,". To add one, click where you want it in the message, then tap the chip in the **Tap to add** row. To remove one, click next to it and press Delete.
-
-### Check it before saving
-
-The **Preview** under the message updates as you type. Use **Show as** to see each version (paid by card, Venmo still to send, and so on). **Send me a test** sends it to your own email.
-
-When you're happy, click **Save**. To go back to Poolside's wording, click **Reset to the original**.
+The preview updates as you type. **Send me a test** sends it to your own email. Tap **Save** when you're happy, or **Reset to the original** to go back to Poolside's wording.
 
 ### Turning an email off
 
-Each email on the Emails page has a switch. Turn it off and that email isn't sent until you turn it back on.
+Each email has a switch. Turn it off and that email isn't sent until you turn it back on.
 
-> **Tip:** Boards that personalize this email get fewer "how do I get in?" questions. Mention the hours, how the gate works, and a real person to email.
+> Tip: A welcome email that mentions your hours, how the gate works and who to contact cuts down on questions.

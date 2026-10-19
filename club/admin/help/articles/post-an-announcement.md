@@ -1,31 +1,29 @@
 ---
-title: "How do I post an announcement to all members?"
-category: "Email & Text"
+title: "How do I post an announcement?"
+category: "News, Photos & Texts"
 ---
 
-Announcements show up on every member's home screen in the app. Use them for short, time-sensitive news — pool closed for thunder, new lifeguard, snack-bar special, that kind of thing.
+Announcements show on every member's home screen in the app, under news.
 
-### Posting an announcement
+### Post one
 
-1. Click **Announcements** in the top nav.
-2. Click **+ New post** at the top right.
-3. Type a short title and the message body.
-4. Save.
-
-It appears immediately on every member's home screen.
+1. Go to **Content → Announcements**.
+2. Tap **+ New post**.
+3. Type a **Title** and the **Body**.
+4. Tick **🔔 Notify members (a pop-up on their phones)** for news members should see right away.
+5. Tick **📌 Pin to top of the home page** to keep it first.
+6. Tap **Save**.
 
 ### Editing or deleting
 
-Click any post in the list to edit the title or body, or to delete it. Members see the change the next time they open the app.
+Tap **Edit** on a post to change it. **Delete post** deletes it for good.
 
-### Should I email the announcement too?
+### Only the newest 15 are kept
 
-Announcements alone don't send an email or text — they just appear in-app. If you want to push it out by email or SMS as well:
+Posting a new announcement deletes the oldest ones beyond 15. Pinned posts are kept.
 
-- For dues / payment reminders → use **Members → Renewals**, which sends a personalized email and text per family.
-### What's the difference between Announcements and Emails?
+### Texting instead
 
-- **Announcements** — short in-app posts, like a bulletin board. No push, no email.
-- **Emails** — the auto-emails Poolside sends on its own (welcome, renewal, payment receipt). You change the wording, or switch one off, under **Settings → Emails**; they go out automatically.
+For something urgent, like a closure today, use **💬 Text all members**. See "How do I text all members?"
 
-> **Tip:** Keep announcements short — under three sentences. Members glance at them; they don't read paragraphs.
+> Tip: Keep announcements to two or three sentences. Members glance at them.

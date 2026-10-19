@@ -1,38 +1,24 @@
 ---
-title: "How do I set or change dues amounts (membership prices)?"
-category: "Getting Started"
+title: "How do I set or change membership prices?"
+category: "Money"
 ---
 
-In Poolside, each price is a membership level — like **Family** ($400), **Single** ($250), or **Senior** ($150). Most clubs have 2-4 levels; some have just one.
+Each price is a membership level, like Family or Single. Families pick one when they sign up.
 
-### Setting them up the first time
+### Set them up
 
-1. Click **Money** in the top nav.
+1. Go to **Money → Payments**.
 2. Open **Money setup** and find **Membership prices**.
-3. You'll see the levels already there. Click **+ Add a level** to add a new one.
-4. For each level, fill in:
-   - **Name** — what families see when they apply (e.g. "Family", "Couple", "Single", "Senior 65+")
-   - **Price** — the dollar amount for one season's dues
-   - **Description** (optional) — anything members should know, like "Includes 2 adults + kids under 21"
-5. Click **Save prices**.
+3. For each level, fill in the **Name families see**, the **Price per season ($)** and an optional **Description (optional)**.
+4. Tap **+ Add a level** for another one.
+5. Tap **Save prices**.
 
-The first level in the list is the default — it's pre-selected on the application form.
+### Changing prices
 
-### Changing prices for next season
+Change the amount and tap **Save prices**. Families who already paid aren't affected. The new price applies to new signups and renewals from then on.
 
-1. Go to **Money → Money setup → Membership prices**.
-2. Click into the price field on any level and type the new amount.
-3. Click **Save prices**.
+### Early-bird prices
 
-> **Heads-up:** Changing a price doesn't change what current members already owe. It only affects new applications and next year's renewals. To adjust an open charge for a current family, head to **Payments**.
+Don't change your prices for an early-bird deal. Make a discount code with a last day instead. See "How do I make a discount code, like an early-bird price?"
 
-### Don't have set prices? (per-household billing)
-
-Some smaller clubs decide each family's dues by hand. That works in Poolside too:
-
-1. Create one level called something like "Standard" and leave the price blank (or $0).
-2. After approving each family, go to their household record and add a charge under their name with whatever amount you decided.
-
-### Want to offer an early-bird discount?
-
-Don't change your prices. Make a discount code instead, under **Money → Money setup → Discounts**, with a last day. The regular price stays on file, and the discount only applies to families who use the code before it ends. A family gets one discount: a code or the referral discount, whichever saves more.
+> Tip: Change prices before you send the renewal message, so families see the right amount.

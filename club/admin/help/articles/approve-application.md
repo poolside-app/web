@@ -1,31 +1,44 @@
 ---
-title: "How do I approve a membership application?"
-category: "Members & Households"
+title: "How do I approve a new family's signup?"
+category: "Signups & Families"
 ---
 
-When a family fills out your public application form, it shows up as **pending** until you review it. Here's how.
+New families sign up on your club's signup page. What you do next depends on how they paid.
 
-1. Click **Members** in the top nav.
-2. Click the **Applications** sub-tab. (You'll also see a number badge here on the Members tab in the side strip if there are any pending.)
-3. By default the list is filtered to **Pending** at the top. Click any family's row to open their full application in a side panel.
-4. Read through their info. Common things to double-check:
-   - Are the kids listed with the right ages?
-   - Did they include a phone number?
-   - Does their address match a real street in your neighborhood (if you only allow nearby residents)?
-   - Are signatures present on the waiver?
-5. Pick a tier under **Approve as**, then click **Approve & create household →** to add them to the club. Or click **Reject** if there's a problem.
+### Find the signups waiting for you
 
-After you approve them, two things happen automatically:
+1. Go to **Members → Pipeline**.
+2. **Needs attention** is the list of signups waiting on the board.
 
-- They get a **welcome email** with a sign-in link (assuming your club has email set up — check **Status** if you're not sure).
-- They appear in your main **Households** list.
+You'll also see them under **Needs you** on **Home**.
 
-### What if I need to ask them a question first?
+### Paid by card
 
-Their email address is shown at the top of the application. Open your email app and write to them directly. Once they reply, come back to **Members → Applications** and approve.
+Nothing to do. When a family pays by card, Poolside approves them as soon as the payment clears and sends their welcome email. They won't show up under **Needs attention**.
 
-### What if I approved by mistake?
+### Paying by Venmo
 
-Don't worry — go to **Members → Households**, click the family's row to open them, and use the **Remove household** option at the bottom of the edit panel. They're hidden, not erased. Email support if you need them fully restored.
+1. Open the Venmo app and check the payment landed. Poolside shows the amount they owe, after any discount.
+2. Tap **✓ Approve & verify Venmo** on their row.
 
-> **Tip:** Most boards approve applications once a week. Set a reminder on your phone for Sunday evenings.
+That approves them, marks their dues paid and sends their welcome email, all at once. If the money hasn't arrived yet, open the signup and tap **📧 Send reminder**.
+
+### No payment chosen, or anything else
+
+Tap **✓ Approve & create household** on their row, or tap **Edit details →** to read the whole signup first. In the full view, **Approve as** sets their membership level before you tap **Approve & create household →**.
+
+### Turning someone away
+
+Tap **✗ Reject**. Nothing is created and they aren't charged.
+
+### Payment plans
+
+Families who chose a payment plan show "On plan · $200 of $600 paid". They're already members. There's nothing to approve or verify; their payments are on **Money → Upcoming**.
+
+### What happens when you approve
+
+- Their household is created under **Members → Households**.
+- They get a welcome email and text with a link to sign in.
+- If they asked for a keyfob, it shows up under **Members → Keyfobs & Access** for the person who issues fobs.
+
+> Tip: Signups waiting on you also show on **Home** under **Needs you**, so you don't need to check this page every day.

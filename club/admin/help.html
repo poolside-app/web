@@ -288,7 +288,7 @@
 <main id="main-content">
   <div class="hero">
     <h1>How can we help?</h1>
-    <div class="lede">Type a question in plain English, or browse the topics below. If you can't find what you need, scroll to the bottom and email us — we reply the same business day. <span style="display:inline-block;margin-left:4px;font-size:12px;opacity:.85">Tip: press <kbd style="font-family:monospace;background:#fff;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:11px">/</kbd> to search.</span></div>
+    <div class="lede">Type a question in plain English, or browse the topics below. If you can't find what you need, scroll to the bottom and email us — we usually reply within a day. <span style="display:inline-block;margin-left:4px;font-size:12px;opacity:.85">Tip: press <kbd style="font-family:monospace;background:#fff;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:11px">/</kbd> to search.</span></div>
     <div class="search-wrap">
       <label for="search" class="sr-only">Search help articles</label>
       <span class="ico" aria-hidden="true">🔍</span>
@@ -321,7 +321,7 @@
 
   <section class="support">
     <h2>Still need help?</h2>
-    <div class="sub">We reply within one business day. Tell us what you were trying to do — we'll take it from there.</div>
+    <div class="sub">We usually reply within a day. Tell us what you were trying to do — we'll take it from there.</div>
 
     <label for="ctx">What were you trying to do? (optional, but it helps a lot)</label>
     <textarea
@@ -334,7 +334,7 @@
       <button class="btn btn-ghost" id="copy-support" type="button" title="Copy support@poolsideapp.com">📋 Copy email address</button>
     </div>
     <div class="reassure" style="margin-top:10px;font-size:13px;color:var(--muted)">
-      We reply within one business day. Your club name, your admin email, browser, and the page you came from are auto-attached so we can help quickly. <strong>No member info or passwords are sent.</strong>
+      We usually reply within a day. Your club name, your admin email, browser, and the page you came from are auto-attached so we can help quickly. <strong>No member info or passwords are sent.</strong>
     </div>
     <div id="copy-result" role="status" aria-live="polite" style="display:none;margin-top:10px;padding:10px 14px;background:var(--green-l);border:1px solid var(--green);color:#14532d;border-radius:8px;font-size:13px"></div>
   </section>
@@ -411,31 +411,69 @@ function userInfo() {
 // Order within category controls display order. Category order controls section order.
 const CATEGORY_ORDER = [
   'Getting Started',
-  'Members & Households',
-  'Payments',
-  'Email & Text',
-  'Photos',
+  'Signups & Families',
+  'Money',
+  'Seasons & Renewals',
+  'Keyfobs & the Gate',
+  'Calendar & Parties',
+  'News, Photos & Texts',
+  'Board & Settings',
   'Troubleshooting',
 ];
 
 const ARTICLE_FILES = [
-  // Getting Started — listed first so a brand-new admin sees them at the top
+  // Getting Started
   'getting-started.md',
-  'add-another-admin.md',
-  'set-dues-amounts.md',
-  // Members & Households
-  'add-new-family.md',
+  'board-app-on-phone.md',
+  'board-members.md',
+  // Signups & Families
   'approve-application.md',
+  'add-new-family.md',
+  'import-families.md',
+  'change-or-remove-family.md',
+  'member-questions.md',
   'reset-member-signin.md',
-  // Payments
+  // Money
+  'set-dues-amounts.md',
   'see-who-paid.md',
+  'confirm-venmo-payment.md',
+  'payment-plans.md',
+  'approve-plan-payments.md',
+  'discount-codes.md',
+  'referral-rewards.md',
+  'late-fees.md',
   'go-live-card-payments.md',
   'refund-a-payment.md',
   'stripe-payouts-explained.md',
-  // Email & Text
+  'donations.md',
+  // Seasons & Renewals
+  'close-the-season.md',
+  'start-next-season.md',
   'send-renewal-blast.md',
+  'policies.md',
+  // Keyfobs & the Gate
+  'issue-a-keyfob.md',
+  'lost-or-broken-fob.md',
+  'open-a-door.md',
+  'give-a-pass.md',
+  'access-hours.md',
+  'keyfob-sync.md',
+  // Calendar & Parties
+  'calendar-events.md',
+  'parties.md',
+  'programs.md',
+  'lifeguards.md',
+  // News, Photos & Texts
   'post-an-announcement.md',
+  'text-all-members.md',
+  'photos.md',
   'customize-welcome-email.md',
+  'sponsors.md',
+  'board-minutes.md',
+  // Board & Settings
+  'pool-hours.md',
+  'drive-backup.md',
+  // Troubleshooting
   'welcome-email-not-received.md',
 ];
 
@@ -519,77 +557,50 @@ function parseArticle(slug, raw) {
 // Keep these short and natural — the way a 60-year-old volunteer treasurer
 // would actually type a question into a help search.
 const SYNONYMS = {
-  'send-renewal-blast': [
-    'remind', 'reminder', 'remind everyone', 'tell people to pay',
-    'dues reminder', 'pay dues', 'unpaid', 'who hasn\'t paid',
-    'blast', 'mass email', 'mass text', 'group email', 'group text',
-    'season opening', 'open season', 'membership renewal', 'renew',
-    'collect dues', 'collect money', 'send everyone an email',
-    'last year members', 'lapsed members',
-  ],
-  'see-who-paid': [
-    'paid', 'unpaid', 'owe', 'owes', 'overdue', 'late', 'aged',
-    'who paid', 'who hasn\'t paid', 'check payment', 'cash payment',
-    'venmo', 'mark paid', 'record check', 'record cash',
-    'export spreadsheet', 'csv', 'excel', 'board report', 'treasurer report',
-  ],
-  'add-new-family': [
-    'new member', 'new family', 'add household', 'add member',
-    'sign up', 'add manually', 'enter family', 'new signup',
-    'apply', 'application form', 'application link',
-  ],
-  'approve-application': [
-    'pending', 'review', 'approve', 'decline', 'reject',
-    'new application', 'someone applied', 'who wants to join',
-  ],
-  'reset-member-signin': [
-    'can\'t sign in', 'cant sign in', 'forgot password', 'no password',
-    'magic link', 'login', 'log in', 'sign in problem', 'login problem',
-    'resend link', 'expired link',
-  ],
-  'go-live-card-payments': [
-    'stripe', 'card payments', 'credit card', 'accept cards',
-    'turn on payments', 'connect stripe', 'connect bank', 'bank account',
-    'go live', 'real money', 'enable cards',
-  ],
-  'customize-welcome-email': [
-    'welcome message', 'change welcome', 'edit welcome',
-    'email template', 'change email wording',
-  ],
-  'welcome-email-not-received': [
-    'didn\'t get email', 'didnt get email', 'no email',
-    'spam', 'junk folder', 'missing email', 'lost email',
-    'email not delivered', 'email bounced',
-  ],
-  'add-another-admin': [
-    'second admin', 'backup admin', 'another admin', 'invite admin',
-    'invite board member', 'add board member', 'co-treasurer',
-    'multiple admins', 'admin team',
-  ],
-  'getting-started': [
-    'just signed up', 'first time', 'where do i start', 'where to start',
-    'new club', 'setup', 'onboarding', 'beginning',
-  ],
-  'set-dues-amounts': [
-    'how much', 'set price', 'dues amount', 'how much to charge',
-    'tier price', 'change price', 'membership tiers', 'tier',
-    'family tier', 'senior tier', 'levels',
-  ],
-  'refund-a-payment': [
-    'refund', 'reverse charge', 'give money back', 'undo payment',
-    'cancel charge', 'paid by mistake', 'wrong amount', 'overcharged',
-    'return money',
-  ],
-  'stripe-payouts-explained': [
-    'payout', 'payouts', 'when will money', 'bank account', 'deposit',
-    'when does money', 'transfer', 'why is the amount different',
-    'stripe fee', 'processing fee', 'reconcile', 'matching bank',
-  ],
-  'post-an-announcement': [
-    'announce', 'announcement', 'post', 'news', 'bulletin', 'tell members',
-    'pool closed', 'message all', 'message members', 'club news',
-    'home screen post', 'broadcast',
-  ],
+  'getting-started': ['new board member', 'where do i start', 'how does this work', 'first time', 'dashboard', 'home page', 'overview', 'tour'],
+  'board-app-on-phone': ['install', 'app on my phone', 'home screen', 'notifications', 'pop-ups', 'alerts', 'iphone', 'android', 'add to home screen'],
+  'board-members': ['add admin', 'add board member', 'invite', 'treasurer', 'president', 'position', 'permissions', 'access', 'remove admin', 'lifeguard login', 'ipad'],
+  'approve-application': ['pending', 'review', 'approve', 'decline', 'reject', 'new application', 'someone applied', 'who wants to join', 'signup', 'pipeline', 'needs attention'],
+  'add-new-family': ['new member', 'new family', 'add household', 'add member', 'add manually', 'enter family', 'signup link', 'application link'],
+  'import-families': ['import', 'spreadsheet', 'csv', 'excel', 'upload list', 'roster', 'last year members', 'migrate', 'invite everyone'],
+  'change-or-remove-family': ['edit family', 'change address', 'change phone', 'delete family', 'remove family', 'moved away', 'left the club', 'dues paid checkbox'],
+  'member-questions': ['ask the board', 'member help', 'question', 'reply', 'answer member', 'support request', 'complaint'],
+  'reset-member-signin': ['can\'t sign in', 'cant sign in', 'forgot password', 'no password', 'code', 'login', 'log in', 'sign in problem', 'locked out'],
+  'set-dues-amounts': ['prices', 'dues amount', 'membership levels', 'tiers', 'change price', 'family price', 'single price'],
+  'see-who-paid': ['paid', 'unpaid', 'owe', 'owes', 'overdue', 'who paid', 'who hasn\'t paid', 'export', 'csv', 'treasurer report', 'balances'],
+  'confirm-venmo-payment': ['venmo', 'check', 'cash', 'mark paid', 'verify payment', 'record payment', 'paid offline'],
+  'payment-plans': ['payment plan', 'installments', 'monthly payments', 'pay over time', 'deposit', 'plan settings', 'declined card', 'reactivate'],
+  'approve-plan-payments': ['upcoming', 'approve charges', 'billing day', 'monthly charge', 'charge cards', 'plan payments due'],
+  'discount-codes': ['coupon', 'code', 'discount', 'early bird', 'promo', 'promotion', 'sale price'],
+  'referral-rewards': ['refer a friend', 'referral', 'invite a family', 'reward', 'credit'],
+  'late-fees': ['late fee', 'penalty', 'overdue fee', 'waive'],
+  'go-live-card-payments': ['stripe', 'card payments', 'credit card', 'accept cards', 'turn on payments', 'connect stripe', 'bank account', 'go live', 'test payments', 'processing fee'],
+  'refund-a-payment': ['refund', 'money back', 'return payment', 'reverse charge'],
+  'stripe-payouts-explained': ['payout', 'when does money', 'bank deposit', 'transfer', 'why is the amount different', 'stripe fee', 'reconcile'],
+  'donations': ['donate', 'fundraiser', 'thermometer', 'gift', 'record donation'],
+  'close-the-season': ['close pool', 'end of season', 'off season', 'pool closed', 'closing day', 'winter', 'season closed'],
+  'start-next-season': ['next season', 'new year', 'start season', 'roll over', 'close and start'],
+  'send-renewal-blast': ['remind', 'reminder', 'renew', 'renewal', 'dues reminder', 'tell people to pay', 'blast', 'mass email', 'mass text', 'last year members', 'one tap'],
+  'policies': ['policy', 'rules', 'waiver', 'agreement', 'terms', 'sign'],
+  'issue-a-keyfob': ['keyfob', 'key fob', 'fob', 'key', 'card', 'issue fob', 'new fob', 'fob number'],
+  'lost-or-broken-fob': ['lost fob', 'broken fob', 'fob not working', 'replace fob', 'turn off fob', 'stolen'],
+  'open-a-door': ['open gate', 'unlock', 'open door', 'remote unlock', 'buzz in', 'gate offline'],
+  'give-a-pass': ['pass', 'guest', 'landscaper', 'pool tech', 'contractor', 'temporary access', 'volunteer access', 'pump room'],
+  'access-hours': ['member hours', 'access hours', 'door hours', 'levels', 'which doors', 'fob hours', 'party doors'],
+  'keyfob-sync': ['sync', 'send to doors', 'update fobs', 'panel', 'controller', 'door program'],
+  'calendar-events': ['event', 'calendar', 'closure', 'closed today', 'swim meet', 'holiday', 'google calendar', 'repeat'],
+  'parties': ['party', 'rental', 'birthday', 'booking', 'reserve', 'party fee', 'snack shack'],
+  'programs': ['program', 'swim lessons', 'lessons', 'class', 'camp', 'roster', 'sign up'],
+  'lifeguards': ['lifeguard', 'schedule', 'shifts', 'volunteer', 'helpers', 'snack bar'],
+  'post-an-announcement': ['announce', 'announcement', 'post', 'news', 'bulletin', 'tell members', 'pool closed', 'message members'],
+  'text-all-members': ['text', 'sms', 'text everyone', 'mass text', 'urgent', 'weather'],
+  'photos': ['photo', 'pictures', 'gallery', 'slideshow', 'approve photo'],
+  'customize-welcome-email': ['welcome email', 'email wording', 'email template', 'change email', 'receipts', 'turn off email'],
+  'sponsors': ['sponsor', 'advertiser', 'business', 'logo', 'sponsor pop-up'],
+  'board-minutes': ['minutes', 'meeting', 'agenda', 'motion', 'vote', 'bylaws'],
+  'pool-hours': ['hours', 'open time', 'close time', 'pool hours', 'location', 'map'],
+  'drive-backup': ['google drive', 'backup', 'archive', 'pdf', 'spreadsheet copy'],
+  'welcome-email-not-received': ['didn\'t get email', 'didnt get email', 'no email', 'spam', 'junk', 'email missing'],
 };
 
 function renderMarkdownSafe(md) {

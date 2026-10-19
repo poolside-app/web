@@ -1,29 +1,26 @@
 ---
-title: "Why didn't my member get the welcome email?"
-category: "Email & Text"
+title: "Why didn't a family get their welcome email?"
+category: "Troubleshooting"
 ---
 
-This happens occasionally and it's almost always one of three reasons.
+It's almost always one of three things.
 
-### 1. The email landed in spam
+### 1. It went to spam
 
-Ask the member to check their spam or junk folder. Tell them to mark it "Not spam" so future emails get through. This is by far the most common cause.
+Ask them to check their spam or junk folder and mark it "Not spam". This is the most common reason.
 
-### 2. There's a typo in their email address
+### 2. Their email address has a typo
 
-1. Click **Members** in the top nav.
-2. Find the household and click their row.
-3. Look closely at the email field — common typos are `gmial.com`, missing letters, or an extra space at the end.
-4. Fix it and save.
+1. Go to **Members → Households** and open their family.
+2. Look closely at the email: gmial.com, a missing letter, an extra space.
+3. Fix it and tap **Save changes**.
 
-To get them a working sign-in link after the fix, send them to your member sign-in page (`https://<your-slug>.poolsideapp.com/m/`) — they enter their (corrected) email, and a fresh magic link arrives in their inbox right away. No admin step needed.
+They don't need the welcome email to get in. They can sign in any time with their cell number or email, and a code. See "How do I help a member who can't sign in?"
 
-### 3. Email isn't fully set up for your club yet
+### 3. The email is switched off
 
-Sometimes the address Poolside sends from isn't fully verified yet. That's a one-time step on our side that proves to Gmail and other providers the emails really are from your club. You can't fix it from your board screens, so click **Email support** below and we'll check it.
+Go to **Settings → Emails** and check the welcome email's switch is on.
 
 ### Still stuck?
 
-If the member's email looks right and isn't in spam, click the **Email support** button at the bottom of this page. We'll check the delivery log and tell you exactly what happened.
-
-> **Tip:** If a member is using an old `aol.com` or `comcast.net` address, those providers are stricter about new senders. Suggest they whitelist your club's email address.
+Use **Still need help?** at the bottom of this page and tell us the family's name. We'll check what happened to the email.
