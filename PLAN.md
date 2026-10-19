@@ -905,6 +905,14 @@ Doug: "is there a way to streamline this process? is there a way to autoload a n
 - Venmo has no public way for a club's app to see payments. Pay-with-Venmo through PayPal checkout would be automatic but costs about card fees, which defeats the point of Venmo.
 - **BC1. A matching note on every Venmo payment.** Every "Pay with Venmo" button (signup, parties, keyfobs) opens Venmo with the amount and a short note already filled in: "BECC 2027 dues · Frevele · #K7Q2". Poolside shows the same code next to the family on the board's Venmo checks, so the treasurer looks for the code and taps once.
 - **BC2. Venmo checks itself, the treasurer still confirms.** The treasurer's Gmail forwards Venmo's "paid you" emails to a Poolside address. Poolside reads the name, amount and code, and marks the matching family "Venmo arrived". The treasurer gets a pop-up and confirms with one tap (Doug's rule: Venmo always needs a board OK). Only genuine Venmo emails count.
+  - How it can break, and what happens:
+    - Venmo changes its email layout. Poolside flags any Venmo email it can't read, and checking goes back to by hand.
+    - Venmo emails get switched off, or the Gmail filter or forwarding stops (a new treasurer, a new address). Nothing arrives, and it's back to by hand.
+    - The family deletes the code or pays from a spouse's account. It becomes a "possible match" by name and amount.
+    - Someone sends a fake email. Only emails genuinely signed by Venmo count, and the treasurer still confirms.
+  - Rules: it needs the club's own Venmo account, not the treasurer's personal one, or her personal payments would be forwarded too. A Gmail forwarding address has to be confirmed once with a code Poolside shows on Settings.
+  - It's a helper, never the record: worst case is a missing or wrong "arrived" flag, and the treasurer checks Venmo as today.
+- **BC3. Or: upload Venmo's statement.** The treasurer downloads Venmo's CSV statement, maybe weekly, and uploads it. Poolside matches every payment at once by code, then name and amount, for one bulk confirm. Nothing to forward and less to break, but it's not instant.
 
 ### AZ. Text family members a link to get the app (Doug, 10/19) — ✅ AZ1–AZ3 done 10/19
 Doug: "if someone signs up... dad signs up, his number works for a login... he wants the wife and kid to also have the app, he has to then share the link with them... can you put a checkbox under each name adding a phone number saying something like click checkbox to text this family member a link for login..? i want it easy to share the app with family members".
