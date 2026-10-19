@@ -177,12 +177,22 @@ Deno.serve(async (req) => {
     // and only to a 1.4 bridge (PLAN.md AS4).
     let sync: { id: string; kind: string; plan: unknown } | null = null;
     if (!command && syncReady(heartbeatVersion)) {
-      const { data: claimed } = await sb.from('keyfob_syncs')
+      // "Update the oldest" only works when the sort column comes back too
+      // (PLAN.md AW: without created_at here the first job was never handed out).
+      const { data: claimed, error: claimErr } = await sb.from('keyfob_syncs')
         .update({ status: 'in_flight', picked_up_at: new Date().toISOString() })
         .eq('tenant_id', panel.tenant_id).eq('status', 'pending')
         .order('created_at', { ascending: true }).limit(1)
-        .select('id, kind, plan');
+        .select('id, kind, plan, created_at');
       if (claimed?.length) sync = { id: claimed[0].id as string, kind: claimed[0].kind as string, plan: claimed[0].plan };
+      else if (claimErr) {
+        // A waiting job ends every hold at once, so one that can't be handed
+        // out would turn 2-minute check-ins into one every 5 seconds. Fail it.
+        console.error('keyfob sync claim failed:', claimErr.message);
+        await sb.from('keyfob_syncs').update({ status: 'failed', completed_at: new Date().toISOString(),
+          error: `Couldn't hand this to the gate computer: ${claimErr.message}`.slice(0, 500) })
+          .eq('tenant_id', panel.tenant_id).eq('status', 'pending');
+      }
     }
 
     return jsonResponse({

@@ -105,5 +105,29 @@ check('bridge 1.4 reads and writes cards and time windows', /BRIDGE_VERSION\s*=\
 const page = read('club/admin/keyfobs.html');
 check('Keyfobs & Access has "Sync keyfobs now", shows what would change, and "Send to the doors"', /Sync keyfobs now/.test(page) && /Send to the doors/.test(page) && /sync_check/.test(page) && /sync_send/.test(page));
 
+// PLAN.md AW (10/18): the first real sync job was never handed out. The
+// database only takes "update the oldest one" (order + limit) when the sort
+// column is also returned, and the claim didn't return created_at. The
+// waiting job then cut every check-in short (a call every 5 s, not 2 min).
+console.log('AW · handing a sync job to the gate computer');
+{
+  const { readdirSync: rd } = await import('node:fs');
+  const bad = [];
+  const walk = dir => { for (const f of rd(new URL(dir, root), { withFileTypes: true })) {
+    if (f.isDirectory()) walk(`${dir}${f.name}/`);
+    else if (f.name.endsWith('.ts')) {
+      const src = read(`${dir}${f.name}`);
+      for (const m of src.matchAll(/\.update\([^;]*?\.order\('([a-z_]+)'[^;]*?\.limit\(\d+\)[^;]*?\.select\('([^']*)'\)/g)) {
+        if (!m[2].split(',').map(x => x.trim()).includes(m[1])) bad.push(`${dir}${f.name}: orders by ${m[1]}, returns ${m[2]}`);
+      }
+    }
+  } };
+  walk('supabase/functions/');
+  check('every "update the oldest" returns the column it sorts by', bad.length === 0, bad.join(' | '));
+  const claimPart = between(gb, '// Doors first: a keyfob sync is handed out', 'return jsonResponse(');
+  check('a sync job that can\'t be handed out fails at once, so it can\'t cut check-ins short',
+    /error: claimErr/.test(claimPart) && /if \(claimErr\)[\s\S]{0,300}status: 'failed'/.test(claimPart));
+}
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

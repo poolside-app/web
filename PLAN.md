@@ -859,6 +859,12 @@ Steps:
   - The member home banner: "Early bird: save $50 on your renewal", then "Use code EARLYBIRD by May 1. Type it in "Have a discount code?" when you renew."
 `node scripts/test_flex_plan.mjs` (AU1), `node scripts/test_screens.mjs` (AU2), `node scripts/test_money.mjs --offline` (AU3), all offline; checked at iPhone width with made-up codes.
 
+### AW. The keyfob sync's first real job was never handed out (10/18) — ✅ fixed 10/18
+Bishop closed for the season. Doug ended the Members time window in the old Windows program and asked me to check that member fobs turn off tomorrow. Bridge 1.4 went on the club PC, and I queued a read-only check (both controllers' Members and Board windows, plus a few board and member fobs). The cloud never handed it over. The database only takes "update the oldest one" (sort plus limit) when the sort column is also returned, and the sync claim didn't return `created_at`. The unlock claim returns `requested_at`, so doors were never affected. Meanwhile the waiting job ended every 2-minute hold at once, so the bridge checked in every 5 seconds until I cancelled the job (about 6 minutes, roughly 70 calls).
+- **AW1.** The claim returns `created_at`. A job that can't be handed out fails at once with the reason, so it can never cut check-ins short again.
+- **AW2.** A test fails if any "update the oldest" in a function doesn't return the column it sorts by.
+`node scripts/test_keyfob_sync.mjs` (offline).
+
 ### AV. Real payments: a free rehearsal, then $1 live tests (Doug, 10/14) — plan only, starts when Doug says
 Doug: "once i make a couple of more changes, I want to link a bank account and then test the payments... can I do this with like 1 payment weekly for like 1$ and then put it into my account? how reliable is this? I want to ensure all this payment stuff works".
 
