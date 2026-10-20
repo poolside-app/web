@@ -47,7 +47,7 @@
     var b = document.createElement('div');
     b.id = 'demo-bar';
     b.innerHTML = '<span>🧪 Demo club. Maple Grove is made up: nothing here is real, and nothing is sent.</span>'
-      + '<a href="/club/admin/">Board side</a><a href="/m/">Member app</a><button type="button" id="demo-reset">Start over</button>';
+      + '<a href="/club/admin/">Board side</a><a href="/m/?view=member">Member app</a><button type="button" id="demo-reset">Start over</button>';
     document.body.insertBefore(b, document.body.firstChild);
     document.getElementById('demo-reset').addEventListener('click', function () {
       try { localStorage.clear(); sessionStorage.clear(); } catch (_) {}
