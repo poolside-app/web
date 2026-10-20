@@ -900,6 +900,31 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BD. A demo video (Doug, 10/19) — ✅ first cut done 10/19 (handouts/poolside-board-demo.mp4, 2:25)
+Doug: "are you able to make a video tutorial on how to demo this app?... you can't just create a video?" Then: "the intent right now is to show how the app works for the board... the benefits.. how efficient it is.. how it works... how it literally automates everything if someone pays by credit card and they already have a keyfob etc."
+
+The story, checked against the code so it claims only what Poolside does:
+1. What the board used to do each season (the signup form, typing families into a spreadsheet, checking Venmo and PayPal, the gate computer).
+2. Paid by card: nothing for the board. A card payment marks the signup paid and approves it (`stripe_webhook` → `applications` `approve`), which sets up the household, closes the signup to-do, sends the welcome email and text, and texts family members their app link. A fob already in Poolside needs nothing: the sync puts every active fob on its level's doors and dates.
+3. Venmo: the code in the note and "Venmo to check" (BC1). Venmo can't tell Poolside a payment arrived, so a person still confirms.
+4. Keyfobs: a new fob is one to-do (hand it over, type its number). Poolside writes it to the doors at "Sync keyfobs now", or nightly once "Auto keyfob activations" is on (off at Bishop). A lost fob reported in the app is turned off the same way.
+5. Each board member's home, and a button per door.
+6. Parties book themselves: an open time is approved on the spot, card books it, and the family's app opens the party door that day.
+7. Insights → Time saved.
+
+Found while checking: a fob doesn't depend on the family having paid. Every active fob gets the Members level's doors and dates, so when next season's Members dates are set, a family who didn't renew still gets in unless their fob is turned off. Raised with Doug 10/19; not part of the video.
+
+Defaults (Doug didn't pick):
+- About 2–3 minutes, landscape (1920×1080 MP4), to show a board or another club. Burned-in captions, so it works with the sound off, plus a Mac voice reading them (Samantha; a free Premium voice from System Settings would sound better, then re-make it).
+- A made-up club, "Maple Grove Swim Club", with made-up families. Every Supabase call is answered by the script, so no real family shows and no calls are used.
+- One or two phones on screen ("Family's phone", "Board's phone") with a dot showing each tap. The story: a family signs up and pays by Venmo, the board confirms it in a batch, each board member's home, the member app, opening the gate, a party, and Time saved.
+- Things only a real iPhone shows (Add to Home Screen, pop-ups arriving, the Venmo app, the gate opening) aren't in it. Doug can screen-record those and they can be spliced in.
+- `scripts/demo_video/` records it (Chrome through puppeteer, then Apple's AVFoundation through Swift, no downloads), so it can be re-made in minutes after the app changes. It stops if any screen it taps isn't there. The video goes to `handouts/` (not in git).
+
+As built: 9 scenes, 2:25, 1920×1080 with sound (52 MB). Title; what the board used to do (crossed off); paid by card (the Riveras renew: accept the policy, sign, pay, a stand-in for Stripe's card page, then the board's families paid and collected go up); Venmo (the Patels' code, then Venmo to check, two ticked and confirmed); keyfobs (issue the Larsens' fob, Sync keyfobs now, Send to the doors); each board member's home and a door button; families (Unlock the gate, a booked party and its Snack Shack door); Time saved (about 73 hours, $1,462); the end card. Every scene's caption is its narration. `node scripts/demo_video/record.mjs` re-makes it (about 3 minutes, builds its encoder the first time); `node scripts/test_demo_video.mjs` checks every screen in it still works with the made-up club (offline).
+
+Not in it yet, if Doug wants them: his own voice or a Premium Mac voice, a shorter cut for email (52 MB is over most email limits), real-iPhone moments, and the Keyfobs page's intro, which still says to program each fob at the panel (older than the sync), so the video scrolls past it.
+
 ### BC. Make Venmo easier to check (Doug, 10/19) — ✅ BC1 and the batch approval done 10/19; BC2, BC3 are ideas only
 Doug, after seeing the example: "go... create the auto load family name, amount, and code... then put that code into the poolside app as well.. batch approval would be great!"
 
