@@ -30,7 +30,9 @@ try? FileManager.default.removeItem(at: out)
 // DEMO_SIZE=720: a smaller copy for phones and email (about 25 MB for 2.5 minutes).
 let small = ProcessInfo.processInfo.environment["DEMO_SIZE"] == "720"
 let W = small ? 1280 : 1920, H = small ? 720 : 1080, FPS: Int32 = 30
-let BITRATE = small ? 1_250_000 : 3_000_000   // mostly still screens; plenty
+// Mostly still screens. DEMO_BITRATE (bits a second) overrides, e.g. 600000
+// to keep a 5-minute small copy under 30 MB (phones and email).
+let BITRATE = Int(ProcessInfo.processInfo.environment["DEMO_BITRATE"] ?? "") ?? (small ? 1_250_000 : 3_000_000)
 
 func image(_ path: String) -> CGImage? {
   guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }

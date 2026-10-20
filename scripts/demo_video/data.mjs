@@ -12,6 +12,9 @@ export const DEMO_NOW = Date.parse('2027-06-19T10:40:00-07:00');
 const day = (d, hm) => new Date(`2027-06-${String(d).padStart(2, '0')}T${hm}:00-07:00`).toISOString();
 const ago = mins => new Date(DEMO_NOW - mins * 60000).toISOString();
 
+// The same made-up token the harness puts in a signed-in phone.
+const TOKEN = 'demo.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6ImRlbW8ifQ.demo';
+
 export const CLUB = {
   id: 'demo-club', slug: 'maplegrove', display_name: 'Maple Grove Swim Club', app_name: 'Maple Grove',
   venmo: 'maplegroveswim', timezone: 'America/Los_Angeles',
@@ -29,7 +32,7 @@ const PUBLIC_SETTINGS = {
   club: { location: 'Maple Grove' },
   pool: { opens_at: '10:00', closes_at: '20:00', hours_by_day: null },
   payments: { venmo_handle: CLUB.venmo, paypal_link: null, pass_stripe_fee: true, stripe_pct: 2.9, stripe_fixed_cents: 30, offline_verify_window_days: 3, test_mode: false },
-  payment_plan: { enabled: false, first_installment_pct: 50, final_due_date: null, plan_signup_cutoff_date: null, tiers: [] },
+  payment_plan: { enabled: true, first_installment_pct: 50, final_due_date: '2027-08-01', plan_signup_cutoff_date: null, tiers: [] },
   party_length_hours: 3,
   parties: { fee_cents: 15000, auto_approve: true, hold_days: 2 },
   keyfobs: { included_free: 1, fee_cents: 1500, max_per_family: 5 },
@@ -78,11 +81,16 @@ const RIVERA = {
 const RIVERA_PARTY = { id: 'p-rivera', title: "Leo's 9th birthday", body: null, starts_at: day(19, '16:00'), ends_at: day(19, '19:00'), expected_guests: 18,
   location: 'Main pool', status: 'approved', payment_method: 'stripe', payment_status: 'paid', price_cents: 15000, admin_notes: null,
   decided_at: ago(60 * 24 * 9), event_id: 'ev-rivera', created_at: ago(60 * 24 * 9), venmo_code: 'D4LP' };
-function memberMe(state) {
+const PEOPLE = {
+  family: { id: 'm-jamie', name: 'Jamie Rivera', role: 'primary', email: 'jamie@example.com', phone_e164: '+15555550101' },
+  alex: { id: 'm-alex', name: 'Alex Rivera', role: 'adult', email: null, phone_e164: '+15555550102' },
+  sofia: { id: 'm-sofia', name: 'Sofia Rivera', role: 'teen', email: null, phone_e164: '+15555550103' },
+};
+function memberMe(state, side = 'family') {
   const paid = !!state.riveraPaid;
   return {
     ok: true,
-    user: { id: 'm-jamie', name: 'Jamie Rivera', role: 'primary', email: 'jamie@example.com', phone_e164: '+15555550101', can_book_parties: true, can_unlock: true },
+    user: { ...(PEOPLE[side] ?? PEOPLE.family), can_book_parties: side === 'family', can_unlock: true },
     tenant: { id: CLUB.id, slug: CLUB.slug, display_name: CLUB.display_name, timezone: CLUB.timezone },
     household: { ...RIVERA, paid_until_year: paid ? 2027 : 2026 },
     renewal: null, plan: null,
@@ -100,14 +108,20 @@ function memberMe(state) {
 
 // ── The board: Sam Brooks, Treasurer ──────────────────────────────────────
 const ALL_SCOPES = ['applications', 'households', 'payments', 'events', 'posts', 'parties', 'keyfobs', 'gate', 'sms', 'settings', 'audit'];
-function boardMe() {
+// Families paid and money in, the same on every board screen.
+function paidNow(state) {
+  const patel = !!state.confirmed?.has('app-patel');
+  return { families: 171 + (state.riveraPaid ? 1 : 0) + (patel ? 1 : 0), cents: 9405000 + (state.riveraPaid ? 55000 : 0) + (patel ? 55000 : 0) };
+}
+function boardMe(state) {
+  const now = paidNow(state);
   return {
     ok: true,
     tenant: { slug: CLUB.slug, display_name: CLUB.display_name, status: 'active', plan: 'club', platform_fees_waived: true, timezone: CLUB.timezone,
       features: PUBLIC_SETTINGS.features, branding: PUBLIC_SETTINGS.branding },
     usage: {
       count: 186, cap: 400, remaining: 214, unlimited: false, at_cap: false, percent: 46, plan: 'club', plan_label: 'Club plan',
-      dues: { season: 2027, paid: 171, collected_cents: 9405000, test_paid: 0 },
+      dues: { season: 2027, paid: now.families, collected_cents: now.cents, test_paid: 0 },
       sms: { used: 214, cap: 1000, remaining: 786, credits: 0, total_left: 786, days_until_reset: 12 },
     },
     renewed_token: null,
@@ -136,9 +150,8 @@ function boardTasks(state) {
   return t.filter(x => !(state.done ?? new Set()).has(x.id));
 }
 function boardHome(state) {
-  // Families paid: the Riveras' card renewal, and the Patels once their Venmo is confirmed.
-  const patel = !!state.confirmed?.has('app-patel');
-  const paid = 171 + (state.riveraPaid ? 1 : 0) + (patel ? 1 : 0);
+  // Families paid: the Riveras' card payment, and the Patels once their Venmo is confirmed.
+  const { families: paid, cents } = paidNow(state);
   const stat = (key, label, href, value, money = false) => ({ key, label, href, value, money });
   return {
     ok: true, tasks: boardTasks(state), me: 'demo-board', help_topics_mine: [], push_devices: 1,
@@ -147,7 +160,7 @@ function boardHome(state) {
     home: {
       season: 2027, today: '2027-06-19',
       stats: [
-        stat('collected', 'collected', '/club/admin/payments.html', 9405000 + (state.riveraPaid ? 55000 : 0) + (patel ? 55000 : 0)),
+        stat('collected', 'collected', '/club/admin/payments.html', cents),
         stat('paid', 'families paid', '/club/admin/members.html', paid),
         stat('fobs_to_make', 'keyfobs to make', '/club/admin/keyfobs.html', 1),
         stat('parties_week', 'parties this week', '/club/admin/parties.html', 3),
@@ -206,13 +219,15 @@ function keyfobList(state) {
 function syncStatus(state) {
   const job = (id, kind, status, result, mins = 0) => ({ id, kind, status, auto: false, created_at: ago(mins + 1), completed_at: status === 'done' ? ago(mins) : null, result, error: null });
   const jobs = [];
-  const sent = job('send-0', 'send', 'done', { summary: { live: 3 } }, 60 * 24 * 2);
+  // The tour's club has the nightly sync on: last night's run.
+  const sent = state.nightly ? { ...job('send-0', 'send', 'done', { summary: { live: 3 } }, 520), auto: true }
+    : job('send-0', 'send', 'done', { summary: { live: 3 } }, 60 * 24 * 2);
   if (state.sync === 'checking') jobs.push(job('check-1', 'check', 'in_flight', null));
   if (state.sync === 'checked') jobs.push(job('check-1', 'check', 'done', { ops: 1, summary: { add: 1, unchanged: 212 }, lines: ['Larsen Family: fob 4521 on the Main Gate, Member hours'] }));
   if (state.sync === 'sending') jobs.push(job('send-1', 'send', 'in_flight', null));
   if (state.sync === 'sent') jobs.push(job('send-1', 'send', 'done', { summary: { live: 1 } }));
   jobs.push(sent);
-  return { ok: true, ready: true, bridge_version: '1.4.0-poolside', auto: false, jobs };
+  return { ok: true, ready: true, bridge_version: '1.4.0-poolside', auto: !!state.nightly, jobs };
 }
 
 // Insights → Time saved, worked out the way _shared/time_saved.ts does.
@@ -229,6 +244,48 @@ export function timeSaved() {
   const rows = TIME_ITEMS.map(([key, label, before, minutes_each, count]) => ({ key, label, before, count, minutes_each, total_minutes: count * minutes_each }));
   const minutes = rows.reduce((n, r) => n + r.total_minutes, 0);
   return { ok: true, can_edit: true, rows, minutes, hours: minutes / 60, per_hour: 20, dollars: Math.round(minutes / 60 * 20) };
+}
+
+// ── The tour's signup (BD2) ───────────────────────────────────────────────
+function price(body) {
+  const t = TIERS.find(x => x.slug === body.tier_slug) ?? TIERS[0];
+  return { base_cents: t.price_cents, discount_cents: 0, credit_cents: 0, amount_due_cents: t.price_cents, code: null, code_label: null, code_problem: null, note: null,
+    fob_count: 0, fob_cents: 0, fob_fee_cents: 1500, fob_room: 4 };
+}
+// $550 dues: some today, the rest on the 1st of each month to the payoff
+// month, with the card fee on each charge (2.9% + 30¢), the way the server prices it.
+function planQuote(body) {
+  const fee = c => Math.round(c * 0.029) + 30;
+  const today = Number.isFinite(body.plan_today_cents) ? body.plan_today_cents : 15000;
+  const payoff = body.plan_payoff_month || '2027-08';
+  const months = payoff === '2027-07' ? ['2027-07-01'] : ['2027-07-01', '2027-08-01'];
+  const rest = 55000 - today, each = Math.round(rest / months.length);
+  const rows = [...(today ? [{ today: true, due_date: '2027-06-19', amount_cents: today, charge_cents: today + fee(today) }] : []),
+    ...months.map((d, i) => { const amt = i === months.length - 1 ? rest - each * (months.length - 1) : each; return { today: false, due_date: d, amount_cents: amt, charge_cents: amt + fee(amt) }; })];
+  const charge = rows.reduce((n, r) => n + r.charge_cents, 0);
+  return {
+    available: true, access_when: 'half', min_payment_cents: 2500,
+    deadlines: [{ pct: 50, date: '2027-07-01' }, { pct: 100, date: payoff + '-01' }],
+    months: [{ value: '2027-07', label: 'July 2027' }, { value: '2027-08', label: 'August 2027' }],
+    total_cents: 55000,
+    choice: { ok: true, today_cents: today, payoff_month: payoff, rows, adjusted: false, error: null, min_today_cents: 0,
+      checks: [{ pct: 50, paid_cents: today + (rows[1]?.amount_cents ?? 0), date: '2027-07-01', club_date: '2027-07-01' }],
+      totals: { charge_cents: charge, dues_cents: 55000, plan_fee_cents: 0, card_fee_cents: charge - 55000 } },
+  };
+}
+// Money → Upcoming: plan payments due in the next 30 days, waiting for a tick.
+function upcoming(state) {
+  const ok = state.approvedPays ?? new Set();
+  const pay = (id, family, seq, of, due, amount, total, down, monthly) => ({ id, family_name: family, sequence: seq, of, due_date: due, amount_cents: amount,
+    charge_cents: amount + Math.round(amount * 0.029) + 30, plan_total_cents: total, down_cents: down, monthly_cents: monthly, status: 'pending',
+    approved_at: ok.has(id) ? new Date(DEMO_NOW).toISOString() : null, approved_by: ok.has(id) ? 'Sam Brooks' : null, test_card: false, last_error: null });
+  return { ok: true, billing_day: 1, today: '2027-06-19', test_mode: false,
+    upcoming: [
+      pay('up-okafor', 'Okafor Family', 2, 3, '2027-07-01', 20000, 55000, 15000, 20000),
+      pay('up-nguyen', 'Nguyen Family', 3, 4, '2027-07-01', 13750, 55000, 0, 13750),
+      pay('up-walsh', 'Walsh Family', 2, 2, '2027-07-01', 21000, 42000, 21000, 21000),
+    ],
+    history: [{ at: ago(60 * 24 * 18), kind: 'plan', family_name: 'Nguyen Family', charge_cents: 14179, status: 'paid' }] };
 }
 
 export function weather() {
@@ -259,7 +316,11 @@ export function respond(fn, body, { side, state }) {
       if (a === 'status') return (state.unlockPolls = (state.unlockPolls ?? 0) + 1) < 2 ? { ok: true, status: 'pending' } : { ok: true, status: 'done', result_code: 'ok' };
       break;
     case 'member_auth':
-      if (a === 'me') return memberMe(state);
+      if (a === 'me') return memberMe(state, side);
+      // Signing in: a link from a text, or a texted code (the tour, BD2).
+      if (a === 'verify') return { ok: true, token: TOKEN, user: PEOPLE[side] ?? PEOPLE.family, tenant: { slug: CLUB.slug, display_name: CLUB.display_name } };
+      if (a === 'start') return { ok: true, mode: 'code', message: 'A sign-in code is on the way.' };
+      if (a === 'verify_code') return { ok: true, token: TOKEN };
       if (a === 'list_my_parties') return { ok: true, parties: state.partyToday ? [RIVERA_PARTY] : [] };
       // Renewing for 2027 (the "pays by card, already has a fob" family).
       if (a === 'renewal_options') return {
@@ -274,7 +335,7 @@ export function respond(fn, body, { side, state }) {
       if (a === 'renew_sign') return { ok: true, signed_at: new Date(DEMO_NOW).toISOString() };
       break;
     case 'tenant_admin_auth':
-      if (a === 'me' || a === 'verify') return boardMe();
+      if (a === 'me' || a === 'verify') return boardMe(state);
       break;
     case 'admin_tasks':
       if (a === 'list') { const h = boardHome(state); delete h.home; return h; }
@@ -290,9 +351,19 @@ export function respond(fn, body, { side, state }) {
       if (a === 'list') return { ok: true, items: [] };
       break;
     case 'applications':
+      if (a === 'check_contact') return { ok: true, member: false, applied: false };
+      if (a === 'quote') return { ok: true, price: price(body), plan: planQuote(body) };
+      if (a === 'post_payment_signin') return { ok: true, verify_url: '/m/verify.html#token=demo-link' };
+      if (a === 'submit' && body.payment_method !== 'venmo') return { ok: true, application_id: body.payment_method === 'stripe_plan' ? 'app-okafor' : 'app-rivera-new' };
+      if (a === 'submit' && /patel/i.test(body.family_name || '')) return { ok: true, application_id: 'app-patel', venmo: { code: 'K7Q2', amount_cents: 55000, note: 'Maple Grove 2027 dues - Patel - #K7Q2',
+        link: 'https://venmo.com/maplegroveswim?txn=pay&amount=550.00&note=' + encodeURIComponent('Maple Grove 2027 dues - Patel - #K7Q2') } };
       if (a === 'submit') return { ok: true, id: 'app-patel', venmo: { code: 'K7Q2', amount_cents: 55000, note: 'Maple Grove 2027 dues - Patel - #K7Q2',
         link: 'https://venmo.com/maplegroveswim?txn=pay&amount=550.00&note=' + encodeURIComponent('Maple Grove 2027 dues - Patel - #K7Q2') } };
       if (a === 'approve' || a === 'verify_payment') { state.confirmed.add(body.id); return { ok: true }; }
+      break;
+    case 'payment_plans':
+      if (a === 'upcoming') return upcoming(state);
+      if (a === 'approve') { for (const id of body.ids ?? []) (state.approvedPays ??= new Set()).add(id); return { ok: true, approved: (body.ids ?? []).length }; }
       break;
     case 'gate_admin':
       if (a === 'board_unlock') return { ok: true, unlock_id: 'board-unlock-1' };
@@ -308,6 +379,8 @@ export function respond(fn, body, { side, state }) {
     case 'stripe_checkout':
       // The card page is Stripe's, so the demo skips it: paying lands back in
       // the app, and Poolside's side (the webhook's approval) happens here.
+      if (a === 'application' && body.application_id === 'app-rivera-new') { state.riveraPaid = true; return { ok: true, url: '/apply.html?paid=1&app_id=app-rivera-new' }; }
+      if (a === 'application_plan') { state.okaforPlan = true; return { ok: true, url: '/apply.html?plan_started=1&app_id=app-okafor' }; }
       if (a === 'application') { state.riveraPaid = true; return { ok: true, url: '/m/?renewed=1' }; }
       break;
     case 'parties_admin':

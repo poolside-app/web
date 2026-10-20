@@ -73,8 +73,8 @@
   .pay-opt { display:flex; align-items:center; gap:8px; font-size:14px; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; cursor:pointer; margin: 6px 0; }
   /* Payment choices: the notes under a choice go on their own line, not in
      a squeezed column beside it (the card fee note was cut off at 390px). */
-  .pay-opt:has(> input[name="payment_method"]) { flex-wrap:wrap; }
-  .pay-opt:has(> input[name="payment_method"]) > div { flex-basis:100%; padding-left:26px; }
+  .pay-opt:has(> input[name="payment_method"]), #auto-renew-opt { flex-wrap:wrap; }
+  .pay-opt:has(> input[name="payment_method"]) > div, #auto-renew-opt > div { flex-basis:100%; padding-left:26px; }
   .pay-opt:has(input:checked) { border-color: var(--blue); background: var(--blue-l); }
   .pay-opt input { width:auto; margin:0; }
 

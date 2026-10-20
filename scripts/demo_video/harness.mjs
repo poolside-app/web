@@ -23,6 +23,10 @@ export const CLUB_HOST = 'maplegrove.poolsideapp.com';
 export const FAMILY = `https://${CLUB_HOST}`;
 export const BOARD = `https://${CLUB_HOST}:8443`;
 export const STAGE = `https://${CLUB_HOST}:9443`;
+// More family phones (the tour, BD2): signed out until they sign in.
+export const ALEX = `https://${CLUB_HOST}:8444`;
+export const SOFIA = `https://${CLUB_HOST}:8445`;
+const SIDES = { '': 'family', '8443': 'board', '8444': 'alex', '8445': 'sofia' };
 
 const TYPES = {
   html: 'text/html', js: 'application/javascript', mjs: 'application/javascript', css: 'text/css',
@@ -85,7 +89,7 @@ export async function attach(page, { state = {}, extraFiles = {} } = {}) {
       let body = {};
       try { body = JSON.parse(r.postData() || '{}'); } catch (_) {}
       const fn = u.pathname.split('/').pop();
-      const side = (r.frame() && new URL(r.frame().url()).port === '8443') ? 'board' : 'family';
+      const side = SIDES[r.frame() ? new URL(r.frame().url()).port : ''] ?? 'family';
       const out = respond(fn, body, { side, state });
       log.calls.push(`${side} ${fn}:${body.action ?? '-'}`);
       if (out === undefined) log.unknown.push(`${side} ${fn}:${body.action ?? '-'}`);

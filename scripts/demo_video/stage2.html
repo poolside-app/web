@@ -1,0 +1,203 @@
+<!doctype html>
+<!-- The tour's frame (PLAN.md BD2): the chapter list and a short step title on
+     the left; on the right a "camera" over the phones that zooms into what's
+     being used. Texts and pop-ups show as bubbles on a phone. tour.mjs drives it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poolside tour</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --amber: #f5b324; }
+  html, body { margin: 0; width: 1440px; height: 810px; overflow: hidden; font-family: Inter, sans-serif; color: #fff;
+    background: radial-gradient(1100px 760px at 18% 12%, #135a86 0%, #0b3a5a 52%, #082a42 100%); }
+  .brand { position: absolute; left: 56px; top: 38px; font: 600 22px Fraunces, serif; display: flex; align-items: center; gap: 11px; }
+  .brand i { width: 13px; height: 13px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 5px rgba(245,179,36,.22); }
+
+  /* The chapter list: where you are in the tour (signaling). */
+  .chapters { position: absolute; left: 56px; top: 108px; list-style: none; margin: 0; padding: 0; }
+  .chapters li { font: 500 15px Inter; color: rgba(255,255,255,.42); margin: 0 0 11px; display: flex; gap: 12px; align-items: center; transition: color .4s; }
+  .chapters li b { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.28); font: 700 12px Inter; display: grid; place-items: center; flex-shrink: 0; transition: all .4s; }
+  .chapters li.done { color: rgba(255,255,255,.62); }
+  .chapters li.done b { background: rgba(255,255,255,.16); border-color: transparent; }
+  .chapters li.on { color: #fff; font-weight: 600; }
+  .chapters li.on b { background: var(--amber); border-color: var(--amber); color: #0b3a5a; }
+
+  .step { position: absolute; left: 56px; top: 470px; width: 410px; transition: opacity .35s ease, transform .35s ease; }
+  .step.swap { opacity: 0; transform: translateY(8px); }
+  .step .kicker { font: 700 13px Inter; letter-spacing: .14em; text-transform: uppercase; color: var(--amber); margin-bottom: 12px; }
+  .step h1 { font: 600 40px/1.14 Fraunces, serif; margin: 0; }
+
+  /* The camera: everything inside #rig zooms together. */
+  .camera { position: absolute; left: 500px; top: 0; width: 940px; height: 810px; overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 70px); mask-image: linear-gradient(to right, transparent 0, #000 70px); }
+  #rig { position: absolute; left: 0; top: 0; width: 940px; height: 810px; transform-origin: 0 0; transition: transform .9s cubic-bezier(.45,.05,.2,1); }
+  .phone { position: absolute; top: 18px; width: 414px; transition: left .7s cubic-bezier(.45,.05,.2,1), opacity .5s ease, filter .5s ease; }
+  .phone.dim { opacity: .3; filter: saturate(.4); }
+  .phone.gone { opacity: 0; pointer-events: none; }
+  .phone .lbl { font: 600 12.5px Inter; letter-spacing: .13em; text-transform: uppercase; color: rgba(255,255,255,.75); text-align: center; height: 20px; margin-bottom: 10px; }
+  .bezel { position: relative; width: 414px; height: 744px; border-radius: 48px; background: #04080c; padding: 12px; box-sizing: border-box; overflow: hidden;
+    box-shadow: 0 34px 70px rgba(0,0,0,.45), inset 0 0 0 2px #26303c; }
+  .bezel iframe { width: 390px; height: 720px; border: 0; border-radius: 36px; background: #fbfaf7; display: block; }
+
+  /* Stands in for Stripe's card page and the Venmo app, which aren't shown. */
+  .standin { position: absolute; inset: 12px; border-radius: 36px; background: #f6f8fb; color: #0b3a5a; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; gap: 10px; opacity: 0; pointer-events: none; transition: opacity .35s; }
+  .standin.on { opacity: 1; }
+  .standin .big { font-size: 54px; }
+  .standin b { font: 600 24px Fraunces, serif; }
+  .standin span { font: 500 15px Inter; color: #5b6b7b; max-width: 270px; line-height: 1.5; }
+  .standin .ok { font: 700 16px Inter; color: #15803d; margin-top: 8px; opacity: 0; transition: opacity .3s; }
+  .standin.done .ok { opacity: 1; }
+
+  /* A text message or a pop-up, sliding down over the phone. */
+  .bubbles { position: absolute; left: 22px; right: 22px; top: 22px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .bubble { background: rgba(248,250,252,.97); color: #0f172a; border-radius: 20px; padding: 12px 14px 13px; box-shadow: 0 10px 30px rgba(0,0,0,.28);
+    transform: translateY(-140%); opacity: 0; transition: transform .55s cubic-bezier(.2,.9,.3,1.1), opacity .3s; }
+  .bubble.in { transform: none; opacity: 1; }
+  .bubble .hd { display: flex; align-items: center; gap: 8px; font: 600 11.5px Inter; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+  .bubble .hd i { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-style: normal; font-size: 13px; }
+  .bubble .hd .t { flex: 1; }
+  .bubble .ti { font: 700 14.5px/1.3 Inter; margin-bottom: 2px; }
+  .bubble .bd { font: 400 14px/1.42 Inter; color: #1e293b; }
+  .bubble .bd u { color: #2563eb; text-decoration: none; }
+
+  .tap { position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; z-index: 9;
+    background: rgba(245,179,36,.28); border: 3px solid var(--amber); pointer-events: none; opacity: 0;
+    transition: left .5s cubic-bezier(.4,.1,.2,1), top .5s cubic-bezier(.4,.1,.2,1), opacity .25s; }
+  .tap.on { opacity: 1; }
+  .tap.press { animation: press .4s ease; }
+  @keyframes press { 0% { transform: scale(1); } 40% { transform: scale(.7); background: rgba(245,179,36,.6); } 100% { transform: scale(1); } }
+  /* A ring around what matters on screen. */
+  .ring { position: absolute; z-index: 8; border: 3px solid var(--amber); border-radius: 14px; box-shadow: 0 0 0 6px rgba(245,179,36,.22); pointer-events: none; opacity: 0; transition: opacity .35s, left .4s, top .4s, width .4s, height .4s; }
+  .ring.on { opacity: 1; }
+
+  .overlay { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(1100px 760px at 50% 30%, #135a86 0%, #0b3a5a 55%, #082a42 100%); opacity: 0; pointer-events: none; transition: opacity .7s ease; }
+  .overlay.on { opacity: 1; }
+  .logo { font: 600 84px Fraunces, serif; display: flex; align-items: center; gap: 22px; }
+  .logo i { width: 28px; height: 28px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 10px rgba(245,179,36,.22); }
+  .overlay .sub { font: 500 27px Inter; color: rgba(255,255,255,.86); margin-top: 16px; }
+  .overlay .note { position: absolute; bottom: 38px; font: 400 15px Inter; color: rgba(255,255,255,.55); }
+  .overlay .num { font: 600 120px/1 Fraunces, serif; color: var(--amber); }
+  .overlay .ch { font: 600 56px Fraunces, serif; margin-top: 8px; }
+  .overlay .chsub { font: 500 24px Inter; color: rgba(255,255,255,.8); margin-top: 14px; max-width: 900px; line-height: 1.45; }
+  .agenda { list-style: none; margin: 30px 0 0; padding: 0; text-align: left; columns: 2; column-gap: 70px; }
+  .agenda li { font: 500 22px Inter; color: rgba(255,255,255,.88); margin: 0 0 16px; display: flex; gap: 14px; align-items: center; break-inside: avoid; }
+  .agenda li b { width: 32px; height: 32px; border-radius: 50%; background: var(--amber); color: #0b3a5a; font: 700 15px Inter; display: grid; place-items: center; }
+  .recap { list-style: none; margin: 26px 0 0; padding: 0; text-align: left; max-width: 980px; }
+  .recap li { font: 500 23px/1.4 Inter; color: rgba(255,255,255,.9); margin: 0 0 16px; padding-left: 40px; position: relative; opacity: 0; transform: translateY(6px); transition: all .5s; }
+  .recap li.in { opacity: 1; transform: none; }
+  .recap li::before { content: '✓'; position: absolute; left: 0; top: 0; color: var(--amber); font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="brand"><i></i>Poolside</div>
+  <ol class="chapters" id="chapters"></ol>
+  <div class="step" id="step"><div class="kicker" id="kicker"></div><h1 id="title"></h1></div>
+
+  <div class="camera"><div id="rig">
+    <div class="phone" id="p-left" style="left:40px"><div class="lbl" id="l-left">Family's phone</div>
+      <div class="bezel"><iframe name="left" id="f-left"></iframe>
+        <div class="standin" id="s-left"><div class="big" id="s-icon">💳</div><b id="s-title">The card page</b><span id="s-text">Families pay on Stripe's secure page. It's skipped in this demo.</span><div class="ok" id="s-ok">✓ Paid</div></div>
+        <div class="bubbles" id="b-left"></div></div></div>
+    <div class="phone" id="p-board" style="left:486px"><div class="lbl">Board's phone</div>
+      <div class="bezel"><iframe name="board" id="f-board"></iframe><div class="bubbles" id="b-board"></div></div></div>
+    <div class="ring" id="ring"></div>
+    <div class="tap" id="tap"></div>
+  </div></div>
+
+  <div class="overlay" id="o-chapter"><div class="num" id="o-num"></div><div class="ch" id="o-ch"></div><div class="chsub" id="o-sub"></div></div>
+  <div class="overlay" id="o-intro">
+    <div class="logo"><i></i>Poolside</div>
+    <div class="sub">How it works, step by step</div>
+    <ol class="agenda" id="agenda"></ol>
+    <div class="note">Maple Grove Swim Club and its families are made up for this demo.</div>
+  </div>
+  <div class="overlay" id="o-recap"><div class="ch">That's Poolside</div><ul class="recap" id="recap"></ul></div>
+  <div class="overlay" id="o-end">
+    <div class="logo"><i></i>Poolside</div>
+    <div class="sub">Families do it themselves. The board checks off what's left.</div>
+    <div class="note">Maple Grove Swim Club and its families are made up for this demo.</div>
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const phoneOf = side => side === 'board' ? $('p-board') : $('p-left');
+  window.Stage = {
+    chapters(list) {
+      $('chapters').innerHTML = list.map((c, i) => `<li><b>${i + 1}</b>${esc(c)}</li>`).join('');
+      $('agenda').innerHTML = list.map((c, i) => `<li><b>${i + 1}</b>${esc(c)}</li>`).join('');
+    },
+    chapter(n) { [...$('chapters').children].forEach((li, i) => { li.classList.toggle('on', i === n); li.classList.toggle('done', i < n); }); },
+    async step(kicker, title) {
+      $('step').classList.add('swap'); await wait(330);
+      $('kicker').textContent = kicker; $('title').textContent = title;
+      $('step').classList.remove('swap');
+    },
+    // 'both', 'left' or 'board': which phones are on screen, and where.
+    layout(which, dim) {
+      const L = $('p-left'), B = $('p-board');
+      L.classList.toggle('gone', which === 'board'); B.classList.toggle('gone', which === 'left');
+      if (which === 'both') { L.style.left = '40px'; B.style.left = '486px'; }
+      if (which === 'left') { L.style.left = '263px'; B.style.left = '700px'; }
+      if (which === 'board') { B.style.left = '263px'; L.style.left = '-180px'; }
+      L.classList.toggle('dim', dim === 'left'); B.classList.toggle('dim', dim === 'board');
+    },
+    label(text) { $('l-left').textContent = text; },
+    overlay(id, on) { $('o-' + id).classList.toggle('on', on); },
+    chapterCard(num, title, sub) { $('o-num').textContent = num; $('o-ch').textContent = title; $('o-sub').textContent = sub || ''; },
+    recap(items) { $('recap').innerHTML = items.map(t => `<li>${esc(t)}</li>`).join(''); },
+    recapShow(i) { const li = $('recap').children[i]; if (li) li.classList.add('in'); },
+    standin(on, opts = {}) {
+      if (opts.icon) $('s-icon').textContent = opts.icon;
+      if (opts.title) $('s-title').textContent = opts.title;
+      if (opts.text) $('s-text').textContent = opts.text;
+      if (opts.ok) $('s-ok').textContent = opts.ok;
+      $('s-left').classList.toggle('on', on); $('s-left').classList.toggle('done', !!opts.done);
+    },
+    // A point on a phone's screen, in the rig (so it zooms with the phones).
+    at(side, x, y) { const p = phoneOf(side); return { x: p.offsetLeft + 12 + x, y: p.offsetTop + 30 + 12 + y }; },
+    zoom(side, x, y, s = 1.45) {
+      const p = this.at(side, x, y), ph = phoneOf(side);
+      let tx = 470 - p.x * s, ty = 405 - p.y * s;
+      // Keep the whole phone in frame side to side (it may run off the top and bottom).
+      const lo = 12 - ph.offsetLeft * s, hi = 928 - (ph.offsetLeft + 414) * s;
+      if (lo <= hi) tx = Math.min(hi, Math.max(lo, tx));
+      $('rig').style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+    },
+    unzoom() { $('rig').style.transform = 'none'; },
+    async tapAt(side, x, y, press = true) {
+      const p = this.at(side, x, y), t = $('tap');
+      if (!t.classList.contains('on')) { t.style.transition = 'none'; t.style.left = p.x + 'px'; t.style.top = (p.y + 60) + 'px'; t.offsetWidth; t.style.transition = ''; }
+      t.classList.add('on'); t.style.left = p.x + 'px'; t.style.top = p.y + 'px';
+      await wait(560);
+      if (press) { t.classList.remove('press'); t.offsetWidth; t.classList.add('press'); await wait(260); }
+    },
+    moveTap(side, x, y) { const p = this.at(side, x, y), t = $('tap'); t.style.transition = 'none'; t.classList.add('on'); t.style.left = p.x + 'px'; t.style.top = p.y + 'px'; },
+    hideTap() { $('tap').classList.remove('on'); $('tap').style.transition = ''; },
+    ring(side, r) {
+      const p = this.at(side, r.x - 6, r.y - 6), g = $('ring');
+      g.style.left = p.x + 'px'; g.style.top = p.y + 'px'; g.style.width = (r.w + 12) + 'px'; g.style.height = (r.h + 12) + 'px';
+      g.classList.add('on');
+    },
+    unring() { $('ring').classList.remove('on'); },
+    // kind 'text' (a text message) or 'pop' (a pop-up from the club's app).
+    async bubble(side, { kind = 'text', title = '', body = '' }) {
+      const box = $(side === 'board' ? 'b-board' : 'b-left');
+      const el = document.createElement('div');
+      el.className = 'bubble';
+      el.innerHTML = `<div class="hd">${kind === 'text'
+        ? '<i style="background:#22c55e;color:#fff">💬</i><span class="t">Text message</span>'
+        : '<i style="background:#0b3a5a"><span style="width:9px;height:9px;border-radius:50%;background:#f5b324;display:block"></span></i><span class="t">Maple Grove</span>'}<span>now</span></div>
+        ${title ? `<div class="ti">${esc(title)}</div>` : ''}<div class="bd">${body}</div>`;
+      box.prepend(el); el.offsetWidth; el.classList.add('in');
+      await wait(600);
+    },
+    clearBubbles(side) { const box = $(side === 'board' ? 'b-board' : 'b-left'); [...box.children].forEach(el => el.classList.remove('in')); setTimeout(() => { box.innerHTML = ''; }, 500); },
+  };
+</script>
+</body>
+</html>

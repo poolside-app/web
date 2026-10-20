@@ -3,7 +3,7 @@
 // A screen that makes a call the demo doesn't answer, or throws, fails here
 // before it spoils a recording.   node scripts/test_demo_video.mjs
 import { readFileSync } from 'node:fs';
-import { launch, attach, FAMILY, BOARD } from './demo_video/harness.mjs';
+import { launch, attach, FAMILY, BOARD, ALEX } from './demo_video/harness.mjs';
 
 let passed = 0, failed = 0;
 const check = (name, ok, why = '') => { console.log(`  ${ok ? '✓' : '✗'} ${name}${ok ? '' : ' — ' + why}`); ok ? passed++ : failed++; };
@@ -11,6 +11,9 @@ const check = (name, ok, why = '') => { console.log(`  ${ok ? '✓' : '✗'} ${n
 const SCREENS = [
   ['family', '/m/', { riveraPaid: false }], ['family', '/m/renew.html', {}], ['family', '/apply.html', {}], ['family', '/m/', { riveraPaid: true, partyToday: true }],
   ['board', '/club/admin/', {}], ['board', '/club/admin/payments.html', {}], ['board', '/club/admin/keyfobs.html', {}], ['board', '/club/admin/time-saved.html', {}],
+  // The tour (BD2): after paying, a plan started, the board's Upcoming, signing in.
+  ['family', '/apply.html?paid=1&app_id=app-rivera-new', {}], ['family', '/apply.html?plan_started=1&app_id=app-okafor', {}],
+  ['board', '/club/admin/upcoming.html', {}], ['alex', '/m/login.html', {}], ['alex', '/m/verify.html#token=x', {}],
 ];
 const browser = await launch();
 console.log('BD · each screen in the video, with the demo club');
@@ -18,7 +21,7 @@ for (const [side, path, state] of SCREENS) {
   const page = await browser.newPage();
   await page.setViewport({ width: 390, height: 720 });
   const log = await attach(page, { state });
-  await page.goto((side === 'board' ? BOARD : FAMILY) + path, { waitUntil: 'networkidle0', timeout: 45000 });
+  await page.goto(({ board: BOARD, alex: ALEX }[side] ?? FAMILY) + path, { waitUntil: 'networkidle0', timeout: 45000 });
   await new Promise(r => setTimeout(r, 800));
   const problems = [...new Set(log.unknown)].map(u => 'unanswered ' + u).concat(log.errors, [...log.external].map(h => 'blocked ' + h));
   check(`${side} ${path}`, !problems.length, problems.join('; '));
