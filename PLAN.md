@@ -900,7 +900,7 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
-### BH. A 90-second video like the Smartiply one (Doug, 10/20) — ✅ first cut done 10/20, waiting for Doug's review
+### BH. A 90-second video like the Smartiply one (Doug, 10/20) — ✅ done 10/20 (Doug: "i think this is good for now")
 Doug, on the BD2 tour: "its good, just not great... the voice is weird.. the structure is weird... the chapter word is also weird". Then, of a 1:38 app promo on YouTube (Smartiply, by Rightcolours): "can you make something like this?" Picked: pool blue, a Mac voice (Ava (Premium), downloaded on his Mac), music I find (a Pixabay track, free for commercial use, no credit needed: `handouts/music/`, kept out of git). After a 19-second sample: "voice is good, script ok, build it but again the voice is a little weird.. put subtitles?"
 - The look, from the reference: a flat pool-blue background with soft diagonal stripes, clean white phones, a big bold title sliding in beside the phone for each part (no chapter numbers, no "Chapter"), two phones side by side when two people are involved, labeled icons popping in around the phone, short calm lines over upbeat music, and a problem → how it works → tagline story.
 - Subtitles burned in at the bottom, one sentence at a time. Each sentence is its own voice clip, so the words on screen change exactly when she starts the sentence. Also a `.srt` file.
