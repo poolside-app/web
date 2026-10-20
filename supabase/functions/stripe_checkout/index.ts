@@ -19,7 +19,7 @@
 //   { action: 'admin_application', application_id }   — admin-initiated link
 //
 // All sessions specify an `application_fee_amount` per Poolside's tier:
-// 1% dues, 1.5% programs/snack, 2% tickets, 0% donations, 5% late fees.
+// 1% dues, 1.5% programs/snack, 2% tickets, 0% donations.
 // Rates live in _shared/fees.ts — never inline them here.
 //
 // Test payments (settings.payments.test_mode): every action above returns a
@@ -40,7 +40,7 @@ const STRIPE_KEY   = Deno.env.get('STRIPE_SECRET_KEY');
 // Per-kind platform fee (basis points). Source of truth for "what does
 // Poolside charge?" — referenced by both stripe_checkout and payment_plans.
 // Pricing: 1% dues (raised from 0.5% on 2026-09-08), 1.5% programs/snack,
-// 2% tickets, 0% donations, 5% late fees. The dues rate MUST match the one
+// 2% tickets, 0% donations. The dues rate MUST match the one
 // payment_plans uses for installments + reactivation, so a family pays the
 // same fee whether it pays in full or over the season.
 // Rates live in _shared/fees.ts — they were duplicated across this file and
@@ -92,29 +92,9 @@ async function renewalUnsigned(sb: ReturnType<typeof createClient>, appId: strin
   return null;
 }
 
-type SimCheckout = {
-  tid: string; sid: string; amt: number; name: string; desc: string;
-  ok: string; no: string; md: Record<string, string>;
-};
-
-// The token carries everything the fake checkout needs, signed so the amount
-// and metadata can't be edited in the browser. It deliberately has no `sub`:
-// several functions accept any signed token with sub + tid as a login.
-async function simulatedCheckoutUrl(p: Omit<SimCheckout, 'sid'>): Promise<{ url: string; session_id: string }> {
-  const sid = 'sim_cs_' + crypto.randomUUID().replace(/-/g, '');
-  const token = await create({ alg: 'HS256', typ: 'JWT' },
-    { kind: 'sim_checkout', ...p, sid, exp: getNumericDate(60 * 60) }, await jwtKey());
-  return { url: `${new URL(p.ok).origin}/pay-test.html#t=${token}`, session_id: sid };
-}
-
-async function verifySimToken(token: string): Promise<SimCheckout | null> {
-  if (!JWT_SECRET || !token) return null;
-  try {
-    const p = await verify(token, await jwtKey()) as Record<string, unknown>;
-    if (p.kind !== 'sim_checkout' || !p.tid || !p.sid) return null;
-    return p as unknown as SimCheckout;
-  } catch { return null; }
-}
+// The pretend checkout for Test payments lives in _shared/sim_checkout.ts
+// (donations use it too, PLAN.md BG3).
+import { simulatedCheckoutUrl, verifySimToken } from '../_shared/sim_checkout.ts';
 
 /**
  * A $0 membership: run it through stripe_webhook as a completed payment, the

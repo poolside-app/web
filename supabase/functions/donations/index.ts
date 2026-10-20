@@ -40,19 +40,12 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
 }
 
-// Recompute the fundraiser total stored on settings.value.fundraiser.raised_cents.
-// Called after every donation insert/update/delete so the thermometer the
-// public reads always matches the verified-donation sum.
+// Recompute the fundraiser total stored on settings.value.fundraiser.raised_cents
+// after every donation insert/update/delete: recorded donations plus the
+// board's own outside amount (_shared/fundraiser.ts, PLAN.md BG3).
 async function recomputeFundraiserTotal(sb: ReturnType<typeof createClient>, tenantId: string): Promise<number> {
-  const { data: rows } = await sb.from('donations')
-    .select('amount_cents').eq('tenant_id', tenantId).eq('status', 'verified');
-  const total = (rows ?? []).reduce((acc, r) => acc + (r.amount_cents as number), 0);
-  const { data: row } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
-  const v = (row?.value as Record<string, unknown> | null) ?? {};
-  const fund = (v.fundraiser as Record<string, unknown> | undefined) ?? {};
-  const next = { ...v, fundraiser: { ...fund, raised_cents: total } };
-  await sb.from('settings').update({ value: next }).eq('tenant_id', tenantId);
-  return total;
+  const { recomputeFundraiser } = await import('../_shared/fundraiser.ts');
+  return await recomputeFundraiser(sb as never, tenantId);
 }
 
 Deno.serve(async (req) => {
@@ -70,7 +63,6 @@ Deno.serve(async (req) => {
   // unpacks it on checkout.session.completed and inserts the donation
   // row. We don't insert here — only confirmed payments get rows.
   if (action === 'start_checkout') {
-    if (!STRIPE_KEY) return jsonResponse({ ok: false, error: 'Card payments aren\'t set up yet' }, 503);
     const slug = String(body.slug ?? '').trim().toLowerCase();
     const amount_cents = Math.round(Number(body.amount_cents) || 0);
     if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
@@ -81,6 +73,25 @@ Deno.serve(async (req) => {
       .select('id, slug, display_name, stripe_account_id, stripe_charges_enabled')
       .eq('slug', slug).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+
+    // Test payments on: the pretend checkout, like every other card payment,
+    // so nothing real is charged (PLAN.md BG3).
+    const { clubInTestMode } = await import('../_shared/test_payments.ts');
+    if (await clubInTestMode(sb as never, tenant.id as string)) {
+      const { simulatedCheckoutUrl } = await import('../_shared/sim_checkout.ts');
+      const clubUrlT = `https://${tenant.slug}.poolsideapp.com`;
+      const md: Record<string, string> = { kind: 'donation', tenant_id: tenant.id as string,
+        is_public: String(body.is_public === false ? false : true), is_anonymous: String(body.is_anonymous === true) };
+      const dn = String(body.donor_name ?? '').trim().slice(0, 120);   if (dn) md.donor_name = dn;
+      const de = String(body.donor_email ?? '').trim().toLowerCase().slice(0, 200); if (de) md.donor_email = de;
+      const dm = String(body.message ?? '').trim().slice(0, 500);      if (dm) md.message = dm;
+      const sim = await simulatedCheckoutUrl({ tid: tenant.id as string, amt: amount_cents,
+        name: 'Donation', desc: `Donation to ${tenant.display_name}`,
+        ok: `${clubUrlT}/?donated=1`, no: `${clubUrlT}/?donated=0`, md });
+      return jsonResponse({ ok: true, url: sim.url, session_id: sim.session_id, test: true });
+    }
+
+    if (!STRIPE_KEY) return jsonResponse({ ok: false, error: 'Card payments aren\'t set up yet' }, 503);
     if (!tenant.stripe_account_id || !tenant.stripe_charges_enabled) {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished setting up card payments yet — try Venmo instead.' }, 400);
     }

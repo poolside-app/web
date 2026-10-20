@@ -30,7 +30,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope } from '../_shared/auth.ts';
-import { recordDiscountUse } from '../_shared/membership_price.ts';
 import { normalizeCode } from '../_shared/pricing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -108,6 +107,23 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '');
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // Run another function's own confirm step as this board member (PLAN.md
+  // BG3). A signup's verify_payment sends the family's confirmation, closes
+  // the Venmo to-do, unlocks a referral reward and marks the Drive sheet; a
+  // party's books the calendar and the party doors. A bare "paid" flag here
+  // skipped all of that.
+  const forward = async (fn: string, b: Record<string, unknown>): Promise<{ ok?: boolean; error?: string }> => {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: authHdr }, body: JSON.stringify(b),
+    });
+    return await r.json().catch(() => ({ ok: false, error: `${fn} answered ${r.status}` }));
+  };
+  const appMethod = async (id: string): Promise<string> => {
+    const { data } = await sb.from('applications').select('payment_method').eq('id', id).eq('tenant_id', TID).maybeSingle();
+    const m = String(data?.payment_method ?? '');
+    return ['venmo', 'check', 'cash', 'paypal'].includes(m) ? m : 'venmo';
+  };
 
   if (action === 'list') {
     // The current season (PLAN.md U2): a family owes dues for it only if
@@ -312,30 +328,8 @@ Deno.serve(async (req) => {
     }
 
     if (source === 'application') {
-      const { error } = await sb.from('applications')
-        .update({
-          payment_status: 'paid',
-          paid_at: new Date().toISOString(),
-          verified_at: new Date().toISOString(),
-          verified_by: payload.sub,
-        })
-        .eq('id', source_id).eq('tenant_id', TID);
-      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-      // The payment cleared: count any code use and spend any credit (H5).
-      await recordDiscountUse(sb, source_id);
-      // In test mode it's a test payment, not money in (PLAN.md AF1b).
-      const { clubInTestMode, SIM_NOTE } = await import('../_shared/test_payments.ts');
-      if (await clubInTestMode(sb as never, TID)) {
-        await sb.from('application_actions').insert({ application_id: source_id, tenant_id: TID, kind: 'venmo_verified', body: SIM_NOTE, actor_id: payload.sub });
-      }
-      // Application.verify_payment also flips household.dues_paid_for_year — replicate that here
-      const { data: app } = await sb.from('applications').select('household_id')
-        .eq('id', source_id).maybeSingle();
-      if (app?.household_id) {
-        await sb.from('households')
-          .update({ dues_paid_for_year: true })
-          .eq('id', app.household_id).eq('tenant_id', TID);
-      }
+      const r = await forward('applications', { action: 'verify_payment', id: source_id, method: await appMethod(source_id) });
+      if (!r.ok) return jsonResponse({ ok: false, error: r.error || 'Could not confirm the payment' }, 409);
       return jsonResponse({ ok: true });
     }
 
@@ -368,26 +362,15 @@ Deno.serve(async (req) => {
             .eq('id', it.source_id).eq('tenant_id', TID);
           if (error) throw new Error(error.message);
         } else if (it.source === 'application') {
-          const { error } = await sb.from('applications').update({
-            payment_status: 'paid', paid_at: new Date().toISOString(),
-            verified_at: new Date().toISOString(), verified_by: payload.sub,
-          }).eq('id', it.source_id).eq('tenant_id', TID);
-          if (error) throw new Error(error.message);
-          await recordDiscountUse(sb, it.source_id);
-          const { data: app } = await sb.from('applications').select('household_id').eq('id', it.source_id).maybeSingle();
-          if (app?.household_id) {
-            await sb.from('households').update({ dues_paid_for_year: true }).eq('id', app.household_id).eq('tenant_id', TID);
-          }
+          const r = await forward('applications', { action: 'verify_payment', id: it.source_id, method: await appMethod(it.source_id) });
+          if (!r.ok) throw new Error(r.error || 'Could not confirm the payment');
         } else if (it.source === 'program') {
           const { error } = await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString() })
             .eq('id', it.source_id).eq('tenant_id', TID);
           if (error) throw new Error(error.message);
         } else if (it.source === 'party') {
-          const { error } = await sb.from('party_bookings').update({
-            payment_status: 'paid', paid_at: new Date().toISOString(),
-            verified_at: new Date().toISOString(), verified_by: payload.sub,
-          }).eq('id', it.source_id).eq('tenant_id', TID);
-          if (error) throw new Error(error.message);
+          const r = await forward('parties_admin', { action: 'verify_payment', id: it.source_id, method: 'venmo' });
+          if (!r.ok) throw new Error(r.error || 'Could not confirm the party');
         } else {
           throw new Error(`Unknown source: ${it.source}`);
         }
@@ -477,127 +460,6 @@ Deno.serve(async (req) => {
         summary: `Switched off discount code ${data.code}`, actor_id: payload.sub, actor_kind: 'tenant_admin',
       });
     } catch { /* non-fatal */ }
-    return jsonResponse({ ok: true });
-  }
-
-  // ── Late fees ────────────────────────────────────────────────────────
-  // Off for every club until a board explicitly turns it on. See the
-  // migration header: the guarantees that make this defensible are that it
-  // is opt-in, once per household per season, and waivable in one click by
-  // anyone with the payments scope, with no approval step.
-
-  if (action === 'late_fee_config') {
-    const { data: t } = await sb.from('tenants')
-      .select('late_fee_enabled, late_fee_cents, late_fee_grace_days, dues_due_date')
-      .eq('id', TID).maybeSingle();
-    return jsonResponse({ ok: true, config: t ?? null });
-  }
-
-  if (action === 'set_late_fee_config') {
-    const patch: Record<string, unknown> = {};
-
-    if (body.late_fee_enabled !== undefined) {
-      patch.late_fee_enabled = !!body.late_fee_enabled;
-    }
-    if (body.late_fee_cents !== undefined) {
-      const n = Number(body.late_fee_cents);
-      if (!Number.isFinite(n) || n < 0 || n > 20000) {
-        return jsonResponse({ ok: false, error: 'A late fee has to be between $0 and $200.' }, 400);
-      }
-      patch.late_fee_cents = Math.trunc(n);
-    }
-    if (body.late_fee_grace_days !== undefined) {
-      const n = Number(body.late_fee_grace_days);
-      if (!Number.isFinite(n) || n < 0 || n > 180) {
-        return jsonResponse({ ok: false, error: 'Grace period has to be between 0 and 180 days.' }, 400);
-      }
-      patch.late_fee_grace_days = Math.trunc(n);
-    }
-    if (body.dues_due_date !== undefined) {
-      const raw = String(body.dues_due_date ?? '').trim();
-      if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        return jsonResponse({ ok: false, error: 'Due date must look like 2027-05-01.' }, 400);
-      }
-      patch.dues_due_date = raw || null;
-    }
-    if (!Object.keys(patch).length) return jsonResponse({ ok: false, error: 'Nothing to change' }, 400);
-
-    // Turning it ON without a due date would arm a job that can never fire,
-    // and the club would believe late fees were running. Refuse instead.
-    if (patch.late_fee_enabled === true) {
-      const { data: cur } = await sb.from('tenants').select('dues_due_date').eq('id', TID).maybeSingle();
-      const willHave = patch.dues_due_date !== undefined ? patch.dues_due_date : cur?.dues_due_date;
-      if (!willHave) {
-        return jsonResponse({ ok: false, error: 'Set the date dues are due before switching late fees on — otherwise there is nothing to be late against.' }, 400);
-      }
-    }
-
-    const { error } = await sb.from('tenants').update(patch).eq('id', TID);
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-
-    try {
-      await sb.from('audit_log').insert({
-        tenant_id: TID, kind: 'payments.late_fee_config',
-        entity_type: 'tenant', entity_id: TID,
-        summary: patch.late_fee_enabled === true ? 'Late fees switched on'
-               : patch.late_fee_enabled === false ? 'Late fees switched off'
-               : 'Late fee settings changed',
-        actor_id: payload.sub, actor_kind: 'tenant_admin',
-        metadata: patch,
-      });
-    } catch { /* audit failure non-fatal */ }
-
-    return jsonResponse({ ok: true, config: patch });
-  }
-
-  if (action === 'list_late_fees') {
-    const { data, error } = await sb.from('late_fees')
-      .select('*').eq('tenant_id', TID)
-      .order('assessed_at', { ascending: false }).limit(500);
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-
-    const ids = [...new Set((data ?? []).map(r => r.household_id))];
-    type HouseRef = { id: string; family_name: string };
-    const { data: houses } = ids.length
-      ? await sb.from('households').select('id, family_name').in('id', ids)
-      : { data: [] as HouseRef[] };
-    const nameById = new Map<string, string>(
-      ((houses ?? []) as HouseRef[]).map(h => [h.id, h.family_name]),
-    );
-    return jsonResponse({
-      ok: true,
-      late_fees: (data ?? []).map(r => ({ ...r, family_name: nameById.get(r.household_id) ?? null })),
-    });
-  }
-
-  if (action === 'waive_late_fee') {
-    const id = String(body.late_fee_id ?? '');
-    if (!id) return jsonResponse({ ok: false, error: 'late_fee_id required' }, 400);
-
-    // Only an outstanding fee can be waived. Waiving one already paid would
-    // need a refund, which is a different conversation and a different button.
-    const { data: row, error } = await sb.from('late_fees')
-      .update({
-        status: 'waived',
-        waived_at: new Date().toISOString(),
-        waived_by: payload.sub,
-        waive_reason: String(body.reason ?? '').slice(0, 500) || null,
-      })
-      .eq('id', id).eq('tenant_id', TID).eq('status', 'assessed')
-      .select('id, household_id, amount_cents').maybeSingle();
-    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    if (!row) return jsonResponse({ ok: false, error: 'That fee is not outstanding — it may already be paid or waived.' }, 409);
-
-    try {
-      await sb.from('audit_log').insert({
-        tenant_id: TID, kind: 'payments.late_fee_waived',
-        entity_type: 'late_fee', entity_id: row.id,
-        summary: `Late fee waived ($${(Number(row.amount_cents) / 100).toFixed(2)})`,
-        actor_id: payload.sub, actor_kind: 'tenant_admin',
-        metadata: { household_id: row.household_id, reason: String(body.reason ?? '') || null },
-      });
-    } catch { /* audit failure non-fatal */ }
-
     return jsonResponse({ ok: true });
   }
 

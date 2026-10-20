@@ -123,9 +123,9 @@
     </div>
     <div class="row2" style="margin-top:12px">
       <div>
-        <label>Raised so far ($)</label>
-        <input type="number" min="0" step="1" id="fundraiser_raised" placeholder="0">
-        <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Auto-recalculates from verified donations above. You can override.</p>
+        <label>Raised outside Poolside ($)</label>
+        <input type="number" min="0" step="1" id="fundraiser_outside" placeholder="0">
+        <p style="font-size:11px;color:var(--muted);margin:4px 0 0">Bake sales, checks you didn't record one by one. The thermometer shows this plus the donations above: <b id="fundraiser_total">$0</b>.</p>
       </div>
       <div><label>Goal ($)</label><input type="number" min="0" step="1" id="fundraiser_goal" placeholder="30000"></div>
     </div>
@@ -261,6 +261,13 @@ async function loadMe() {
   } catch {}
 }
 
+// The fundraiser thermometer: recorded donations plus what the board raised
+// outside Poolside (PLAN.md BG3). The server keeps the same sum.
+function recordedCents() { return CACHE.filter(d => d.status === 'verified').reduce((a, d) => a + d.amount_cents, 0); }
+function outsideCents() { return Math.max(0, Math.round((Number(document.getElementById('fundraiser_outside').value) || 0) * 100)); }
+function showFundTotal() { const el = document.getElementById('fundraiser_total'); if (el) el.textContent = fmt(recordedCents() + outsideCents()); }
+document.addEventListener('input', e => { if (e.target && e.target.id === 'fundraiser_outside') showFundTotal(); });
+
 function renderStats() {
   const verified = CACHE.filter(d => d.status === 'verified');
   const total = verified.reduce((a,d) => a + d.amount_cents, 0);
@@ -271,6 +278,7 @@ function renderStats() {
   document.getElementById('s-month').textContent  = fmt(month);
   document.getElementById('s-count').textContent  = String(verified.length);
   document.getElementById('s-avg').textContent    = verified.length ? fmt(avg) : '—';
+  showFundTotal();
 }
 
 function render() {
@@ -395,7 +403,8 @@ async function loadThermometer() {
     const f = d.settings?.fundraiser || {};
     document.getElementById('fundraiser_enabled').value = f.enabled ? 'true' : 'false';
     document.getElementById('fundraiser_title').value = f.title || '';
-    document.getElementById('fundraiser_raised').value = (f.raised_cents ?? 0) / 100;
+    document.getElementById('fundraiser_outside').value = (f.outside_cents ?? 0) / 100;
+    showFundTotal();
     document.getElementById('fundraiser_goal').value = (f.goal_cents ?? 0) / 100;
     document.getElementById('fundraiser_donate_message').value = f.donate_message || '';
   } catch (_) { /* non-critical */ }
@@ -409,7 +418,9 @@ async function saveThermometer() {
       fundraiser: {
         enabled:        document.getElementById('fundraiser_enabled').value === 'true',
         title:          document.getElementById('fundraiser_title').value.trim() || null,
-        raised_cents:   Math.max(0, Math.round((Number(document.getElementById('fundraiser_raised').value) || 0) * 100)),
+        // The thermometer = recorded donations + this (PLAN.md BG3).
+        outside_cents:  outsideCents(),
+        raised_cents:   recordedCents() + outsideCents(),
         goal_cents:     Math.max(0, Math.round((Number(document.getElementById('fundraiser_goal').value) || 0) * 100)),
         donate_message: document.getElementById('fundraiser_donate_message').value.trim() || null,
       },

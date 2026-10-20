@@ -173,7 +173,9 @@ console.log('\nH7 · discount codes (offline)');
   const pa = read('supabase/functions/payments_admin/index.ts');
   check('H7: the server lists, saves and switches off codes (payments permission)',
     /action === 'codes_list'/.test(pa) && /action === 'code_save'/.test(pa) && /action === 'code_off'/.test(pa), 'missing actions');
-  check('H7: "Mark paid" records the discount too', (pa.match(/recordDiscountUse/g) || []).length >= 2, 'mark_paid skips recordDiscountUse');
+  // Since PLAN.md BG3, Mark paid runs applications verify_payment, which records it.
+  check('H7: "Mark paid" records the discount too (through verify_payment)',
+    /forward\('applications', \{ action: 'verify_payment'/.test(pa) && /recordDiscountUse\(sb, id\)/.test(read('supabase/functions/applications/index.ts')), 'mark_paid skips recordDiscountUse');
   const pub = read('supabase/functions/tenant_public/index.ts');
   check('H7: the member home shows codes marked for it, not the old early-bird setting',
     /home_codes/.test(pub) && !/early_bird/.test(pub) && /home_codes/.test(read('m/index.html')) && !/early_bird/.test(read('m/index.html')), 'still early_bird');

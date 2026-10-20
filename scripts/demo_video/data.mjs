@@ -392,4 +392,4 @@ export function respond(fn, body, { side, state }) {
   return undefined;
 }
 const QUIET = new Set(['stripe_connect:status', 'tenant_settings:get', 'payment_plans:config_get', 'payment_plans:list_plans', 'referrals:list',
-  'payments_admin:late_fee_config', 'payments_admin:list_late_fees', 'payments_admin:codes_list', 'gate_admin:pass_list']);
+  'payments_admin:codes_list', 'gate_admin:pass_list']);

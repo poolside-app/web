@@ -93,15 +93,21 @@ Deno.serve(async (req) => {
   const payload = token ? await verifyTenantAdmin(token) : null;
   if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
-  // Scope gate: this function's admin actions require the 'parties' scope.
-  // Synthetic webhook tokens bypass; super + owner roles bypass.
-  if (!(payload as { synthetic?: boolean }).synthetic && !(await requireScope(createClient(SUPABASE_URL, SERVICE_ROLE), payload as never, 'parties'))) {
-    return jsonResponse({ ok: false, error: 'Missing required scope: parties' }, 403);
-  }
-  const TID = payload.tid;
-
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
+
+  // Scope gate: this function's admin actions require the 'parties' scope.
+  // Synthetic webhook tokens bypass; super + owner roles bypass. Confirming
+  // a party's payment is also the money person's job (Money → Payments,
+  // PLAN.md BG3), so 'payments' may do that one action.
+  {
+    const sbs = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const ok = (payload as { synthetic?: boolean }).synthetic
+      || await requireScope(sbs, payload as never, 'parties')
+      || (String(body.action ?? '') === 'verify_payment' && await requireScope(sbs, payload as never, 'payments'));
+    if (!ok) return jsonResponse({ ok: false, error: 'Missing required scope: parties' }, 403);
+  }
+  const TID = payload.tid;
   const action = String(body.action ?? '');
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);

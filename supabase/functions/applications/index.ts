@@ -1351,7 +1351,10 @@ Deno.serve(async (req) => {
 
   // Scope gate: admin actions on applications require the 'applications' scope.
   // Synthetic webhook tokens bypass (used by stripe_webhook for auto-approve).
-  if (!payload.synthetic && !(await requireScope(sb, payload as never, 'applications'))) {
+  // Confirming a signup's payment is also the money person's job (Money →
+  // Payments, PLAN.md BG3), so 'payments' may do that one action.
+  if (!payload.synthetic && !(await requireScope(sb, payload as never, 'applications'))
+      && !(action === 'verify_payment' && await requireScope(sb, payload as never, 'payments'))) {
     return jsonResponse({ ok: false, error: 'Missing required scope: applications' }, 403);
   }
 

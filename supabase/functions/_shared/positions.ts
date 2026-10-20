@@ -66,6 +66,8 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'venmo.claim': 'payments',
   'application.refund': 'payments',
   'application.dispute': 'payments',
+  'payment.refund': 'payments',
+  'payment.dispute': 'payments',
   'plan.lapsed': 'payments',
   'plan.cancelled': 'payments',
   // The fobs themselves are the Facilities Director's (PLAN.md M).

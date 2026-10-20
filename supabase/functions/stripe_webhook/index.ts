@@ -103,6 +103,39 @@ async function rememberCardForAutoRenew(
   }).eq('id', hh.id);
 }
 
+// A refund or chargeback on anything but a signup (PLAN.md BG3): find what
+// it was for and give the Treasurer a to-do and pop-up. To-do only, Doug
+// 10/20: the board decides what to undo.
+async function paymentProblemTask(sb: ReturnType<typeof createClient>, args: {
+  piId: string; accountId: string | null; kind: 'payment.refund' | 'payment.dispute';
+  amountCents: number; full?: boolean; reason?: string;
+}) {
+  const { matchPayment } = await import('../_shared/payment_match.ts');
+  const m = await matchPayment(sb as never, args.piId, args.accountId);
+  const usd = `$${(args.amountCents / 100).toFixed(2)}`;
+  if (!m) {
+    await sb.from('audit_log').insert({ tenant_id: null, kind: `stripe.${args.kind === 'payment.refund' ? 'refund' : 'dispute'}.unmatched`,
+      entity_type: 'stripe_charge', summary: `${usd} for PI ${args.piId} (no club or payment matched)`, actor_kind: 'stripe' });
+    return;
+  }
+  const who = m.family ? ` (${m.family})` : '';
+  const dispute = args.kind === 'payment.dispute';
+  const summary = dispute
+    ? `[URGENT] Chargeback on ${m.what}${who}: ${usd}${args.reason ? ` (${args.reason})` : ''}. Answer it in Stripe.`
+    : `[REVIEW] Stripe refund on ${m.what}${who}: ${usd}${args.full === false ? ' (partial)' : ''}. Nothing was changed in Poolside.`;
+  const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+  await enqueueAdminTask(sb, {
+    tenant_id: m.tenant_id, target_scopes: ['payments'], kind: args.kind, summary,
+    link_url: m.link_url,
+    ...(m.source_kind && m.source_id ? { source_kind: m.source_kind, source_id: m.source_id } : {}),
+    metadata: { payment_intent: args.piId, amount_cents: args.amountCents, unmatched: !!m.unmatched },
+    push_title: dispute ? '🚨 Chargeback' : '↩️ Stripe refund',
+    push_body: dispute ? `${usd} on ${m.what}${who}. Stripe is holding the money; answer it in Stripe.` : `${usd} refunded on ${m.what}${who}.`,
+  });
+  await sb.from('audit_log').insert({ tenant_id: m.tenant_id, kind: args.kind, entity_type: m.source_kind ?? 'stripe_charge',
+    ...(m.source_id ? { entity_id: m.source_id } : {}), summary, actor_kind: 'stripe' });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return new Response('POST required', { status: 405 });
@@ -167,6 +200,9 @@ Deno.serve(async (req) => {
     const md = (session.metadata as Record<string, string> | undefined) || {};
     const kind = md.kind;
     const tenantId = md.tenant_id;
+    // Kept on parties, fobs and programs so a later refund or chargeback
+    // can be matched to what it bought (PLAN.md BG3).
+    const piAll = (session.payment_intent as string) || null;
 
     // ── SMS top-up: credit the club's balance ────────────────────────────
     if (kind === 'sms_topup' && md.tenant_id) {
@@ -504,7 +540,7 @@ Deno.serve(async (req) => {
         } catch { /* best-effort */ }
       }
       if (due.length) {
-        await sb.from('keyfobs').update({ payment_status: 'paid', payment_method: 'stripe', paid_at: new Date().toISOString() }).in('id', due.map(f => f.id));
+        await sb.from('keyfobs').update({ payment_status: 'paid', payment_method: 'stripe', paid_at: new Date().toISOString(), stripe_payment_intent_id: piAll }).in('id', due.map(f => f.id));
         const hid = due[0].household_id as string;
         const { data: hh } = await sb.from('households').select('family_name').eq('id', hid).maybeSingle();
         try {
@@ -526,7 +562,7 @@ Deno.serve(async (req) => {
     }
 
     if (kind === 'program_booking' && md.booking_id) {
-      await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString() })
+      await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString(), stripe_payment_intent_id: piAll })
         .eq('id', md.booking_id).eq('tenant_id', tenantId);
     }
 
@@ -553,7 +589,7 @@ Deno.serve(async (req) => {
           // they paid for a date that's now double-booked.
           console.error('party_booking webhook: date collision after payment', md.party_id);
           await sb.from('party_bookings').update({
-            payment_status: 'paid', payment_method: 'stripe',
+            payment_status: 'paid', payment_method: 'stripe', stripe_payment_intent_id: piAll,
             status: 'cancelled',
             paid_at: new Date().toISOString(), updated_at: new Date().toISOString(),
             admin_notes: 'Auto-cancelled: another party was booked for this time first. REFUND THIS MEMBER.',
@@ -588,7 +624,7 @@ Deno.serve(async (req) => {
             if (ev) eventId = ev.id;
           }
           await sb.from('party_bookings').update({
-            payment_status: 'paid', payment_method: 'stripe',
+            payment_status: 'paid', payment_method: 'stripe', stripe_payment_intent_id: piAll,
             paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
             event_id: eventId, updated_at: new Date().toISOString(),
           }).eq('id', md.party_id).eq('tenant_id', tenantId);
@@ -660,17 +696,10 @@ Deno.serve(async (req) => {
           verified_at: new Date().toISOString(),
         }, { onConflict: 'stripe_session_id' });
 
-        // Recompute fundraiser.raised_cents from sum of verified rows.
-        const { data: rows } = await sb.from('donations')
-          .select('amount_cents').eq('tenant_id', tenantId).eq('status', 'verified');
-        const total = (rows ?? []).reduce((acc, r) => acc + (r.amount_cents as number), 0);
-        const { data: settingsRow } = await sb.from('settings')
-          .select('value').eq('tenant_id', tenantId).maybeSingle();
-        const v = (settingsRow?.value as Record<string, unknown> | null) ?? {};
-        const fund = (v.fundraiser as Record<string, unknown> | undefined) ?? {};
-        await sb.from('settings').update({
-          value: { ...v, fundraiser: { ...fund, raised_cents: total } },
-        }).eq('tenant_id', tenantId);
+        // The thermometer: recorded donations plus the board's outside
+        // amount, so a card donation never wipes out a typed total (BG3).
+        const { recomputeFundraiser } = await import('../_shared/fundraiser.ts');
+        await recomputeFundraiser(sb as never, tenantId);
       } catch (e) {
         console.error('donation webhook insert failed:', (e as Error).message);
       }
@@ -847,13 +876,12 @@ Deno.serve(async (req) => {
           actor_kind: 'stripe',
         });
       } else {
-        // Could be a plan installment refund — log either way for audit
-        await sb.from('audit_log').insert({
-          tenant_id: null,
-          kind: 'stripe.refund.unmatched',
-          entity_type: 'stripe_charge',
-          summary: `Refund $${(amountRefunded / 100).toFixed(2)} for PI ${piId} (no matching application)`,
-          actor_kind: 'stripe',
+        // Not a signup: a plan payment, party, fob, program or donation —
+        // or nothing Poolside knows. The Treasurer gets a to-do either way;
+        // nothing is undone by itself (PLAN.md BG3, Doug 10/20).
+        await paymentProblemTask(sb, {
+          piId, accountId: (event as { account?: string }).account ?? null, kind: 'payment.refund',
+          amountCents: amountRefunded, full: fullRefund,
         });
       }
     }
@@ -900,6 +928,11 @@ Deno.serve(async (req) => {
           entity_type: 'application', entity_id: app.id,
           summary: `Chargeback $${(amount / 100).toFixed(2)} (${reason}) for ${app.family_name}`,
           actor_kind: 'stripe',
+        });
+      } else {
+        await paymentProblemTask(sb, {
+          piId, accountId: (event as { account?: string }).account ?? null, kind: 'payment.dispute',
+          amountCents: amount, reason,
         });
       }
     }

@@ -25,23 +25,6 @@ export const FEE_BPS = {
   /** Donations take nothing. Skimming a donation to a club looks bad and
    *  earns little. */
   donations: 0,
-  /** Late fees and payment-plan reactivation. The highest rate we charge,
-   *  and still a small line in absolute terms — a club collecting $750 of
-   *  late fees across a season sends us under $40. That is the right size:
-   *  the return on late fees is the dues arriving at all, which is where the
-   *  1% lives. Taking a meaningful share of a penalty charged to a family
-   *  that is already behind is not a business worth being in, and a board
-   *  that noticed would switch the feature off.
-   *
-   *  NOT ON A COLLECTION PATH YET (2026-09-09). late_fees rows are assessed
-   *  and tracked, but nothing charges one through Stripe — a club collects
-   *  it however it collects dues and marks it paid. So this rate currently
-   *  earns nothing, and it is deliberately NOT published on /fees.html:
-   *  advertising a rate that cannot be charged is worse than omitting it.
-   *  Wire it into the dues checkout (an outstanding fee should ride along
-   *  with the payment it is late on, not be a separate errand), then add
-   *  the row to the public table. */
-  late: 500,
   /** Safety net for a kind we do not recognize — err on the known-good
    *  higher rate rather than silently taking nothing. */
   default: 150,

@@ -175,11 +175,11 @@ export async function renderChecks({ check, read, sql, jwt }) {
           const setup = document.getElementById('setup-section');
           return {
             tiers: [...document.querySelectorAll('#tiers-list .tier-row [data-field="label"]')].map(i => i.value),
-            inSetup: ['prices-card', 'plans-card', 'late-fee-card', 'test-mode-card'].every(id => setup && setup.contains(document.getElementById(id))),
+            inSetup: ['prices-card', 'plans-card', 'test-mode-card'].every(id => setup && setup.contains(document.getElementById(id))),
             tiersLink: !!document.querySelector('a[href*="tiers.html"]'),
           };
         });
-        check('J8: Money setup holds prices, plans, late fees and test payments',
+        check('J8: Money setup holds prices, plans and test payments',
           money.tiers.length >= 1 && money.tiers.includes('Family') && money.inSetup && !money.tiersLink, JSON.stringify(money));
         const codes = await pg.evaluate(() => ({
           inSetup: document.getElementById('setup-section').contains(document.getElementById('discounts-card')),
