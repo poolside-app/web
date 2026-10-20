@@ -7,7 +7,7 @@ New families sign up on your club's signup page. What you do next depends on how
 
 ### Find the signups waiting for you
 
-1. Go to **Members → Pipeline**.
+1. Go to **Members → Signups**.
 2. **Needs attention** is the list of signups waiting on the board.
 
 You'll also see them under **Needs you** on **Home**.

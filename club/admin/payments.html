@@ -130,7 +130,7 @@
 
   <details id="pending-section" open style="margin-bottom:18px">
     <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
-      <span class="chev">▶</span> 💰 Payments — pending verify + open balances <span style="font-weight:400;color:var(--muted);font-size:12.5px">— who owes what right now</span>
+      <span class="chev">▶</span> 💰 Waiting for payment <span style="font-weight:400;color:var(--muted);font-size:12.5px">— who owes what right now</span>
     </summary>
     <div style="margin-top:10px">
       <!-- PLAN.md BC1 (Doug 10/19: "batch approval would be great"): every
@@ -346,7 +346,7 @@
 
   <details style="margin-bottom:18px">
     <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:14px 18px;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);list-style:none">
-      <span class="chev">▶</span> 📅 Renew season <span style="font-weight:400;color:var(--muted);font-size:12.5px">— blast past members when the pool opens for a new year</span>
+      <span class="chev">▶</span> 📅 Renew season <span style="font-weight:400;color:var(--muted);font-size:12.5px">— send the renewal message to past members when the pool opens for a new year</span>
     </summary>
     <div class="card" style="margin-top:8px">
       <p style="font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px">When your pool opens for a new season, send your <b>prior members</b> an email and/or text with a one-tap sign-in link so they can pay this year's dues. Pick which group gets it.</p>
@@ -451,12 +451,12 @@ function render() {
     <div class="stat"><div class="lbl">Open items</div><div class="val">${CACHE.length}</div></div>
     <div class="stat"><div class="lbl">Dues</div><div class="val">${byKind.dues || 0}</div></div>
     <div class="stat"><div class="lbl">Memberships</div><div class="val">${byKind.application || 0}</div></div>
-    <div class="stat"><div class="lbl">Programs</div><div class="val">${(byKind.program || 0)}</div></div>
-    <div class="stat"><div class="lbl">Known $ owed</div><div class="val">${fmtMoney(knownTotal)}</div></div>
+    ${byKind.program ? `<div class="stat"><div class="lbl">Programs</div><div class="val">${byKind.program}</div></div>` : ''}
+    <div class="stat"><div class="lbl">Owed (where we know the amount)</div><div class="val">${fmtMoney(knownTotal)}</div></div>
   `;
 
   if (!filtered.length) {
-    list.innerHTML = `<div class="empty">No open balances ${FILTER ? `for ${sourceLabel(FILTER)}` : ''}. Nice work.</div>`;
+    list.innerHTML = `<div class="empty">No open balances${FILTER ? ` for ${sourceLabel(FILTER)}` : ''}. Nice work.</div>`;
     return;
   }
   list.innerHTML = `

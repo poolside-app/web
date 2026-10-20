@@ -99,13 +99,13 @@
     <div id="cur-banner" style="display:none;margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="plans-card">
     <h2>Plans</h2>
     <p style="color:var(--muted);font-size:13px;margin: 0 0 6px">Capacity-gated only. Every tier gets every feature. <a href="/pricing.html" target="_blank">Why we charge what we charge →</a></p>
     <div class="pricing" id="pricing-grid"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="upgrade-card">
     <h2>Upgrade</h2>
     <p style="font-size:14px;line-height:1.6" id="upgrade-blurb">Pick a tier and we'll take you to Stripe to set up your subscription. Your plan changes the moment Stripe confirms the payment — no waiting.</p>
     <div id="upgrade-banner" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
@@ -118,7 +118,7 @@
     <p style="font-size:13px;color:var(--muted);margin:0 0 4px">
       Your plan includes a yearly allowance of texts for club-wide messages.
       Sign-in codes, approvals and dues reminders never count against it —
-      only messages you choose to blast to everybody.
+      only messages you choose to send to everyone.
     </p>
     <p id="sms-balance" style="font-size:14px;margin:0 0 12px">Loading…</p>
     <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
@@ -126,7 +126,7 @@
       allowance is gone, and they don't expire. Prepaid, so there's never a
       surprise bill. A text is 160 characters; longer messages and emoji use more than one.
     </p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <div id="buy-texts-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-primary" onclick="buyTexts('standard')">Buy 3,000 texts — $100</button>
       <span style="font-size:12.5px;color:var(--muted)">added to your allowance, never expire</span>
     </div>
@@ -142,10 +142,10 @@
       </summary>
       <div id="sms-history" style="margin-top:10px;font-size:13px">Loading…</div>
     </details>
-    <p style="margin-top:14px;font-size:12px;color:var(--muted)">Stuck or need a custom arrangement? Email <a href="mailto:hello@poolsideapp.com?subject=Upgrade%20my%20plan">hello@poolsideapp.com</a>.</p>
+    <p style="margin-top:14px;font-size:12px;color:var(--muted)">Stuck or need a custom arrangement? Email <a href="mailto:support@poolsideapp.com?subject=Upgrade%20my%20plan">support@poolsideapp.com</a>.</p>
   </div>
 
-  <div class="card">
+  <div class="card" id="setup-card">
     <h2>Premium Setup — $500</h2>
     <p style="font-size:14px;line-height:1.6">Have us set up your club for you. Data import, payments wiring, policies, kickoff call, follow-up. 5 business days. <a href="/setup-service.html" target="_blank">See what's included →</a></p>
     <p style="margin-top:14px">
@@ -317,6 +317,12 @@ const TIERS = [
   document.getElementById('cur-status').textContent = me.tenant.status || '—';
   if (me.tenant.platform_fees_waived) {
     document.getElementById('fees-waived-note').style.display = 'block';
+    // A club on a plan Poolside set (Bishop's "Club plan"): its plan, usage
+    // and texts, but no tiers to pick or upgrades to buy, which didn't work
+    // for it anyway (PLAN.md BG6).
+    for (const id of ['plans-card', 'upgrade-card', 'setup-card', 'buy-texts-row']) {
+      const el = document.getElementById(id); if (el) el.hidden = true;
+    }
   }
   if (u.at_cap) {
     const b = document.getElementById('cur-banner');
@@ -365,7 +371,7 @@ const TIERS = [
   } else {
     const upgradeableTiers = TIERS.filter(t => t.key !== 'free' && t.key !== planKey);
     if (upgradeableTiers.length === 0) {
-      document.getElementById('upgrade-blurb').textContent = "You're on the top tier — nothing to upgrade to. Need custom limits? Email hello@poolsideapp.com.";
+      document.getElementById('upgrade-blurb').textContent = "You're on the top tier — nothing to upgrade to. Need custom limits? Email support@poolsideapp.com.";
     } else {
       actions.innerHTML = upgradeableTiers.map(t => `
         <button class="btn" data-plan="${t.key}" style="background:${t.featured ? 'var(--sun)' : 'var(--blue)'};color:${t.featured ? '#422006' : '#fff'}">

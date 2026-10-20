@@ -27,7 +27,7 @@
     // People. Renewals is a hash view on members.html that had no link at
     // all before today — reachable only by typing the URL.
     members: [
-      { key: 'applications', label: 'Pipeline',   href: '/club/admin/members.html#applications', scope: 'applications' },
+      { key: 'applications', label: 'Signups',   href: '/club/admin/members.html#applications', scope: 'applications' },
       { key: 'households',   label: 'Households', href: '/club/admin/members.html#households',   scope: 'households'   },
       { key: 'renewals',     label: 'Renewals',   href: '/club/admin/members.html#renewals',     scope: 'households'   },
       { key: 'keyfobs',      label: 'Keyfobs & Access', href: '/club/admin/keyfobs.html',              scope: 'keyfobs', feature: 'keyfobs' },  // Doug 10/9: under Members (PLAN.md X1)

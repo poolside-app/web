@@ -18,7 +18,7 @@ Decide next season's prices, payment deadlines and any policy changes first. You
 ### What changes
 
 - Signups, payments and renewals switch to the new season.
-- Families paid for the old season stay members until January 1. After that, anyone not paid for the new season, or on a plan, can only use **My family**, the calendar and **Ask the board** until they renew.
+- Families paid for the old season stay members until January 1. From then on, a family that hasn't paid for the new season (or started a payment plan for it) can only use **My family**, the calendar and **Ask the board** until they renew.
 - You get a checklist: prices, deadlines, policies, opening day and the renewal message.
 
 > Tip: This doesn't close the pool. To show members the pool is closed, see "How do I close the pool for the season?"

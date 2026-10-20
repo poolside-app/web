@@ -10,7 +10,7 @@ Go to **Members → Households**. The counts at the top show how many families a
 ### Who owes money right now
 
 1. Go to **Money → Payments**.
-2. Open **💰 Payments — pending verify + open balances**.
+2. Open **💰 Waiting for payment**.
 
 It lists everyone with an open balance, oldest first, and anyone who says they paid by Venmo and is waiting to be checked. Narrow it with **Dues**, **Memberships** or **Programs**.
 

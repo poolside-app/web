@@ -16,4 +16,6 @@ Members see it on their home screen with a **Donate** button. They can give by c
 
 Card donations are recorded on their own. For Venmo, cash or a check, tap **+ Record manual donation**, fill in the **Amount ($)**, **Payment method** and the donor's name if they want it shown, and tap **Save**. The thermometer updates.
 
+Money raised outside the app that you don't want to enter gift by gift, like a bake sale, goes in **Raised outside Poolside ($)**. The thermometer shows that plus every recorded donation.
+
 > Tip: Tick **Show as "Anonymous"** for donors who'd rather not be named.

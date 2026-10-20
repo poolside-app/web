@@ -1174,7 +1174,7 @@ async function refreshParties() {
       else if (b.status === 'rejected') { statusLabel = 'Not approved'; statusClass = 'party-rejected'; }
       else if (b.status === 'cancelled') { statusLabel = 'Cancelled'; statusClass = 'party-cancelled'; }
       else if (b.status === 'approved' && b.payment_status === 'paid') { statusLabel = '✓ Officially booked'; statusClass = 'party-approved'; }
-      else if (b.status === 'approved' && b.payment_status === 'pending_verify') { statusLabel = 'Payment pending verify'; statusClass = 'party-pending'; }
+      else if (b.status === 'approved' && b.payment_status === 'pending_verify') { statusLabel = 'Payment being checked'; statusClass = 'party-pending'; }
       else { statusLabel = 'Approved — pay to confirm'; statusClass = 'party-pending'; }
       // Pay button shows when approved AND not yet paid AND not pending verify.
       const showPay = b.status === 'approved' && (b.payment_status === 'unpaid' || !b.payment_status);
@@ -2639,6 +2639,7 @@ async function submitProfile() {
   // Expose Stripe-availability to refresh functions so they can render
   // "Pay with card" buttons on unpaid programs.
   window.STRIPE_ENABLED = !!(publicData.tenant && publicData.tenant.stripe_charges_enabled);
+  const HAS_PROGRAMS = Array.isArray(publicData.programs) && publicData.programs.length > 0;
 
   // If branding has a logo, swap the dot for the actual image.
   const logoUrl = publicData.public_settings && publicData.public_settings.branding && publicData.public_settings.branding.logo_url;
@@ -2911,7 +2912,7 @@ async function submitProfile() {
         <h2>Your party requests</h2>
         <div class="empty">Loading…</div>
       </div>
-      <div class="card" id="programs-card">
+      <div class="card" id="programs-card"${HAS_PROGRAMS ? '' : ' hidden'}>
         <h2>Programs &amp; sign-ups</h2>
         <div class="empty">Loading…</div>
       </div>
@@ -3114,7 +3115,9 @@ async function submitProfile() {
   })();
 
   if (acc.member) {
-    refreshPrograms();
+    // Only for a club offering programs: two calls a visit otherwise, for
+    // "No programs offered right now" (PLAN.md BG6).
+    if (HAS_PROGRAMS) refreshPrograms();
     refreshVolunteer();
     loadGateCard();
   }

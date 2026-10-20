@@ -99,6 +99,10 @@
   .hs:first-child { border-left: 0; padding-left: 0; }
   .hs .v { font: 700 19px 'Inter', sans-serif; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hs .l { font-size: 11.5px; opacity: .8; margin-top: 1px; line-height: 1.3; }
+  /* Four numbers: two by two on a phone, so the fourth isn't left alone on
+     its own line (PLAN.md BG6). */
+  .hero-stats.n4 { grid-template-columns: repeat(2, 1fr); row-gap: 10px; }
+  .hero-stats.n4 .hs:nth-child(3) { border-left: 0; padding-left: 0; }
 
   .gate { padding: 12px 14px 12px 16px !important; }
   .gate-top { display: flex; align-items: center; gap: 12px; }
@@ -162,6 +166,8 @@
     .hero-stats { margin: 0; border-top: 0; padding-top: 0; }
     .hs { padding: 4px 18px; }
     .hs .v { font-size: 24px; }
+    .hero-stats.n4 { grid-template-columns: repeat(4, 1fr); row-gap: 0; }
+    .hero-stats.n4 .hs:nth-child(3) { border-left: 1px solid rgba(255,255,255,.16); padding-left: 18px; }
     .layout { display: flex; align-items: flex-start; gap: 18px; }
     .col.left { flex: 1.55; min-width: 0; }
     .col.right { flex: 1; min-width: 0; }
@@ -504,7 +510,7 @@ function taskRank(kind) {
         <div class="hero-badges"><span class="hb role">${escapeHtml(roleBadge)}</span><span class="hb season">${escapeHtml(String(home.season))} season</span></div>
         <div class="hero-line"><span id="hero-weather"></span><span>${escapeHtml(todayLine)}</span></div>
       </div>
-      <div class="hero-stats">${(home.stats || []).map(s => `
+      <div class="hero-stats n${(home.stats || []).length}">${(home.stats || []).map(s => `
         <a class="hs" href="${escapeHtml(s.href)}"><div class="v">${escapeHtml(String(statValue(s)))}</div><div class="l">${escapeHtml(statLabel(s))}</div></a>`).join('')}
       </div>
     </section>`;

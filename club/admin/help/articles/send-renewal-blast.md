@@ -25,4 +25,4 @@ Families who ticked "Make next season's renewal one tap" are sent their renewal 
 
 Make a code on **Money → Payments → Money setup → Discounts** with a last day, and tick **Show it on the member app's home screen**. Families type it in **Have a discount code?** when they renew.
 
-> Tip: Each text counts toward your club's monthly text allowance.
+> Tip: Each text counts toward your club's yearly text allowance (**Settings → Plan** shows what's left). If the day's text limit is reached, the rest go the next morning by themselves, and the screen says so.

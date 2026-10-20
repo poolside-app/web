@@ -1442,7 +1442,7 @@ Deno.serve(async (req) => {
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]', `Poolside — ${pack.label}`);
     params.append('line_items[0][price_data][product_data][description]',
-      `Text credits for ${tenant.display_name}. Used only after your monthly allowance runs out; they do not expire.`);
+      `Text credits for ${tenant.display_name}. Used only after your yearly allowance runs out; they do not expire.`);
     params.append('line_items[0][price_data][unit_amount]', String(pack.cents));
     params.append('line_items[0][quantity]', '1');
     params.append('success_url', `${clubUrl}/club/admin/billing.html?texts=1`);

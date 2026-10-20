@@ -51,7 +51,15 @@
   nav.tabs a.on { color: var(--blue); border-bottom-color: var(--blue); }
   nav.tabs a:hover { color: var(--blue); }
   main { flex: 1; padding: 28px 22px; max-width: 760px; width: 100%; margin: 0 auto; }
-  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .toolbar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+  /* Phones: title and note first, then the buttons and search on their own
+     row, instead of one squeezed row (PLAN.md BG6). */
+  .toolbar-title { flex: 1 1 260px; min-width: 0; }
+  .toolbar-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  @media (max-width: 560px) {
+    .toolbar-actions { width: 100%; }
+    .toolbar-actions input[type="search"] { flex: 1 1 100%; width: auto !important; }
+  }
   .btn {
     padding: 10px 18px; border-radius: var(--r-md);
     font: 600 13px 'Inter'; cursor: pointer; border: 1.5px solid transparent;
@@ -135,9 +143,11 @@
 
 <main>
   <div class="toolbar">
-    <h1>Announcements</h1>
-    <p style="font-size:13px;color:var(--muted);margin:6px 0 0">Poolside keeps the newest 15. Posting more deletes the oldest for good; pinned ones stay.</p>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <div class="toolbar-title">
+      <h1>Announcements</h1>
+      <p style="font-size:13px;color:var(--muted);margin:6px 0 0">Poolside keeps the newest 15. Posting more deletes the oldest for good; pinned ones stay.</p>
+    </div>
+    <div class="toolbar-actions">
       <input id="search" type="search" placeholder="🔍 Search posts…" oninput="applySearch()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);width:220px;font:14px/1.4 'Inter'">
       <button class="btn btn-ghost" onclick="openBlast()">💬 Text all members</button>
       <button class="btn" onclick="openCreate()">+ New post</button>

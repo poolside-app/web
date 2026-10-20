@@ -10,7 +10,7 @@ Policies are the rules families accept when they sign up or renew, like pool rul
 1. Go to **Members → Policies**.
 2. Tap **Edit** on a policy, or **+ Add policy** for a new one.
 3. Fill in the title and the body.
-4. Tick **Required to apply (gates the signup form)** if families must accept it before they can sign up.
+4. Tick **Required to sign up** if families must accept it before they can sign up.
 5. Tap **Save**.
 
 Use the arrows to change the order. **Archive** retires a policy without deleting it.

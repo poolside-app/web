@@ -138,15 +138,15 @@
 
 <main>
   <div class="card" id="form">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end">
-      <h1 id="title">Apply for membership</h1>
-      <div class="step-counter"><span id="step-num">1</span> of 4</div>
-    </div>
+    <!-- The counter sits above the title: beside a long club name it was
+         squeezed into "1 / OF / 4" (PLAN.md BG6). -->
+    <div class="step-counter">Step <span id="step-num">1</span> of 4</div>
+    <h1 id="title">Apply for membership</h1>
     <div class="progress"><div class="progress-fill" id="progress" style="width:25%"></div></div>
     <div id="test-mode-banner" style="display:none;background:#fef3c7;border:1.5px solid #fcd34d;color:#78350f;border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.45;margin-bottom:6px">
       <b style="color:#92400e">🧪 Test mode.</b> Payments on this club are simulated — card checkout is fake, and you'll get a button to simulate a Venmo payment. Everything else (approval, emails, texts) runs for real.
     </div>
-    <p class="lede" id="lede">A few quick steps. Your info goes to the board for review and you'll get an email link to sign in once approved.</p>
+    <p class="lede" id="lede">Takes about 5 minutes. Once your payment is in, you'll get a text and an email with a link to sign in.</p>
 
     <!-- Step 1 — Family + contact -->
     <div class="step" data-step="1">
@@ -166,7 +166,7 @@
           <input type="radio" name="signup_mode" value="full_app" checked onchange="onSignupModeChange()" style="margin-top:3px;flex-shrink:0">
           <div>
             <div style="font-weight:600;font-size:14px">📱 Full app experience <span style="color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-left:4px">recommended</span></div>
-            <div style="font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5">Pool pass on phone, online party booking, push reminders for events + closures, magic-link sign-in (no password).</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5">Book parties, get club news and reminders, see the calendar, and sign in with a code we text you. No password.</div>
           </div>
         </label>
         <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1.5px solid var(--border);border-radius:10px;cursor:pointer">
@@ -198,11 +198,11 @@
       <label>Primary email *</label>
       <input id="primary_email" type="email" placeholder="you@example.com">
 
-      <label>Secondary email <span class="opt">(optional, for invoices)</span></label>
+      <label>Another email <span class="opt">(optional, kept with your family's details)</span></label>
       <input id="alt_email" type="email">
 
       <label>Emergency contact name *</label>
-      <input id="emergency_name" placeholder="Jane Smith" autocomplete="name">
+      <input id="emergency_name" placeholder="A friend or relative" autocomplete="off">
 
       <label>Emergency contact phone *</label>
       <input id="emergency_phone" type="tel" placeholder="(555) 555-9999" oninput="formatPhoneInput(this)" autocomplete="tel">
@@ -375,7 +375,7 @@
   </div>
 </div>
 
-<footer>Powered by <a href="https://poolsideapp.com">Poolside</a> · <span style="opacity:.5;font-size:10px">v.2026-05-03b</span></footer>
+<footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
@@ -1035,13 +1035,14 @@ function showStep(n) {
 }
 function goBack() { if (CURRENT_STEP > 1) showStep(CURRENT_STEP - 1); }
 function goNext() {
-  // Bump the visible tap counter so users can confirm their click reached JS.
-  window.__tapCount = (window.__tapCount || 0) + 1;
-  const c = document.getElementById('tap-count'); if (c) c.textContent = window.__tapCount;
-  const l = document.getElementById('tap-last'); if (l) l.textContent = 'goNext @ ' + new Date().toLocaleTimeString();
   const btn = document.getElementById('next-btn');
   if (btn) { btn.style.opacity = '0.6'; setTimeout(() => { btn.style.opacity = ''; }, 150); }
-  try { return _goNext(); } catch (e) { show('Error: ' + (e && e.message ? e.message : e)); }
+  // A family sees a plain sentence; the details go to the error log
+  // (js/errors.js catches the rethrow). PLAN.md BG6.
+  try { return _goNext(); } catch (e) {
+    show('Something went wrong. Try again, or ask the board for help.');
+    setTimeout(() => { throw e; }, 0);
+  }
 }
 // The phone and email on step 1 are checked once against the club's members
 // and waiting applications. An application the family left at the card page
@@ -1451,7 +1452,7 @@ async function submitApplication() {
       <p class="lede">Your application is in the queue. ${isVenmo
         ? `Once you Venmo your dues${data.price && data.price.amount_due_cents > 0 ? ' (<b>$' + (data.price.amount_due_cents / 100).toFixed(2) + '</b>)' : ''}${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot, usually within <b>${within}</b>.${isNoApp
             ? ` You'll get a welcome email from the board once you're in.`
-            : ` You'll get a welcome email with a magic-link sign-in when you're in.`}`
+            : ` You'll get a welcome email and text with a link to sign in when you're in.`}`
         : `The board will review it and reach out, usually within ${within}.`}</p>
       ${isVenmo && data.venmo && data.venmo.link ? `
         <div style="margin-top:18px;padding:18px;border:1.5px solid #bae6fd;border-radius:14px;background:#f0f9ff;text-align:center">
