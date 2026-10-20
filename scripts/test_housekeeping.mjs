@@ -20,7 +20,8 @@ console.log('BG8 · personal details out of the repo (item 3)');
 let files = [];
 try { files = execSync('git ls-files -z', { cwd: new URL('.', root).pathname, encoding: 'utf8' }).split('\0').filter(Boolean); } catch { /* not a git checkout */ }
 // Doug's own provider login is seeded with his address on purpose.
-const allowed = new Set(['supabase/migrations/20260428000200_seed_doug_provider_admin.sql', 'supabase/functions/stripe_webhook/index.ts']);
+const allowed = new Set(['supabase/migrations/20260428000200_seed_doug_provider_admin.sql', 'supabase/functions/stripe_webhook/index.ts',
+  'scripts/test_housekeeping.mjs']);   // this file names what it looks for
 const hits = [];
 for (const f of files) {
   if (allowed.has(f) || f.startsWith('handouts/') || /\.(png|jpg|jpeg|mp4|ico|pdf)$/i.test(f) || !existsSync(new URL(f, root))) continue;
