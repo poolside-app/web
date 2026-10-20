@@ -37,7 +37,7 @@ export type Notice = keyof typeof NOTICES;
 
 /** Screens a position can use (admin_users.scopes). */
 export const SCREENS: Record<string, string> = {
-  applications: 'Signups (the pipeline)',
+  applications: 'Signups',
   households: 'Member list and renewals',
   payments: 'Money: payments, plans, refunds, codes',
   tiers: 'Membership prices',
