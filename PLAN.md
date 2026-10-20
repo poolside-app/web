@@ -915,7 +915,7 @@ The story, checked against the code so it claims only what Poolside does:
 Found while checking: a fob doesn't depend on the family having paid. Every active fob gets the Members level's doors and dates, so when next season's Members dates are set, a family who didn't renew still gets in unless their fob is turned off. Raised with Doug 10/19; not part of the video.
 
 Defaults (Doug didn't pick):
-- About 2–3 minutes, landscape (1920×1080 MP4), to show a board or another club. Burned-in captions, so it works with the sound off, plus a Mac voice reading them (Samantha; a free Premium voice from System Settings would sound better, then re-make it).
+- About 2–3 minutes, landscape (1920×1080 MP4), to show a board or another club. Burned-in captions, so it works with the sound off, plus a Mac voice reading them (Karen, Doug's pick from eight samples on 10/19; a free Premium voice from System Settings would sound better, then re-make it).
 - A made-up club, "Maple Grove Swim Club", with made-up families. Every Supabase call is answered by the script, so no real family shows and no calls are used.
 - One or two phones on screen ("Family's phone", "Board's phone") with a dot showing each tap. The story: a family signs up and pays by Venmo, the board confirms it in a batch, each board member's home, the member app, opening the gate, a party, and Time saved.
 - Things only a real iPhone shows (Add to Home Screen, pop-ups arriving, the Venmo app, the gate opening) aren't in it. Doug can screen-record those and they can be spliced in.

@@ -5,7 +5,7 @@
 // Writes handouts/poolside-board-demo.mp4 by default (handouts/ isn't in git).
 // DEMO_SIZE=720 makes the small copy (1280×720, about 21 MB) instead.
 // Env: DEMO_WORK (scratch folder, default /tmp/poolside-demo), DEMO_VOICE (a
-// Mac voice, default Samantha; a Premium voice from System Settings sounds
+// Mac voice, default Karen; a Premium voice from System Settings sounds
 // better), ONLY=<scene id> (record one scene to check it), DEMO_ENCODER (an
 // already-built encode.swift; otherwise it's built here, about a minute).
 //
@@ -22,7 +22,7 @@ import { timeSaved } from './data.mjs';
 
 const OUT = process.argv[2] || WEB + 'handouts/poolside-board-demo.mp4';
 const WORK = process.env.DEMO_WORK || '/tmp/poolside-demo';
-const VOICE = process.env.DEMO_VOICE || 'Samantha';
+const VOICE = process.env.DEMO_VOICE || 'Karen';   // Doug's pick, 10/19
 const ONLY = process.env.ONLY || null;
 const ENCODER = process.env.DEMO_ENCODER || buildEncoder();
 
