@@ -74,3 +74,13 @@ export function estimateCostCents(recipients: number, segments: number): number 
 export function renderBlast(clubName: string, body: string): string {
   return `${clubName}: ${normalizeForSms(body)}`;
 }
+
+/** The renewal message's text (PLAN.md BG2). Plain characters only, so it
+ *  stays the cheap kind; the family's own link goes last so it's tappable. */
+export function renewalText(args: { tenantName: string; year: number | string; link: string; message?: string | null }): string {
+  const club = normalizeForSms(args.tenantName);
+  const own = normalizeForSms(String(args.message ?? '')).trim();
+  return own
+    ? `${club}: ${own} ${args.link}`
+    : `${club}: it's time to renew for ${args.year}. Your details are filled in, no password needed: ${args.link}`;
+}

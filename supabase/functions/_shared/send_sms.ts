@@ -22,6 +22,9 @@ export type SmsResult = {
   /** 'club' = this club's monthly allowance; 'platform' = the global daily
    *  kill switch. Different owners, different fixes — do not merge them. */
   capped_by?: 'club' | 'platform';
+  /** The platform's daily limit stopped it and it's waiting in sms_queue for
+   *  the next daily run (queueIfCapped). */
+  queued?: boolean;
 };
 
 export async function sendSms(args: {
@@ -53,6 +56,12 @@ export async function sendSms(args: {
    * hammer one phone.
    */
   critical?: boolean;
+  /**
+   * When the platform's daily limit stops this text, keep it in sms_queue
+   * and send it on the next daily run instead of dropping it (PLAN.md BG2).
+   * For roster sends like the renewal message, where a day late beats never.
+   */
+  queueIfCapped?: boolean;
 }): Promise<SmsResult> {
   const kind: SmsCategory = args.kind ?? 'campaign';
   const source = args.source ?? null;
@@ -66,6 +75,12 @@ export async function sendSms(args: {
   }
 
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to, { skipDailyCap: !!args.critical });
+  if (gate.blocked && gate.reason === 'global_daily' && args.queueIfCapped) {
+    const { error } = await args.sb.from('sms_queue').insert({
+      tenant_id: args.tenantId, to_phone: args.to, body: args.body, kind, source,
+    });
+    if (!error) return { sent: false, capped: true, capped_by: 'platform', queued: true };
+  }
   if (gate.blocked) {
     return {
       sent: false, capped: true, capped_by: 'platform',
@@ -130,4 +145,45 @@ export async function sendSms(args: {
     });
     return { sent: false, error };
   }
+}
+
+/**
+ * Send what the daily limit held back (PLAN.md BG2). Oldest first; stops at
+ * the first text the limit stops again, so the rest wait for the next run.
+ * A text that fails 3 times for another reason is given up on (failed_at).
+ */
+export async function drainSmsQueue(sb: SupabaseClient, max = 1000): Promise<{ sent: number; waiting: number; failed: number }> {
+  const { data: rows } = await sb.from('sms_queue')
+    .select('id, tenant_id, to_phone, body, kind, source, attempts')
+    .is('sent_at', null).is('failed_at', null).lte('not_before', new Date().toISOString())
+    .order('created_at', { ascending: true }).limit(max);
+  let sent = 0, failed = 0;
+  const plans = new Map<string, string | null>();
+  for (const r of rows ?? []) {
+    const tid = r.tenant_id as string;
+    if (!plans.has(tid)) {
+      const { data: t } = await sb.from('tenants').select('plan').eq('id', tid).maybeSingle();
+      plans.set(tid, (t?.plan as string) ?? null);
+    }
+    const res = await sendSms({
+      sb, tenantId: tid, tenantPlan: plans.get(tid), to: r.to_phone as string, body: r.body as string,
+      kind: r.kind as SmsCategory, source: (r.source as string) ?? 'sms_queue',
+    });
+    if (res.sent) {
+      sent++;
+      await sb.from('sms_queue').update({ sent_at: new Date().toISOString(), attempts: Number(r.attempts ?? 0) + 1 }).eq('id', r.id);
+      continue;
+    }
+    if (res.capped_by === 'platform' && /daily/i.test(res.error ?? '')) break;   // the limit again: try tomorrow
+    const attempts = Number(r.attempts ?? 0) + 1;
+    const giveUp = attempts >= 3 || res.capped_by === 'club';
+    if (giveUp) failed++;
+    await sb.from('sms_queue').update({
+      attempts, last_error: (res.error ?? '').slice(0, 300),
+      ...(giveUp ? { failed_at: new Date().toISOString() } : {}),
+    }).eq('id', r.id);
+  }
+  const { count } = await sb.from('sms_queue').select('id', { count: 'exact', head: true })
+    .is('sent_at', null).is('failed_at', null);
+  return { sent, waiting: count ?? 0, failed };
 }

@@ -1418,6 +1418,7 @@ const Renewals = (() => {
       if (!data.ok) throw new Error(data.error || 'Send failed');
       document.getElementById('ren-result').innerHTML =
         `✓ Sent to <b>${data.sent}</b> famil${data.sent === 1 ? 'y' : 'ies'}` +
+        (data.sms_queued ? ` · ${data.sms_queued} text${data.sms_queued === 1 ? '' : 's'} will go tomorrow morning (today's text limit was reached)` : '') +
         (data.skipped ? ` · ${data.skipped} not reached (no email or phone, or a send failed)` : '');
       refresh();
     } catch (e) {

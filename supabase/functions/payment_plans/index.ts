@@ -910,7 +910,19 @@ Deno.serve(async (req) => {
       console.error('email queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, approval, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    // ── Send the texts the daily limit held back (PLAN.md BG2) ───────────
+    // The renewal message queues what didn't fit yesterday; this is "the
+    // next morning" it promised.
+    let texts_sent = 0, texts_waiting = 0;
+    try {
+      const { drainSmsQueue } = await import('../_shared/send_sms.ts');
+      const r = await drainSmsQueue(sb);
+      texts_sent = r.sent; texts_waiting = r.waiting;
+    } catch (e) {
+      console.error('text queue drain (non-fatal):', (e as Error).message);
+    }
+
+    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, late_fees_assessed, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';

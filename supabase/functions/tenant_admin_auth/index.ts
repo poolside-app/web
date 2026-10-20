@@ -148,7 +148,7 @@ async function sendAdminSmsInviteLink(args: { to: string; tenantName: string; li
   if (!sid || !tok || (!messagingServiceSid && !from)) {
     return { sent: false, error: 'TWILIO_* env vars not set' };
   }
-  const smsBody = `${args.tenantName} on Poolside: you've been added as an admin. Tap to activate your account — no password needed: ${args.link}`;
+  const smsBody = `${args.tenantName} on Poolside: you've been added as an admin. Tap to activate your account, no password needed: ${args.link}`;
   const params: Record<string, string> = { To: args.to, Body: smsBody };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (from) params.From = from;

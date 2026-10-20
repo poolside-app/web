@@ -37,6 +37,8 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
+import { sendSms } from '../_shared/send_sms.ts';
+import { renewalText, normalizeForSms } from '../_shared/sms_text.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -184,10 +186,12 @@ async function sendRenewalSms(args: {
   const fromN = Deno.env.get('TWILIO_FROM_NUMBER');
   const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
   if (!sid || !tok || (!messagingServiceSid && !fromN)) return { sent: false, error: 'TWILIO_* env vars not set' };
-  const eb = args.earlyBirdLine ? ` ${args.earlyBirdLine}` : '';
+  // Plain wording and characters (PLAN.md BG2): the old "No login needed.
+  // Sign in & pay … (link good 7 days)" contradicted itself.
+  const eb = args.earlyBirdLine ? ` ${normalizeForSms(args.earlyBirdLine)}` : '';
   const body = args.message
-    ? `${args.tenantName}: ${args.message} ${args.verifyLink}`
-    : `${args.tenantName}: time to renew!${eb} Sign in & pay: ${args.verifyLink} (link good 7 days)`;
+    ? `${normalizeForSms(args.tenantName)}: ${normalizeForSms(args.message)} ${args.verifyLink}`
+    : `${normalizeForSms(args.tenantName)}: it's time to renew.${eb} Your details are filled in, no password needed: ${args.verifyLink}`;
   const params: Record<string, string> = { To: args.to, Body: body };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (fromN) params.From = fromN;
@@ -317,7 +321,7 @@ Deno.serve(async (req) => {
     }
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    let sent = 0, skipped = 0, reused = 0, emailSent = 0, smsSent = 0;
+    let sent = 0, skipped = 0, reused = 0, emailSent = 0, smsSent = 0, smsQueued = 0;
 
     for (const hh of (households ?? [])) {
       const { data: primary } = await sb.from('household_members')
@@ -383,30 +387,17 @@ Deno.serve(async (req) => {
         } catch { /* fall through to SMS */ }
       }
       if (channels.includes('sms') && primary.phone_e164) {
-        const cap = await checkSmsCap(sb, tenant.id as string, 'campaign', tenant.plan as string);
-        if (!cap.blocked) {
-          // The existing helper already words this as "time to renew … pay
-          // here"; the earlyBirdLine slot carries the no-login reassurance,
-          // which is the part that gets a wary member to tap.
-          const r = await sendRenewalSms({
-            sb, to: primary.phone_e164 as string,
-            tenantName: tenant.display_name as string,
-            verifyLink: link,
-            earlyBirdLine: ' No login needed.',
-            message: message || undefined,
-          });
-          if (r.sent) {
-            await recordSms(sb, {
-              tenantId: tenant.id as string,
-              category: 'campaign',
-              toPhone: primary.phone_e164 as string,
-              success: true,
-              source: 'renewals.send_renewal_links',
-            });
-            smsSent++;
-            delivered = true;
-          }
-        }
+        // One shared sender: the club's allowance, the platform's daily
+        // limit, the log. A text the daily limit stops waits for the next
+        // morning's run instead of being skipped (PLAN.md BG2).
+        const r = await sendSms({
+          sb, tenantId: tenant.id as string, tenantPlan: tenant.plan as string,
+          to: primary.phone_e164 as string,
+          body: renewalText({ tenantName: tenant.display_name as string, year, link, message }),
+          kind: 'campaign', source: 'renewals.send_renewal_links', queueIfCapped: true,
+        });
+        if (r.sent) { smsSent++; delivered = true; }
+        else if (r.queued) { smsQueued++; delivered = true; }
       }
 
       if (delivered) sent++; else skipped++;
@@ -416,11 +407,11 @@ Deno.serve(async (req) => {
     // accident.
     await sb.from('audit_log').insert({
       tenant_id: payload.tid, kind: 'renewals.send_blast', entity_type: 'tenant', entity_id: tenant.id,
-      summary: `Renewal message for ${year}: ${sent} famil${sent === 1 ? 'y' : 'ies'} (${emailSent} email, ${smsSent} text)`,
+      summary: `Renewal message for ${year}: ${sent} famil${sent === 1 ? 'y' : 'ies'} (${emailSent} email, ${smsSent} text${smsQueued ? `, ${smsQueued} text${smsQueued === 1 ? '' : 's'} going tomorrow morning` : ''})`,
       actor_id: payload.sub, actor_kind: 'tenant_admin', actor_label: payload.sub,
-      metadata: { audience: 'prior_year', year, channels, total: (households ?? []).length, email_sent: emailSent, sms_sent: smsSent, send_fail: skipped },
+      metadata: { audience: 'prior_year', year, channels, total: (households ?? []).length, email_sent: emailSent, sms_sent: smsSent, sms_queued: smsQueued, send_fail: skipped },
     });
-    return jsonResponse({ ok: true, year, sent, skipped, reused, email_sent: emailSent, sms_sent: smsSent });
+    return jsonResponse({ ok: true, year, sent, skipped, reused, email_sent: emailSent, sms_sent: smsSent, sms_queued: smsQueued });
   }
 
   if (action === 'send_blast') {
