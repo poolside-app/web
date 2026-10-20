@@ -2171,9 +2171,9 @@ Deno.serve(async (req) => {
   }
 
   // ── send_reminder ─────────────────────────────────────────────────────
-  // Records the reminder + bumps the counter. The actual email/SMS is
-  // wired to whatever notification infra is configured (Resend if keys
-  // are set, else dev_link in the response so admin can copy-paste).
+  // Records the reminder + bumps the counter, and sends the "Dues reminder"
+  // email (Settings → Emails, PLAN.md BG5). When it can't be sent, the board
+  // gets a mailto: link to send it from their own email.
   if (action === 'send_reminder') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
@@ -2188,9 +2188,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Application has no contact info to remind' }, 400);
     }
 
-    // Try Resend if a key exists; fall back to "dev mode" return.
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
+    // One of the club's emails now (Settings → Emails, PLAN.md BG5): it says
+    // whether they're approved yet, the amount, and the Venmo button with
+    // their code. Email only, by Doug's notification rule.
     const { data: tenant } = await sb.from('tenants')
       .select('display_name, slug').eq('id', TID).maybeSingle();
     const clubName = tenant?.display_name || 'Your club';
@@ -2198,34 +2198,33 @@ Deno.serve(async (req) => {
     let sent = false;
     let dev_link: string | null = null;
 
-    if (RESEND_API_KEY && app.primary_email) {
-      const html = `
-        <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
-          <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Friendly reminder from ${clubName}</h2>
-          <p style="margin:0 0 14px;color:#64748b">Hi ${escapeHtml(app.primary_name)} — your application to ${escapeHtml(clubName)} was approved, but we haven't received your dues payment yet.</p>
-          <p style="margin:0 0 14px;color:#64748b">Please send your dues to complete the membership and we'll get your account fully active.</p>
-          <p style="margin:24px 0">
-            <a href="${clubUrl}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Visit ${escapeHtml(clubName)}</a>
-          </p>
-          <p style="margin:0;color:#94a3b8;font-size:12px">This is automated — reply to this email if you have questions.</p>
-        </div>
-      `;
+    if (app.primary_email) {
+      const owed = Number(app.amount_due_cents) > 0 ? Number(app.amount_due_cents) : null;
+      const amount = owed ? `$${(owed / 100).toFixed(2)}` : '';
+      let venmoVars: Record<string, string> = {};
       try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: RESEND_FROM,
-            to: [app.primary_email],
-            subject: `Reminder: dues for ${clubName}`,
-            html,
-          }),
+        const { data: sr } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
+        const sv = (sr?.value as Record<string, unknown> | null) ?? {};
+        const handle = (sv.payments as Record<string, unknown> | undefined)?.venmo_handle;
+        if (handle && owed && app.venmo_code && app.payment_method === 'venmo') {
+          const { venmoNote, venmoLink } = await import('../_shared/venmo.ts');
+          const br = (sv.branding as Record<string, unknown> | undefined) ?? {};
+          const note = venmoNote({ club: (br.app_name as string) || clubName, what: `${app.membership_year ?? ''} dues`, family: app.family_name as string, code: app.venmo_code as string });
+          venmoVars = { venmo_link: venmoLink({ handle: String(handle), amountCents: owed, note }), venmo_code: String(app.venmo_code) };
+        }
+      } catch { /* the reminder still goes, without the button */ }
+      try {
+        const { renderAndSend } = await import('../_shared/email_template.ts');
+        const r = await renderAndSend(sb, {
+          tenantId: TID, to: app.primary_email as string,
+          templateKey: app.status === 'approved' ? 'dues_reminder_approved' : 'dues_reminder_waiting',
+          variables: { primary_name: app.primary_name, tenant_name: clubName, club_url: clubUrl, amount, ...venmoVars },
         });
-        sent = res.ok;
-      } catch { /* fall through to dev mode */ }
+        sent = !!r.sent;
+      } catch { /* fall through to the board's own email */ }
     }
     if (!sent) {
-      dev_link = `mailto:${app.primary_email ?? ''}?subject=${encodeURIComponent(`Reminder: dues for ${clubName}`)}&body=${encodeURIComponent(`Hi ${app.primary_name},\n\nYour application to ${clubName} was approved, but we haven't received your dues payment yet. Please send your dues to complete your membership.\n\n${clubUrl}\n`)}`;
+      dev_link = `mailto:${app.primary_email ?? ''}?subject=${encodeURIComponent(`Reminder: dues for ${clubName}`)}&body=${encodeURIComponent(`Hi ${app.primary_name},\n\n${app.status === 'approved' ? `Your membership at ${clubName} is approved, but we haven't received your dues yet.` : `We haven't received your dues for ${clubName} yet. The board will approve your signup once it arrives.`} Please send your dues to complete your membership.\n\n${clubUrl}\n`)}`;
     }
 
     const now = new Date().toISOString();
@@ -2238,7 +2237,7 @@ Deno.serve(async (req) => {
     await sb.from('application_actions').insert({
       application_id: id, tenant_id: TID,
       kind: 'reminder_sent',
-      body: sent ? 'email via Resend' : 'dev mode (mailto link returned)',
+      body: sent ? 'Dues reminder emailed' : 'not emailed; the board\'s own email was opened',
       actor_id: payload.synthetic ? null : payload.sub,
     });
 

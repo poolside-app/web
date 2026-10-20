@@ -2,7 +2,8 @@
 // email_template.ts — the emails Poolside sends, and the one way to send them
 // =============================================================================
 // PLAN.md T (Doug, 2026-10-08: "the emails tab is super confusing"). There
-// are 15 emails, grouped by the moment they go out. Each has two parts:
+// are 19 emails (15 at first; BE2 and BG5 added four), grouped by the moment
+// they go out. Each has two parts:
 //
 //   - The message: plain words a club can change on Settings → Emails
 //     (stored per club in the email_templates table: subject, body_html
@@ -22,6 +23,7 @@
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendEmail, escHtml, emailShell, type EmailAttachment } from './send_email.ts';
+import { clubReplyTo } from './reply_to.ts';
 
 type Vars = Record<string, string | number | null | undefined>;
 type Variant = Record<string, unknown>;
@@ -157,6 +159,40 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     adds: 'a button to their member page',
     heading: () => '✓ Payment verified',
     details: v => button('Open my member page', memberHome(v)),
+  },
+  {
+    // PLAN.md BG5: was hand-built in applications send_reminder, told a
+    // family still waiting for the board that they were approved, and had
+    // no amount or Venmo button.
+    key: 'dues_reminder', section: 'payments',
+    label: 'Dues reminder',
+    when: 'When the board taps "Send reminder" on a signup that hasn\'t paid yet.',
+    default_subject: 'Reminder: your {{tenant_name}} dues',
+    default_message: '<p>Hi {{primary_name}},</p><p>A friendly reminder that we haven\'t received your dues yet.</p>',
+    placeholders: ['primary_name', 'tenant_name', 'amount'],
+    adds: 'whether they\'re approved yet, the amount, and the Venmo button with their code (when you take Venmo)',
+    heading: (_v, x) => x.approved ? 'A reminder about your dues' : 'Your signup is waiting on your dues',
+    details: (v, x) => box(`${x.approved ? 'Your membership is approved.' : 'The board will approve your signup once your payment arrives.'}${v.amount ? ` What you owe: <b>${e(v.amount)}</b>.` : ''}`)
+      + (v.venmo_link ? button(`Pay${v.amount ? ' ' + String(v.amount) : ''} with Venmo`, v.venmo_link)
+        + small(`The Venmo note is filled in with your code <b>${e(v.venmo_code)}</b>, so the board can match your payment.`) : '')
+      + (x.approved ? button('Open my member page', memberHome(v)) : ''),
+    variants: [
+      { id: 'waiting', label: 'Waiting for payment', x: { approved: false } },
+      { id: 'approved', label: 'Approved, not paid', x: { approved: true } },
+    ],
+  },
+  {
+    // PLAN.md BG5: was hand-built in payment_plans, with the date unformatted.
+    key: 'plan_payment_upcoming', section: 'payments',
+    label: 'Plan payment coming up',
+    when: 'Before a payment-plan payment, on the days the club picked under Payment plans (off unless set).',
+    default_subject: 'Payment coming up: {{tenant_name}}',
+    default_message: '<p>Hi {{family_name}},</p><p>Your next {{tenant_name}} payment is coming up.</p>',
+    placeholders: ['family_name', 'tenant_name', 'amount', 'due_date'],
+    adds: 'the amount, the date, and a "See my plan" button',
+    heading: v => v.days_until === 1 || v.days_until === '1' ? 'Payment due tomorrow' : `Payment due in ${e(v.days_until)} days`,
+    details: v => box(`<b>${e(v.amount)}</b> is charged to your saved card on <b>${e(v.due_date)}</b>.`)
+      + button('See my plan', `${String(v.club_url ?? '')}/m/#plan`),
   },
   {
     key: 'plan_payment_received', section: 'payments',
@@ -307,6 +343,19 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     details: v => boardNote(v),
   },
 
+  {
+    // PLAN.md BG5: was hand-built in the payment_plans daily run.
+    key: 'party_released', section: 'parties',
+    label: 'Party time released',
+    when: 'When an approved party isn\'t paid within the hold time, so its time is given back.',
+    default_subject: '{{tenant_name}}: your party time was released',
+    default_message: '<p>Hi {{primary_name}},</p><p>{{party_title}} wasn\'t paid within {{hold_days}} days of being approved, so the time was given back. You\'re welcome to book it again if it\'s still open.</p>',
+    placeholders: ['primary_name', 'tenant_name', 'party_title', 'hold_days'],
+    adds: 'a button to book again',
+    heading: () => 'Your party time was released',
+    details: v => button('Book a party', `${String(v.club_url ?? '')}/m/#parties`),
+  },
+
   // ─── Family changes ────────────────────────────────────────────────────
   {
     key: 'household_member_added', section: 'family',
@@ -330,6 +379,8 @@ const ALIASES: Record<string, { key: string; x: Variant }> = (() => {
     plan_installment_paid_partial: { key: 'plan_payment_received', x: { final: false } },
     plan_installment_paid_final: { key: 'plan_payment_received', x: { final: true } },
     plan_installment_failed: { key: 'plan_payment_failed', x: {} },
+    dues_reminder_waiting: { key: 'dues_reminder', x: { approved: false } },
+    dues_reminder_approved: { key: 'dues_reminder', x: { approved: true } },
   };
   const welcome: Record<string, string> = {
     stripe_paid: 'card', free: 'free', venmo_verified: 'venmo_verified',
@@ -423,7 +474,7 @@ async function loadOverride(sb: SupabaseClient, tenantId: string, key: string): 
 }
 
 /**
- * Send one of the 15 emails, with the club's own subject and message if it
+ * Send one of the emails, with the club's own subject and message if it
  * changed them, or not at all if it switched the email off. Never throws.
  */
 export async function renderAndSend(
@@ -453,6 +504,7 @@ export async function renderAndSend(
 
   // The club's name, address and logo, whatever the sender passed.
   const vars: Vars = { ...args.variables };
+  let settingsValue: Record<string, unknown> | null = null;
   try {
     const [{ data: tenant }, { data: sv }] = await Promise.all([
       sb.from('tenants').select('display_name, slug').eq('id', args.tenantId).maybeSingle(),
@@ -462,12 +514,15 @@ export async function renderAndSend(
       if (!vars.tenant_name) vars.tenant_name = tenant.display_name as string;
       if (!vars.club_url) vars.club_url = `https://${tenant.slug as string}.poolsideapp.com`;
     }
+    settingsValue = (sv?.value as Record<string, unknown> | null) ?? null;
     const logo = ((sv?.value as Record<string, unknown> | undefined)?.branding as Record<string, unknown> | undefined)?.logo_url;
     if (logo) vars.__logo_url = String(logo);
   } catch { /* keep what we have */ }
 
   const out = composeEmail(args.templateKey, subject, message, vars, { attached: !!args.attachments?.length });
-  return await sendEmail({ to: args.to, subject: out.subject, html: out.html, replyTo: args.replyTo, attachments: args.attachments });
+  // Replies reach the club, not Poolside's no-reply address (PLAN.md BG5).
+  return await sendEmail({ to: args.to, subject: out.subject, html: out.html,
+    replyTo: args.replyTo ?? await clubReplyTo(sb, args.tenantId, settingsValue), attachments: args.attachments });
 }
 
 /** The Emails page's preview: an email, a version of it, sample details. */

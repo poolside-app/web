@@ -119,3 +119,11 @@ export function fmtPoolStamp(instant: Date | string | number, tz: string): strin
 export function partyWhen(startsAt: Date | string, tz: string): { party_date: string; party_time: string } {
   return { party_date: fmtPoolDate(startsAt, tz), party_time: fmtPoolTime(startsAt, tz) };
 }
+
+/** A pool date ('YYYY-MM-DD') in words: "Sunday, August 1" (PLAN.md BG5).
+ *  Never through new Date(key): that's midnight UTC, the day before in
+ *  California. Anything that isn't a date key comes back as it was. */
+export function fmtPoolDay(key: string, opts: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' }): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key ?? ''))) return String(key ?? '');
+  return plainSpaces(new Date(`${key}T12:00:00Z`).toLocaleDateString('en-US', { ...opts, timeZone: 'UTC' }));
+}

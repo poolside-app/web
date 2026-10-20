@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { platformFeeCents, feePolicyFromTenant, type FeePolicy } from '../_shared/fees.ts';
-import { poolDate } from '../_shared/pool_time.ts';
+import { poolDate, fmtPoolDay } from '../_shared/pool_time.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
@@ -121,30 +121,6 @@ async function stripe<T = Record<string, unknown>>(
 function escHtml(s: string): string {
   const m: Record<string, string> = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' };
   return s.replace(/[&<>"']/g, c => m[c] || c);
-}
-
-async function sendReminderEmail(args: {
-  to: string; tenantName: string; familyName: string; amountCents: number;
-  dueDate: string; daysUntil: number; signinLink: string;
-}): Promise<boolean> {
-  if (!RESEND_API_KEY) return false;
-  const dollars = (args.amountCents / 100).toFixed(2);
-  const html = `
-    <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
-      <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Payment due ${args.daysUntil === 1 ? 'tomorrow' : `in ${args.daysUntil} days`}</h2>
-      <p style="margin:0 0 16px;color:#64748b">Hi ${escHtml(args.familyName)} family — your next ${escHtml(args.tenantName)} payment of <b>$${dollars}</b> is charged on <b>${escHtml(args.dueDate)}</b> to the card on your plan.</p>
-      <p style="margin:24px 0">
-        <a href="${args.signinLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">See my plan</a>
-      </p>
-    </div>`;
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: RESEND_FROM, to: [args.to], subject: `Payment reminder — ${args.tenantName}`, html }),
-    });
-    return res.ok;
-  } catch { return false; }
 }
 
 /** Days from one pool date to another. */
@@ -283,7 +259,8 @@ async function sendReceipt(
         amount: '$' + (amount / 100).toFixed(2),
         sequence: String(inst.sequence),
         next_amount: next ? '$' + (chargeFor(next, club.feesWaived) / 100).toFixed(2) : '',
-        next_due_date: next ? next.due_date : '',
+        // Words, not "2027-08-01" (PLAN.md BG5).
+        next_due_date: next ? fmtPoolDay(next.due_date as string) : '',
       },
     });
   } catch { /* never fail the charge run because of an email */ }
@@ -682,11 +659,20 @@ Deno.serve(async (req) => {
       if (sentMilestones.includes(String(matched))) continue;
       const { data: plan } = await sb.from('payment_plans').select('*').eq('id', inst.plan_id).maybeSingle();
       if (!plan || plan.status !== 'active' || !plan.primary_email) continue;
-      const sent = await sendReminderEmail({
-        to: plan.primary_email, tenantName: club.name, familyName: plan.family_name as string,
-        amountCents: chargeFor(inst as Inst, club.feesWaived), dueDate: inst.due_date as string, daysUntil,
-        signinLink: `${club.clubUrl}/m/#plan`,
-      });
+      // "Plan payment coming up", on Settings → Emails (PLAN.md BG5).
+      let sent = false;
+      try {
+        const { renderAndSend } = await import('../_shared/email_template.ts');
+        const r = await renderAndSend(sb, {
+          tenantId: inst.tenant_id as string, templateKey: 'plan_payment_upcoming', to: plan.primary_email as string,
+          variables: {
+            family_name: plan.family_name as string, tenant_name: club.name, club_url: club.clubUrl,
+            amount: '$' + (chargeFor(inst as Inst, club.feesWaived) / 100).toFixed(2),
+            due_date: fmtPoolDay(inst.due_date as string), days_until: daysUntil,
+          },
+        });
+        sent = !!r.sent;
+      } catch { /* try again on the next milestone */ }
       if (sent) {
         await sb.from('payment_plan_installments').update({
           reminder_milestones_sent: [...sentMilestones, String(matched)],
@@ -756,11 +742,13 @@ Deno.serve(async (req) => {
         try {
           const { data: who } = await sb.from('household_members').select('name, email').eq('id', p.requested_by).maybeSingle();
           if (who?.email) {
-            const { sendEmail, emailShell, escHtml } = await import('../_shared/send_email.ts');
-            await sendEmail({ to: who.email as string, subject: `${club.name}: your party time was released`,
-              html: emailShell({ tenantName: club.name, clubUrl: club.clubUrl, preheader: 'It was not paid in time.',
-                contentHtml: `<p style="margin:0 0 12px">Hi ${escHtml(String(who.name ?? ''))}, your party "${escHtml(String(p.title))}" wasn't paid within ${hold} days of being approved, so the time was released for other families.</p>
-                  <p style="margin:0"><a href="${club.clubUrl}/m/#parties" style="display:inline-block;padding:10px 18px;background:#0a3b5c;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">Book it again</a></p>` }) });
+            // "Party time released", on Settings → Emails (PLAN.md BG5).
+            const { renderAndSend } = await import('../_shared/email_template.ts');
+            await renderAndSend(sb, {
+              tenantId: p.tenant_id as string, templateKey: 'party_released', to: who.email as string,
+              variables: { primary_name: String(who.name ?? ''), tenant_name: club.name, club_url: club.clubUrl,
+                party_title: String(p.title), hold_days: String(hold) },
+            });
           }
         } catch { /* the pop-up and the Parties page say it too */ }
         parties_released++;

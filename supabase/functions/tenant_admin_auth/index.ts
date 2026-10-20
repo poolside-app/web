@@ -28,7 +28,7 @@ import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/
 import { requireOwner } from '../_shared/auth.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 import { isLocked, afterFailure, lockedMessage, lockedEmail, escapeLike, MAX_TRIES } from '../_shared/signin_guard.ts';
-import { sendEmail } from '../_shared/send_email.ts';
+import { sendEmail, emailShell } from '../_shared/send_email.ts';
 
 // Shown when neither a text nor an email could go out (PLAN.md BG1).
 const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
@@ -59,7 +59,8 @@ async function sendAdminInviteEmail(args: {
 }) {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   const signInHost = `${escAdmin(args.clubUrl.replace(/^https?:\/\//, ''))}/club/admin`;
-  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a"><h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added as a <b>${escAdmin(args.roleLabel)}</b>. Tap below to activate your account. No password needed.</p><p style="margin:24px 0"><a href="${args.activationLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Activate my account</a></p><p style="margin:0;color:#94a3b8;font-size:12px">This one-tap link is just for you and expires in 7 days. After that you can sign in any time at ${signInHost} — we'll text or email you a quick link to get in.</p></div>`;
+  // The club look every other club email has (PLAN.md BG5).
+  const html = emailShell({ tenantName: args.tenantName, clubUrl: args.clubUrl, contentHtml: `<h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added as a <b>${escAdmin(args.roleLabel)}</b>. Tap below to activate your account. No password needed.</p><p style="margin:24px 0"><a href="${args.activationLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Activate my account</a></p><p style="margin:0;color:#94a3b8;font-size:12px">This one-tap link is just for you and expires in 7 days. After that you can sign in any time at ${signInHost} — we'll text or email you a quick link to get in.</p>` });
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -73,7 +74,8 @@ async function sendAdminInviteEmail(args: {
 
 async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUrl: string; verifyLink: string; adminName: string }) {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
-  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a"><h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Sign in to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.adminName || 'there')} — click below to sign in. The link is good for one use and expires in 15 minutes.</p><p style="margin:24px 0"><a href="${args.verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in</a></p></div>`;
+  // The club look every other club email has (PLAN.md BG5).
+  const html = emailShell({ tenantName: args.tenantName, clubUrl: args.clubUrl, contentHtml: `<h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Sign in to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.adminName || 'there')} — click below to sign in. The link is good for one use and expires in 15 minutes.</p><p style="margin:24px 0"><a href="${args.verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in</a></p>` });
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -87,12 +89,12 @@ async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUr
 
 // The board code by email, when the text couldn't go (PLAN.md BG1). The
 // page is already waiting for the 6 digits, so the email carries the code.
-async function sendAdminEmailCode(args: { to: string; tenantName: string; code: string; adminName: string }) {
-  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+async function sendAdminEmailCode(args: { to: string; tenantName: string; clubUrl: string; code: string; adminName: string }) {
+  const html = emailShell({ tenantName: args.tenantName, clubUrl: args.clubUrl, contentHtml: `
     <p style="margin:0 0 8px">Hi ${escAdmin(args.adminName || 'there')},</p>
     <p style="margin:0 0 6px;color:#64748b">We couldn't text you just now. Your ${escAdmin(args.tenantName)} BOARD sign-in code is:</p>
     <p style="margin:0 0 18px;font:700 28px ui-monospace,monospace;letter-spacing:.2em;color:#0a3b5c">${escAdmin(args.code)}</p>
-    <p style="margin:0;color:#94a3b8;font-size:12px">It expires in 10 minutes. If you didn't ask for it, ignore this email.</p></div>`;
+    <p style="margin:0;color:#94a3b8;font-size:12px">It expires in 10 minutes. If you didn't ask for it, ignore this email.</p>` });
   return await sendEmail({ to: args.to, subject: `${args.code} is your ${args.tenantName} board sign-in code`, html });
 }
 
@@ -472,7 +474,7 @@ Deno.serve(async (req) => {
       // the code back: it would sign in whoever typed the number (PLAN.md
       // BG1). Email it instead when there's an address.
       if (admin.email) {
-        const mail = await sendAdminEmailCode({ to: admin.email as string, tenantName: tenant.display_name, code: finalCode, adminName: admin.display_name || '' });
+        const mail = await sendAdminEmailCode({ to: admin.email as string, tenantName: tenant.display_name, clubUrl: `https://${tenant.slug}.poolsideapp.com`, code: finalCode, adminName: admin.display_name || '' });
         if (mail.sent) {
           return jsonResponse({ ...generic, via: 'email',
             message: 'We couldn\'t text you just now, so we emailed your code. Check your email.' });

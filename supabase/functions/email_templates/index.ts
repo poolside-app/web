@@ -2,7 +2,7 @@
 // email_templates — the Emails page (Settings → Emails, PLAN.md T)
 // =============================================================================
 // Auth: tenant admin with the communications or announcements screen (or
-// owner). 15 emails, by the moment they go out (_shared/email_template.ts);
+// owner). 19 emails, by the moment they go out (_shared/email_template.ts);
 // a club changes an email's subject and message, or switches it off.
 //
 // Actions:
@@ -80,12 +80,18 @@ const SAMPLE_VARS: Record<string, string> = {
   venmo_handle:      'bishopestates',
   first_amount:      '$300',
   second_amount:     '$300',
-  final_due_date:    '2026-07-01',
+  final_due_date:    'Wednesday, July 1',
   sign_in_link:      'https://bishopestates.poolsideapp.com/m/verify.html#token=sample-link',
   amount:            '$300',
   sequence:          '2',
   next_amount:       '$300',
-  next_due_date:     '2026-07-01',
+  next_due_date:     'Wednesday, July 1',
+  // PLAN.md BG5: the dues reminder, plan payment coming up, party time released.
+  venmo_link:        'https://venmo.com/bishopestates?txn=pay&amount=600.00',
+  venmo_code:        'K7Q2',
+  due_date:          'Wednesday, July 1',
+  days_until:        '3',
+  hold_days:         '2',
   admin_notes:       '(Admin reason from the rejection form would appear here.)',
   // Auto-renew: without these the preview shows a board "renewing your
   // membership on ", which reads as a bug in the template they are editing.
@@ -93,7 +99,7 @@ const SAMPLE_VARS: Record<string, string> = {
   charge_date:       'December 15, 2026',
   manage_url:        'https://bishopestates.poolsideapp.com/m/renew.html',
   renew_link:        'https://bishopestates.poolsideapp.com/renew.html?t=sample-link',
-  // The 15 emails (PLAN.md T) use these too.
+  // The registry's emails (PLAN.md T) use these too.
   message:           "It's time to sign up for the 2027 season! Click the link to renew. Your family's details are already filled in.",
   party_title:       "Emma's 8th birthday",
   party_date:        'Sat, Jun 12, 2027',

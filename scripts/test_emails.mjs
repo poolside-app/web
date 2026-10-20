@@ -27,8 +27,9 @@ console.log('T1 · the emails (offline)');
 const et = await importTs(new URL('supabase/functions/_shared/email_template.ts', root));
 {
   const list = et.EMAIL_REGISTRY;
-  // 15 after PLAN.md T; 16 with "Renewal confirmed" (PLAN.md BE2).
-  check('16 emails, down from 29', list.length === 16, String(list.length));
+  // 15 after PLAN.md T; 16 with "Renewal confirmed" (PLAN.md BE2); 19 with
+  // the dues reminder, plan payment coming up and party time released (BG5).
+  check('19 emails, down from 29', list.length === 19, String(list.length));
   check('each has a plain name, when it goes out, and a section',
     list.every(d => d.label && !/—|\(no app\)|TBD|Stripe/.test(d.label) && d.when && et.EMAIL_SECTIONS.some(s => s.id === d.section)), short(list.map(d => d.label)));
   check('sections in order: Signing up, Welcome, Payments, Renewals, Parties, Family changes',
@@ -127,7 +128,9 @@ if (LIVE) {
     await sql(`update admin_users set email = 'delivered@resend.dev' where id = '${adminId}'`);
     const tok = jwt({ sub: adminId, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const l = await fn('email_templates', { action: 'list' }, tok);
-    check('T2: the list comes in sections, 15 emails', l.ok && l.emails?.length === 15 && l.sections?.length === 6, short({ n: l.emails?.length, s: l.sections?.length }));
+    check('T2: the list comes in sections, 19 emails', l.ok && l.emails?.length === 19 && l.sections?.length === 6, short({ n: l.emails?.length, s: l.sections?.length }));
+    const dr = await fn('email_templates', { action: 'preview', key: 'dues_reminder', variant: 'waiting' }, tok);
+    check('BG5: the dues reminder previews with the amount and the Venmo button', dr.ok && /venmo\.com/.test(dr.html || '') && !/is approved/.test(dr.html || ''), short({ ok: dr.ok, e: dr.error }));
     const pv = await fn('email_templates', { action: 'preview', key: 'welcome', variant: 'unpaid_venmo' }, tok);
     check('T2: the preview shows a Welcome version', pv.ok && /Venmo/.test(pv.html || ''), short({ ok: pv.ok, e: pv.error }));
     const ts = await fn('email_templates', { action: 'test', key: 'welcome', subject: 'Test {{tenant_name}}', message: '<p>Hi {{primary_name}}</p>' }, tok);

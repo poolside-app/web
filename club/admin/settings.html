@@ -194,6 +194,8 @@
       </div>
       <label>Swim team name <span class="opt">(if you have one)</span></label>
       <input id="swim_team_name">
+      <label>Club email <span class="opt">(when a family replies to a club email, it goes here; blank sends replies to the President)</span></label>
+      <input id="club_email" type="email" placeholder="board@yourclub.org" autocomplete="email">
     </div>
   </details>
 
@@ -1063,6 +1065,7 @@ function populate(s) {
   setVal('default_city',     s.club?.default_city);
   setVal('default_zip',      s.club?.default_zip);
   setVal('swim_team_name',   s.club?.swim_team_name);
+  setVal('club_email',       s.club?.email);
   setVal('hero_eyebrow',     s.hero?.eyebrow);
   setVal('hero_headline',    s.hero?.headline);
   setVal('hero_tagline',     s.hero?.tagline);
@@ -1132,6 +1135,8 @@ function collect(prevSettings) {
       default_city:    val('default_city') || null,
       default_zip:     val('default_zip') || null,
       swim_team_name:  val('swim_team_name') || null,
+      // Families' replies to club emails (PLAN.md BG5); blank → the President.
+      email:           val('club_email') || null,
     },
     hero: {
       eyebrow:  val('hero_eyebrow') || null,
