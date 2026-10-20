@@ -1,0 +1,301 @@
+<!doctype html>
+<!-- The 90-second video's stage (PLAN.md BH), after the app promo Doug liked:
+     pool blue with soft diagonal stripes, clean white phones, a big title sliding
+     in beside them for each part, labeled icons popping in, and subtitles at the
+     bottom. The phones hold the real pages (frames 'left' and 'board'); drive.mjs
+     taps and types on them, promo.mjs runs the story. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poolside video</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root { --navy: #0b3a5a; --amber: #f5b324; --pool: #1191d2; }
+  html, body { margin: 0; width: 1440px; height: 810px; overflow: hidden; font-family: Inter, sans-serif; color: #fff; background: var(--pool); }
+  /* Fixed and clipped: a phone's page scrolling something into view can't scroll the stage. */
+  .stage { position: fixed; inset: 0; overflow: clip; }
+  .bg { position: absolute; inset: 0; background:
+      radial-gradient(1200px 820px at 28% 18%, rgba(255,255,255,.12), rgba(255,255,255,0) 62%),
+      linear-gradient(180deg, #169bd9 0%, #0d84c4 100%); }
+  .bg::before { content: ''; position: absolute; inset: -400px; animation: drift 40s linear infinite;
+    background: repeating-linear-gradient(-55deg, rgba(255,255,255,.06) 0 90px, rgba(255,255,255,0) 90px 180px); }
+  @keyframes drift { to { transform: translateX(-219.7px); } }
+
+  .brand { position: absolute; left: 56px; top: 34px; font: 600 26px Fraunces, serif; display: flex; align-items: center; gap: 11px; opacity: 0; transition: opacity .6s; z-index: 4; }
+  .brand i { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 5px rgba(245,179,36,.25); }
+  .brand.on { opacity: 1; }
+
+  /* The part's title, beside the phone. */
+  .title { position: absolute; left: 72px; top: 0; width: 600px; height: 680px; display: flex; flex-direction: column; justify-content: center; z-index: 5; }
+  .t-icon { width: 78px; height: 78px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 38px; margin-bottom: 26px;
+    box-shadow: 0 14px 32px rgba(3,45,80,.28); transform: scale(0); transition: transform .5s cubic-bezier(.3,1.6,.5,1); }
+  .title.in .t-icon { transform: scale(1); }
+  .title.out .t-icon { transform: scale(0); transition: transform .3s ease-in; }
+  .ln { overflow: hidden; padding: 6px 0 8px; margin: -6px 0 -8px; }
+  .ln span { display: inline-block; font: 900 66px/1.04 Inter; letter-spacing: -.02em; text-transform: uppercase; color: #fff;
+    transform: translateY(115%); transition: transform .6s cubic-bezier(.2,.85,.25,1); text-shadow: 0 4px 18px rgba(3,45,80,.18); }
+  .ln.acc span { background: var(--amber); color: var(--navy); padding: 8px 18px 6px; border-radius: 12px; margin-top: 12px; text-shadow: none; box-shadow: 0 12px 28px rgba(3,45,80,.22); }
+  .ln.on span { transform: none; }
+  .title.out .ln span { transform: translateY(-120%); transition: transform .45s cubic-bezier(.6,0,.8,.3); }
+
+  /* The camera: the phones, the tap dot and the ring, at 0.84 and zooming together. */
+  #rig { position: absolute; left: 0; top: 0; width: 1715px; height: 965px; transform-origin: 0 0; transform: scale(.84); transition: transform .9s cubic-bezier(.45,.05,.2,1); z-index: 3; }
+  .phone { position: absolute; top: 24px; width: 414px; transition: left .85s cubic-bezier(.45,.05,.2,1), transform .9s cubic-bezier(.3,.9,.3,1), opacity .12s; }
+  /* Off screen, a phone waits just inside the bottom edge, see-through: Chrome
+     stops drawing a page that's wholly out of sight, and its scrolls never end. */
+  .phone.gone { transform: translateY(860px); opacity: 0; transition: left .85s cubic-bezier(.45,.05,.2,1), transform .8s cubic-bezier(.6,0,.8,.4), opacity .2s linear .6s; }
+  .phone .lbl { font: 700 15px Inter; letter-spacing: .16em; text-transform: uppercase; color: #fff; text-align: center; height: 22px; margin-bottom: 12px; text-shadow: 0 2px 8px rgba(3,45,80,.3); }
+  .bezel { position: relative; width: 414px; height: 744px; border-radius: 52px; background: #fff; padding: 12px; box-sizing: border-box; overflow: hidden;
+    box-shadow: 0 44px 90px rgba(3,40,72,.42), 0 12px 26px rgba(3,40,72,.2), inset 0 0 0 1.5px #dfe7ee; }
+  .bezel iframe { width: 390px; height: 720px; border: 0; border-radius: 40px; background: #fbfaf7; display: block; }
+
+  /* Stands in for Stripe's card page, which isn't shown. */
+  .standin { position: absolute; inset: 12px; border-radius: 40px; background: #f6f8fb; color: var(--navy); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; gap: 10px; opacity: 0; pointer-events: none; transition: opacity .3s; }
+  .standin.on { opacity: 1; }
+  .standin .big { font-size: 58px; }
+  .standin b { font: 600 26px Fraunces, serif; }
+  .standin span { font: 500 16px Inter; color: #5b6b7b; max-width: 270px; line-height: 1.5; }
+  .standin .ok { font: 800 22px Inter; color: #15803d; margin-top: 8px; opacity: 0; transform: scale(.6); transition: all .35s cubic-bezier(.3,1.6,.5,1); }
+  .standin.done .ok { opacity: 1; transform: none; }
+
+  /* A text message or a pop-up, sliding down over the phone. */
+  .bubbles { position: absolute; left: 22px; right: 22px; top: 22px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .bubble { background: rgba(248,250,252,.98); color: #0f172a; border-radius: 20px; padding: 12px 14px 13px; box-shadow: 0 12px 32px rgba(0,0,0,.26);
+    transform: translateY(-140%); opacity: 0; transition: transform .55s cubic-bezier(.2,.9,.3,1.1), opacity .3s; }
+  .bubble.in { transform: none; opacity: 1; }
+  .bubble .hd { display: flex; align-items: center; gap: 8px; font: 600 11.5px Inter; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+  .bubble .hd i { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-style: normal; font-size: 13px; }
+  .bubble .hd .t { flex: 1; }
+  .bubble .ti { font: 700 14.5px/1.3 Inter; margin-bottom: 2px; }
+  .bubble .bd { font: 400 14px/1.42 Inter; color: #1e293b; }
+  .bubble .bd u { color: #2563eb; text-decoration: none; }
+
+  .tap { position: absolute; left: 0; top: 0; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; z-index: 9;
+    background: rgba(245,179,36,.32); border: 3.5px solid var(--amber); pointer-events: none; opacity: 0;
+    transition: left .32s cubic-bezier(.4,.1,.2,1), top .32s cubic-bezier(.4,.1,.2,1), opacity .2s; }
+  .tap.on { opacity: 1; }
+  .tap.press { animation: press .36s ease; }
+  @keyframes press { 0% { transform: scale(1); } 40% { transform: scale(.68); background: rgba(245,179,36,.65); } 100% { transform: scale(1); } }
+  .ring { position: absolute; z-index: 8; border: 4px solid var(--amber); border-radius: 16px; box-shadow: 0 0 0 7px rgba(245,179,36,.25); pointer-events: none; opacity: 0; transition: opacity .3s, left .35s, top .35s, width .35s, height .35s; }
+  .ring.on { opacity: 1; }
+
+  /* Labeled icons that pop in around the phones. */
+  .chip { position: absolute; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 9px 24px 9px 9px; background: #fff; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 16px 36px rgba(3,40,72,.3); font: 800 22px Inter; color: var(--navy); transform: scale(0); transition: transform .5s cubic-bezier(.3,1.7,.5,1); }
+  .chip i { width: 50px; height: 50px; border-radius: 50%; background: #e3f3fc; display: grid; place-items: center; font-style: normal; font-size: 27px; }
+  .chip.in { transform: scale(1); }
+  .chip.out { transform: scale(0); transition: transform .28s ease-in; }
+
+  /* The opening: what running a club looks like now. */
+  .card { position: absolute; z-index: 6; background: #fff; border-radius: 18px; color: #0f172a; box-shadow: 0 24px 54px rgba(3,40,72,.34);
+    opacity: 0; transform: translateY(46px) rotate(var(--r)) scale(.7); transition: transform .55s cubic-bezier(.3,1.5,.5,1), opacity .3s; }
+  .card.in { opacity: 1; transform: rotate(var(--r)); }
+  .card.out { opacity: 0; transform: translate(var(--dx, 0), 760px) rotate(calc(var(--r) * 5)); transition: transform 1s cubic-bezier(.55,0,.85,.35), opacity .8s ease-in .2s; }
+  .card::after { content: ''; position: absolute; left: -5%; top: 47%; width: 110%; height: 8px; border-radius: 4px; background: #e11d48; box-shadow: 0 3px 10px rgba(225,29,72,.45);
+    transform: rotate(-9deg) scaleX(0); transform-origin: left center; transition: transform .32s ease-out; }
+  .card.struck::after { transform: rotate(-9deg) scaleX(1); }
+  .c-venmo { left: 130px; top: 104px; width: 370px; padding: 16px 20px 18px; --r: -5deg; --dx: -260px; }
+  .c-venmo .hd { display: flex; align-items: center; gap: 9px; font: 700 13px Inter; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .c-venmo .hd i { width: 26px; height: 26px; border-radius: 7px; background: #3d95ce; color: #fff; font: 900 16px Inter; font-style: normal; display: grid; place-items: center; }
+  .c-venmo .hd em { margin-left: auto; font-style: normal; font-weight: 500; text-transform: none; }
+  .c-venmo b { font: 800 23px Inter; display: block; }
+  .c-venmo p { margin: 4px 0 0; font: 500 19px Inter; color: #334155; }
+  .c-sheet { left: 830px; top: 70px; width: 450px; overflow: hidden; --r: 3.5deg; --dx: 240px; }
+  .c-sheet .bar { background: #1d7a46; color: #fff; font: 700 16px Inter; padding: 11px 16px; }
+  .c-sheet table { width: 100%; border-collapse: collapse; font: 500 18px Inter; }
+  .c-sheet th { background: #f1f5f9; font: 700 14px Inter; color: #475569; text-align: left; text-transform: uppercase; letter-spacing: .04em; }
+  .c-sheet th, .c-sheet td { border: 1px solid #e2e8f0; padding: 8px 12px; }
+  .c-sheet .y { background: #fef3c7; color: #92400e; font-weight: 700; }
+  .c-sheet .r { background: #fee2e2; color: #b91c1c; font-weight: 700; }
+  .c-text { left: 150px; top: 430px; width: 400px; padding: 14px 16px; --r: 2.5deg; --dx: -180px; }
+  .c-text small { display: block; font: 600 13px Inter; color: #64748b; margin: 0 0 6px 6px; }
+  .c-text div { background: #e9e9eb; border-radius: 22px; padding: 13px 18px; font: 500 21px/1.35 Inter; }
+  .c-shot { left: 1010px; top: 420px; width: 200px; padding: 12px 12px 10px; --r: 7deg; --dx: 220px; }
+  .c-shot .img { height: 170px; border-radius: 12px; background: linear-gradient(180deg, #e8f1f8, #f8fafc); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .c-shot .img b { font: 800 30px Inter; color: #0f172a; }
+  .c-shot .img span { font: 600 13px Inter; color: #3d95ce; }
+  .c-shot .img hr { width: 70%; border: 0; border-top: 6px solid #dbe4ec; border-radius: 3px; margin: 4px 0 0; }
+  .c-shot small { display: block; text-align: center; font: 600 13px Inter; color: #64748b; margin-top: 8px; }
+  .c-note { left: 610px; top: 300px; width: 240px; padding: 22px 20px; background: #fde68a; border-radius: 4px; --r: -4deg; --dx: 60px;
+    font: 800 25px/1.25 Inter; color: #713f12; font-style: italic; }
+
+  /* The name, at the start and the end. */
+  .logo { position: absolute; left: 50%; top: 47%; z-index: 7; display: flex; align-items: center; gap: 30px; font: 600 128px Fraunces, serif; color: #fff;
+    opacity: 0; transform: translate(-50%, -50%) scale(.6); transition: transform .8s cubic-bezier(.3,1.25,.4,1), opacity .5s, top .8s cubic-bezier(.45,.05,.2,1);
+    text-shadow: 0 8px 30px rgba(3,45,80,.25); }
+  .logo.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .logo.up { top: 36%; }
+  .logo.off { opacity: 0; transform: translate(-50%, -50%) scale(.3); transition: transform .6s ease-in, opacity .5s; }
+  .logo i { position: relative; width: 40px; height: 40px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 12px rgba(245,179,36,.25); }
+  .logo i::before, .logo i::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); opacity: 0; }
+  .logo.on i::before { animation: ripple 1.8s ease-out .25s 2; }
+  .logo.on i::after { animation: ripple 1.8s ease-out .85s 2; }
+  @keyframes ripple { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(6); opacity: 0; } }
+  .tag { position: absolute; left: 0; right: 0; top: 54%; text-align: center; font: 800 46px Inter; letter-spacing: -.01em; z-index: 7;
+    opacity: 0; transform: translateY(24px); transition: all .6s cubic-bezier(.2,.85,.25,1); text-shadow: 0 4px 18px rgba(3,45,80,.2); }
+  .tag.on { opacity: 1; transform: none; }
+  .url { position: absolute; left: 50%; top: 67%; z-index: 7; display: flex; align-items: center; gap: 18px; background: #fff; color: var(--navy); border-radius: 999px;
+    padding: 16px 36px 16px 30px; font: 800 36px Inter; box-shadow: 0 18px 40px rgba(3,40,72,.32);
+    opacity: 0; transform: translateX(-50%) scale(.5); transition: transform .55s cubic-bezier(.3,1.6,.5,1), opacity .25s; }
+  .url small { font: 800 15px Inter; letter-spacing: .14em; text-transform: uppercase; color: #0d84c4; }
+  .url.on { opacity: 1; transform: translateX(-50%) scale(1); }
+  .note { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; font: 500 16px Inter; color: rgba(255,255,255,.75); opacity: 0; transition: opacity .6s; z-index: 7; }
+  .note.on { opacity: 1; }
+
+  /* Subtitles: one sentence at a time, as it's spoken. */
+  .cap { position: absolute; left: 50%; bottom: 22px; z-index: 30; max-width: 1140px; padding: 12px 28px 14px; border-radius: 16px; box-sizing: border-box;
+    background: rgba(5,33,54,.86); color: #fff; font: 600 30px/1.32 Inter; text-align: center; white-space: nowrap;
+    opacity: 0; transform: translate(-50%, 10px); transition: opacity .18s, transform .22s; }
+  .cap.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body><div class="stage">
+  <div class="bg"></div>
+  <div class="brand" id="brand"><i></i>Poolside</div>
+  <div class="title" id="title"></div>
+
+  <div id="rig">
+    <div class="phone gone" id="p-left" style="left:995px"><div class="lbl" id="l-left">The family</div>
+      <div class="bezel"><iframe name="left" id="f-left"></iframe>
+        <div class="standin" id="s-left"><div class="big" id="s-icon">💳</div><b id="s-title">The card page</b><span id="s-text">Families pay on Stripe's secure page.</span><div class="ok" id="s-ok">✓ Paid</div></div>
+        <div class="bubbles" id="b-left"></div></div></div>
+    <div class="phone gone" id="p-board" style="left:1228px"><div class="lbl" id="l-board">The treasurer</div>
+      <div class="bezel"><iframe name="board" id="f-board"></iframe><div class="bubbles" id="b-board"></div></div></div>
+    <div class="ring" id="ring"></div>
+    <div class="tap" id="tap"></div>
+  </div>
+  <div id="chips"></div>
+
+  <div class="card c-venmo" id="m-venmo"><div class="hd"><i>V</i>Venmo<em>now</em></div><b>Jen R. paid you $550.00</b><p>pool dues?? 🏊</p></div>
+  <div class="card c-sheet" id="m-sheet"><div class="bar">📊 Dues 2027 FINAL (3).xlsx</div>
+    <table><tr><th>Family</th><th>Paid?</th><th>Fob</th></tr>
+      <tr><td>Henderson</td><td class="y">???</td><td></td></tr>
+      <tr><td>Patel</td><td class="y">Venmo?</td><td>#142</td></tr>
+      <tr><td>Walsh</td><td>✓</td><td class="r">lost</td></tr>
+      <tr><td>Nguyen</td><td class="r">check</td><td>?</td></tr></table></div>
+  <div class="card c-text" id="m-text"><small>Treasurer</small><div>Did the Hendersons ever pay? Their kids are at the gate 😬</div></div>
+  <div class="card c-shot" id="m-shot"><div class="img"><span>Venmo</span><b>$550.00</b><hr><hr></div><small>IMG_4127.PNG</small></div>
+  <div class="card c-note" id="m-note">Who has fob #142??</div>
+
+  <div class="logo" id="logo"><i></i>Poolside</div>
+  <div class="tag" id="tag">Run your pool club, not your spreadsheets.</div>
+  <div class="url" id="url"><small>Try it yourself</small>demo.poolsideapp.com</div>
+  <div class="note" id="note">Maple Grove Swim Club and its families are made up for this demo.</div>
+  <div class="cap" id="cap"></div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const phoneOf = side => side === 'board' ? $('p-board') : $('p-left');
+  const S0 = 0.84;   // the rig's scale at rest
+  // Where each phone stands (rig px) for each layout; a phone not listed is below the screen.
+  const SPOTS = { left: { left: 995 }, board: { board: 995 }, both: { left: 763, board: 1228 }, none: {} };
+  const MESS = ['venmo', 'sheet', 'text', 'shot', 'note'];
+  window.Stage = {
+    // 'left', 'board', 'both' or 'none'. A phone coming back rises at its new spot.
+    layout(which) {
+      for (const side of ['left', 'board']) {
+        const el = phoneOf(side), x = SPOTS[which][side];
+        if (x == null) { el.classList.add('gone'); continue; }
+        if (el.classList.contains('gone')) { el.style.transition = 'none'; el.style.left = x + 'px'; el.offsetWidth; el.style.transition = ''; el.classList.remove('gone'); }
+        else el.style.left = x + 'px';
+      }
+    },
+    label(text, side = 'left') { $(side === 'board' ? 'l-board' : 'l-left').textContent = text; },
+    brand(on) { $('brand').classList.toggle('on', on); },
+
+    // The part's title: lines slide up, `accent` gets the amber block; `show` lines now, the rest by titleLine().
+    async title(lines, { icon = '', accent = -1, show = lines.length } = {}) {
+      await this.titleOut();
+      const t = $('title');
+      t.className = 'title';
+      t.innerHTML = (icon ? `<div class="t-icon">${icon}</div>` : '') + lines.map((l, i) => `<div class="ln${i === accent ? ' acc' : ''}"><span>${esc(l)}</span></div>`).join('');
+      t.offsetWidth; t.classList.add('in');
+      [...t.querySelectorAll('.ln')].forEach((ln, i) => { if (i < show) { ln.firstChild.style.transitionDelay = (0.1 + i * 0.13) + 's'; ln.classList.add('on'); } });
+    },
+    titleLine(i) { const ln = $('title').querySelectorAll('.ln')[i]; if (ln) { ln.firstChild.style.transitionDelay = '0s'; ln.classList.add('on'); } },
+    async titleOut() {
+      const t = $('title');
+      if (!t.children.length) return;
+      t.querySelectorAll('.ln span').forEach((s, i) => { s.style.transitionDelay = (i * 0.06) + 's'; });
+      t.classList.add('out'); await wait(520);
+      t.innerHTML = ''; t.className = 'title';
+    },
+
+    chip({ icon, text, x, y }) {
+      const el = document.createElement('div');
+      el.className = 'chip'; el.style.left = x + 'px'; el.style.top = y + 'px';
+      el.innerHTML = `<i>${icon}</i>${esc(text)}`;
+      $('chips').append(el); el.offsetWidth; el.classList.add('in');
+    },
+    chipsOut() { const box = $('chips'); [...box.children].forEach(el => el.classList.add('out')); setTimeout(() => { box.innerHTML = ''; }, 320); },
+
+    // The opening's cards: in one by one, crossed off, then dropped.
+    messIn(i) { $('m-' + MESS[i]).classList.add('in'); },
+    strike(ids) { ids.forEach(id => $('m-' + id).classList.add('struck')); },
+    drop(ids) { ids.forEach(id => $('m-' + id).classList.add('out')); },
+
+    // The name: 'on' in the middle, 'up' (room for the tagline), 'off'.
+    logo(state) {
+      const l = $('logo');
+      if (state === 'off') { l.classList.remove('on', 'up'); l.classList.add('off'); return; }
+      l.classList.remove('off'); l.classList.add('on'); l.classList.toggle('up', state === 'up');
+    },
+    end(part) { $(part).classList.add('on'); },
+
+    caption(html) {
+      const c = $('cap');
+      if (html) { c.innerHTML = html; c.offsetWidth; c.classList.add('on'); } else c.classList.remove('on');
+    },
+
+    standin(on, opts = {}) {
+      if (opts.icon) $('s-icon').textContent = opts.icon;
+      if (opts.title) $('s-title').textContent = opts.title;
+      if (opts.text) $('s-text').textContent = opts.text;
+      if (opts.ok) $('s-ok').textContent = opts.ok;
+      $('s-left').classList.toggle('on', on); $('s-left').classList.toggle('done', !!opts.done);
+    },
+    // A point on a phone's screen, in the rig (so it zooms with the phones).
+    at(side, x, y) { const p = phoneOf(side); return { x: p.offsetLeft + 12 + x, y: p.offsetTop + 34 + 12 + y }; },
+    // Closer in on a point, keeping it about where it is on screen.
+    zoom(side, x, y, s = 1.3) {
+      const p = this.at(side, x, y), S = S0 * s;
+      const ax = S0 * p.x, ay = Math.min(520, Math.max(220, S0 * p.y));
+      $('rig').style.transform = `translate(${ax - S * p.x}px, ${ay - S * p.y}px) scale(${S})`;
+    },
+    unzoom() { $('rig').style.transform = `scale(${S0})`; },
+    async tapAt(side, x, y, press = true) {
+      const p = this.at(side, x, y), t = $('tap');
+      if (!t.classList.contains('on')) { t.style.transition = 'none'; t.style.left = p.x + 'px'; t.style.top = (p.y + 60) + 'px'; t.offsetWidth; t.style.transition = ''; }
+      t.classList.add('on'); t.style.left = p.x + 'px'; t.style.top = p.y + 'px';
+      await wait(340);
+      if (press) { t.classList.remove('press'); t.offsetWidth; t.classList.add('press'); await wait(200); }
+    },
+    moveTap(side, x, y) { const p = this.at(side, x, y), t = $('tap'); t.style.transition = 'none'; t.classList.add('on'); t.style.left = p.x + 'px'; t.style.top = p.y + 'px'; },
+    hideTap() { $('tap').classList.remove('on'); $('tap').style.transition = ''; },
+    ring(side, r) {
+      const p = this.at(side, r.x - 6, r.y - 6), g = $('ring');
+      g.style.left = p.x + 'px'; g.style.top = p.y + 'px'; g.style.width = (r.w + 12) + 'px'; g.style.height = (r.h + 12) + 'px';
+      g.classList.add('on');
+    },
+    unring() { $('ring').classList.remove('on'); },
+    // kind 'text' (a text message) or 'pop' (a pop-up from the club's app).
+    async bubble(side, { kind = 'text', title = '', body = '' }) {
+      const box = $(side === 'board' ? 'b-board' : 'b-left');
+      const el = document.createElement('div');
+      el.className = 'bubble';
+      el.innerHTML = `<div class="hd">${kind === 'text'
+        ? '<i style="background:#22c55e;color:#fff">💬</i><span class="t">Text message</span>'
+        : '<i style="background:#0b3a5a"><span style="width:9px;height:9px;border-radius:50%;background:#f5b324;display:block"></span></i><span class="t">Maple Grove</span>'}<span>now</span></div>
+        ${title ? `<div class="ti">${esc(title)}</div>` : ''}<div class="bd">${body}</div>`;
+      box.prepend(el); el.offsetWidth; el.classList.add('in');
+      await wait(600);
+    },
+    clearBubbles(side) { const box = $(side === 'board' ? 'b-board' : 'b-left'); [...box.children].forEach(el => el.classList.remove('in')); setTimeout(() => { box.innerHTML = ''; }, 500); },
+  };
+</script>
+</body>
+</html>

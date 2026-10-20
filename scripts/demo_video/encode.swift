@@ -3,10 +3,12 @@
 // =============================================================================
 // No downloads: macOS can make H.264 video and AAC sound itself. record.mjs
 // builds it (with an overlay for a Command Line Tools bug) and runs it:
-//   encode frames.json voice.json out.mp4
+//   encode frames.json voice.json out.mp4 [music.json]
 // frames.json: { "end": seconds, "frames": [{ "f": "/path/0001.jpg", "t": seconds }] }
 //   (screenshots as they arrived; each is held until the next one)
 // voice.json:  [{ "f": "/path/scene1.aiff", "t": seconds }]  (where each line starts)
+// music.json:  { "f": "/path/track.mp3", "points": [[seconds, volume 0–1], …] }
+//   (optional, PLAN.md BH: music under the voice, its level set by the points)
 // =============================================================================
 
 import AVFoundation
@@ -17,12 +19,14 @@ import ImageIO
 struct Frame: Decodable { let f: String; let t: Double }
 struct Frames: Decodable { let end: Double; let frames: [Frame] }
 struct Voice: Decodable { let f: String; let t: Double }
+struct Music: Decodable { let f: String; let points: [[Double]] }
 
 let args = CommandLine.arguments
-guard args.count == 4 else { print("usage: encode frames.json voice.json out.mp4"); exit(2) }
+guard args.count == 4 || args.count == 5 else { print("usage: encode frames.json voice.json out.mp4 [music.json]"); exit(2) }
 let frames = try JSONDecoder().decode(Frames.self, from: Data(contentsOf: URL(fileURLWithPath: args[1])))
 let voice = try JSONDecoder().decode([Voice].self, from: Data(contentsOf: URL(fileURLWithPath: args[2])))
 let out = URL(fileURLWithPath: args[3])
+let music = args.count == 5 ? try JSONDecoder().decode(Music.self, from: Data(contentsOf: URL(fileURLWithPath: args[4]))) : nil
 let silent = out.deletingPathExtension().appendingPathExtension("silent.mp4")
 try? FileManager.default.removeItem(at: silent)
 try? FileManager.default.removeItem(at: out)
@@ -106,10 +110,25 @@ for v in voice {
 }
 let tail = CMTimeSubtract(picture.duration, voiceComp.duration)
 if CMTimeCompare(tail, .zero) > 0 { vo.insertEmptyTimeRange(CMTimeRange(start: voiceComp.duration, duration: tail)) }
+// The music, under the voice: its own track, its volume moved point to point.
+var mix: AVMutableAudioMix? = nil
+if let m = music {
+  let a = AVURLAsset(url: URL(fileURLWithPath: m.f))
+  guard let src = a.tracks(withMediaType: .audio).first else { print("no audio in", m.f); exit(1) }
+  let mt = voiceComp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)!
+  try mt.insertTimeRange(CMTimeRange(start: .zero, duration: CMTimeMinimum(a.duration, picture.duration)), of: src, at: .zero)
+  let p = AVMutableAudioMixInputParameters(track: mt)
+  let at = { (s: Double) in CMTime(seconds: s, preferredTimescale: 600) }
+  if let first = m.points.first { p.setVolume(Float(first[1]), at: .zero) }
+  for (a, b) in zip(m.points, m.points.dropFirst()) where b[0] > a[0] {
+    p.setVolumeRamp(fromStartVolume: Float(a[1]), toEndVolume: Float(b[1]), timeRange: CMTimeRange(start: at(a[0]), end: at(b[0])))
+  }
+  mix = AVMutableAudioMix(); mix!.inputParameters = [p]
+}
 let voiceFile = out.deletingPathExtension().appendingPathExtension("voice.m4a")
 try? FileManager.default.removeItem(at: voiceFile)
 guard let vx = AVAssetExportSession(asset: voiceComp, presetName: AVAssetExportPresetAppleM4A) else { print("no voice export"); exit(1) }
-vx.outputURL = voiceFile; vx.outputFileType = .m4a
+vx.outputURL = voiceFile; vx.outputFileType = .m4a; vx.audioMix = mix
 let vDone = DispatchSemaphore(value: 0)
 vx.exportAsynchronously { vDone.signal() }
 vDone.wait()
