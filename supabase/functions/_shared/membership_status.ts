@@ -54,6 +54,39 @@ export async function householdStatus(sb: SupabaseClient, tenantId: string, hous
   return memberStatus({ paid_until_year: hh?.paid_until_year as number | null, on_plan_for_season: onPlan }, season, today);
 }
 
+/**
+ * Every family that may use the gate now, for the keyfob sync (PLAN.md BE1):
+ * the app Unlock's rule (`unlock_gate`), for the whole club at once. Active,
+ * dues paid (a payment plan sets this at the club's access rule), and a
+ * member for the current season.
+ */
+export async function gateHouseholds(sb: SupabaseClient, tenantId: string): Promise<Set<string>> {
+  const [{ data: sv }, { data: tenant }, { data: hhs }, { data: plans }] = await Promise.all([
+    sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle(),
+    sb.from('tenants').select('timezone').eq('id', tenantId).maybeSingle(),
+    sb.from('households').select('id, paid_until_year').eq('tenant_id', tenantId)
+      .eq('active', true).eq('dues_paid_for_year', true).limit(5000),
+    sb.from('payment_plans').select('household_id, application_id').eq('tenant_id', tenantId)
+      .in('status', ['active', 'past_due']).not('household_id', 'is', null).limit(5000),
+  ]);
+  const { sellingYear } = await import('./membership_year.ts');
+  const { poolToday, zoneOrDefault } = await import('./pool_time.ts');
+  const season = sellingYear(sv?.value ?? {});
+  const today = poolToday(zoneOrDefault(tenant?.timezone as string | null | undefined));
+  // Families on a plan for this season's membership.
+  const appIds = (plans ?? []).map(p => p.application_id).filter(Boolean) as string[];
+  const { data: apps } = appIds.length
+    ? await sb.from('applications').select('id').in('id', appIds).eq('membership_year', season)
+    : { data: [] };
+  const seasonApps = new Set((apps ?? []).map(a => a.id as string));
+  const onPlan = new Set((plans ?? []).filter(p => seasonApps.has(p.application_id as string)).map(p => p.household_id as string));
+  const out = new Set<string>();
+  for (const h of (hhs ?? [])) {
+    if (memberStatus({ paid_until_year: h.paid_until_year as number | null, on_plan_for_season: onPlan.has(h.id as string) }, season, today).member) out.add(h.id as string);
+  }
+  return out;
+}
+
 /** A payment plan, still going, for this season's membership. */
 async function onPlanFor(sb: SupabaseClient, householdId: string, season: number): Promise<boolean> {
   const { data: plans } = await sb.from('payment_plans').select('application_id, status')

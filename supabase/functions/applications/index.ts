@@ -1592,6 +1592,29 @@ Deno.serve(async (req) => {
       await sb.from('admin_tasks').update({ completed_at: nowIso })
         .eq('source_kind', 'application').eq('source_id', id).is('completed_at', null);
 
+      // Tell the family it went through (PLAN.md BE2): a renewal paid by card
+      // or Venmo said nothing. A pop-up, and the email always (a receipt). A
+      // one-tap renewal sends its own receipt (payment_plans, skip_receipt).
+      if (app.payment_status === 'paid' && !body.skip_receipt) {
+        try {
+          const { data: prim } = await sb.from('household_members').select('email')
+            .eq('household_id', app.household_id).eq('role', 'primary').eq('active', true).maybeSingle();
+          const to = (prim?.email as string | null) ?? (app.primary_email as string | null);
+          const cents = typeof app.amount_due_cents === 'number' ? app.amount_due_cents : null;
+          const amount = cents != null ? '$' + (cents / 100).toFixed(2) : '';
+          const paidBy = ({ stripe: 'card', venmo: 'Venmo', check: 'check', cash: 'cash', free: 'credit' } as Record<string, string>)[app.payment_method as string] ?? 'card';
+          const { renderAndSend } = await import('../_shared/email_template.ts');
+          const { notifyHousehold } = await import('../_shared/member_notify.ts');
+          await notifyHousehold(sb as never, {
+            tenantId: TID, householdId: app.household_id as string,
+            pop: { title: `✅ You're renewed for ${renewYear}`, body: `Thanks! ${cents ? `Your ${amount} payment came through. ` : ''}See you at the pool.`, url: '/m/', tag: 'renewal' },
+            email: to ? { to, send: () => renderAndSend(sb as never, { tenantId: TID, templateKey: 'renewal_confirmed', to,
+              variables: { family_name: app.family_name as string, season: String(renewYear), amount, paid_by: paidBy } }) } : null,
+            alsoEmail: true,
+          });
+        } catch (e) { console.error('renewal receipt (non-fatal):', (e as Error).message); }
+      }
+
       return jsonResponse({ ok: true, renewed: true, household_id: app.household_id, membership_year: renewYear });
     }
 

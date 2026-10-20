@@ -23,7 +23,12 @@ New families can still sign up while the pool is closed. Your signup page shows 
 
 ### Keyfobs
 
-Member keyfobs follow the Member hours on **Members → Keyfobs & Access → Access**. Tap **Change** on the Member level and set its last day (the second date under its hours). The fobs stop after that date once the doors are updated.
+Closing the season takes every member's keyfob off the doors. Board fobs, and every other level, stay on.
+
+- With the nightly keyfob sync on, it happens that night by itself.
+- Otherwise, whoever handles keyfobs gets a to-do. Go to **Members → Keyfobs & Access → Keyfob sync**, tap **Sync keyfobs now**, check the list, then tap **Send to the doors**.
+
+In the spring, setting **Season is** back to **Open** puts the fobs of families who've paid back on the same way. A family who hasn't paid stays off until they do.
 
 ### Don't press "Close and start next season"
 

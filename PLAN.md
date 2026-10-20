@@ -900,6 +900,14 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BE. Fixes found making the video (Doug, 10/19) — ✅ BE1–BE3 done 10/19
+Doug: "you found some errors, yes fix those… At the end of the season.. when we close the season, we need to shut the keyfobs off…. NOT the board members". Asked: fob changes go to the doors "Nightly, by itself".
+- **BE1. A Member fob follows the season and the family's payment.** Today every active fob gets its level's doors and dates, paid or not, so a family who didn't renew gets in again next season. Now a fob on the Member level is on the doors only while the Season switch is Open and its family may use the gate, the same rule as the app's Unlock (`unlock_gate`: household active, dues paid, a member for the season, which counts a payment plan). Closing the season (Season switch → Closed) takes every Member fob off; board, staff and every other level stay as they are. A family who pays gets their fob back at the next sync; one who doesn't stays off. `_shared/keyfob_sync.ts` (`syncPlan`, `loadSyncPlan`), the reason on each line of the check ("season closed", "not paid for 2027").
+  - The nightly check-and-send does it with no one tapping, once "Auto keyfob activations" is on for the club (Doug's switch, /admin/ Overrides). It stays off at Bishop until the fob list is imported and checked: until then Poolside doesn't manage Bishop's member fobs, so nothing changes at the doors.
+  - With the nightly off, closing the season gives the keyfob person a to-do to send the changes, so it isn't forgotten.
+- **BE2. A renewal is confirmed to the family.** A renewal paid by card (or saved card, or a Venmo the board confirms) sends nothing today. Now: a confirmation email (Doug's rule: receipts by email, always) and a pop-up, from the renewal's approval.
+- **BE3. The Keyfobs page says how it works now.** Its intro and the lost-fob row still say to program each fob at the panel; with the sync, Poolside puts fobs on the doors and takes lost ones off.
+
 ### BD. A demo video (Doug, 10/19) — ✅ first cut done 10/19 (handouts/poolside-board-demo.mp4, 2:25)
 Doug: "are you able to make a video tutorial on how to demo this app?... you can't just create a video?" Then: "the intent right now is to show how the app works for the board... the benefits.. how efficient it is.. how it works... how it literally automates everything if someone pays by credit card and they already have a keyfob etc."
 
@@ -922,6 +930,12 @@ Defaults (Doug didn't pick):
 - `scripts/demo_video/` records it (Chrome through puppeteer, then Apple's AVFoundation through Swift, no downloads), so it can be re-made in minutes after the app changes. It stops if any screen it taps isn't there. The video goes to `handouts/` (not in git).
 
 As built: 9 scenes, 2:25, 1920×1080 with sound (40 MB), plus `handouts/poolside-board-demo-small.mp4` at 1280×720 (21 MB) for phones and email (`DEMO_SIZE=720`). Title; what the board used to do (crossed off); paid by card (the Riveras renew: accept the policy, sign, pay, a stand-in for Stripe's card page, then the board's families paid and collected go up); Venmo (the Patels' code, then Venmo to check, two ticked and confirmed); keyfobs (issue the Larsens' fob, Sync keyfobs now, Send to the doors); each board member's home and a door button; families (Unlock the gate, a booked party and its Snack Shack door); Time saved (about 73 hours, $1,462); the end card. Every scene's caption is its narration. `node scripts/demo_video/record.mjs` re-makes it (about 3 minutes, builds its encoder the first time); `node scripts/test_demo_video.mjs` checks every screen in it still works with the made-up club (offline).
+
+**BD2. The second cut (Doug, 10/19):** "a little shitty… I'm hoping a step by step of signing up… pay by credit card.. pay by Venmo… make payments.. then where it gets you and how easy it is… even with other family member and phone login with text… The notification part is good for board members. Speech is very rushed." Asked: one video with chapters (about 6 minutes); "make payments" = a payment plan; voice: a Premium Mac voice (Karen (Premium), else Ava (Premium)), which Doug downloads.
+- Chapters: signing up step by step (who's in the family, a phone and the "text them a link" box for each adult and teen, policies and signature, membership level); paying by card (to the welcome text and the app); paying by Venmo (the code, the board's batch confirm, the welcome); a payment plan (part now, the rest on set dates, the board ticks each payment before it's charged); the family's other phones (the link a spouse or teen gets, and signing in with a texted code); and the board side kept short (pop-ups, each home, keyfobs nightly, Time saved).
+- Slower speech: one short line per step, spoken while that step is on screen, a pause between sentences, and a slower rate.
+- Texts can't be filmed, so each one (the welcome text, a family member's link, a sign-in code) shows as a message bubble with Poolside's real wording.
+- After BE, so the video says what the fixed app does.
 
 Not in it yet, if Doug wants them: his own voice or a Premium Mac voice, real-iPhone moments, and the Keyfobs page's intro, which still says to program each fob at the panel (older than the sync), so the video scrolls past it.
 

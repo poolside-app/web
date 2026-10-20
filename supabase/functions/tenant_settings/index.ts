@@ -144,6 +144,7 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await sb.from('settings')
       .select('value').eq('tenant_id', payload.tid).maybeSingle();
+    const wasOpen = ((existing?.value as Record<string, Record<string, unknown>> | undefined)?.season?.open) !== false;
     if (existing) {
       const merged = deepMerge(
         (existing.value ?? {}) as Record<string, unknown>,
@@ -156,6 +157,35 @@ Deno.serve(async (req) => {
       const { error } = await sb.from('settings')
         .insert({ tenant_id: payload.tid, value });
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    }
+
+    // The Season switch moved (PLAN.md BE1): Member fobs go off when it
+    // closes and paid families' come back when it opens. The nightly sync
+    // does that by itself; without it, the gate person gets a to-do to send.
+    const seasonPatch = (value.season ?? null) as Record<string, unknown> | null;
+    if (seasonPatch && 'open' in seasonPatch && (seasonPatch.open !== false) !== wasOpen) {
+      try {
+        const nowOpen = seasonPatch.open !== false;
+        const [{ data: t }, { count: managed }] = await Promise.all([
+          sb.from('tenants').select('auto_keyfob_sync').eq('id', payload.tid).maybeSingle(),
+          sb.from('keyfobs').select('id', { count: 'exact', head: true }).eq('tenant_id', payload.tid)
+            .eq('status', 'active').not('card_number', 'is', null),
+        ]);
+        if (!t?.auto_keyfob_sync && (managed ?? 0) > 0) {
+          await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
+            .eq('tenant_id', payload.tid).eq('kind', 'keyfob.season').is('completed_at', null);
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: payload.tid, target_scopes: ['keyfobs'], kind: 'keyfob.season',
+            summary: nowOpen
+              ? 'The season is open: send the keyfob changes so paid families\' fobs open the doors'
+              : 'The season is closed: send the keyfob changes so member fobs stop opening the doors (board fobs stay on)',
+            link_url: '/club/admin/keyfobs.html',
+            source_kind: 'settings', source_id: payload.tid,
+            push_title: nowOpen ? '🔑 Season open: send the keyfob changes' : '🔑 Season closed: send the keyfob changes',
+          });
+        }
+      } catch (e) { console.error('season keyfob to-do (non-fatal):', (e as Error).message); }
     }
 
     // Optionally update the tenant display_name in lockstep with the wizard.

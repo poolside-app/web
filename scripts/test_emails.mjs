@@ -27,7 +27,8 @@ console.log('T1 · the emails (offline)');
 const et = await importTs(new URL('supabase/functions/_shared/email_template.ts', root));
 {
   const list = et.EMAIL_REGISTRY;
-  check('15 emails, down from 29', list.length === 15, String(list.length));
+  // 15 after PLAN.md T; 16 with "Renewal confirmed" (PLAN.md BE2).
+  check('16 emails, down from 29', list.length === 16, String(list.length));
   check('each has a plain name, when it goes out, and a section',
     list.every(d => d.label && !/—|\(no app\)|TBD|Stripe/.test(d.label) && d.when && et.EMAIL_SECTIONS.some(s => s.id === d.section)), short(list.map(d => d.label)));
   check('sections in order: Signing up, Welcome, Payments, Renewals, Parties, Family changes',
@@ -88,6 +89,19 @@ console.log('T3 · Settings → Emails (offline)');
   check('Emails is in the Settings strip, not Members', /emails\.html/.test(settings) && !/emails\.html/.test(members) && /'emails\.html': 'settings'/.test(sub));
   check('the help pages say Settings → Emails', !/Members → Emails/.test(read('club/admin/help/articles/post-an-announcement.md')));
   check('Payments links use the new email names', !/#tpl=application_approved_stripe_paid|#tpl=plan_installment_paid_partial/.test(read('club/admin/payments.html')));
+}
+
+// PLAN.md BE2 (Doug, 10/19): a renewal paid by card or Venmo sent nothing.
+console.log('BE2 · a renewal is confirmed to the family (offline)');
+{
+  const d = et.EMAIL_REGISTRY.find(x => x.key === 'renewal_confirmed');
+  check('"Renewal confirmed" is on Settings → Emails, under Renewals', d && d.section === 'renewals' && /card|Venmo/.test(d.when), short(d));
+  const html = d ? d.heading({ season: '2027' }, {}) + (d.details ? d.details({ season: '2027', amount: '$600.00', paid_by: 'card', club_url: 'https://x.poolsideapp.com' }, {}) : '') : '';
+  check('it says the season, the amount and how they paid, and links to the app', /2027/.test(html) && /\$600\.00/.test(html) && /card/.test(html) && /\/m\//.test(html), html.slice(0, 200));
+  const ap = read('supabase/functions/applications/index.ts');
+  const renewal = ap.slice(ap.indexOf("if (app.is_renewal && app.household_id) {"), ap.indexOf("renewed: true, household_id"));
+  check('the renewal\'s approval sends it, by email and pop-up, once it\'s paid', /renewal_confirmed/.test(renewal) && /notifyHousehold\(/.test(renewal) && /alsoEmail: true/.test(renewal) && /payment_status === 'paid'/.test(renewal));
+  check('a one-tap renewal keeps its own receipt, so it isn\'t sent twice', /skip_receipt/.test(renewal) && /skip_receipt: true/.test(read('supabase/functions/payment_plans/index.ts')));
 }
 
 if (LIVE) {

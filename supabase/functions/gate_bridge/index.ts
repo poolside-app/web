@@ -63,6 +63,14 @@ function constantTimeEq(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
+// The "season opened/closed: send the keyfob changes" to-do (keyfob.season,
+// from tenant_settings), once the doors have the changes.
+// deno-lint-ignore no-explicit-any
+async function doneSeasonTodo(sb: any, tenantId: string, now: string) {
+  await sb.from('admin_tasks').update({ completed_at: now })
+    .eq('tenant_id', tenantId).eq('kind', 'keyfob.season').is('completed_at', null);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -254,6 +262,8 @@ Deno.serve(async (req) => {
         await sb.from('keyfob_syncs').insert({ tenant_id: panel.tenant_id, kind: 'send', auto: true, check_id: id,
           plan: { controllers: ((job.plan ?? {}) as Record<string, unknown>).controllers ?? [], ops: d.ops } });
       }
+      // The doors already match: nothing left of a season to-do (PLAN.md BE1).
+      if (!d.ops.length && !d.summary.unreadable) await doneSeasonTodo(sb, panel.tenant_id as string, now);
       return jsonResponse({ ok: true, ops: d.ops.length });
     }
     const ops = (result.ops as Array<{ ok?: boolean; live?: boolean }> | undefined) ?? [];
@@ -263,6 +273,8 @@ Deno.serve(async (req) => {
       result: { ...result, summary: { sent: ops.length, live: ops.length - failed }, failed } }).eq('id', id);
     await sb.from('audit_log').insert({ tenant_id: panel.tenant_id, kind: 'keyfob.sync_done', entity_type: 'keyfob_sync', entity_id: id,
       summary: `Keyfobs on the doors: ${ops.length - failed} of ${ops.length} changes live${job.auto ? ' (nightly)' : ''}`, actor_kind: 'system' });
+    // Sent, and every change took: the season's to-do is done (PLAN.md BE1).
+    if (!failed) await doneSeasonTodo(sb, panel.tenant_id as string, now);
     return jsonResponse({ ok: true });
   }
 

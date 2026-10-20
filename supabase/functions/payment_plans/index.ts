@@ -369,7 +369,8 @@ async function chargeRenewalWithSavedCard(sb: SupabaseClient, appId: string): Pr
   try {
     await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
-      body: JSON.stringify({ action: 'approve', id: appId, tenant_id: app.tenant_id }),
+      // Its receipt is the one-tap one below, not "Renewal confirmed" (PLAN.md BE2).
+      body: JSON.stringify({ action: 'approve', id: appId, tenant_id: app.tenant_id, skip_receipt: true }),
     });
   } catch (e) { console.error('renewal approve:', (e as Error).message); }
   try {

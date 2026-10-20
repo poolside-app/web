@@ -13,6 +13,10 @@ category: "Keyfobs & the Gate"
 
 Nothing is written until you tap **Send to the doors**. Afterwards Poolside reads the doors back to confirm each change took.
 
+### Member fobs follow the season and payment
+
+A member's fob is on the doors only while the season is open (**Settings → Season**) and their family has paid for it, the same rule as unlocking from the app. A family on a payment plan counts once they meet your club's plan rule. Each line in **See each change** says why a fob is coming off, like "the season is closed" or "not paid for 2027". Board fobs aren't affected.
+
 ### What it never touches
 
 Fobs Poolside doesn't manage are left alone. Changes go on one fob at a time, so the doors keep working the whole time.

@@ -83,7 +83,8 @@ mkdirSync(WORK + '/voice', { recursive: true });
 for (const s of SCENES) {
   s.audio = `${WORK}/voice/${s.id}.aiff`;
   // 44.1 kHz: some phone players stumble on the voice's own 22 kHz.
-  execFileSync('say', ['-v', VOICE, '-r', '168', '--data-format=BEI16@44100', '-o', s.audio, s.say || s.cap]);
+  // DEMO_VOICE=system: the Mac's system voice (a Siri voice can only be used that way).
+  execFileSync('say', [...(VOICE === 'system' ? [] : ['-v', VOICE]), '-r', '168', '--data-format=BEI16@44100', '-o', s.audio, s.say || s.cap]);
   s.secs = Number(String(execFileSync('afinfo', [s.audio])).match(/estimated duration: ([\d.]+)/)[1]);
 }
 

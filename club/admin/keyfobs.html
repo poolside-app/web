@@ -132,7 +132,7 @@
 
 <main>
   <h1>Keyfobs &amp; Access</h1>
-  <p class="lede">Families ask for fobs in the app. A new family's first fob is free; another fob, or a replacement, is paid for in the app before it shows up here. To issue one, program it at the panel, then type the number printed on it. When a fob is lost, turn it off at the panel and tap "Turned off".</p>
+  <p class="lede">Families ask for fobs in the app. A new family's first fob is free; another fob, or a replacement, is paid for in the app before it shows up here. To issue one, type the number printed on it and hand it over; Keyfob sync, below, puts it on the doors. A lost fob comes off the doors at the next sync. Member fobs open the doors only while the season is open and the family has paid; board fobs work all year.</p>
 
   <div id="off-wrap" style="display:none">
     <h2>🚫 Lost fobs to turn off</h2>
@@ -166,7 +166,7 @@
   <div id="all-list"><div class="empty">Loading…</div></div>
 
   <h2>Access</h2>
-  <p class="lede" style="margin-top:-4px">Which doors each kind of fob opens, and when. The member app's Unlock follows the Member hours now; keyfobs will once Poolside updates the panels.</p>
+  <p class="lede" style="margin-top:-4px">Which doors each kind of fob opens, and when. The member app's Unlock and the Member fobs both follow the Member hours; Keyfob sync puts any change on the doors.</p>
   <div id="access-host"><div class="empty">Loading…</div></div>
 
   <h2>Keyfob sync</h2>
@@ -276,7 +276,7 @@ function paint() {
   document.getElementById('off-wrap').style.display = lost.length ? '' : 'none';
   document.getElementById('off-list').innerHTML = lost.length ? `<div class="qlist">${moreFold(lost, f => `
     <div class="qrow">
-      <div class="qwho"><b>${who(f)}</b> · fob ${escapeHtml(f.tail)}<div class="m">Reported lost ${escapeHtml(day(f.lost_at))}. Turn it off at the panel so it can't open the gate.</div></div>
+      <div class="qwho"><b>${who(f)}</b> · fob ${escapeHtml(f.tail)}<div class="m">Reported lost ${escapeHtml(day(f.lost_at))}. The next keyfob sync takes it off the doors; tap Turned off once it's gone.</div></div>
       <div class="qact"><button class="btn btn-sm" onclick="turnedOff('${escapeAttr(f.id)}')">Turned off</button></div>
     </div>`)}</div>` : '';
 
@@ -482,7 +482,7 @@ async function issue(id) {
   load();
 }
 async function turnedOff(id, ask) {
-  if (ask && !confirm('Mark this fob off? Turn it off at the panel too, so it stops opening the gate.')) return;
+  if (ask && !confirm('Mark this fob off? The next keyfob sync takes it off the doors, so it stops opening the gate.')) return;
   const r = await call('turned_off', { id });
   if (!r.ok) { toast(r.error || 'Could not update', 'err'); return; }
   toast('Marked off.');

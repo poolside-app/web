@@ -13,7 +13,10 @@
 //   syncPlan  what Poolside wants on each controller, for the fobs it
 //             manages: active fobs on their level's doors, dates and hours;
 //             turned-off and lost fobs off. Cards Poolside doesn't manage
-//             are never in the plan, so they're never touched.
+//             are never in the plan, so they're never touched. A Member fob
+//             is on only while the season is open and its family may use
+//             the gate (PLAN.md BE1, Doug 10/19: "when we close the season,
+//             we need to shut the keyfobs off…. NOT the board members").
 //   diffSync  what the gate computer read vs the plan: the writes to make
 //             (a card's keypad PIN is kept) and a plain summary.
 // Level i (in settings order) uses window 2+i when it has hours or isn't
@@ -29,7 +32,8 @@ export type CardHave = CardWant & { pin: number };
 export type ProfileWant = { from: string; to: string; days: boolean[]; start: string; end: string };
 export type SyncPlan = {
   controllers: Array<{ serial: number; address: string; name?: string }>;
-  cards: Array<{ card: number; controller: number; fob_id: string; family: string | null; level: string; want: CardWant | null }>;
+  // `why`: why a fob that's still active comes off ("the season is closed").
+  cards: Array<{ card: number; controller: number; fob_id: string; family: string | null; level: string; want: CardWant | null; why?: string }>;
   profiles: Array<{ controller: number; id: number; level: string; want: ProfileWant }>;
 };
 export type SyncHave = {
@@ -60,7 +64,11 @@ function doorValue(levels: Level[], level: Level): number {
   return needsWindow(level) ? 2 + levels.indexOf(level) : 1;
 }
 
-export function syncPlan(a: { fobs: Array<Record<string, unknown>>; config: AccessConfig; doorsRaw: unknown }): SyncPlan {
+// The season and the families who may use the gate (gateHouseholds), for
+// Member fobs. Left out, every active fob is on (the shape before BE1).
+export type SyncGate = { seasonOpen: boolean; season: number; members: Set<string> };
+
+export function syncPlan(a: { fobs: Array<Record<string, unknown>>; config: AccessConfig; doorsRaw: unknown; gate?: SyncGate }): SyncPlan {
   const doors = doorsFor(a.doorsRaw).filter(d => d.controller && d.door);
   const controllers: SyncPlan['controllers'] = [];
   // Named by its first door, for the board ("the Main Gate controller").
@@ -76,9 +84,13 @@ export function syncPlan(a: { fobs: Array<Record<string, unknown>>; config: Acce
   for (const f of fobs) {
     const card = Number(f.card_number);
     const level = byKey(f.level);
+    // Only the Member level depends on the season and on paying.
+    const why = f.status !== 'active' || level?.key !== 'member' || !a.gate ? undefined
+      : !a.gate.seasonOpen ? 'the season is closed'
+      : !a.gate.members.has(String(f.household_id)) ? `not paid for ${a.gate.season}` : undefined;
     for (const c of controllers) {
       let want: CardWant | null = null;
-      if (f.status === 'active' && level) {
+      if (f.status === 'active' && level && !why) {
         const v = doorValue(levels, level);
         const values = [1, 2, 3, 4].map(n => {
           const door = doors.find(d => d.controller === c.serial && d.door === n);
@@ -86,7 +98,7 @@ export function syncPlan(a: { fobs: Array<Record<string, unknown>>; config: Acce
         });
         if (values.some(Boolean)) want = { from: level.from ?? EARLIEST, to: level.until ?? LATEST, doors: values };
       }
-      wanted.set(`${card}@${c.serial}`, { card, controller: c.serial, fob_id: String(f.id), family: (f.family_name as string) ?? null, level: level?.key ?? 'member', want });
+      wanted.set(`${card}@${c.serial}`, { card, controller: c.serial, fob_id: String(f.id), family: (f.family_name as string) ?? null, level: level?.key ?? 'member', want, ...(why ? { why } : {}) });
     }
   }
 
@@ -127,7 +139,7 @@ export function diffSync(plan: SyncPlan, have: SyncHave): { ops: SyncOp[]; summa
       summary.change++; lines.push(`${who}: change on ${label(c.controller)} (${cap(c.level)}, ${dates(c.want.from, c.want.to)})`);
     } else if (!c.want && h) {
       ops.push({ op: 'delete', controller: c.controller, card: c.card });
-      summary.remove++; lines.push(`${who}: turn off on ${label(c.controller)}`);
+      summary.remove++; lines.push(`${who}: turn off on ${label(c.controller)}${c.why ? ` (${c.why})` : ''}`);
     } else if (c.want && h) {
       summary.unchanged++;
     }
@@ -154,6 +166,11 @@ export async function loadSyncPlan(sb: SupabaseClient, tenantId: string): Promis
     sb.from('gate_panels').select('doors').eq('tenant_id', tenantId).maybeSingle(),
   ]);
   const fam = new Map((hhs ?? []).map(h => [h.id as string, h.family_name as string]));
+  // Member fobs: the Season switch (Settings → Season) and who has paid.
+  const { gateHouseholds } = await import('./membership_status.ts');
+  const { sellingYear } = await import('./membership_year.ts');
+  const sv = (st?.value ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  const gate: SyncGate = { seasonOpen: sv.season?.open !== false, season: sellingYear(sv), members: await gateHouseholds(sb, tenantId) };
   return syncPlan({ fobs: (fobs ?? []).map(f => ({ ...f, family_name: fam.get(f.household_id as string) ?? null })),
-    config: accessConfig(st?.value, panel?.doors ?? []), doorsRaw: panel?.doors ?? [] });
+    config: accessConfig(st?.value, panel?.doors ?? []), doorsRaw: panel?.doors ?? [], gate });
 }

@@ -240,6 +240,22 @@ export const EMAIL_REGISTRY: EmailDef[] = [
       + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
   },
 
+  // A renewal paid by card or a Venmo the board confirms (PLAN.md BE2, Doug
+  // 10/19): it used to send nothing. A one-tap renewal has its own receipt.
+  {
+    key: 'renewal_confirmed', section: 'renewals',
+    label: 'Renewal confirmed',
+    when: 'When a family\'s renewal is paid, by card or by a Venmo the board confirms. A one-tap renewal gets the one-tap receipt instead.',
+    default_subject: 'You\'re renewed for {{season}} at {{tenant_name}}',
+    default_message: '<p>Hi {{family_name}},</p><p>Thanks for renewing! See you at the pool.</p>',
+    placeholders: ['family_name', 'tenant_name', 'season', 'amount'],
+    adds: 'the amount, how they paid, and the season it covers',
+    heading: v => `✅ You're renewed for ${e(v.season)}`,
+    details: v => ok((v.amount && v.amount !== '$0.00' ? `We got your ${e(v.amount)} payment by ${e(v.paid_by || 'card')}. ` : 'Nothing was due this time. ')
+      + `Your membership is paid through the ${e(v.season)} season.`)
+      + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
+  },
+
   // ─── Parties ───────────────────────────────────────────────────────────
   {
     key: 'party_request_received', section: 'parties',

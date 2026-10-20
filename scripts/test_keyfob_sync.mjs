@@ -83,6 +83,35 @@ if (K) {
   check('nothing to do when the doors match', K.diffSync({ controllers: [], cards: [], profiles: [] }, { cards: [], profiles: [] }).ops.length === 0);
 }
 
+// PLAN.md BE1 (Doug, 10/19): "when we close the season, we need to shut the
+// keyfobs off…. NOT the board members". A Member fob is on the doors only
+// while the season is open and its family may use the gate.
+console.log('BE1 · Member fobs follow the season and the family\'s payment');
+if (K) {
+  const plan = g => K.syncPlan({ fobs: FOBS, config: CONFIG, doorsRaw: DOORS, gate: g });
+  const card = (p, n, c) => p.cards.find(x => x.card === n && x.controller === c);
+  const paid = plan({ seasonOpen: true, season: 2027, members: new Set(['h1', 'h2']) });
+  check('a paid family\'s Member fob is on, as before', JSON.stringify(card(paid, 786777, 423141044).want) === JSON.stringify({ from: '2027-05-23', to: '2027-10-31', doors: [2, 0, 0, 0] }));
+  const unpaid = plan({ seasonOpen: true, season: 2027, members: new Set(['h2']) });
+  check('a family who hasn\'t paid: their Member fob comes off, with why', card(unpaid, 786777, 423141044).want === null && card(unpaid, 786777, 423150481).want === null && /not paid for 2027/.test(card(unpaid, 786777, 423141044).why || ''), JSON.stringify(card(unpaid, 786777, 423141044)));
+  const closed = plan({ seasonOpen: false, season: 2027, members: new Set(['h1', 'h2']) });
+  check('the season closed: every Member fob comes off, paid or not', card(closed, 786777, 423141044).want === null && /season is closed/.test(card(closed, 786777, 423141044).why || ''));
+  check('the board\'s fobs stay on when the season closes', JSON.stringify(card(closed, 800001, 423141044).want) === JSON.stringify({ from: '2020-01-01', to: '2099-12-31', doors: [1, 1, 0, 0] }));
+  check('and every level but Member ignores payment (staff, board)', JSON.stringify(card(plan({ seasonOpen: false, season: 2027, members: new Set() }), 800001, 423150481).want.doors) === '[1,1,1,1]');
+  const have = { cards: [{ card: 786777, controller: 423141044, have: { from: '2027-05-23', to: '2027-10-31', doors: [2, 0, 0, 0], pin: 0 } }, { card: 786777, controller: 423150481, have: null }], profiles: [] };
+  const d = K.diffSync({ ...closed, cards: closed.cards.filter(c => c.card === 786777), profiles: [] }, have);
+  check('the check says why a fob is coming off', d.ops.some(o => o.op === 'delete' && o.card === 786777) && d.lines.some(l => /Garcia/.test(l) && /season is closed/.test(l)), JSON.stringify(d.lines));
+  const ks = read('supabase/functions/_shared/keyfob_sync.ts');
+  check('the real plan uses the Season switch and who may use the gate', /loadSyncPlan[\s\S]*gateHouseholds\(/.test(ks) && /loadSyncPlan[\s\S]*open !== false/.test(ks));
+  const ms = read('supabase/functions/_shared/membership_status.ts');
+  const gh = between(ms, 'export async function gateHouseholds', '\n}\n');
+  check('who may use the gate: the app Unlock\'s rule (active, dues paid, a member for the season)', /dues_paid_for_year/.test(gh) && /active/.test(gh) && /memberStatus\(/.test(gh) && /payment_plans/.test(gh), gh.slice(0, 200));
+  const ts = read('supabase/functions/tenant_settings/index.ts');
+  check('opening or closing the season gives the gate person a to-do when the nightly sync is off', /keyfob\.season/.test(ts) && /auto_keyfob_sync/.test(ts));
+  check('that to-do is the Facilities Director\'s', /'keyfob\.season': 'gate'/.test(read('supabase/functions/_shared/positions.ts')));
+  check('sending the changes clears it', /keyfob\.season/.test(read('supabase/functions/gate_bridge/index.ts')));
+}
+
 console.log('AS4 · the wiring');
 const mig = readdirSync(new URL('supabase/migrations/', root)).filter(f => /keyfob_sync/.test(f)).map(f => read(`supabase/migrations/${f}`)).join('\n');
 check('sync jobs are kept (check or send, their plan and result), privately', /create table if not exists public\.keyfob_syncs/i.test(mig) && /check \(kind in \('check', 'send'\)\)/i.test(mig) && /keyfob_syncs enable row level security/i.test(mig));
