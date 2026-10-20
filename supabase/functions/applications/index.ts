@@ -348,9 +348,12 @@ Deno.serve(async (req) => {
     if (!cronSecret || got !== cronSecret) {
       return jsonResponse({ ok: false, error: 'Forbidden' }, 403);
     }
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    // 24 hours, as long as a Stripe checkout page stays open (PLAN.md BG4).
+    // It was 60 minutes, but Stripe retries a failed confirmation for days,
+    // so a slow one could land on a signup already deleted.
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: abandoned } = await sb.from('applications')
-      .select('id, tenant_id, family_name, primary_email, payment_method, created_at')
+      .select('id, tenant_id, family_name, primary_email, payment_method, created_at, stripe_session_id')
       .in('payment_method', ['stripe', 'stripe_plan'])
       .eq('payment_status', 'unpaid')
       .eq('status', 'pending')
@@ -362,9 +365,44 @@ Deno.serve(async (req) => {
       .or('claim_source.is.null,claim_source.neq.csv_import')
       .limit(500);
 
-    let deleted = 0;
+    // Ask Stripe before deleting: a checkout it says was paid is kept for
+    // the confirmation still on its way (PLAN.md BG4).
+    const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY');
+    const accounts = new Map<string, string | null>();
+    async function stripeSaysPaid(a: Record<string, unknown>): Promise<boolean | null> {
+      let sid = (a.stripe_session_id as string | null) ?? null;
+      if (!sid && a.payment_method === 'stripe_plan') {
+        const { data: plan } = await sb.from('payment_plans').select('id').eq('application_id', a.id as string)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (plan) {
+          const { data: first } = await sb.from('payment_plan_installments').select('stripe_session_id')
+            .eq('plan_id', plan.id).eq('sequence', 1).maybeSingle();
+          sid = (first?.stripe_session_id as string | null) ?? null;
+        }
+      }
+      if (!sid || !sid.startsWith('cs_')) return false;    // never reached Stripe, or a test checkout
+      if (!STRIPE_KEY) return null;
+      const tid = a.tenant_id as string;
+      if (!accounts.has(tid)) {
+        const { data: t } = await sb.from('tenants').select('stripe_account_id').eq('id', tid).maybeSingle();
+        accounts.set(tid, (t?.stripe_account_id as string) ?? null);
+      }
+      const acct = accounts.get(tid);
+      try {
+        const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sid)}`, {
+          headers: { Authorization: `Bearer ${STRIPE_KEY}`, ...(acct ? { 'Stripe-Account': acct } : {}) },
+        });
+        if (!r.ok) return null;
+        const cs = await r.json();
+        return cs.payment_status === 'paid' || cs.status === 'complete';
+      } catch { return null; }
+    }
+
+    let deleted = 0, kept = 0;
     for (const a of (abandoned ?? [])) {
       try {
+        const paid = await stripeSaysPaid(a as Record<string, unknown>);
+        if (paid !== false) { kept++; continue; }     // paid, or Stripe couldn't say: try again next run
         await sb.from('audit_log').insert({
           tenant_id: a.tenant_id,
           kind: 'application.auto_abandoned',
@@ -450,7 +488,7 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({
-      ok: true, deleted, orphaned, orphaned_renewals: orphanedRenewals,
+      ok: true, deleted, kept, orphaned, orphaned_renewals: orphanedRenewals,
       scanned: (abandoned ?? []).length,
     });
   }
@@ -666,6 +704,16 @@ Deno.serve(async (req) => {
     if (Array.isArray(body.children) && (body.children as unknown[]).length > MAX_CHILDREN_PER_HOUSEHOLD) {
       return jsonResponse({ ok: false, error: `Maximum ${MAX_CHILDREN_PER_HOUSEHOLD} children per household.` }, 400);
     }
+    // A household holds 8 people (the database's fn_household_member_cap).
+    // Doug, 10/20: keep 8. Before, a family of 10 could sign up and pay, and
+    // the 9th and 10th were quietly dropped at approval (PLAN.md BG4).
+    const MAX_PEOPLE_PER_HOUSEHOLD = 8;
+    {
+      const named = (arr: unknown) => Array.isArray(arr) ? (arr as Array<Record<string, unknown>>).filter(p => String(p?.name ?? '').trim()).length : 0;
+      if (named(body.adults) + named(body.children) > MAX_PEOPLE_PER_HOUSEHOLD) {
+        return jsonResponse({ ok: false, error: 'Up to 8 people per membership. Ask the board about larger families.' }, 400);
+      }
+    }
 
     // Validate per-adult shape if provided. Adults must each have a name; phone normalization happens here.
     const adults_json: Array<Record<string, unknown>> = [];
@@ -708,12 +756,17 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Accepted policies, by the club's own list (PLAN.md BG4). Before, only
+    // five fixed names were recorded, so a policy the board added was never
+    // saved and deleting one marked every later signup "not accepted".
     const waivers = (body.waivers_accepted ?? body.waivers ?? {}) as Record<string, unknown>;
+    const { data: clubPolicies } = await sb.from('policies')
+      .select('slug, required_for_apply').eq('tenant_id', tenant.id).eq('active', true);
     const waivers_accepted: Record<string, boolean> = {};
-    for (const k of ['rules','guest','party','sitter','waiver']) {
-      waivers_accepted[k] = waivers[k] === true;
-    }
-    const allWaiversAccepted = Object.values(waivers_accepted).every(Boolean);
+    for (const p of clubPolicies ?? []) waivers_accepted[p.slug as string] = waivers[p.slug as string] === true;
+    const allWaiversAccepted = (clubPolicies ?? [])
+      .filter(p => p.required_for_apply !== false)
+      .every(p => waivers_accepted[p.slug as string]);
 
     const sigPrimary  = typeof body.signature_primary  === 'string' ? String(body.signature_primary).slice(0, 200000)  : null;
     const sigGuardian = typeof body.signature_guardian === 'string' ? String(body.signature_guardian).slice(0, 200000) : null;
@@ -726,6 +779,15 @@ Deno.serve(async (req) => {
       .select('value').eq('tenant_id', tenant.id).maybeSingle();
     const { sellingYear } = await import('../_shared/membership_year.ts');
     const membership_year = sellingYear(yearSettings?.value);
+
+    // The level has to cover the family (PLAN.md BG4): a card signup is
+    // approved with nobody looking.
+    {
+      const { tierFitError } = await import('../_shared/tier_fit.ts');
+      const fitErr = tierFitError((yearSettings?.value as Record<string, unknown> | undefined)?.membership_tiers,
+        strOrNull(body.tier_slug), adults_json.length + children_json.length);
+      if (fitErr) return jsonResponse({ ok: false, error: fitErr }, 400);
+    }
 
     const appData: Record<string, unknown> = {
       tenant_id: tenant.id,
@@ -1095,14 +1157,19 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
     const { data: app } = await sb.from('applications')
-      .select('id, tenant_id, status, payment_status, paid_at, primary_email, household_id')
+      .select('id, tenant_id, status, payment_status, paid_at, plan_started_at, primary_email, household_id')
       .eq('id', id).maybeSingle();
     if (!app)                                              return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status !== 'paid' && app.payment_status !== 'pending') {
       return jsonResponse({ ok: false, error: 'Payment not complete yet — refresh in a moment' }, 409);
     }
-    if (!app.paid_at)                                      return jsonResponse({ ok: false, error: 'Payment timestamp missing' }, 409);
-    const ageSec = (Date.now() - new Date(app.paid_at as string).getTime()) / 1000;
+    // A plan family isn't "paid" until the plan is: the plan's start is
+    // their payment moment (PLAN.md BG4). Before, they got no Sign in button.
+    const paidAt = (app.paid_at ?? app.plan_started_at) as string | null;
+    if (!paidAt) {
+      return jsonResponse({ ok: false, retry: true, error: 'Almost ready — retry in a few seconds' }, 425);
+    }
+    const ageSec = (Date.now() - new Date(paidAt).getTime()) / 1000;
     if (ageSec > 600) {
       return jsonResponse({ ok: false, error: 'Sign-in window expired — use the link in your welcome email' }, 410);
     }
@@ -1789,7 +1856,9 @@ Deno.serve(async (req) => {
     // immediately without the magic-link request dance.
     let welcome_dev_link: string | null = null;
     let welcome_sent = false;
-    if (app.primary_email) {
+    // The welcome goes by email when there's an address, and by text when
+    // there's a phone; a phone-only family still hears (PLAN.md BG4).
+    if (app.primary_email || app.primary_phone) {
       const tok = randomToken();
       const tokHash = await sha256Hex(tok);
       const expIso = new Date(Date.now() + 60 * 60 * 24 * 1000 * 7).toISOString();  // 7 days
@@ -1837,7 +1906,7 @@ Deno.serve(async (req) => {
       // the legal-evidence PDF (frozen at submit time) here so it still
       // reaches the family.
       let welcomeAttachments: Array<{ filename: string; content: string; contentType?: string }> | undefined;
-      if ((app.payment_status === 'paid' && app.payment_method === 'stripe') || onPlan) {
+      if (app.primary_email && ((app.payment_status === 'paid' && app.payment_method === 'stripe') || onPlan)) {
         try {
           const { loadApplicationForPdf } = await import('../_shared/sync_application.ts');
           const { renderApplicationPdf } = await import('../_shared/application_pdf.ts');
@@ -1858,7 +1927,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      try {
+      if (app.primary_email) try {
         const { renderAndSend } = await import('../_shared/email_template.ts');
         const r = await renderAndSend(sb, {
           tenantId: TID, templateKey, to: app.primary_email,
@@ -1881,7 +1950,7 @@ Deno.serve(async (req) => {
         });
         welcome_sent = r.sent;
       } catch { /* fall through to dev mode */ }
-      if (!welcome_sent) welcome_dev_link = verifyLink;
+      if (app.primary_email && !welcome_sent) welcome_dev_link = verifyLink;
 
       // Text them as well as emailing. Approval is the one moment a family
       // is actively waiting to hear back, and club email lands in spam or
@@ -1918,7 +1987,7 @@ Deno.serve(async (req) => {
         application_id: id, tenant_id: TID,
         kind: 'welcome_sent',
         body: [
-          welcome_sent ? 'email via Resend' : 'dev mode (link returned)',
+          welcome_sent ? 'email via Resend' : app.primary_email ? 'email not sent (link returned to the board)' : 'no email on file',
           welcome_sms_sent ? 'sms via Twilio' : null,
         ].filter(Boolean).join(' + '),
         actor_id: decided_by,

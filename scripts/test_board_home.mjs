@@ -86,7 +86,7 @@ if (bh) {
   const verifyPay = appsSrc.slice(appsSrc.indexOf("if (action === 'verify_payment')"), appsSrc.indexOf("if (action === 'verify_payment')") + 3500);
   const markPaid = read('supabase/functions/payments_admin/index.ts').slice(read('supabase/functions/payments_admin/index.ts').indexOf("action === 'mark_paid'"), read('supabase/functions/payments_admin/index.ts').indexOf("action === 'bulk_mark_paid'"));
   check('AF1b: in test mode, a Venmo the board approves (or marks paid) counts as a test payment',
-    /export async function clubInTestMode/.test(tp) && /clubInTestMode\(/.test(approveVenmo) && /clubInTestMode\(/.test(verifyPay) && /clubInTestMode\(/.test(markPaid) && /SIM_NOTE/.test(markPaid));
+    /export async function clubInTestMode/.test(tp) && /clubInTestMode\(/.test(approveVenmo) && /clubInTestMode\(/.test(verifyPay) && ((/clubInTestMode\(/.test(markPaid) && /SIM_NOTE/.test(markPaid)) || /forward\('applications', \{ action: 'verify_payment'/.test(markPaid)))  // since BG3 Mark paid runs verify_payment;
   check('AF1: the dues bar on other pages counts them the same way', /paid \+ tests/.test(read('js/admin-flags.js')));
   check('AF2: tapping anywhere on a to-do opens it; Mark done stays separate', /data-href=/.test(page) && /closest\('a, button'\)/.test(page) && /location\.href = /.test(page));
   const flags = read('js/admin-flags.js');

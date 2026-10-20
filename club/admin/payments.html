@@ -819,13 +819,14 @@ const Tiers = (() => {
   let EXTRA = [];   // per row: the fields this screen doesn't show
   function paint(tiers) {
     const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
-    EXTRA = rows.map(t => { const { slug, label, price_cents, description, ...rest } = t || {}; return rest; });
+    EXTRA = rows.map(t => { const { slug, label, price_cents, description, max_people, ...rest } = t || {}; return rest; });
     document.getElementById('tiers-list').innerHTML = rows.map((t, i) => `
       <div class="tier-row" data-i="${i}" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)">
         <div><label style="${lab}">Name families see</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="${box}"></div>
         <div><label style="${lab}">Price per season ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}" style="${box}"></div>
         <button type="button" onclick="this.parentElement.remove()" title="Remove this level" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">×</button>
         <div style="grid-column:1/-1"><label style="${lab}">Description <span class="opt">(optional)</span></label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="Who this level covers" style="${box}"></div>
+        <div style="grid-column:1/-1"><label style="${lab}">Covers up to (people) <span class="opt">(blank for any size; Single is 1)</span></label><input data-field="max_people" type="number" min="1" max="8" step="1" value="${Number(t.max_people) > 0 ? Number(t.max_people) : ''}" placeholder="Any" style="${box};max-width:140px"></div>
         <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
       </div>`).join('');
   }
@@ -842,6 +843,8 @@ const Tiers = (() => {
         slug, label,
         price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0,
         description: get('description').trim() || null,
+        // Signup only offers a level that covers the family (PLAN.md BG4).
+        max_people: parseInt(get('max_people'), 10) > 0 ? parseInt(get('max_people'), 10) : null,
       });
     });
     return out;

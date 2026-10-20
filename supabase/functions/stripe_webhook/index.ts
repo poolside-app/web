@@ -103,6 +103,21 @@ async function rememberCardForAutoRenew(
   }).eq('id', hh.id);
 }
 
+// A paid signup the automatic approval refused (the club is full, a phone
+// is already on another family): the board gets a to-do with the reason, so
+// a family who paid is never left waiting unseen (PLAN.md BG4).
+async function approveFailedTask(sb: ReturnType<typeof createClient>, tenantId: string, appId: string, reason: string, howPaid: string) {
+  const { data: app } = await sb.from('applications').select('family_name, status').eq('id', appId).maybeSingle();
+  if (!app || app.status === 'approved') return;
+  const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+  await enqueueAdminTask(sb, {
+    tenant_id: tenantId, target_scopes: ['applications'], kind: 'application.approve_failed',
+    summary: `The ${app.family_name ?? 'family'} ${howPaid} but couldn't be approved: ${reason || 'unknown reason'}. Open the signup to sort it out.`,
+    link_url: '/club/admin/members.html#applications', source_kind: 'application', source_id: appId,
+    push_title: '⚠ Paid, not approved', push_body: `${app.family_name ?? 'A family'} paid but couldn't be approved: ${reason || 'unknown reason'}.`,
+  });
+}
+
 // A refund or chargeback on anything but a signup (PLAN.md BG3): find what
 // it was for and give the Treasurer a to-do and pop-up. To-do only, Doug
 // 10/20: the board decides what to undo.
@@ -265,6 +280,7 @@ Deno.serve(async (req) => {
       const { data: app } = await sb.from('applications')
         .select('id, status, household_id')
         .eq('id', md.application_id).maybeSingle();
+      let approveError = '';
       if (app?.status === 'pending') {
         try {
           const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
@@ -285,9 +301,12 @@ Deno.serve(async (req) => {
           if (!r.ok) {
             const t = await r.text().catch(() => '');
             console.error('auto-approve failed:', r.status, t.slice(0, 200));
+            try { approveError = String(JSON.parse(t).error || '').slice(0, 200); } catch { approveError = t.slice(0, 200); }
+            approveError = approveError || `error ${r.status}`;
           }
         } catch (e) {
           console.error('auto-approve fetch failed:', (e as Error).message);
+          approveError = 'the approval step didn\'t answer';
         }
       }
 
@@ -311,6 +330,8 @@ Deno.serve(async (req) => {
       await sb.from('admin_tasks')
         .update({ completed_at: now })
         .eq('source_kind', 'application').eq('source_id', md.application_id).is('completed_at', null);
+      // …then, if approval failed, the one to-do that matters (PLAN.md BG4).
+      if (approveError) await approveFailedTask(sb, tenantId, md.application_id, approveError, 'paid by card');
 
       // Reflect Stripe verification in the Drive sheet (best-effort, write-once).
       const GOOGLE_ID  = Deno.env.get('GOOGLE_CLIENT_ID');
@@ -398,16 +419,26 @@ Deno.serve(async (req) => {
           await sb.from('applications').update({
             payment_status: 'pending', payment_method: 'stripe_plan', stripe_session_id: sessionId,
             stripe_payment_intent_id: piId,
+            // The plan's start is this family's payment moment: the "You're
+            // in!" page's Sign in button reads it (PLAN.md BG4).
+            plan_started_at: now,
           }).eq('id', md.application_id).eq('tenant_id', tenantId);
           const { data: app } = await sb.from('applications').select('id, status').eq('id', md.application_id).maybeSingle();
           if (app?.status === 'pending') {
+            let planApproveError = '';
             try {
-              await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
+              const r = await fetch(`${SUPABASE_URL}/functions/v1/applications`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json', 'x-poolside-internal': SERVICE_ROLE },
                 body: JSON.stringify({ action: 'approve', id: md.application_id, tenant_id: tenantId }),
               });
-            } catch (e) { console.error('plan auto-approve failed:', (e as Error).message); }
+              if (!r.ok) {
+                const t = await r.text().catch(() => '');
+                try { planApproveError = String(JSON.parse(t).error || ''); } catch { planApproveError = t.slice(0, 200); }
+                planApproveError = planApproveError || `error ${r.status}`;
+              }
+            } catch (e) { console.error('plan auto-approve failed:', (e as Error).message); planApproveError = 'the approval step didn\'t answer'; }
+            if (planApproveError) await approveFailedTask(sb, tenantId, md.application_id, planApproveError, 'started a payment plan');
           }
           const { data: appAfter } = await sb.from('applications').select('household_id').eq('id', md.application_id).maybeSingle();
           if (appAfter?.household_id) {
@@ -574,9 +605,28 @@ Deno.serve(async (req) => {
     // Idempotent: re-deliveries hit `payment_status === 'paid'` and no-op.
     if (kind === 'party_booking' && md.party_id && tenantId) {
       const { data: party } = await sb.from('party_bookings')
-        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id, pool_date')
+        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id, pool_date, admin_notes')
         .eq('id', md.party_id).eq('tenant_id', tenantId).maybeSingle();
-      if (party && party.payment_status !== 'paid') {
+      // Paid after the party was taken away (PLAN.md BG4): released for not
+      // being paid in time → book it again if the time is still free;
+      // canceled or turned down → the money needs to go back.
+      const released = party?.status === 'cancelled' && /^Released:/.test(String(party?.admin_notes ?? ''));
+      const gone = !!party && !released && (party.status === 'cancelled' || party.status === 'rejected');
+      if (party && party.payment_status !== 'paid' && gone) {
+        await sb.from('party_bookings').update({
+          payment_status: 'paid', payment_method: 'stripe', stripe_payment_intent_id: piAll,
+          paid_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }).eq('id', md.party_id).eq('tenant_id', tenantId);
+        try {
+          const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+          await enqueueAdminTask(sb, {
+            tenant_id: tenantId, target_scopes: ['parties', 'payments'], kind: 'party.refund_needed',
+            summary: `⚠ Refund needed: ${party.title} was paid by card after it was ${party.status === 'rejected' ? 'turned down' : 'canceled'}`,
+            link_url: '/club/admin/parties.html', source_kind: 'party_booking', source_id: party.id as string,
+            push_title: '⚠ Party refund needed', push_body: `${party.title} was paid after it was ${party.status === 'rejected' ? 'turned down' : 'canceled'}. Refund it in Stripe.`,
+          });
+        } catch { /* best-effort */ }
+      } else if (party && party.payment_status !== 'paid') {
         // Two parties can share a day but not a time (PLAN.md O): check
         // another booking didn't take this time between approval and now.
         const { partySettings, bookedClashes } = await import('../_shared/party_slots.ts');
@@ -627,6 +677,8 @@ Deno.serve(async (req) => {
             payment_status: 'paid', payment_method: 'stripe', stripe_payment_intent_id: piAll,
             paid_at: new Date().toISOString(), verified_at: new Date().toISOString(),
             event_id: eventId, updated_at: new Date().toISOString(),
+            // Released for not being paid in time, then paid: it's booked again.
+            ...(released ? { status: 'approved', admin_notes: `${party.admin_notes} Paid by card afterward; booked again.` } : {}),
           }).eq('id', md.party_id).eq('tenant_id', tenantId);
           await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
             .eq('tenant_id', tenantId).eq('source_kind', 'party_booking').eq('source_id', md.party_id)

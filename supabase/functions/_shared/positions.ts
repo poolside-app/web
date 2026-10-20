@@ -61,6 +61,7 @@ export const SCREENS: Record<string, string> = {
  *  keep their old routing (an assigned person, or permissions). */
 export const TASK_NOTICE: Record<string, Notice> = {
   'application.submitted': 'signups',
+  'application.approve_failed': 'signups',
   'household_member.member_added': 'signups',
   'household.transfer_primary': 'signups',
   'venmo.claim': 'payments',

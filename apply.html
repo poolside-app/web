@@ -571,7 +571,9 @@ function paintTiers() {
     const slug = t.slug || ('tier_' + i);
     const label = t.label || slug;
     const price = (typeof t.price_cents === 'number' && t.price_cents > 0) ? '$' + (t.price_cents / 100).toFixed(2) + '/yr' : 'Contact for pricing';
-    const desc = t.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(t.description)}</div>` : '';
+    const max = Number(t.max_people);
+    const descText = [t.description, max > 0 ? `Covers up to ${max} ${max === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ');
+    const desc = descText ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(descText)}</div>` : '';
     const checked = i === 0 ? 'checked' : '';
     return `
       <label class="pay-opt" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
@@ -723,6 +725,22 @@ function applyTierDefault() {
   const people = (parseInt(document.getElementById('acount').value, 10) || 1)
     + (parseInt(document.getElementById('ccount').value, 10) || 0);
   const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  // A level that covers fewer people than the family can't be picked
+  // (PLAN.md BG4): a card signup is approved with nobody looking. The
+  // server checks it too.
+  radios.forEach(r => {
+    const t = tiers.find(x => x.slug === r.value);
+    const max = Number(t && t.max_people);
+    const fits = !(max > 0) || people <= max;
+    r.disabled = !fits;
+    const lab = r.closest('label');
+    if (lab) { lab.style.opacity = fits ? '' : '.5'; lab.style.cursor = fits ? 'pointer' : 'not-allowed'; }
+  });
+  const cur = radios.find(r => r.checked);
+  if (cur && cur.disabled) {
+    const ok = radios.find(r => !r.disabled);
+    if (ok) { ok.checked = true; paintPlanLabel(); paintPaymentChoices(); refreshQuote(); }
+  }
   const find = re => tiers.find(t => re.test(`${t.slug || ''} ${t.label || ''}`));
   const want = people >= 2 ? find(/family|household/i) : find(/single|individual|one adult/i);
   if (!TIER_TOUCHED && want) {
@@ -770,7 +788,28 @@ function syncInvite() {
 }
 
 // Step 2 — dynamic adult/child rows
+// A membership holds up to 8 people (PLAN.md BG4, Doug 10/20: keep 8; the
+// database's household limit). Counts that would go over are greyed out.
+const MAX_PEOPLE = 8;
+function limitFamily() {
+  const aSel = document.getElementById('acount'), cSel = document.getElementById('ccount');
+  const a = parseInt(aSel.value, 10) || 1;
+  let c = parseInt(cSel.value, 10) || 0;
+  if (a + c > MAX_PEOPLE) { c = Math.max(0, MAX_PEOPLE - a); cSel.value = String(c); }
+  [...aSel.options].forEach(o => { o.disabled = (parseInt(o.value, 10) || 0) + c > MAX_PEOPLE; });
+  [...cSel.options].forEach(o => { o.disabled = a + (parseInt(o.value, 10) || 0) > MAX_PEOPLE; });
+  let note = document.getElementById('family-max-note');
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'family-max-note';
+    note.style.cssText = 'font-size:12.5px;color:var(--muted);margin:6px 0 0';
+    cSel.closest('.row2').insertAdjacentElement('afterend', note);
+  }
+  note.textContent = a + c >= MAX_PEOPLE ? 'Up to 8 people per membership. Ask the board about larger families.' : '';
+}
+
 function rebuildPeople() {
+  limitFamily();
   const a = parseInt(document.getElementById('acount').value, 10) || 1;
   const c = parseInt(document.getElementById('ccount').value, 10) || 0;
   const aBox = document.getElementById('adultsBox');
