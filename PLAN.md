@@ -900,7 +900,17 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
-### BC. Make Venmo easier to check (Doug, 10/19) — ideas only; Doug: "dont modify anything with it yet"
+### BC. Make Venmo easier to check (Doug, 10/19) — ✅ BC1 and the batch approval done 10/19; BC2, BC3 are ideas only
+Doug, after seeing the example: "go... create the auto load family name, amount, and code... then put that code into the poolside app as well.. batch approval would be great!"
+
+BC1 as built:
+- **Every Venmo payment gets a 4-character code** (letters and numbers that can't be confused, like K7Q2). A database default, `public.venmo_code()`, fills it on signups, parties and keyfobs.
+- **The "Pay with Venmo" button fills in the rest.** It opens Venmo to the club's handle with the amount and a note like "Cabana Club 2027 dues - Frevele - #K7Q2" (the club's app name, what it's for, the family, the code). `_shared/venmo.ts` and `js/venmo.js` build the same note and link.
+  - Signup: after submitting, a "Pay $600 with Venmo" button plus a QR code for computers, and the same link in the "application received" email. Before submitting, step 4 says the button comes after you submit, because the code doesn't exist until then.
+  - Parties and keyfobs in the member app: a "Pay with Venmo" button next to "I paid by Venmo", then the family taps "I paid". A family paying for several fobs in one Venmo gets every fob's code in the note ("#M3PX #W9HC").
+- **The code shows on the board's screens:** Signups (the "💸 Venmo · #K7Q2" pill, and "with #K7Q2 in the note" in the signup's Venmo check), the party's banner, and the keyfob's Venmo note.
+- **Batch approval: Money → Payments → "💸 Venmo to check"** (shows only when something is waiting). Venmo signups not yet paid, approved parties not yet paid, and keyfobs the family says they sent, with family, what it's for, amount and code, and boxes to tick; "says they sent it" ones first. A family's fobs are one line. "✓ Confirm selected" runs the same step as each one's own button, one at a time, and lists any that didn't go through: approve and verify a new signup, verify an approved one, book a party, or confirm the keyfobs. `payments_admin` `venmo_waiting` lists them. `node scripts/test_venmo_codes.mjs`.
+- Also fixed: on a phone, an unpaid party's long status ("Approved — pay to confirm") squeezed the party's text to one word a line. The status now takes at most half the row.
 Doug: "is there a way to streamline this process? is there a way to autoload a note in the venmo payment? anything would help with venmo".
 - Venmo has no public way for a club's app to see payments. Pay-with-Venmo through PayPal checkout would be automatic but costs about card fees, which defeats the point of Venmo.
 - **BC1. A matching note on every Venmo payment.** Every "Pay with Venmo" button (signup, parties, keyfobs) opens Venmo with the amount and a short note already filled in: "BECC 2027 dues · Frevele · #K7Q2". Poolside shows the same code next to the family on the board's Venmo checks, so the treasurer looks for the code and taps once.

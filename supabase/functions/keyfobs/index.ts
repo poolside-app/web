@@ -48,7 +48,7 @@ const cors = {
 const j = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
 
-const FIELDS = 'id, household_id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, replaces_id, check_note, requested_at, issued_at, lost_at, turned_off_at, paid_at, level';
+const FIELDS = 'id, household_id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, replaces_id, check_note, requested_at, issued_at, lost_at, turned_off_at, paid_at, level, venmo_code';
 type Sb = ReturnType<typeof createClient>;
 
 async function claims(token: string): Promise<Record<string, unknown> | null> {

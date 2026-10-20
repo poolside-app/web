@@ -84,7 +84,11 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     heading: () => '📋 We got your application',
     details: (v, x) => box(`<b>Family:</b> ${e(v.family_name)}<br><b>Membership:</b> ${e(v.tier_label)}${v.tier_price ? ` (${e(v.tier_price)})` : ''}<br><b>Adults:</b> ${e(v.num_adults)} · <b>Children:</b> ${e(v.num_kids)}`)
       + (x.pay === 'venmo'
-        ? box(`<b>Next step: send your dues by Venmo</b><br>Send ${e(v.tier_price)} to <b>@${e(v.venmo_handle)}</b>, with your family name in the note. Once the board sees it, you'll get an email with your sign-in link.`, 'warn')
+        ? (v.venmo_link
+          // PLAN.md BC1: the button fills in the amount and a note with their code.
+          ? box(`<b>Next step: send your dues by Venmo</b><br>Tap the button to pay ${e(v.tier_price)} to <b>@${e(v.venmo_handle)}</b>. The amount and a note with your code, <b>#${e(v.venmo_code)}</b>, are filled in for you. Once the board sees it, you'll get an email with your sign-in link.`, 'warn')
+            + button('Pay with Venmo', v.venmo_link)
+          : box(`<b>Next step: send your dues by Venmo</b><br>Send ${e(v.tier_price)} to <b>@${e(v.venmo_handle)}</b>, with your family name in the note. Once the board sees it, you'll get an email with your sign-in link.`, 'warn'))
         : para('A board member will be in touch about payment. Once that\'s sorted, you\'ll get an email with your sign-in link.'))
       + signedCopy(x),
     variants: [
@@ -120,7 +124,9 @@ export const EMAIL_REGISTRY: EmailDef[] = [
         free: ok('✓ Your discount covered the whole price, so there\'s nothing to pay. Your membership is active.'),
         venmo_verified: ok('✓ The board verified your Venmo payment. Your dues are paid in full.'),
         plan: ok('✓ Your payment plan is set up. Each payment is charged on its date, with a receipt each time. Sign in to see what\'s paid and what\'s next.'),
-        unpaid_venmo: box(`<b>Last step: send your dues by Venmo</b><br>Send them to <b>@${e(v.venmo_handle)}</b>. We'll email you when the board sees it.`, 'warn'),
+        unpaid_venmo: v.venmo_link
+          ? box(`<b>Last step: send your dues by Venmo</b><br>Tap the button to pay <b>@${e(v.venmo_handle)}</b>. The amount and your code, <b>#${e(v.venmo_code)}</b>, are filled in. We'll email you when the board sees it.`, 'warn') + button('Pay with Venmo', v.venmo_link)
+          : box(`<b>Last step: send your dues by Venmo</b><br>Send them to <b>@${e(v.venmo_handle)}</b>. We'll email you when the board sees it.`, 'warn'),
         other: para('A board member will be in touch about payment.'),
       } as Record<string, string>)[String(x.pay ?? 'other')] ?? '';
       const signIn = x.noApp

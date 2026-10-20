@@ -104,7 +104,7 @@ function normalizePhoneE164(raw: string): string | null {
   return null;
 }
 
-const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, fob_review_note, fob_extra_count, fob_cents, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference';
+const FIELDS = 'id, tenant_id, family_name, membership_year, is_renewal, primary_name, primary_email, primary_phone, address, city, zip, num_adults, num_kids, body, status, admin_notes, decided_at, decided_by, household_id, payment_method, payment_status, paid_at, verified_at, verified_by, reminder_count, last_reminder_at, stripe_session_id, is_new_member, need_new_fob, prior_fob_number, fob_review_note, fob_extra_count, fob_cents, alt_email, adults_json, children_json, waivers_accepted, accepted_at, signature_primary, signature_guardian, tier_slug, no_app_member, wants_auto_renew, claim_source, invited_at, claimed_at, created_at, updated_at, emergency_contact, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, payment_reference, venmo_code';
 
 /** Signups list: each plan family's plan status and how much is paid
  *  (PLAN.md AT2). Two small reads, only when the list has plan families. */
@@ -786,10 +786,10 @@ Deno.serve(async (req) => {
       appData.claimed_at = new Date().toISOString();
       ({ data, error } = await sb.from('applications')
         .update(appData).eq('id', claimAppId).eq('tenant_id', tenant.id)
-        .select('id').single());
+        .select('id, venmo_code').single());
     } else {
       ({ data, error } = await sb.from('applications')
-        .insert(appData).select('id').single());
+        .insert(appData).select('id, venmo_code').single());
     }
     if (error || !data) return jsonResponse({ ok: false, error: error?.message || 'Could not save application' }, 500);
     await audit(sb, tenant.id, null, 'public', 'application.submit', data.id,
@@ -800,6 +800,23 @@ Deno.serve(async (req) => {
     const { priceApplication } = await import('../_shared/membership_price.ts');
     const priced = await priceApplication(sb, data.id,
       body.discount_code != null && String(body.discount_code).trim() ? { code: String(body.discount_code) } : {});
+
+    // The "Pay with Venmo" button: the club's handle, what they owe and a
+    // note with this signup's code, all filled in (PLAN.md BC1).
+    let venmoPay: { code: string; note: string; link: string; amount_cents: number } | null = null;
+    if (payment_method === 'venmo') {
+      const { data: vs } = await sb.from('settings').select('value').eq('tenant_id', tenant.id).maybeSingle();
+      const vv = (vs?.value ?? {}) as Record<string, Record<string, unknown> | undefined>;
+      const handle = vv.payments?.venmo_handle as string | undefined;
+      const due = priced ? priced.amount_due_cents : 0;
+      const code = (data as { venmo_code?: string | null }).venmo_code;
+      if (handle && due > 0 && code) {
+        const { venmoNote, venmoLink } = await import('../_shared/venmo.ts');
+        const club = (vv.branding?.app_name as string | undefined) || (tenant.display_name as string);
+        const note = venmoNote({ club, what: `${membership_year} dues`, family: family_name, code });
+        venmoPay = { code, note, link: venmoLink({ handle, amountCents: due, note }), amount_cents: due };
+      }
+    }
 
     // ── Application routing (2026-05-22 redesign — Doug's ONE-CLICK ask) ─
     //   Stripe / stripe_plan : the webhook auto-approves on payment.
@@ -948,6 +965,8 @@ Deno.serve(async (req) => {
           num_adults: String(adults_json.length),
           num_kids:   String(children_json.length),
           venmo_handle: venmoHandle,
+          venmo_link: venmoPay?.link ?? '',
+          venmo_code: venmoPay?.code ?? '',
           first_amount: firstAmt,
           second_amount: secondAmt,
           final_due_date: finalDue,
@@ -996,6 +1015,7 @@ Deno.serve(async (req) => {
       tenant_display_name: tenant.display_name,
       // What to ask for (H5). amount_due_cents 0 means "Confirm, nothing to pay".
       price: priced ? publicPrice(priced) : null,
+      venmo: venmoPay,
     });
   }
 
@@ -1819,6 +1839,14 @@ Deno.serve(async (req) => {
             tenant_name: clubName,
             primary_name: app.primary_name,
             sign_in_link: verifyLink,
+            ...(await (async () => {
+              // Approved before the Venmo arrived: the same filled-in button (PLAN.md BC1).
+              if (!venmo || app.payment_method !== 'venmo' || app.payment_status === 'paid' || !app.venmo_code || !(Number(app.amount_due_cents) > 0)) return {};
+              const { venmoNote, venmoLink } = await import('../_shared/venmo.ts');
+              const br = ((settingsRow?.value as Record<string, unknown> | null)?.branding as Record<string, unknown> | undefined) ?? {};
+              const note = venmoNote({ club: (br.app_name as string) || clubName, what: `${app.membership_year ?? ''} dues`, family: app.family_name as string, code: app.venmo_code as string });
+              return { venmo_link: venmoLink({ handle: String(venmo), amountCents: Number(app.amount_due_cents), note }), venmo_code: app.venmo_code };
+            })()),
             venmo_handle: venmo ? String(venmo) : '',
             club_url: clubUrl,
           },

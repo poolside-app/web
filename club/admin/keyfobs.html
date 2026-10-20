@@ -285,7 +285,7 @@ function paint() {
       <div class="qwho"><b>${who(f)}</b> ${payChip(f)}
         <div class="m">${escapeHtml(REASON[f.reason] || f.reason)} · ${escapeHtml(day(f.requested_at))}${f.included ? ` · <button class="qlink" onclick="requirePayment('${escapeAttr(f.id)}')" title="Ask them to pay for it">Charge ${escapeHtml(money(DATA.settings.fee_cents))}</button>` : ''}${f.payment_status === 'none' ? ` · <button class="qlink" onclick="cancelRequest('${escapeAttr(f.id)}')" title="Cancel request">Cancel</button>` : ''}</div>
         ${f.check_note ? `<div class="note">⚠ ${escapeHtml(f.check_note)}</div>` : ''}
-        ${f.payment_status === 'pending_verify' ? `<div class="note">They say they sent ${escapeHtml(money(f.price_cents))} by Venmo. Check it came in before you hand it over; issuing it marks it paid.</div>` : ''}
+        ${f.payment_status === 'pending_verify' ? `<div class="note">They say they sent ${escapeHtml(money(f.price_cents))} by Venmo${f.venmo_code ? `, with <b>#${escapeHtml(f.venmo_code)}</b> in the note` : ''}. Check it came in before you hand it over; issuing it marks it paid.</div>` : ''}
       </div>
       <div class="qact">
         <input id="n-${escapeAttr(f.id)}" inputmode="numeric" autocomplete="off" placeholder="Fob number" aria-label="Number on the fob">

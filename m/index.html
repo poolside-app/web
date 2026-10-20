@@ -656,6 +656,7 @@
 <script src="/js/today.js" defer></script>
 <script src="/js/pool-weather.js"></script>
 <script src="/js/photo-shrink.js"></script>
+<script src="/js/venmo.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
 <div class="lightbox" id="lightbox" onclick="if (event.target === this) closeLightbox()">
@@ -953,6 +954,15 @@ async function submitPhoto() {
 function partyHours() { return Number(window.PUBLIC_DATA?.public_settings?.party_length_hours) || 4; }
 // The party fee and the card total (the card fee is always the member's,
 // PLAN.md O), and the times already taken on the chosen day.
+// "Pay with Venmo" with the amount, family and code filled in (PLAN.md BC1).
+// The code is what the board looks for in Venmo. '' when there's no handle.
+function venmoPayLink(what, cents, code) {
+  const pub = window.PUBLIC_DATA || {};
+  const handle = pub.public_settings?.payments?.venmo_handle;
+  if (!handle || !window.PoolsideVenmo) return '';
+  const club = pub.public_settings?.branding?.app_name || pub.tenant?.display_name || '';
+  return PoolsideVenmo.link({ handle, amountCents: cents, note: PoolsideVenmo.note({ club, what, family: ME_HOUSEHOLD?.family_name, code }) });
+}
 function partyRules() { return window.PUBLIC_DATA?.public_settings?.parties || { fee_cents: 0, auto_approve: false, hold_days: 2 }; }
 function partyCardTotal(fee) {
   const pay = window.PUBLIC_DATA?.public_settings?.payments || {};
@@ -1169,6 +1179,7 @@ async function refreshParties() {
       // Pay button shows when approved AND not yet paid AND not pending verify.
       const showPay = b.status === 'approved' && (b.payment_status === 'unpaid' || !b.payment_status);
       const priceLabel = b.price_cents ? `$${(b.price_cents / 100).toFixed(0)}` : '';
+      const venmoUrl = showPay && b.price_cents ? venmoPayLink('party', b.price_cents, b.venmo_code) : '';
       return `
         <div class="party-row">
           <div style="flex:1;min-width:0">
@@ -1177,12 +1188,16 @@ async function refreshParties() {
             ${b.admin_notes ? `<div class="pnote">📝 ${escapeHtml(b.admin_notes)}</div>` : ''}
             ${showPay ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
               ${b.price_cents ? `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff;border:0;border-radius:8px;cursor:pointer;font-weight:600" onclick="payPartyCard('${b.id}')">💳 Pay ${usd(partyCardTotal(b.price_cents))} by card</button>` : ''}
+              ${venmoUrl ? `<a class="btn" href="${escapeAttr(venmoUrl)}" target="_blank" rel="noopener" style="font-size:12px;padding:6px 12px;background:#3D95CE;color:#fff;border:0;border-radius:8px;font-weight:600;text-decoration:none;text-align:center">Pay ${usd(b.price_cents)} with Venmo</a>` : ''}
               <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:600" onclick="claimPartyPaid('${b.id}')">💵 I paid ${b.price_cents ? usd(b.price_cents) + ' ' : ''}by Venmo</button>
             </div>
+            ${venmoUrl && b.venmo_code ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px">Venmo opens with your code #${escapeHtml(b.venmo_code)} in the note. Then tap "I paid".</div>` : ''}
             ${b.decided_at ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px">Held until ${new Date(Date.parse(b.decided_at) + (partyRules().hold_days || 2) * 86400000).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}. Card books it right away; Venmo waits for the board to confirm.</div>` : ''}` : ''}
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <span class="pill ${statusClass}" style="white-space:nowrap">${escapeHtml(statusLabel)}</span>
+          <!-- At most half the row: a long status ("Approved — pay to confirm")
+               squeezed the party's own text to one word a line on a phone. -->
+          <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 8px;flex-shrink:1;max-width:48%">
+            <span class="pill ${statusClass}" style="text-align:center">${escapeHtml(statusLabel)}</span>
             ${cancellable ? `<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="cancelParty('${b.id}')">Cancel</button>` : ''}
           </div>
         </div>
@@ -1781,15 +1796,19 @@ function renderFobCard(kf) {
   }).join('');
   const due = unpaid.reduce((n, f) => n + Number(f.price_cents || 0), 0);
   const cardTotal = unpaid.length ? fobCardTotal(due) : 0;
+  // One Venmo for all of them, so the note carries every fob's code.
+  const fobCodes = unpaid.map(f => f.venmo_code).filter(Boolean);
+  const fobVenmo = unpaid.length && kf.venmo_handle ? venmoPayLink(unpaid.length === 1 ? 'keyfob' : 'keyfobs', due, fobCodes.join(' #')) : '';
   const payBox = unpaid.length ? `
     <div style="padding:12px;border-radius:12px;background:#fef3c7;margin:10px 0 4px;font-size:14px">
       <b>${unpaid.length === 1 ? (unpaid[0].reason === 'replacement' ? 'Replacement fob' : '1 new fob') : unpaid.length + ' new fobs'}: ${usd(due)} to pay</b>
       <div style="font-size:12.5px;color:#7c2d12;margin-top:2px">The board sets them up once they're paid.</div>
       <div style="margin-top:8px">
         <button class="btn" style="font-size:12.5px;padding:7px 12px;background:var(--blue);color:#fff;margin:0 6px 6px 0" onclick="payFobCard()">Pay ${usd(cardTotal)} by card</button>
+        ${fobVenmo ? `<a class="btn" href="${escapeAttr(fobVenmo)}" target="_blank" rel="noopener" style="font-size:12.5px;padding:7px 12px;background:#3D95CE;color:#fff;margin:0 6px 6px 0;text-decoration:none;text-align:center">Pay ${usd(due)} with Venmo</a>` : ''}
         ${kf.venmo_handle ? `<button class="btn btn-ghost" style="font-size:12.5px;padding:7px 12px;margin:0 0 6px" onclick="claimFobVenmo()">I sent ${usd(due)} by Venmo</button>` : ''}
       </div>
-      ${kf.venmo_handle ? `<div style="font-size:12px;color:#7c2d12">Venmo: @${escapeHtml(String(kf.venmo_handle).replace(/^@/, ''))}. Card adds the card fee.</div>` : ''}
+      ${kf.venmo_handle ? `<div style="font-size:12px;color:#7c2d12">Venmo: @${escapeHtml(String(kf.venmo_handle).replace(/^@/, ''))}${fobCodes.length ? `, code #${escapeHtml(fobCodes.join(' #'))} in the note` : ''}. Then tap "I sent". Card adds the card fee.</div>` : ''}
       <button type="button" onclick="cancelFob()" style="background:none;border:0;padding:0;margin-top:8px;font:600 12.5px 'Inter';color:#7c2d12;text-decoration:underline;cursor:pointer">Cancel request</button>
     </div>` : '';
   const hasActive = fobs.some(f => f.status === 'active');

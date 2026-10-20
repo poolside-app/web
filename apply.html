@@ -7,6 +7,7 @@
 <title>Apply for membership — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/plan-picker.js"></script>
+<script src="/js/venmo.js"></script>
 <script src="/js/errors.js" defer></script>
 <!-- PWA wiring on the apply page so the icon + theme color match if a user
      adds it to their home screen mid-application. (We don't show an install
@@ -344,9 +345,9 @@
 
       <div id="venmo-block" style="display:none;margin-top:14px;padding:18px;border:1.5px solid var(--border);border-radius:14px;background:var(--bg-2);text-align:center">
         <div style="font-weight:600;color:var(--blue);font-size:14px;margin-bottom:6px">Pay with Venmo</div>
-        <div id="venmo-qr" style="margin:10px auto;display:inline-block;background:#fff;padding:12px;border-radius:10px"></div>
-        <div style="font-size:12px;color:var(--muted);margin:10px 0 4px">Scan with your phone camera, or click below.</div>
-        <a id="venmo-link" target="_blank" rel="noopener" style="display:inline-block;padding:10px 18px;background:#3D95CE;color:#fff;border-radius:8px;font-weight:600;font-size:13px;text-decoration:none">Open Venmo →</a>
+        <!-- PLAN.md BC1: the code is made when the signup is saved, so the
+             filled-in button comes on the next screen (and in the email). -->
+        <div style="font-size:13px;color:var(--text);line-height:1.5">After you submit, you'll get a Venmo button with your amount and code filled in. Just tap it and pay.</div>
         <div id="venmo-handle-line" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
       </div>
 
@@ -603,30 +604,7 @@ function paintVenmoQR() {
   const handle = TENANT_PUBLIC?.public_settings?.payments?.venmo_handle;
   if (method !== 'venmo' || !handle) { block.style.display = 'none'; return; }
   block.style.display = 'block';
-  // Strip any leading @ the admin saved
-  const h = handle.replace(/^@+/, '');
-  const noteRaw = `${(TENANT_PUBLIC?.tenant?.display_name || 'Pool club')} membership dues`;
-  // Modern Venmo deep link: handle goes in path, params as query. Universal
-  // link: opens the Venmo app on mobile if installed, falls through to the
-  // profile page on web. The legacy `?recipients=` format silently fails.
-  const due = dueCents();
-  const url = `https://venmo.com/${encodeURIComponent(h)}?txn=pay&note=${encodeURIComponent(noteRaw)}${due > 0 ? '&amount=' + (due / 100).toFixed(2) : ''}`;
-  const linkEl = document.getElementById('venmo-link');
-  linkEl.href = url;
-  document.getElementById('venmo-handle-line').textContent = `@${h}`;
-  // Render QR
-  const qrBox = document.getElementById('venmo-qr');
-  qrBox.innerHTML = '';
-  if (typeof qrcode === 'function') {
-    const q = qrcode(0, 'M');
-    q.addData(url);
-    q.make();
-    qrBox.innerHTML = q.createImgTag(5, 8);
-    const img = qrBox.querySelector('img');
-    if (img) { img.style.display = 'block'; img.style.width = '180px'; img.style.height = '180px'; }
-  } else {
-    qrBox.innerHTML = '<div style="color:var(--muted);font-size:11px">QR library failed to load</div>';
-  }
+  document.getElementById('venmo-handle-line').textContent = `@${handle.replace(/^@+/, '')}`;
 }
 
 // Tenant-editable policies — fetched from the `policies` Edge Function on boot.
@@ -1421,6 +1399,13 @@ async function submitApplication() {
     // Same wait the Venmo option showed, from the club's own setting.
     const verifyDays = Math.max(1, Math.min(30, Number(TENANT_PUBLIC?.public_settings?.payments?.offline_verify_window_days ?? 3)));
     const within = `${verifyDays} business day${verifyDays === 1 ? '' : 's'}`;
+    setTimeout(() => {   // the Venmo button's QR, for a family on a computer (PLAN.md BC1)
+      const box = document.getElementById('venmo-pay-qr');
+      if (box && data.venmo && data.venmo.link && typeof qrcode === 'function') {
+        const q = qrcode(0, 'M'); q.addData(data.venmo.link); q.make();
+        box.innerHTML = q.createImgTag(4, 6);
+      }
+    }, 0);
     document.getElementById('form').className = 'card ok';
     document.getElementById('form').innerHTML = `
       <h1>🎉 Got it!</h1>
@@ -1429,6 +1414,13 @@ async function submitApplication() {
             ? ` You'll get a welcome email from the board once you're in.`
             : ` You'll get a welcome email with a magic-link sign-in when you're in.`}`
         : `The board will review it and reach out, usually within ${within}.`}</p>
+      ${isVenmo && data.venmo && data.venmo.link ? `
+        <div style="margin-top:18px;padding:18px;border:1.5px solid #bae6fd;border-radius:14px;background:#f0f9ff;text-align:center">
+          <a href="${escapeAttr(data.venmo.link)}" target="_blank" rel="noopener" style="display:block;padding:14px 18px;background:#3D95CE;color:#fff;border-radius:12px;font:600 16px 'Inter';text-decoration:none">Pay $${(data.venmo.amount_cents / 100).toFixed(2)} with Venmo</a>
+          <div style="font-size:13px;color:#075985;margin-top:10px;line-height:1.5">Your code: <b>#${escapeHtml(data.venmo.code)}</b>. It's already in the Venmo note, so the board can match your payment.</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:10px">On a computer? Scan this with your phone:</div>
+          <div id="venmo-pay-qr" style="margin:8px auto 0;display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
+        </div>` : ''}
       ${isVenmo && TENANT_PUBLIC?.public_settings?.payments?.test_mode ? `
         <div style="margin-top:18px;padding:16px;border:1.5px solid #fcd34d;border-radius:14px;background:#fef3c7;font-size:13.5px;line-height:1.55">
           <div style="font-weight:600;color:#92400e;margin-bottom:6px">🧪 Test mode</div>

@@ -625,7 +625,7 @@ Deno.serve(async (req) => {
       if (set.enabled) {
         const pay = ((sv?.value as Record<string, unknown> | undefined)?.payments as Record<string, unknown> | undefined) ?? {};
         const { data: fobs } = await sb.from('keyfobs')
-          .select('id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, requested_at, issued_at, lost_at')
+          .select('id, member_id, card_number, status, reason, included, price_cents, payment_status, payment_method, requested_at, issued_at, lost_at, venmo_code')
           .eq('household_id', payload.hid as string).neq('status', 'off').order('requested_at');
         const live = (fobs ?? []).filter(f => f.status === 'requested' || f.status === 'active').length;
         keyfobs = {
@@ -943,7 +943,7 @@ Deno.serve(async (req) => {
   // ── list_my_parties ────────────────────────────────────────────────────
   if (action === 'list_my_parties') {
     const { data, error } = await sb.from('party_bookings')
-      .select('id, title, body, starts_at, ends_at, expected_guests, location, status, payment_method, payment_status, price_cents, admin_notes, decided_at, event_id, created_at')
+      .select('id, title, body, starts_at, ends_at, expected_guests, location, status, payment_method, payment_status, price_cents, admin_notes, decided_at, event_id, created_at, venmo_code')
       .eq('tenant_id', payload.tid as string)
       .eq('household_id', payload.hid as string)
       .order('created_at', { ascending: false });

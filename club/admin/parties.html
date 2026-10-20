@@ -377,11 +377,11 @@ function openModal(id, rows) {
   } else if (b.status === 'approved' && b.payment_status !== 'paid' && b.payment_status === 'pending_verify') {
     banner.style.display = 'block';
     banner.style.background = '#fef3c7'; banner.style.color = '#78350f';
-    banner.innerHTML = `<b>Member says they paid via Venmo — verify it landed in your account.</b> Click the green button below once you see the payment. That officially books the date.`;
+    banner.innerHTML = `<b>Member says they paid via Venmo — verify it landed in your account.</b>${b.venmo_code ? ` Look for <b>#${escapeHtml(b.venmo_code)}</b> in the Venmo note.` : ''} Click the green button below once you see the payment. That officially books the date.`;
   } else if (b.status === 'approved' && b.payment_status !== 'paid') {
     banner.style.display = 'block';
     banner.style.background = '#fef3c7'; banner.style.color = '#78350f';
-    banner.innerHTML = `<b>Approved, awaiting payment.</b> The host has been emailed payment instructions. The date is held but NOT officially booked until they pay.<br><span style="font-size:12px">If you've already received the Venmo, click the green "Verify Venmo + book" button below to lock the date now.</span>`;
+    banner.innerHTML = `<b>Approved, awaiting payment.</b> The host has been emailed payment instructions. The date is held but NOT officially booked until they pay.<br><span style="font-size:12px">If you've already received the Venmo${b.venmo_code ? ` (its note has <b>#${escapeHtml(b.venmo_code)}</b>)` : ''}, click the green "Verify Venmo + book" button below to lock the date now.</span>`;
   } else if (b.status === 'approved' && b.payment_status === 'paid') {
     banner.style.display = 'block';
     banner.style.background = '#dcfce7'; banner.style.color = '#14532d';

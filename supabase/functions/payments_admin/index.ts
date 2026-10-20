@@ -18,6 +18,13 @@
 //   { action: 'code_save', code: { id?, code, label?, amount_cents? | percent_off?,
 //       expires_on?, max_uses?, show_on_home?, active? } } → { ok, code }
 //   { action: 'code_off', id }  → { ok }   switched off; kept for the record
+//
+// Venmo to check (PLAN.md BC1, Doug 10/19: "batch approval would be great").
+//   { action: 'venmo_waiting' }
+//     → { ok, items: [{ kind: 'signup'|'party'|'keyfob', id, ids?, step?, family_name,
+//          label, amount_cents, code, claimed, age_days }] }
+//   The page confirms each one with its own screen's step, so a batch does
+//   exactly what clicking each one would.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -204,6 +211,79 @@ Deno.serve(async (req) => {
     // Newest oldest first so the chase-list orders by who's been waiting longest
     items.sort((a, b) => ((b.age_days ?? -1) as number) - ((a.age_days ?? -1) as number));
 
+    return jsonResponse({ ok: true, items });
+  }
+
+  if (action === 'venmo_waiting') {
+    const [{ data: apps }, { data: parties }, { data: fobs }] = await Promise.all([
+      sb.from('applications')
+        .select('id, family_name, primary_name, status, payment_status, amount_due_cents, venmo_code, membership_year, created_at, decided_at')
+        .eq('tenant_id', TID).eq('payment_method', 'venmo').in('status', ['pending', 'approved'])
+        .not('payment_status', 'eq', 'paid').order('created_at').limit(500),
+      sb.from('party_bookings')
+        .select('id, household_id, title, starts_at, price_cents, payment_status, venmo_code, decided_at')
+        .eq('tenant_id', TID).eq('status', 'approved').gt('price_cents', 0)
+        .or('payment_status.is.null,payment_status.in.(unpaid,pending_verify)').order('starts_at').limit(500),
+      // A fob is only confirmed once the family says they sent it.
+      sb.from('keyfobs')
+        .select('id, household_id, reason, price_cents, venmo_code, requested_at')
+        .eq('tenant_id', TID).eq('payment_status', 'pending_verify').order('requested_at').limit(500),
+    ]);
+    const hids = [...new Set([...(parties ?? []), ...(fobs ?? [])].map(r => r.household_id).filter(Boolean))];
+    const { data: hh } = hids.length ? await sb.from('households').select('id, family_name').in('id', hids) : { data: [] };
+    const fam = new Map((hh ?? []).map(h => [h.id, h.family_name]));
+
+    // Signups the family says they paid: an open "I paid via Venmo" task.
+    const appIds = (apps ?? []).map(a => a.id);
+    const { data: claims } = appIds.length ? await sb.from('admin_tasks').select('source_id')
+      .eq('tenant_id', TID).eq('source_kind', 'application').eq('kind', 'venmo.claim').in('source_id', appIds)
+      .is('completed_at', null).is('dismissed_at', null) : { data: [] };
+    const claimedApps = new Set((claims ?? []).map(c => c.source_id));
+
+    const items: Array<Record<string, unknown>> = [];
+    for (const a of (apps ?? [])) {
+      items.push({
+        kind: 'signup', id: a.id,
+        // A new signup is approved and paid in one step; an approved one is only marked paid.
+        step: a.status === 'pending' ? 'approve' : 'verify',
+        family_name: a.family_name || a.primary_name,
+        label: a.status === 'pending' ? `New signup, ${a.membership_year ?? ''} dues`.replace(' ,', ',') : `${a.membership_year ?? ''} dues`.trim(),
+        amount_cents: typeof a.amount_due_cents === 'number' ? a.amount_due_cents : null,
+        code: a.venmo_code ?? null,
+        claimed: claimedApps.has(a.id),
+        age_days: ageDays(a.created_at),
+      });
+    }
+    for (const b of (parties ?? [])) {
+      items.push({
+        kind: 'party', id: b.id,
+        family_name: fam.get(b.household_id) ?? null,
+        label: `Party: ${b.title || 'party'}`,
+        amount_cents: b.price_cents,
+        code: b.venmo_code ?? null,
+        claimed: b.payment_status === 'pending_verify',
+        age_days: ageDays(b.decided_at),
+      });
+    }
+    // One Venmo pays for all of a family's fobs, so they're one line.
+    const byFamily = new Map<string, Array<Record<string, unknown>>>();
+    for (const f of (fobs ?? [])) {
+      const k = String(f.household_id);
+      byFamily.set(k, [...(byFamily.get(k) ?? []), f]);
+    }
+    for (const [hid, list] of byFamily) {
+      items.push({
+        kind: 'keyfob', id: list[0].id, ids: list.map(f => f.id),
+        family_name: fam.get(hid) ?? null,
+        label: list.length === 1 ? (list[0].reason === 'replacement' ? 'Replacement keyfob' : 'Keyfob') : `${list.length} keyfobs`,
+        amount_cents: list.reduce((n, f) => n + Number(f.price_cents || 0), 0),
+        code: list.map(f => f.venmo_code).filter(Boolean).join(' #') || null,
+        claimed: true,
+        age_days: ageDays(list[0].requested_at as string),
+      });
+    }
+    // The ones the family says they sent first, then the longest waiting.
+    items.sort((a, b) => Number(b.claimed) - Number(a.claimed) || ((b.age_days ?? -1) as number) - ((a.age_days ?? -1) as number));
     return jsonResponse({ ok: true, items });
   }
 

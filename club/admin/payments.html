@@ -133,6 +133,19 @@
       <span class="chev">▶</span> 💰 Payments — pending verify + open balances <span style="font-weight:400;color:var(--muted);font-size:12.5px">— who owes what right now</span>
     </summary>
     <div style="margin-top:10px">
+      <!-- PLAN.md BC1 (Doug 10/19: "batch approval would be great"): every
+           Venmo still to find, with the code the family's Venmo note carries.
+           Tick the ones you see in Venmo and confirm them together; each runs
+           the same step as its own screen's button. -->
+      <div class="card" id="venmo-check" style="display:none;margin-top:8px">
+        <h2>💸 Venmo to check</h2>
+        <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 6px">Open Venmo and look for each code in the payment notes. Tick the ones you see, then tap Confirm selected.</p>
+        <div id="venmo-check-list"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <button class="btn" id="venmo-confirm-btn" type="button" onclick="confirmVenmoSelected()" disabled style="opacity:.5">✓ Confirm selected</button>
+          <span id="venmo-count" style="font-size:12.5px;color:var(--muted)">0 selected</span>
+        </div>
+      </div>
       <div class="toolbar" style="margin-top:8px">
         <div>
           <div style="font-size:12px;color:var(--muted)">Everyone with an open balance, sorted by who's been waiting longest.</div>
@@ -551,7 +564,70 @@ window.bulkVerify = async function() {
   }
 };
 
+// ── Venmo to check (PLAN.md BC1) ───────────────────────────────────────
+const APPS_URL    = `${SUPABASE_URL}/functions/v1/applications`;
+const PARTIES_URL = `${SUPABASE_URL}/functions/v1/parties_admin`;
+const FOBS_URL    = `${SUPABASE_URL}/functions/v1/keyfobs`;
+let VENMO = [];
+async function loadVenmo() {
+  try {
+    const r = await call('venmo_waiting');
+    VENMO = r.ok ? (r.items || []) : [];
+  } catch (_) { VENMO = []; }
+  const card = document.getElementById('venmo-check');
+  card.style.display = VENMO.length ? 'block' : 'none';
+  document.getElementById('venmo-check-list').innerHTML = VENMO.map((it, i) => `
+    <label style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" class="venmo-row" data-i="${i}" onchange="updateVenmoCount()" style="cursor:pointer;flex-shrink:0">
+      <span style="font:700 15px ui-monospace,Menlo,monospace;color:#075985;min-width:64px">${it.code ? '#' + escapeHtml(it.code) : '—'}</span>
+      <span style="flex:1;min-width:0;font-size:13.5px"><b>${escapeHtml(it.family_name || '—')}</b> · ${escapeHtml(it.label)}${it.claimed ? ' <span style="font-size:11.5px;color:#92400e;background:#fef3c7;border-radius:6px;padding:1px 6px;white-space:nowrap">says they sent it</span>' : ''}</span>
+      <span style="font-weight:600;font-size:13.5px;white-space:nowrap">${escapeHtml(fmtMoney(it.amount_cents))}</span>
+    </label>`).join('');
+  updateVenmoCount();
+}
+window.updateVenmoCount = function() {
+  const n = document.querySelectorAll('.venmo-row:checked').length;
+  document.getElementById('venmo-count').textContent = `${n} selected`;
+  const btn = document.getElementById('venmo-confirm-btn');
+  btn.disabled = n === 0; btn.style.opacity = n === 0 ? '.5' : '1';
+};
+// The same step each one's own screen runs.
+async function confirmVenmoOne(it) {
+  if (it.kind === 'signup') {
+    return it.step === 'approve'
+      ? api(APPS_URL, 'approve', { id: it.id, verify_venmo_payment: true })
+      : api(APPS_URL, 'verify_payment', { id: it.id, method: 'venmo' });
+  }
+  if (it.kind === 'party') return api(PARTIES_URL, 'verify_payment', { id: it.id, method: 'venmo' });
+  for (const id of (it.ids || [it.id])) {
+    const r = await api(FOBS_URL, 'confirm_venmo', { id });
+    if (!r.ok) return r;
+  }
+  return { ok: true };
+}
+window.confirmVenmoSelected = async function() {
+  const picked = [...document.querySelectorAll('.venmo-row:checked')].map(cb => VENMO[Number(cb.dataset.i)]).filter(Boolean);
+  if (!picked.length) return;
+  const sum = picked.reduce((n, it) => n + (Number(it.amount_cents) || 0), 0);
+  if (!confirm(`Confirm ${picked.length} Venmo payment${picked.length === 1 ? '' : 's'}${sum ? `, ${fmtMoney(sum)} in all` : ''}?\n\nOnly tick the ones you saw in Venmo. New signups are approved and sent their welcome, parties are booked, and keyfobs move to the list to issue.`)) return;
+  const btn = document.getElementById('venmo-confirm-btn');
+  btn.disabled = true; btn.textContent = 'Confirming…';
+  const fails = [];
+  for (const it of picked) {
+    try {
+      const r = await confirmVenmoOne(it);
+      if (!r.ok) fails.push(`${it.family_name || it.code}: ${r.error || 'failed'}`);
+    } catch (e) { fails.push(`${it.family_name || it.code}: ${e.message}`); }
+  }
+  btn.textContent = '✓ Confirm selected';
+  const done = picked.length - fails.length;
+  alert(fails.length ? `Confirmed ${done}. These didn't go through:\n\n${fails.join('\n')}` : `Confirmed ${done}.`);
+  await refresh();
+  if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
+};
+
 async function refresh() {
+  loadVenmo();
   try {
     const data = await call('list');
     if (!data.ok) throw new Error(data.error || 'Failed to load');

@@ -61,7 +61,7 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, household_id, requested_by, title, body, starts_at, ends_at, expected_guests, location, status, admin_notes, decided_at, decided_by, event_id, price_cents, payment_method, payment_status, paid_at, verified_at, verified_by, stripe_session_id, policies_accepted, accepted_at, created_at, updated_at, pool_date';
+const FIELDS = 'id, tenant_id, household_id, requested_by, title, body, starts_at, ends_at, expected_guests, location, status, admin_notes, decided_at, decided_by, event_id, price_cents, payment_method, payment_status, paid_at, verified_at, verified_by, stripe_session_id, policies_accepted, accepted_at, created_at, updated_at, pool_date, venmo_code';
 
 function strOrNull(v: unknown): string | null {
   if (v === null || v === undefined) return null;
