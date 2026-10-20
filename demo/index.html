@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poolside Demo Club</title>
+<meta name="description" content="Try Poolside with a made-up club: the board side, the member app and signing up. Nothing is real and nothing is sent.">
+<link rel="manifest" href="/demo/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- PLAN.md BG9 (Doug 10/20): "an entire example that people can have access
+     to... auto login/all features enabled... mess around on the admin side...
+     it really does nothing... i dont want texts generated or sent nor emails".
+     This page installs the demo's service worker (sw.js loads demo-sw.js on
+     this host), which answers every call in the browser. Only then do the
+     links open, so no page ever reaches Poolside's servers. -->
+<style>
+  :root { --blue:#0a3b5c; --blue-l:#e6eef5; --sun:#f59e0b; --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81; --border:#e5e7eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 'Inter', system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 36px max(16px, env(safe-area-inset-left)) 48px; }
+  .tag { display:inline-block; background:#fef3c7; color:#92400e; font:700 12px 'Inter'; letter-spacing:.06em; text-transform:uppercase; padding:4px 10px; border-radius:999px; }
+  h1 { font-family:'Fraunces', Georgia, serif; font-weight:600; color:var(--blue); font-size:34px; line-height:1.12; margin:14px 0 10px; letter-spacing:-.015em; }
+  .lede { color:var(--muted); margin:0 0 22px; }
+  .doors { display:grid; gap:12px; }
+  .door { display:block; padding:18px 20px; background:#fff; border:1.5px solid var(--border); border-radius:16px; text-decoration:none; color:var(--text); }
+  .door b { display:block; font-size:17px; color:var(--blue); margin-bottom:3px; }
+  .door span { color:var(--muted); font-size:14px; }
+  .door[aria-disabled="true"] { opacity:.5; pointer-events:none; }
+  .wait { margin:18px 0 0; font-size:14px; color:var(--muted); }
+  .fine { margin-top:26px; font-size:13px; color:var(--muted); line-height:1.6; }
+  .err { display:none; margin-top:16px; padding:12px 14px; border-radius:12px; background:#fee2e2; color:#7f1d1d; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <span class="tag">🧪 Demo club</span>
+  <h1>Maple Grove Swim Club</h1>
+  <p class="lede">A made-up pool club running on Poolside. Click anything: approve a signup, confirm a Venmo, open the gate, text everyone. It all works on screen, and nothing is real: no texts, emails, payments or doors. Wherever a button would do something in a real club, the demo tells you what.</p>
+  <div class="doors">
+    <a class="door" id="d-board" href="/club/admin/" aria-disabled="true"><b>The board side →</b><span>You're Sam Brooks, the Treasurer: signups, payments, keyfobs, parties, the gate.</span></a>
+    <a class="door" id="d-member" href="/m/" aria-disabled="true"><b>The member app →</b><span>You're Jamie Rivera: the home screen, unlock, parties, your family.</span></a>
+    <a class="door" id="d-apply" href="/apply.html" aria-disabled="true"><b>Sign up as a new family →</b><span>The signup form, from the club's own page.</span></a>
+    <a class="door" id="d-club" href="/club/index.html" aria-disabled="true"><b>The club's public page →</b><span>What neighbors see before they join.</span></a>
+  </div>
+  <p class="wait" id="wait">Getting the demo ready…</p>
+  <div class="err" id="err">This browser won't run the demo (it needs service workers, which private windows and some in-app browsers turn off). Try Safari or Chrome, or <a href="https://poolsideapp.com">go back to Poolside</a>.</div>
+  <p class="fine">It's a Saturday in June at the pool. Everything you change stays in this browser and starts over when you close it or tap "Start over". <a href="https://poolsideapp.com">Back to poolsideapp.com</a></p>
+</main>
+<script>
+(async () => {
+  const doors = document.querySelectorAll('.door');
+  const open = () => { doors.forEach(d => d.removeAttribute('aria-disabled')); document.getElementById('wait').textContent = 'Ready. Pick where to start.'; };
+  if (!('serviceWorker' in navigator)) { document.getElementById('err').style.display = 'block'; document.getElementById('wait').remove(); return; }
+  try {
+    await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    if (navigator.serviceWorker.controller) return open();
+    navigator.serviceWorker.addEventListener('controllerchange', open, { once: true });
+    setTimeout(() => { if (!navigator.serviceWorker.controller) location.reload(); }, 3000);
+  } catch (e) {
+    document.getElementById('err').style.display = 'block'; document.getElementById('wait').remove();
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,46 @@
 {
   "rewrites": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "demo\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "/demo/index.html"
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "has": [
+        {
+          "type": "host",
+          "value": "demo\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "/demo/manifest.webmanifest"
+    },
+    {
+      "source": "/apple-touch-icon.png",
+      "has": [
+        {
+          "type": "host",
+          "value": "demo\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "/icon-192.png"
+    },
+    {
+      "source": "/apple-touch-icon-precomposed.png",
+      "has": [
+        {
+          "type": "host",
+          "value": "demo\\.poolsideapp\\.com"
+        }
+      ],
+      "destination": "/icon-192.png"
+    },
+    {
       "source": "/oauth/google/drive/callback",
       "has": [
         {

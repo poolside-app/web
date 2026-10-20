@@ -50,7 +50,8 @@ let vj = {};
 try { vj = JSON.parse(read('vercel.json')); } catch { /* checked below */ }
 const hdrs = (vj.headers || []).flatMap(h => h.headers || []).map(h => h.key);
 check('frame, https, referrer and sniffing headers on every page', ['X-Frame-Options', 'Content-Security-Policy', 'Strict-Transport-Security', 'Referrer-Policy', 'X-Content-Type-Options'].every(k => hdrs.includes(k)), hdrs.join(','));
-check('the routing is untouched (9 rewrites)', Array.isArray(vj.rewrites) && vj.rewrites.length === 9);
+check('the routing is untouched (the demo club\'s 4 rules first, then the 9 club rules)', Array.isArray(vj.rewrites) && vj.rewrites.length === 13
+  && vj.rewrites.slice(0, 4).every(r => /demo/.test(JSON.stringify(r.has))) && vj.rewrites.slice(4).every(r => !/demo/.test(JSON.stringify(r))));
 
 console.log('BG8 · scheduled calls (item 42)');
 check('they wait 30 seconds', /timeout_milliseconds := 30000/.test(read('supabase/migrations/20261020000700_cron_timeouts.sql')));

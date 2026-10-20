@@ -9,24 +9,24 @@
 
 // A June Saturday, mid-morning, at the pool.
 export const DEMO_NOW = Date.parse('2027-06-19T10:40:00-07:00');
-const day = (d, hm) => new Date(`2027-06-${String(d).padStart(2, '0')}T${hm}:00-07:00`).toISOString();
-const ago = mins => new Date(DEMO_NOW - mins * 60000).toISOString();
+export const day = (d, hm) => new Date(`2027-06-${String(d).padStart(2, '0')}T${hm}:00-07:00`).toISOString();
+export const ago = mins => new Date(DEMO_NOW - mins * 60000).toISOString();
 
 // The same made-up token the harness puts in a signed-in phone.
-const TOKEN = 'demo.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6ImRlbW8ifQ.demo';
+export const TOKEN = 'demo.eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6ImRlbW8ifQ.demo';
 
 export const CLUB = {
   id: 'demo-club', slug: 'maplegrove', display_name: 'Maple Grove Swim Club', app_name: 'Maple Grove',
   venmo: 'maplegroveswim', timezone: 'America/Los_Angeles',
 };
 
-const TIERS = [
+export const TIERS = [
   { slug: 'family', label: 'Family', name: 'Family', description: 'Everyone in your household', price_cents: 55000 },
   { slug: 'couple', label: 'Couple', name: 'Couple', description: 'Two adults', price_cents: 42000 },
   { slug: 'single', label: 'Single', name: 'Single', description: 'One adult', price_cents: 30000 },
 ];
 
-const PUBLIC_SETTINGS = {
+export const PUBLIC_SETTINGS = {
   hero: { eyebrow: 'Since 1972', headline: 'Summer at Maple Grove', tagline: 'Our neighborhood pool, open Memorial Day to Labor Day.' },
   branding: { background_photo_url: null, logo_url: null, primary_color: null, icon_192_url: null, icon_512_url: null, app_name: CLUB.app_name },
   club: { location: 'Maple Grove' },
@@ -47,11 +47,11 @@ const PUBLIC_SETTINGS = {
   referrals: { reward_cents: 5000, new_family_cents: 2500, wait_days: 30 },
 };
 
-const POSTS = [
+export const POSTS = [
   { id: 'post1', title: 'Swim team time trials Tuesday', body: 'Lanes 1–3 are closed 5–7 PM for time trials. The rest of the pool stays open.', pinned: true, published_at: ago(60 * 20) },
   { id: 'post2', title: 'Shade sails are going up', body: 'Thanks to 74 families, the new shade sails over the baby pool go up next week.', pinned: false, published_at: ago(60 * 48) },
 ];
-const EVENTS = [
+export const EVENTS = [
   { id: 'ev1', title: 'Family movie night', body: 'Bring a towel. Popcorn from the snack shack.', kind: 'social', location: 'Main lawn', starts_at: day(19, '19:30'), ends_at: day(19, '21:30'), all_day: false },
   { id: 'ev2', title: 'Swim team time trials', body: null, kind: 'swim_meet', location: 'Lanes 1–3', starts_at: day(22, '17:00'), ends_at: day(22, '19:00'), all_day: false },
   { id: 'ev3', title: 'Adult swim', body: null, kind: 'event', location: null, starts_at: day(20, '18:00'), ends_at: day(20, '20:00'), all_day: false },
@@ -69,7 +69,7 @@ export function tenantPublic() {
 }
 
 // ── The Rivera family: they sign up in the video, then use the app ────────
-const RIVERA = {
+export const RIVERA = {
   id: 'hh-rivera', family_name: 'Rivera Family', dues_paid_for_year: true, paid_until_year: 2026, tier_slug: 'family', address: '14 Willow Lane',
   members: [
     { id: 'm-jamie', name: 'Jamie Rivera', role: 'primary', phone_e164: '+15555550101', email: 'jamie@example.com', uses_app: true, active: true },
@@ -78,7 +78,7 @@ const RIVERA = {
     { id: 'm-leo', name: 'Leo Rivera', role: 'child', birth_year: 2018, uses_app: false, active: true },
   ],
 };
-const RIVERA_PARTY = { id: 'p-rivera', title: "Leo's 9th birthday", body: null, starts_at: day(19, '16:00'), ends_at: day(19, '19:00'), expected_guests: 18,
+export const RIVERA_PARTY = { id: 'p-rivera', title: "Leo's 9th birthday", body: null, starts_at: day(19, '16:00'), ends_at: day(19, '19:00'), expected_guests: 18,
   location: 'Main pool', status: 'approved', payment_method: 'stripe', payment_status: 'paid', price_cents: 15000, admin_notes: null,
   decided_at: ago(60 * 24 * 9), event_id: 'ev-rivera', created_at: ago(60 * 24 * 9), venmo_code: 'D4LP' };
 const PEOPLE = {
@@ -107,7 +107,7 @@ function memberMe(state, side = 'family') {
 }
 
 // ── The board: Sam Brooks, Treasurer ──────────────────────────────────────
-const ALL_SCOPES = ['applications', 'households', 'payments', 'events', 'posts', 'parties', 'keyfobs', 'gate', 'sms', 'settings', 'audit'];
+export const ALL_SCOPES = ['applications', 'households', 'payments', 'events', 'posts', 'parties', 'keyfobs', 'gate', 'sms', 'settings', 'audit'];
 // Families paid and money in, the same on every board screen.
 function paidNow(state) {
   const patel = !!state.confirmed?.has('app-patel');
@@ -134,7 +134,7 @@ function boardMe(state) {
 }
 
 // The Venmo payments the treasurer still has to find (PLAN.md BC1).
-const VENMO_WAITING = [
+export const VENMO_WAITING = [
   { kind: 'signup', id: 'app-patel', step: 'approve', family_name: 'Patel Family', label: 'New signup, 2027 dues', amount_cents: 55000, code: 'K7Q2', claimed: true, age_days: 0 },
   { kind: 'keyfob', id: 'fob-chen1', ids: ['fob-chen1', 'fob-chen2'], family_name: 'Chen Family', label: '2 keyfobs', amount_cents: 3000, code: 'M3PX #W9HC', claimed: true, age_days: 1 },
   { kind: 'party', id: 'party-okafor', family_name: 'Okafor Family', label: "Party: Ada's 10th birthday", amount_cents: 15000, code: 'R8TD', claimed: false, age_days: 1 },
@@ -188,7 +188,7 @@ function boardHome(state) {
 }
 
 // Keyfobs: the families' fobs, one new one to hand out, and the sync.
-const FAMILIES = ['Brooks', 'Chen', 'Larsen', 'Nguyen', 'Novak', 'Okafor', 'Ortiz', 'Patel', 'Rivera', 'Walsh'];
+export const FAMILIES = ['Brooks', 'Chen', 'Larsen', 'Nguyen', 'Novak', 'Okafor', 'Ortiz', 'Patel', 'Rivera', 'Walsh'];
 function keyfobList(state) {
   const fob = (id, fam, tail, extra = {}) => ({ id, household_id: 'hh-' + fam.toLowerCase(), family_name: fam + ' Family', member_id: null, member_name: null,
     card_number: 10000000 + Number(tail), tail, status: 'active', reason: 'imported', included: true, price_cents: 0, payment_status: 'none',

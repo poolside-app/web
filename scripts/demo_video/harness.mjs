@@ -74,7 +74,7 @@ function inPage(nowMs) {
 }
 
 /** Wire a page: files, answers, the demo clock. Returns the call log. */
-export async function attach(page, { state = {}, extraFiles = {} } = {}) {
+export async function attach(page, { state = {}, extraFiles = {}, answer = null } = {}) {
   const log = { calls: [], unknown: [], errors: [], external: new Set() };
   page.on('pageerror', e => log.errors.push(String(e.message).slice(0, 160)));
   await page.emulateTimezone('America/Los_Angeles');
@@ -90,7 +90,8 @@ export async function attach(page, { state = {}, extraFiles = {} } = {}) {
       try { body = JSON.parse(r.postData() || '{}'); } catch (_) {}
       const fn = u.pathname.split('/').pop();
       const side = SIDES[r.frame() ? new URL(r.frame().url()).port : ''] ?? 'family';
-      const out = respond(fn, body, { side, state });
+      // The demo site's test passes its own answers (site_data.mjs, PLAN.md BG9).
+      const out = answer ? answer(fn, body, { side, state }) : respond(fn, body, { side, state });
       log.calls.push(`${side} ${fn}:${body.action ?? '-'}`);
       if (out === undefined) log.unknown.push(`${side} ${fn}:${body.action ?? '-'}`);
       return r.respond({ status: 200, contentType: 'application/json', headers: CORS, body: JSON.stringify(out ?? { ok: true }) });

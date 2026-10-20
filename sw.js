@@ -10,7 +10,12 @@
 // notifications surface in the OS without a follow-up code change.
 // =============================================================================
 
-const CACHE_NAME = 'poolside-shell-v3';   // v3: the no-signal page (PLAN.md BG8)
+// The demo club (demo.poolsideapp.com, PLAN.md BG9): its answers come from
+// the browser, never Poolside's servers. Loaded first so its fetch handler
+// runs before the ones below; nothing changes on any real club's address.
+if (self.location.hostname === 'demo.poolsideapp.com') importScripts('/demo/demo-sw.js');
+
+const CACHE_NAME = 'poolside-shell-v4';   // v3: the no-signal page (BG8); v4: the demo club (BG9)
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
@@ -35,6 +40,7 @@ self.addEventListener('fetch', (event) => {
   // that fails (no signal at the pool) gets the no-signal page instead of
   // the browser's error (PLAN.md BG8). Data is never served from a cache.
   if (event.request.mode !== 'navigate') return;
+  if (self.__DEMO__) return;   // the demo club's own handler answered it
   event.respondWith(fetch(event.request).catch(async () =>
     (await caches.match(OFFLINE_URL)) || new Response('No signal right now. Your keyfob still works.', { headers: { 'content-type': 'text/plain' } })));
 });
