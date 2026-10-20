@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       const n = taskNotice(t as never);
       if (n && !t.assigned_admin_id) t.for_position = board.positions.find(p => (p.notices ?? []).includes(n))?.title ?? 'President';
     }
-    // Name who each assigned task is for ("For you" / "For Kristin").
+    // Name who each assigned task is for ("For you" / "For Pat").
     const ids = [...new Set(tasks.map(t => t.assigned_admin_id).filter(Boolean))];
     if (ids.length) {
       const { data: who } = await sb.from('admin_users').select('id, display_name, email')

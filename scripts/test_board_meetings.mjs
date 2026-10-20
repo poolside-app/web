@@ -32,7 +32,7 @@ async function importTs(relPath) {
   return import('data:text/javascript,' + encodeURIComponent(js));
 }
 
-const env = Object.fromEntries(read('.env.local')
+const env = Object.fromEntries((() => { try { return read('.env.local'); } catch { return ''; } })()
   .split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l))
   .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
 const { SUPABASE_URL, SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, ADMIN_JWT_SECRET } = env;

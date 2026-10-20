@@ -25,7 +25,7 @@ const want = page => !ONLY.length || ONLY.includes(page);
 export async function renderChecks({ check, read, sql, jwt }) {
   console.log('\nRendered at phone size' + (ONLY.length ? ` (${ONLY.join(', ')})` : ''));
   const browser = await puppeteer.launch({
-    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'],
+    executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'],
   });
   const [club] = await sql(`select id from tenants where slug = 'bishopestates'`);
   const [owner] = await sql(`select id from admin_users where tenant_id = '${club.id}' and active and role_template = 'owner' order by created_at limit 1`);
@@ -123,9 +123,9 @@ export async function renderChecks({ check, read, sql, jwt }) {
     const emailLabel = await l.$eval('#submit', b => b.textContent.trim());
     check('D13: the button says Text me a code / Email me a link', phoneLabel === 'Text me a code' && emailLabel === 'Email me a link', `${phoneLabel} / ${emailLabel}`);
     await l.evaluate(() => { const i = document.getElementById('email'); i.value = ''; i.dispatchEvent(new Event('input')); });
-    await l.type('#email', '9257719074');
+    await l.type('#email', '5550100199');
     const formatted = await l.$eval('#email', el => el.value);
-    check('H3: a typed number shows as (925) 771-9074', formatted === '(925) 771-9074', formatted);
+    check('H3: a typed number shows as (555) 010-0199', formatted === '(555) 010-0199', formatted);
     // A number that isn't on file (fake 555 exchange, so nothing is sent):
     // the page must not say "open the email", and must offer the code box.
     await l.evaluate(() => { const i = document.getElementById('email'); i.value = ''; i.dispatchEvent(new Event('input')); });
@@ -247,7 +247,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
             { key: 'minutes', title: 'Approve the minutes of the September 12 meeting' },
             { key: 'reports', title: 'Reports and items', people: [
               { name: 'Doug Frevele', titles: ['President'], items: [{ id: '1', body: 'Close for the season Oct 18' }] },
-              { name: 'Kristin', titles: ['Membership & Marketing Director'], items: [{ id: '2', body: 'Bathrooms have been complained about' }, { id: '3', body: 'New lounge chairs', carried_from_date: '2026-09-12' }] },
+              { name: 'Pat', titles: ['Membership & Marketing Director'], items: [{ id: '2', body: 'Bathrooms have been complained about' }, { id: '3', body: 'New lounge chairs', carried_from_date: '2026-09-12' }] },
               { name: 'Sam', titles: ['Treasurer'], items: [] } ] },
             { key: 'old', title: 'Open action items from past meetings', followUps: [{ description: 'Get 3 quotes on the pump', assigned_to: 'Facilities', due_date: '2026-10-01' }] },
             { key: 'actions', title: 'Action list: who, what, by when' },
@@ -258,7 +258,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
           send: /Send to the board/.test(document.getElementById('agenda-foot')?.textContent || ''),
         }));
         check('L2/L3: the agenda view reads in the agreed format, with Send to the board',
-          /3\. Reports and items/.test(ag.text) && /Kristin, Membership & Marketing Director – Bathrooms have been complained about/.test(ag.text) && ag.send, (ag.text || '').slice(0, 200));
+          /3\. Reports and items/.test(ag.text) && /Pat, Membership & Marketing Director – Bathrooms have been complained about/.test(ag.text) && ag.send, (ag.text || '').slice(0, 200));
         await pg.screenshot({ path: '/tmp/poolside-agenda.png' });
         await pg.evaluate(() => closeAgenda());
       }

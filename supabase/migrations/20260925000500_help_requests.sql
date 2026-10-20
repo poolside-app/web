@@ -9,7 +9,7 @@
 --
 --   help_requests  one conversation, its status and who has it
 --   help_messages  member messages, board replies, and notes like
---                  "Handed to Kristin by Doug"
+--                  "Handed to Pat by Doug"
 --   help-photos    private storage; the app shows photos through short-lived
 --                  signed links, so only the member and the board see them
 --

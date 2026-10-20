@@ -2,7 +2,7 @@
 // phone.ts — normalize a typed-in phone number to E.164
 // =============================================================================
 // Several columns hold whatever a human typed: gate_panels.contact_phone comes
-// from a form that formats as "(925)-771-9074", and applications.primary_phone
+// from a form that formats as "(555)-010-0199", and applications.primary_phone
 // is whatever the applicant entered. Twilio rejects anything that is not
 // E.164, and it fails per-message with a 21211 that nobody sees — the text
 // simply never arrives.

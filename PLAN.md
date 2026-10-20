@@ -191,7 +191,7 @@ Doug decided (9/25):
 
 Problems found:
 - New meetings default to "Board only", so closing one doesn't publish it.
-- Only the secretary and the president can use it. Kristin can't.
+- Only the secretary and the president can use it. Pat can't.
 - Re-opening to fix a typo erases the real end time, and when it's closed again, the end time becomes the edit time.
 - The minutes disappear from the public page while being edited.
 - There's no record of edits, and anyone with access can permanently delete published minutes.
@@ -220,7 +220,7 @@ Steps (each: failing test first, then the fix, then proof):
   - "Re-open for editing" is gone. Closing twice no longer moves the end time.
   - Closing the editor with unsaved fixes asks first.
   - The note-taker and the president can edit a closed meeting. It stays public, and its real start and end times are kept.
-  - Changes are saved with a Save button. The page then shows "Edited Sep 30 by Kristin", and the previous version is kept in the audit log.
+  - Changes are saved with a Save button. The page then shows "Edited Sep 30 by Pat", and the previous version is kept in the audit log.
   - Only the president can delete published minutes.
 - **F4. ✅ Done 9/25: follow-ups are tracked.**
   - Proof: `scripts/test_board_meetings.mjs` passes 48/48.
@@ -260,7 +260,7 @@ Found while looking:
 Steps (each: failing test first, then the fix, then proof):
 - **H1. ✅ Signup page 1 asks "Your name".** It fills in Adult #1 on page 2, and the family last name from it (both editable). Today page 1 only asks for the family last name, so Adult #1 starts empty.
 - **H2. ✅ Membership level defaults by headcount.** 2+ people picks Family; 1 adult picks Single. Anything the family picks themselves is left alone. Choosing Single with 2+ people shows a gentle note.
-- **H3. ✅ Member sign-in formats the number as you type** — (925) 771-9074, the same as the board sign-in.
+- **H3. ✅ Member sign-in formats the number as you type** — (555) 010-0199, the same as the board sign-in.
 - **H4. ✅ Payment plan deadlines work across New Year.**
   - Deadlines are ordered by season (fall → spring → summer), so a plan like "50% by Dec 1, the rest by May 1" saves.
   - The last deadline is always "the rest (100%)", with no box to fill in.
@@ -359,7 +359,7 @@ Doug decided (10/4):
 What's there today: fixed "roles" (Board chair, Treasurer, Membership chair, Volunteer coordinator, Communications, Secretary) that only decide which screens someone sees, a free-text title, and alerts routed by screen permission. Member help topics are assigned to people separately, on the Member help page. The public "Bylaws & board minutes" page exists but has no bylaws (the documents section was removed in May).
 
 Steps (each: failing test first, then the fix, then proof):
-- **✅ K1. Positions in the database.** Each position has a title, a one-line purpose, the full job description (editable text), what it gets told about, and what screens it can use. One person can hold several positions (the Vice-President is a second title), and a position can have more than one holder. A club-wide spending rule shows above them all ("Under $50, go ahead. $50 or more needs board approval."). Bishop starts with Doug's seven, word for word. New clubs start with the same seven without the Bishop-only details (bylaw article numbers, 2027 goals, the 170 homes), ready to edit. Doug is set as President. Kristin keeps her current access until Doug gives her a position.
+- **✅ K1. Positions in the database.** Each position has a title, a one-line purpose, the full job description (editable text), what it gets told about, and what screens it can use. One person can hold several positions (the Vice-President is a second title), and a position can have more than one holder. A club-wide spending rule shows above them all ("Under $50, go ahead. $50 or more needs board approval."). Bishop starts with Doug's seven, word for word. New clubs start with the same seven without the Bishop-only details (bylaw article numbers, 2027 goals, the 170 homes), ready to edit. Doug is set as President. Pat keeps her current access until Doug gives her a position.
 - **✅ K2. One Board page** under Settings, replacing "Admins & roles". The spending rule, then each position: who holds it, what it's told about, and its job description. The president edits a position's text, notifications and screens, and assigns someone or invites a new person straight into it. A person's title and access follow their positions. There's always someone with full access. Lifeguard and gate-iPad logins are made here too. A change to someone's access applies on their next click, not when their sign-in renews (that was already true of the old roles, up to a week late).
 - **✅ K3. Notifications follow positions.** Each kind of alert belongs to a position. The dashboard task and phone pop-up go to whoever holds it now. An empty position's alerts go to the President, and to the Vice-President if that's empty too. Reassigning a position moves its open tasks with it. Member help topics move here from the Member help page. Gate alerts go to the Facilities Director. Board replies to members are signed with name and position. Proposed for Bishop:
   - President: club business (Poolside plan and billing), member help "something else", and anything whose position is empty.
@@ -469,7 +469,7 @@ Doug decided (10/7):
 - Announcements: a "Notify members" switch on each post, on by default. Members without pop-ups get no email for announcements.
 - Meeting agendas: in the app only (pop-up), not by text or email.
 - Parties: a fixed length, set by the board (4 hours to start). The board can still change the time when approving.
-- Kristin: removed from the board. Vice-President stays as an open position. Done 10/7: her leftover hold on it is cleared. Removing someone has to drop their positions too (bug).
+- Pat: removed from the board. Vice-President stays as an open position. Done 10/7: her leftover hold on it is cleared. Removing someone has to drop their positions too (bug).
 
 Done 10/7–8. Checks: `node scripts/test_signup_notes.mjs [--live]`, `RENDER_ONLY=notes node scripts/test_screens.mjs --render` and `node scripts/check_phone_width.mjs`, which opens every page and pop-up at iPhone width.
 Found on the way and fixed:
@@ -656,7 +656,7 @@ Found: the pop-up works, but Bishop's was never turned on. On Money → Sponsors
 - **✅ Y2.** Sponsors moves from Money to Content (Doug, 10/11: "sponsors should be under content not money"): Announcements, Photos, Board minutes, Member help, Sponsors.
 
 ### Z. Drive backup (Doug, 10/11)
-The Drive connection had been dead since May 23 (Google cancels a Testing-mode app's sign-in after 7 days). Doug reconnected on 10/11, as doug.frevele@gmail.com. One backup kept failing: the Frevele signup he had deleted, retried forever as "application not found".
+The Drive connection had been dead since May 23 (Google cancels a Testing-mode app's sign-in after 7 days). Doug reconnected on 10/11, as you@example.com. One backup kept failing: the Frevele signup he had deleted, retried forever as "application not found".
 - **✅ Z1.** A retry drops a backup whose signup was deleted, and deleting a family for good removes its waiting backups. "Retry failed syncs" now tries everything waiting right away; it used to skip items still inside their wait time, so a second press did nothing. `node scripts/test_drive_queue.mjs`.
 
 ### AA. The gate back on, without burning Supabase (Doug, 10/11)
@@ -821,7 +821,7 @@ Steps:
 `node scripts/test_access.mjs`, `node scripts/test_keyfob_sync.mjs`, `python3 scripts/test_gate_bridge_loop.py` (all offline), browser checks with made-up data, then a read-only "Check" at Bishop with Doug before any "Send".
 
 ### AT. Payment-plan families show as on a plan, never "Venmo" or "Unpaid" (Doug, 10/13) — ✅ AT1–AT3 done 10/13
-Doug: "beaubains signed up, but they selected a payment plan along with venmo somehow?" They didn't. Beaubien chose the card payment plan ($200 today by test card, then $44.44 a month through July). Signups labels every payment that isn't a plain card payment "💸 Venmo". A plan family's signup stays "pending" until the plan is paid off (only the plan's start sets that), so Signups also called them Unpaid, then Overdue after 10 days. It kept them in Needs attention with a "Verify payment received" button, and that button would mark them paid in full by Venmo while the plan kept charging.
+Doug: "a family signed up, but they selected a payment plan along with venmo somehow?" They didn't. a family chose the card payment plan ($200 today by test card, then $44.44 a month through July). Signups labels every payment that isn't a plain card payment "💸 Venmo". A plan family's signup stays "pending" until the plan is paid off (only the plan's start sets that), so Signups also called them Unpaid, then Overdue after 10 days. It kept them in Needs attention with a "Verify payment received" button, and that button would mark them paid in full by Venmo while the plan kept charging.
 - **AT1. Signups.**
   - Each method has its own name: Card, Payment plan, Venmo, Check, Cash, Free.
   - A plan family shows "On plan · $200 of $600 paid", or "Plan ended".
@@ -837,7 +837,7 @@ Doug: "beaubains signed up, but they selected a payment plan along with venmo so
 Doug: "make sure that it is ONLY enables... payment plans for stripe only... no venmo allowed, even with deposit... also go check out the text sizes and font for the app.. some seem off... and the coupon code section doesn't sound right.. hard to understand".
 
 What's there now:
-- Plans are already card only for families. On the signup form the plan is its own choice, "charged to your card". Renewals have no Venmo at all. The server only builds a plan through card checkout, and the first payment ("pay today") is part of that checkout. Beaubien's "Venmo" was the Signups label (AT).
+- Plans are already card only for families. On the signup form the plan is its own choice, "charged to your card". Renewals have no Venmo at all. The server only builds a plan through card checkout, and the first payment ("pay today") is part of that checkout. A family's "Venmo" was the Signups label (AT).
 - The one way around the card: on Payments → Families on a payment plan, a board member can "Mark paid" a single plan payment, meant for cash or a check.
 - Typing boxes are 14–15px, but iPhones don't zoom into them: `js/phone-fit.js` has stopped that since 10/7 (N8). So they stay as they are.
 - Codes appear in three places: the family's "Have a code?" (signup and renewal), the board's Discounts card on Payments, and the member home's code banner.
@@ -847,7 +847,7 @@ Doug's answers: remove the board's "Mark paid" on plan payments, so plans are ca
 Steps:
 - **AU1. Card only, locked in.** The board's "Mark paid" on a plan payment is gone, and `payment_plans` `mark_paid` refuses. Tests fail if a plan is ever offered with Venmo, or built without card checkout.
 - **AU2. Text.** I checked every member screen, the signup form and the board home and Passes pop-up at iPhone width, with the Frevele test family's real data. What's broken gets fixed:
-  - The member header ("Bishop Estates Cabana Club · Kristin Frevele · Sign out") squeezes "Sign out" onto two lines, and a board member's "Board tools →" makes it worse. Links stay on one line, and the member's name is hidden on phones (Home already says "Hi, Kristin!").
+  - The member header ("Bishop Estates Cabana Club · Pat Smith · Sign out") squeezes "Sign out" onto two lines, and a board member's "Board tools →" makes it worse. Links stay on one line, and the member's name is hidden on phones (Home already says "Hi, Pat!").
   - On My family, "Refer a friend" is the only card title not in the heading font. It now matches Keyfobs.
   - On the signup form, the description under every choice (app or no app, membership level, free keyfob) is semibold, because every label there is. Descriptions are regular weight, and titles stay bold.
   - The pop-up's × and the photo arrows ‹ › fall back to Arial. They use the app's font.
@@ -910,7 +910,7 @@ Doug picked 42 of the 47 audit items (all but 5, 15, 23, 46, 47; 15 is his own S
 - **BG5. Emails** (items 12, 16, 17, 24) — ✅ 10/20. `node scripts/test_email_fixes.mjs` (offline, 15 checks); `test_emails --live`: 19 emails on Settings → Emails, the dues reminder previews right. Reply-to on every club email: Settings → Club info → Club email, else the President (`_shared/reply_to.ts`). Dates in plan emails read "Sunday, August 1" (`fmtPoolDay`). The dues reminder moves into Settings → Emails with "approved" and "waiting" versions, the amount and the Venmo button (email only, per the notification rule). Replies go to a new Club email box on Settings → Club info, else the President. The plan receipt shows a real date. The plan reminder and party-released emails move into the list; the board invite and sign-in emails get the same look but stay fixed.
 - **BG6. Screens and help** (items 29, 31–34, 41, 43, 44) — ✅ 10/20. `node scripts/test_screen_fixes.mjs` (offline, 29 checks; 27 fail on the old code). Every changed page renders at phone width with no script errors; Privacy and Terms are 390 px wide again. "Pipeline" is now "Signups". Five new help articles: check-in, the Venmo code, canceling a party or fob, who gets which alert, the text allowance. Signup wording, Plan & billing for a club on a set plan, the three layout slips, plain words, small polish, the debug code, the four help fixes and the new help articles.
 - **BG7. The website and your console** (items 25–28, 35, 36, 40, 43) — ✅ 10/20 except the home page, which waits for Doug's OK (draft in the working copy, `scripts/test_home_page.mjs` comes with it). `node scripts/test_site_fixes.mjs` (offline, 12 checks; all 12 fail on the old code). Doug to confirm support@poolsideapp.com forwards in Porkbun. Home page made true (Doug sees the new text before it goes live), one Setup price ($500 up to 100 households, $750 above, and Plan & billing charges by size), the signup link, the "see a real club" link goes to the demo (BG9), one contact address (support@poolsideapp.com), the console tidied, a limit on new clubs per hour and per email (still instant), /club-demo/ removed.
-- **BG8. Housekeeping** (items 3, 37–39, 42, 45). Names and the real phone number out of current files (Doug makes the repo private; if Vercel then won't deploy an organization's private repo on Hobby, move the repo to his own GitHub account). The offline tests run on every push and H4 is fixed. An offline page for no signal. Protective headers. The database clean-up and 30-second scheduled-call timeouts. DMARC to quarantine is Doug's DNS change, in a few weeks.
+- **BG8. Housekeeping** (items 3, 37–39, 42, 45) — ✅ 10/20. `node scripts/test_housekeeping.mjs` (offline, 18 checks). Real names, Doug's mobile and the Gmail are out of the current files (git history still has them until the repo is private). H4 runs again (the test was stale, the app was right). `.github/workflows/offline-tests.yml` runs all 43 offline suites on every push. `offline.html` + `sw.js` v3. vercel.json headers. Scheduled calls wait 30 s; `net._http_response` cleared once (database 79 MB → 33 MB). DMARC p=quarantine is Doug's DNS change in a few weeks. Names and the real phone number out of current files (Doug makes the repo private; if Vercel then won't deploy an organization's private repo on Hobby, move the repo to his own GitHub account). The offline tests run on every push and H4 is fixed. An offline page for no signal. Protective headers. The database clean-up and 30-second scheduled-call timeouts. DMARC to quarantine is Doug's DNS change, in a few weeks.
 - **BG9. The demo club** (item 28). Doug: "make it clear this is a demo pool… an entire example that people can have access to… auto login/all features enabled… mess around on the admin side… it really does nothing… i dont want texts generated or sent nor emails… label things like this button WOULD send a text or email". demo.poolsideapp.com runs the real pages with Maple Grove's made-up data answered inside the visitor's own browser (the demo video's approach), so nothing reaches Supabase, Twilio, Resend or Stripe and it costs no calls. A start screen picks "the board side" or "the member app", signed in already; every page carries a "Demo club, nothing here is real" banner; anything that would text, email, charge or open a door says what it would have done ("In a real club this texts 142 families. Nothing was sent."). Each visitor gets their own copy, reset when they close it.
 
 ### BF. A full audit (Doug, 10/19 night) — ✅ list ready 10/20, waiting on Doug's picks
@@ -1054,7 +1054,7 @@ Doug: the board home said the pool is "Open 8–8" after it closed. Settings →
 Bishop closed for the season. Doug ended the Members time window in the old Windows program and asked me to check that member fobs turn off tomorrow. Bridge 1.4 went on the club PC, and I queued a read-only check (both controllers' Members and Board windows, plus a few board and member fobs). The cloud never handed it over. The database only takes "update the oldest one" (sort plus limit) when the sort column is also returned, and the sync claim didn't return `created_at`. The unlock claim returns `requested_at`, so doors were never affected. Meanwhile the waiting job ended every 2-minute hold at once, so the bridge checked in every 5 seconds until I cancelled the job (about 6 minutes, roughly 70 calls).
 - **AW1.** The claim returns `created_at`. A job that can't be handed out fails at once with the reason, so it can never cut check-ins short again.
 - **AW2.** A test fails if any "update the oldest" in a function doesn't return the column it sorts by.
-- **AW3. What I found and did, with Doug's OK ("turn off all members.. leave the 41... live").** Doug's change in the old program hadn't touched the Members window. It set every fob's own end date to October 19, the 41 board, landscaper, lifeguard and party fobs too. With bridge 1.4 I wrote 84 changes, all read back live. The 41 went back to their old end dates on both controllers: 39 never expire, Burns 2099-10-30, Howard 2026-10-30, Board window, doors and PIN unchanged. The Members window (2) now ends 2026-10-17 on both controllers, so all 94 member fobs are off. Poolside's Member level also ends 2026-10-17, so the app's Unlock matches. A fresh read of all 135 fobs and both windows confirmed it. The old program still says October 19 for everyone and October 31 for the Members window, so an upload from it would undo this.
+- **AW3. What I found and did, with Doug's OK ("turn off all members.. leave the 41... live").** Doug's change in the old program hadn't touched the Members window. It set every fob's own end date to October 19, the 41 board, landscaper, lifeguard and party fobs too. With bridge 1.4 I wrote 84 changes, all read back live. The 41 went back to their old end dates on both controllers: 39 never expire, one family 2099-10-30, another 2026-10-30, Board window, doors and PIN unchanged. The Members window (2) now ends 2026-10-17 on both controllers, so all 94 member fobs are off. Poolside's Member level also ends 2026-10-17, so the app's Unlock matches. A fresh read of all 135 fobs and both windows confirmed it. The old program still says October 19 for everyone and October 31 for the Members window, so an upload from it would undo this.
 `node scripts/test_keyfob_sync.mjs` (offline).
 
 ### AV. Real payments: a free rehearsal, then $1 live tests (Doug, 10/14) — plan only, starts when Doug says
@@ -1152,4 +1152,4 @@ What has to change before the gate and doors go to other clubs, in order. Nothin
 - Get Supabase Pro ($25/mo) when real families start signing up (decided 10/14): daily backups, and 4x the room before a lockout. Until then everything in it is test data.
 - Keep the bridge off until its polling is fixed and the test households are deleted.
 - Reconnect Google Drive (Settings → Drive backup). It has been disconnected since June. First publish the Google app (console.cloud.google.com → Poolside project → Google Auth Platform → Audience → Publish app), or it will drop again after 7 days.
-- Invite the other board members as admins (keyfob, parties, etc.). Only Doug and Kristin are in the app today. Each one turns on pop-ups once from the dashboard; on iPhone, the admin page has to be added to the Home Screen first.
+- Invite the other board members as admins (keyfob, parties, etc.). Only Doug and Pat are in the app today. Each one turns on pop-ups once from the dashboard; on iPhone, the admin page has to be added to the Home Screen first.

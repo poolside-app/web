@@ -23,7 +23,7 @@ function check(label, ok, detail = '') {
   return ok;
 }
 const short = o => String(JSON.stringify(o)).slice(0, 240);
-const env = Object.fromEntries(read('.env.local')
+const env = Object.fromEntries((() => { try { return read('.env.local'); } catch { return ''; } })()
   .split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l))
   .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
 const { SUPABASE_URL, SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, ADMIN_JWT_SECRET } = env;

@@ -10,11 +10,14 @@
 // notifications surface in the OS without a follow-up code change.
 // =============================================================================
 
-const CACHE_NAME = 'poolside-shell-v2';   // v2: member pop-ups open the member side (PLAN.md AH3)
+const CACHE_NAME = 'poolside-shell-v3';   // v3: the no-signal page (PLAN.md BG8)
+const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
   // Activate immediately on first install so the user sees PWA behavior
-  // without a hard refresh after registration.
+  // without a hard refresh after registration. The one thing kept offline
+  // is the no-signal page (PLAN.md BG8).
+  event.waitUntil(caches.open(CACHE_NAME).then(c => c.add(new Request(OFFLINE_URL, { cache: 'reload' }))).catch(() => {}));
   self.skipWaiting();
 });
 
@@ -28,10 +31,12 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Pass-through. Some browsers require *some* fetch handler for the page to
-  // count as installable; this is the lightest one that satisfies that bar.
-  // Optimistic offline fallback for the start_url could go here later.
-  return;
+  // Everything passes through to the network as before. Only a page load
+  // that fails (no signal at the pool) gets the no-signal page instead of
+  // the browser's error (PLAN.md BG8). Data is never served from a cache.
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(fetch(event.request).catch(async () =>
+    (await caches.match(OFFLINE_URL)) || new Response('No signal right now. Your keyfob still works.', { headers: { 'content-type': 'text/plain' } })));
 });
 
 self.addEventListener('push', (event) => {
@@ -63,6 +68,12 @@ self.addEventListener('notificationclick', (event) => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of all) {
       if (c.url.includes(target) && 'focus' in c) return c.focus();
+    }
+    // The app is open on another page: bring it forward and go there,
+    // instead of opening a second window (PLAN.md BG8).
+    const open = all.find(c => 'focus' in c && 'navigate' in c);
+    if (open) {
+      try { const c = await open.focus(); await (c || open).navigate(target); return; } catch { /* fall back to a new window */ }
     }
     if (self.clients.openWindow) return self.clients.openWindow(target);
   })());

@@ -23,7 +23,7 @@ Vercel + Supabase pick up changes automatically).
 Wired but no API key yet → returns `dev_link` so testing still works.
 
 **You do:**
-1. Sign up at [resend.com](https://resend.com) under `doug.frevele@gmail.com` (memory: account separation).
+1. Sign up at [resend.com](https://resend.com) under Doug's own Gmail (memory: account separation).
 2. Verify a sending domain — recommend `mail.poolsideapp.com`. Add the DNS records (SPF / DKIM / MX) at Porkbun.
 3. Generate an API key.
 
@@ -67,7 +67,7 @@ Standard Connect — each tenant onboards their own Stripe account via the
 to the tenant's account; Poolside takes a 1.5% `application_fee_amount`.
 
 **You do:**
-1. Sign up at [stripe.com](https://stripe.com) under `doug.frevele@gmail.com` (account separation per memory).
+1. Sign up at [stripe.com](https://stripe.com) under Doug's own Gmail (account separation per memory).
 2. Enable Connect in the Stripe dashboard (Settings → Connect → Get started).
 3. Get your platform's Secret Key (starts with `sk_test_` or `sk_live_`).
 4. **Configure the webhook** in Stripe Dashboard → Developers → Webhooks:

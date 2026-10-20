@@ -272,7 +272,7 @@ Deno.serve(async (req) => {
       .order('meeting_date', { ascending: false })
       .limit(100);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    // "Edited Sep 30 by Kristin": the editor's name, never their login id.
+    // "Edited Sep 30 by Pat": the editor's name, never their login id.
     const editors = new Map<string, string>();
     const ids = [...new Set((data ?? []).map(m => m.edited_by).filter(Boolean))] as string[];
     if (ids.length) {

@@ -1186,7 +1186,7 @@ Deno.serve(async (req) => {
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     // Someone off the board holds no position; the position stays, open
-    // (Doug, 2026-10-07, after Kristin was removed but still held Vice-President).
+    // (Doug, 2026-10-07, after Pat was removed but still held Vice-President).
     await sb.from('board_position_holders').delete().eq('admin_user_id', id);
     try {
       await sb.from('audit_log').insert({

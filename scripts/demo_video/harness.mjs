@@ -37,7 +37,7 @@ const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers
 
 export async function launch(opts = {}) {
   return puppeteer.launch({
-    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     headless: true,
     args: ['--no-sandbox', '--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none'],
     ...opts,

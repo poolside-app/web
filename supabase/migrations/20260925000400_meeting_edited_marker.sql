@@ -4,7 +4,7 @@
 -- Closed minutes can be corrected by the note-taker or the president
 -- without re-opening the meeting, so its real start and end times and its
 -- place on the public page are kept. The public page shows "Edited Sep 30
--- by Kristin"; the previous version goes to audit_log.
+-- by Pat"; the previous version goes to audit_log.
 -- =============================================================================
 
 alter table public.board_meetings

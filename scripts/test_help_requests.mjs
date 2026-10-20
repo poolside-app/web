@@ -16,7 +16,7 @@ import { makeTempMember, makeTempAdmin, purgeTempAdmins, purgeTestFamilies } fro
 
 const root = new URL('../', import.meta.url);
 const read = rel => readFileSync(new URL(rel, root), 'utf8');
-const env = Object.fromEntries(read('.env.local')
+const env = Object.fromEntries((() => { try { return read('.env.local'); } catch { return ''; } })()
   .split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l))
   .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
 const { SUPABASE_URL, SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, ADMIN_JWT_SECRET } = env;
@@ -60,10 +60,10 @@ try {
   const h = await importTs(new URL('supabase/functions/_shared/help.ts', root));
   const link = h.helpLink('bishopestates', '0e82dc9e-93af-4576-816e-9519e2223750');
   check('the reply link opens the request in the member app', link === 'https://bishopestates.poolsideapp.com/m/#help=0e82dc9e-93af-4576-816e-9519e2223750', link);
-  const shortText = h.replyText('Bishop Estates Cabana Club', 'Kristin', 'Your new fob is at the pool house.', link);
+  const shortText = h.replyText('Bishop Estates Cabana Club', 'Pat', 'Your new fob is at the pool house.', link);
   check('a reply text says who answered, what they said, and links back',
-    /Kristin/.test(shortText) && /Your new fob is at the pool house\./.test(shortText) && shortText.endsWith(link), shortText);
-  const long = h.replyText('Bishop Estates Cabana Club', 'Kristin', 'x'.repeat(900), link);
+    /Pat/.test(shortText) && /Your new fob is at the pool house\./.test(shortText) && shortText.endsWith(link), shortText);
+  const long = h.replyText('Bishop Estates Cabana Club', 'Pat', 'x'.repeat(900), link);
   check('a long reply is cut short so the text stays two messages at most', long.length <= 306 && /\.\.\./.test(long) && long.endsWith(link), String(long.length));
   check('the assigned board member and the president can see a request',
     h.canSeeHelpRequest({ assigned_admin_id: 'fob' }, { id: 'fob', isOwner: false })

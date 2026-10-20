@@ -23,7 +23,7 @@ function check(label, ok, detail = '') {
   return ok;
 }
 const short = o => String(JSON.stringify(o)).slice(0, 260);
-const env = Object.fromEntries(read('.env.local')
+const env = Object.fromEntries((() => { try { return read('.env.local'); } catch { return ''; } })()
   .split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l))
   .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
 const { SUPABASE_URL, SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, ADMIN_JWT_SECRET } = env;
@@ -79,9 +79,9 @@ console.log('\nL2 · create agenda (offline)');
 if (A) {
   const positions = [{ id: 'p', title: 'President', sort: 0 }, { id: 'v', title: 'Vice-President', sort: 1 }, { id: 't', title: 'Treasurer', sort: 2 }, { id: 'g', title: 'Grounds Director', sort: 5 }];
   const holders = [{ position_id: 'p', admin_user_id: 'doug' }, { position_id: 't', admin_user_id: 'kris' }, { position_id: 'v', admin_user_id: 'kris' }];
-  const logins = [{ id: 'doug', display_name: 'Doug Frevele' }, { id: 'kris', display_name: 'Kristin' }, { id: 'sam', display_name: 'Sam' }];
+  const logins = [{ id: 'doug', display_name: 'Doug Frevele' }, { id: 'kris', display_name: 'Robin' }, { id: 'sam', display_name: 'Sam' }];
   const items = [
-    { id: '1', body: 'Bathrooms have been complained about', added_by: 'kris', added_by_name: 'Kristin', created_at: '2026-10-06T10:00:00Z' },
+    { id: '1', body: 'Bathrooms have been complained about', added_by: 'kris', added_by_name: 'Robin', created_at: '2026-10-06T10:00:00Z' },
     { id: '2', body: 'Close for the season Oct 18', added_by: 'doug', added_by_name: 'Doug Frevele', created_at: '2026-10-06T11:00:00Z' },
     { id: '3', body: 'New lounge chairs', added_by: 'sam', added_by_name: 'Sam', created_at: '2026-10-06T12:00:00Z', carried_from_date: '2026-09-12' },
     { id: '4', body: 'Old idea', added_by: null, added_by_name: 'Pat (left the board)', created_at: '2026-10-01T12:00:00Z' },
@@ -93,12 +93,12 @@ if (A) {
     ag.sections.map(x => x.key).join(',') === 'open,minutes,reports,old,actions,close', ag.sections.map(x => x.key).join(','));
   check('L2: each board member\'s items sit under their name, in board order',
     reports.people.map(p => `${p.name}:${p.titles.join('+')}:${p.items.map(i => i.id).join('')}`).join(' | ')
-      === 'Doug Frevele:President:2 | Kristin:Vice-President+Treasurer:1 | Sam::3 | Pat (left the board)::4',
+      === 'Doug Frevele:President:2 | Robin:Vice-President+Treasurer:1 | Sam::3 | Pat (left the board)::4',
     reports.people.map(p => `${p.name}:${p.titles.join('+')}:${p.items.map(i => i.id).join('')}`).join(' | '));
   const text = A.agendaText(ag);
   check('L2: the written agenda reads like the format Doug saw',
     /^Board Meeting — Saturday, October 10 · 10:00 AM · Clubhouse/.test(text) && /2\. Approve the minutes of the September 12 meeting/.test(text)
-      && /Kristin, Vice-President · Treasurer\n {5}- Bathrooms have been complained about/.test(text) && /New lounge chairs \(from September 12\)/.test(text)
+      && /Robin, Vice-President · Treasurer\n {5}- Bathrooms have been complained about/.test(text) && /New lounge chairs \(from September 12\)/.test(text)
       && /Get 3 quotes on the pump \(Facilities, due October 1\)/.test(text) && /6\. Set the next meeting, adjourn$/.test(text), text);
 }
 {

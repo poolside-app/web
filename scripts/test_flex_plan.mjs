@@ -232,7 +232,7 @@ console.log('M3–M6 · the screens (offline)');
   check('payments.html: the gate rule and plan types are settings', /id="plan-access"/.test(read('club/admin/payments.html')) && /id="plan-tiers"/.test(read('club/admin/payments.html')));
 }
 
-// PLAN.md AT (Doug 10/13): Beaubien chose the card plan, and Signups called
+// PLAN.md AT (Doug 10/13): a family chose the card plan, and Signups called
 // it Venmo, then Unpaid, with a Verify button that would mark them paid in
 // full. Only the plan's start sets a signup's payment to 'pending'.
 console.log('AT · plan families on Signups, Households and Payments (offline)');

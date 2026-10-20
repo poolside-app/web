@@ -25,7 +25,7 @@ function check(label, ok, detail = '') {
   return ok;
 }
 const short = o => String(JSON.stringify(o)).slice(0, 240);
-const env = Object.fromEntries(read('.env.local')
+const env = Object.fromEntries((() => { try { return read('.env.local'); } catch { return ''; } })()
   .split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l))
   .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
 const { SUPABASE_URL, SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, ADMIN_JWT_SECRET } = env;
@@ -88,17 +88,20 @@ console.log('H4 · payment plan deadlines (offline)');
   // The board screen: sorted by season, and the last one is "the rest".
   const page = read('club/admin/payments.html');
   const src = between(page, '// ── Payment deadlines (milestones)', '// ── Setup: Payment plans');
-  const box = { document: { getElementById: id => ({ checked: id === 'plan-enabled' }) }, console };
+  const box = { document: { getElementById: id => ({ checked: id === 'plan-enabled' }), addEventListener: () => {} }, console };   // addEventListener: payments.html listens for changes since 10/8 (PLAN.md BG8)
   vm.createContext(box);
   try {
     vm.runInContext(src.replace(/\blet MILESTONES\b/, 'var MILESTONES').replace(/\blet OPENS_MONTH\b/, 'var OPENS_MONTH'), box);
-    vm.runInContext(`MILESTONES = [{ date: '05-01', min_pct: 1, label: '' }, { date: '12-01', min_pct: 50, label: '' }]; OPENS_MONTH = 12;`, box);
+    // Since PLAN.md U1 the board fills in two fixed deadlines, first then
+    // paid in full; this is the December-then-May season.
+    vm.runInContext(`MILESTONES = [{ date: '12-01', min_pct: 50, label: '' }, { date: '05-01', min_pct: 100, label: '' }]; OPENS_MONTH = 12;`, box);
     const problem = vm.runInContext('milestoneProblem()', box);
     const order = vm.runInContext('seasonSorted(MILESTONES).map(m => m.date + ":" + m.min_pct).join(",")', box);
     check('H4: the board can save "50% by Dec 1, the rest by May 1"',
       problem === '' && order === '12-01:50,05-01:100', `${problem} | ${order}`);
-    check('H4: the last deadline has no % box; it says "the rest"',
-      /The rest \(100%\)/.test(src) && /isLast/.test(src), 'no "The rest (100%)" row');
+    // U1: the paid-in-full deadline is always 100%, so only the first has a % box.
+    check('H4: the last deadline has no % box; it\'s paid in full',
+      /ms-first-pct/.test(page) && !/id="ms-final-pct"/.test(page) && /min_pct: 100, label: 'Paid in full'/.test(src), 'a % box on the paid-in-full deadline');
   } catch (e) {
     check('H4: the board can save "50% by Dec 1, the rest by May 1"', false, e.message);
   }

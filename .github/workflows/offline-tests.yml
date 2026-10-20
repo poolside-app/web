@@ -1,0 +1,51 @@
+# =============================================================================
+# offline-tests — every free (offline) test suite, on every push
+# =============================================================================
+# PLAN.md BG8 (10/20 audit): the offline suites need no secrets and make no
+# Supabase calls, but they only ran when someone remembered, so a money check
+# failed unnoticed from 10/8 to 10/20. This runs them all on each push to main
+# and on pull requests. verify.yml (live, manual-only) is unchanged.
+#
+# A suite added to scripts/ is run here once it's in the list below. Every
+# suite must pass with --offline and no .env.local.
+# =============================================================================
+
+name: offline-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The demo video's screens render in the runner's own Chrome.
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - name: Run the offline suites
+        run: |
+          failed=""
+          for t in \
+            test_access test_agenda test_board_home test_board_meetings test_board_notes \
+            test_demo_video test_drive_queue test_emails test_flex_plan test_gate_doors \
+            test_gate_poll test_handoff test_help_articles test_help_requests test_keyfob_sync \
+            test_keyfobs test_long_lists test_money test_one_app test_party_booked \
+            test_plan_approval test_positions test_posts_delete test_screens test_season_home \
+            test_signup_notes test_sponsor_popup test_time_saved test_venmo_codes \
+            test_signin_safety test_texts test_money_fixes test_signup_fixes test_email_fixes \
+            test_screen_fixes test_site_fixes test_housekeeping \
+            errors_test fees_test share_test sms_test terms_test; do
+            echo "::group::$t"
+            if ! node "scripts/$t.mjs" --offline; then failed="$failed $t"; fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then echo "Failed:$failed"; exit 1; fi
+          echo "All offline suites passed."

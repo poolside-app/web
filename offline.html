@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>No signal — Poolside</title>
+<!-- Shown by sw.js when the app can't reach the internet (PLAN.md BG8).
+     Self-contained: no fonts, scripts or images from the network. -->
+<style>
+  :root { --blue:#0a3b5c; --bg:#fefdfb; --muted:#5d6b81; --border:#e5e7eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); color:#0f172a;
+    font:16px/1.55 -apple-system, system-ui, 'Segoe UI', sans-serif; padding:24px max(16px, env(safe-area-inset-left)); }
+  main { max-width:420px; text-align:center; }
+  .icon { font-size:44px; }
+  h1 { font-family: Georgia, serif; color:var(--blue); font-size:26px; margin:10px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; }
+  button { margin-top:6px; padding:12px 22px; border-radius:12px; border:0; background:var(--blue); color:#fff; font:600 15px system-ui, sans-serif; cursor:pointer; }
+</style>
+</head>
+<body>
+<main>
+  <div class="icon">📶</div>
+  <h1>No signal right now</h1>
+  <p>Your keyfob still works at the gate.</p>
+  <p>Unlock, the calendar and the rest of the app come back as soon as your phone has signal again.</p>
+  <button type="button" onclick="location.reload()">Try again</button>
+</main>
+</body>
+</html>
