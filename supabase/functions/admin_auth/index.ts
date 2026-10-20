@@ -35,6 +35,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { isLocked, afterFailure, lockedMessage, lockedEmail } from '../_shared/signin_guard.ts';
+import { sendEmail } from '../_shared/send_email.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -124,7 +126,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: admin } = await sb.from('provider_admins')
-      .select('id, email, password_hash, active, is_default_pw, display_name, is_super')
+      .select('id, email, password_hash, active, is_default_pw, display_name, is_super, failed_logins, locked_until')
       .eq('email', email)
       .maybeSingle();
 
@@ -133,14 +135,24 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Invalid credentials' });
     }
 
+    // 5 wrong passwords in a row pause sign-in for 15 minutes (PLAN.md BG1).
+    const now = new Date();
+    if (isLocked(admin, now)) return jsonResponse({ ok: false, error: lockedMessage(admin, now) });
+
     const valid = await bcrypt.compare(password, admin.password_hash);
     if (!valid) {
-      return jsonResponse({ ok: false, error: 'Invalid credentials' });
+      const next = afterFailure(admin, now);
+      await sb.from('provider_admins').update({ failed_logins: next.failed_logins, locked_until: next.locked_until }).eq('id', admin.id);
+      if (next.just_locked && admin.email) {
+        const m = lockedEmail({ name: admin.display_name, where: 'Poolside provider', what: 'password' });
+        await sendEmail({ to: admin.email, subject: m.subject, html: m.html });
+      }
+      return jsonResponse({ ok: false, error: next.just_locked ? lockedMessage(next, now) : 'Invalid credentials' });
     }
 
-    // Stamp last_login, fire and forget
+    // Stamp last_login and clear any wrong tries
     await sb.from('provider_admins')
-      .update({ last_login_at: new Date().toISOString() })
+      .update({ last_login_at: now.toISOString(), failed_logins: 0, locked_until: null })
       .eq('id', admin.id);
 
     const token = await signToken(admin.id);

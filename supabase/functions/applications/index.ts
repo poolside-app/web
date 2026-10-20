@@ -25,6 +25,7 @@ import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, requireOwner } from '../_shared/auth.ts';
 import { fmtPoolDate, poolToday, tenantTimeZone, zoneOrDefault } from '../_shared/pool_time.ts';
 import { addressMatch } from '../_shared/keyfobs.ts';
+import { escapeLike } from '../_shared/signin_guard.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -488,7 +489,7 @@ Deno.serve(async (req) => {
     const phone = rawPhone ? normalizePhoneE164(rawPhone) : null;
     let emailHit = false, phoneHit = false;
     if (email) {
-      const { data } = await sb.from('household_members').select('id').eq('tenant_id', tenant.id).eq('active', true).ilike('email', email).limit(1).maybeSingle();
+      const { data } = await sb.from('household_members').select('id').eq('tenant_id', tenant.id).eq('active', true).ilike('email', escapeLike(email)).limit(1).maybeSingle();
       emailHit = !!data;
     }
     if (phone) {
@@ -586,7 +587,7 @@ Deno.serve(async (req) => {
       if (email) {
         const { data } = await sb.from('household_members').select('id')
           .eq('tenant_id', tenant.id).eq('active', true)
-          .ilike('email', email).limit(1).maybeSingle();
+          .ilike('email', escapeLike(email)).limit(1).maybeSingle();
         emailMatch = data;
       }
       if (phone) {

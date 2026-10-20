@@ -365,9 +365,12 @@ Deno.serve(async (req) => {
       .select('id').eq('id', tenant_id).maybeSingle();
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 404);
 
-    const { data: clash } = await sb.from('admin_users')
-      .select('id').eq('tenant_id', tenant_id)
-      .or(`email.eq.${email},username.eq.${email}`).maybeSingle();
+    // Two plain lookups: what's typed is never pasted into a filter (BG1).
+    const { data: byEmail } = await sb.from('admin_users')
+      .select('id').eq('tenant_id', tenant_id).eq('email', email).maybeSingle();
+    const { data: byUser } = byEmail ? { data: null } : await sb.from('admin_users')
+      .select('id').eq('tenant_id', tenant_id).eq('username', email).maybeSingle();
+    const clash = byEmail ?? byUser;
     if (clash) return jsonResponse({ ok: false, error: 'An admin with that email already exists for this tenant' }, 409);
 
     const password_hash = await bcrypt.hash(password, 10);

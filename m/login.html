@@ -345,16 +345,10 @@ async function doStart() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not send a sign-in link');
 
-    if (data.dev_link) {
-      // Prominent CTA — email isn't wired yet, so the dev_link is the only
-      // way for the member to actually sign in. Make it impossible to miss.
-      devEl.innerHTML = `
-        <div style="font-weight:700;color:#92400e;margin-bottom:8px">⚠️ Email isn't fully configured yet</div>
-        <div style="margin-bottom:10px;font-size:13px">For now, tap the button below to sign in directly:</div>
-        <a href="${escapeAttr(data.dev_link)}" style="display:inline-block;padding:12px 22px;background:var(--blue);color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px">Continue to my account →</a>
-      `;
-      devEl.classList.add('show');
-    } else {
+    // The server never sends the sign-in link back to this page; when
+    // nothing could be sent it answers ok:false and the error shows above
+    // (PLAN.md BG1).
+    {
       // A cell number always gets the code box. The server answers the same
       // way whether or not the number is on file (so nobody can check who's
       // a member), and that answer has no mode, which used to fall through
@@ -373,7 +367,7 @@ async function doStart() {
     }
     // Keep what they typed on screen: the phone number is the second half of
     // the code credential, and either way it's what Send it again sends to.
-    if (!data.dev_link) startResendTimer(raw);
+    startResendTimer(raw);
   } catch (e) {
     errEl.textContent = e.name === 'AbortError' ? 'Request timed out — try again.' : e.message;
     errEl.classList.add('show');

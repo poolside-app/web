@@ -88,7 +88,7 @@
     <!-- Code-entry sub-form. Shown after a successful start_link with
          channel='sms'. The 6-digit code from the SMS is entered here. -->
     <div id="code-entry" style="display:none;margin-top:14px;padding:14px;background:var(--bg-2);border-radius:10px;border:1.5px solid var(--blue-l)">
-      <p style="margin:0 0 8px;font-size:13px;color:var(--blue);font-weight:600">📱 We just texted a 6-digit code to <span id="code-phone-display"></span></p>
+      <p id="code-sent-line" style="margin:0 0 8px;font-size:13px;color:var(--blue);font-weight:600">📱 We just texted a 6-digit code to <span id="code-phone-display"></span></p>
       <input id="code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" autocomplete="one-time-code"
              style="width:100%;padding:14px 18px;font:600 24px ui-monospace,monospace;letter-spacing:.4em;text-align:center;border:1.5px solid var(--border);border-radius:10px;margin:6px 0">
       <button type="button" id="code-submit" class="btn" style="width:100%;margin-top:6px">Verify code →</button>
@@ -259,39 +259,22 @@ async function doMagic() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not send a sign-in link');
     // Phone (SMS) path: switch to code-entry UI so the user types the
-    // 6-digit code we just texted them. Also handles the dev_code fallback
-    // when SMS isn't configured.
+    // 6-digit code we just sent. The server never sends a code or link back
+    // to this page; when nothing could be sent it answers ok:false (BG1).
     if (data.channel === 'sms') {
       __PENDING_PHONE = raw;
+      const sentLine = document.getElementById('code-sent-line');
+      if (sentLine) sentLine.innerHTML = data.via === 'email'
+        ? '📧 ' + escapeHtml(data.message || 'We emailed your code.')
+        : '📱 We just texted a 6-digit code to <span id="code-phone-display"></span>';
       const phoneDisplay = document.getElementById('code-phone-display');
       if (phoneDisplay) phoneDisplay.textContent = raw;
       document.getElementById('code-entry').style.display = 'block';
       document.getElementById('code-input').focus();
-      if (data.dev_code) {
-        // Dev mode: surface the code so we can sign in without an actual SMS.
-        const devCodeEl = document.getElementById('code-err');
-        devCodeEl.style.background = '#fef3c7';
-        devCodeEl.style.color = '#78350f';
-        devCodeEl.textContent = `Dev code (SMS not configured): ${data.dev_code}`;
-        devCodeEl.classList.add('show');
-      }
       return;
     }
-    // Email path with dev_link fallback (Resend not configured)
-    if (data.dev_link) {
-      let extractedToken = '';
-      try {
-        const m = String(data.dev_link).match(/#magic=([^&]+)/);
-        if (m) extractedToken = decodeURIComponent(m[1]);
-      } catch (_) { /* fall back to raw link below */ }
-      devEl.innerHTML = `<b>Email not configured yet.</b> One-click sign-in:<br>
-        <button type="button" onclick="window.__poolsideVerifyDev('${escapeHtml(extractedToken)}')" style="display:inline-block;margin-top:8px;padding:10px 18px;background:#0a3b5c;color:#fff;border:0;border-radius:8px;font:600 14px Inter;cursor:pointer">Continue to admin →</button>
-        <div style="margin-top:8px;font-size:11px;color:#92400e;word-break:break-all">Or copy: <code>${escapeHtml(data.dev_link)}</code></div>`;
-      devEl.classList.add('show');
-    } else {
-      okEl.textContent = data.message || 'A sign-in link is on the way. Check your email.';
-      okEl.classList.add('show');
-    }
+    okEl.textContent = data.message || 'A sign-in link is on the way. Check your email.';
+    okEl.classList.add('show');
     document.getElementById('m-id').value = '';
   } catch (e) {
     errEl.textContent = e.name === 'AbortError' ? 'Request timed out — try again.' : e.message;
@@ -410,13 +393,6 @@ async function verifyMagicToken(token) {
     }
   }
 }
-// Used by the dev_link button (above) — exposes verifyMagicToken on
-// window so the inline onclick can call it.
-window.__poolsideVerifyDev = function (tok) {
-  if (!tok) return;
-  verifyMagicToken(tok);
-};
-
 (async () => {
   if (!window.location.hash.startsWith('#magic=')) return;
   const token = decodeURIComponent(window.location.hash.slice('#magic='.length));

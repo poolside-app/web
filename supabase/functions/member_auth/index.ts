@@ -8,7 +8,9 @@
 // Actions:
 //   { action: 'start', slug, email }
 //     → { ok, sent: true, message: '...' }
-//        or { ok, sent: false, dev_link: '...' } if RESEND_API_KEY is unset
+//        or { ok: false, error } (503) when nothing could be sent. The link
+//        is never returned: it would sign in whoever typed the address
+//        (PLAN.md BG1).
 //
 //   { action: 'verify', slug, token }
 //     → { ok, token, user, household, tenant }
@@ -23,6 +25,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { partyWhen, fmtPoolDate, fmtPoolStamp, poolDate, poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
+import { escapeLike } from '../_shared/signin_guard.ts';
+
+// Shown when neither a text nor an email could go out (PLAN.md BG1).
+const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
 
 const SUPABASE_URL    = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -119,8 +125,8 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
 }
 
-// Twilio SMS sender — returns { sent, error? } so callers can fall back
-// to a dev_link when keys aren't set.
+// Twilio SMS sender — returns { sent, error? } so the caller can try email
+// instead when a text can't go.
 // Cryptographically random 6-digit code, 100000-999999 so it never has a
 // leading zero to lose. Same generator as tenant_admin_auth uses for admins.
 function generateOtpCode(): string {
@@ -130,10 +136,13 @@ function generateOtpCode(): string {
 }
 
 async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string; code?: string; sb: ReturnType<typeof createClient> }): Promise<{ sent: boolean; error?: string }> {
-  // SMS_DEV_MODE forces dev_link fallback for testing while waiting for
-  // A2P 10DLC approval. The function does NOT call Twilio when set.
+  // SMS_DEV_MODE skips Twilio for testing. The function does NOT call
+  // Twilio when set.
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
-  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
+  // Sign-in codes don't count toward the platform's daily text limit, so a
+  // busy "Text all" day can't stop people signing in (PLAN.md BG1). The
+  // per-phone hourly limit still applies.
+  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to, { skipDailyCap: true });
   if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };
   const sid    = Deno.env.get('TWILIO_ACCOUNT_SID');
   const token  = Deno.env.get('TWILIO_AUTH_TOKEN');
@@ -174,11 +183,19 @@ async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLi
 
 async function sendMagicLinkEmail(args: {
   to: string; tenantName: string; clubUrl: string; verifyLink: string; memberName: string;
+  /** Set when a text couldn't go: the code the app is waiting for. */
+  code?: string;
 }): Promise<{ sent: boolean; error?: string }> {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
+  const codeBlock = args.code
+    ? `<p style="margin:0 0 6px;color:#64748b">We couldn't text you just now. Your sign-in code is:</p>
+      <p style="margin:0 0 18px;font:700 28px ui-monospace,monospace;letter-spacing:.2em;color:#0a3b5c">${escapeHtml(args.code)}</p>
+      <p style="margin:0 0 16px;color:#64748b">Type it in the app, or use the button below.</p>`
+    : '';
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Sign in to ${escapeHtml(args.tenantName)}</h2>
+      ${codeBlock}
       <p style="margin:0 0 16px;color:#64748b">Hi ${escapeHtml(args.memberName || 'there')}, click below to sign in. The link is good for one use and expires in 15 minutes.</p>
       <p style="margin:24px 0">
         <a href="${args.verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in to ${escapeHtml(args.tenantName)}</a>
@@ -195,7 +212,7 @@ async function sendMagicLinkEmail(args: {
       body: JSON.stringify({
         from: RESEND_FROM,
         to: [args.to],
-        subject: `Sign in to ${args.tenantName}`,
+        subject: args.code ? `${args.code} is your ${args.tenantName} sign-in code` : `Sign in to ${args.tenantName}`,
         html,
       }),
     });
@@ -291,8 +308,8 @@ Deno.serve(async (req) => {
   // ── start ──────────────────────────────────────────────────────────────
   // Accepts EITHER an email or an E.164 phone number. If email → sends a
   // magic link via Resend. If phone → sends a one-tap sign-in link via SMS
-  // (Twilio). When the relevant provider has no key configured, returns
-  // dev_link so testing without infra still works.
+  // (Twilio), falling back to email when the text can't go. When nothing can
+  // be sent it says so; it never returns the link (PLAN.md BG1).
   if (action === 'start') {
     const slug  = String(body.slug ?? '').trim().toLowerCase();
     const raw   = String(body.email ?? body.phone ?? body.identifier ?? '').trim();
@@ -343,7 +360,7 @@ Deno.serve(async (req) => {
       .select('id, name, email, phone_e164, household_id, active')
       .eq('tenant_id', tenant.id).eq('active', true);
     if (phone_e164) memberQuery = memberQuery.eq('phone_e164', phone_e164);
-    else memberQuery = memberQuery.ilike('email', email!);
+    else memberQuery = memberQuery.ilike('email', escapeLike(email!));
     const { data: member } = await memberQuery.maybeSingle();
 
     if (!member) {
@@ -395,11 +412,25 @@ Deno.serve(async (req) => {
         // form instead of "check your texts for a link".
         return jsonResponse({ ...generic, mode: 'code' });
       }
-      return jsonResponse({
-        ok: true, sent: false,
-        message: 'SMS sending is not configured. Use the link below to sign in.',
-        dev_link: verifyLink, dev_error: send.error,
-      });
+      // The text couldn't go (the per-phone limit, an outage). Never hand
+      // the link or code back: it would sign in whoever typed the number
+      // (PLAN.md BG1). Email the code instead when there's an address.
+      if (member.email) {
+        const mail = await sendMagicLinkEmail({
+          to: member.email, tenantName: tenant.display_name,
+          clubUrl, verifyLink, memberName: member.name, code,
+        });
+        if (mail.sent) {
+          await padTime();
+          return jsonResponse({ ...generic, mode: 'code', via: 'email',
+            message: 'We couldn\'t text you just now, so we emailed your sign-in code. Check your email.' });
+        }
+        console.error('member_auth.start: text and email both failed', send.error, mail.error);
+      } else {
+        console.error('member_auth.start: text failed, no email on file', send.error);
+      }
+      await padTime();
+      return jsonResponse({ ok: false, error: SEND_FAILED }, 503);
     }
 
     const send = await sendMagicLinkEmail({
@@ -407,11 +438,9 @@ Deno.serve(async (req) => {
       clubUrl, verifyLink, memberName: member.name,
     });
     if (send.sent) return jsonResponse(generic);
-    return jsonResponse({
-      ok: true, sent: false,
-      message: 'Email sending is not configured. Use the link below to sign in.',
-      dev_link: verifyLink, dev_error: send.error,
-    });
+    console.error('member_auth.start: email failed', send.error);
+    await padTime();
+    return jsonResponse({ ok: false, error: SEND_FAILED }, 503);
   }
 
   // ── verify ─────────────────────────────────────────────────────────────

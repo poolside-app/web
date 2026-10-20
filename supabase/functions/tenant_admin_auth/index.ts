@@ -27,6 +27,11 @@ import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireOwner } from '../_shared/auth.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
+import { isLocked, afterFailure, lockedMessage, lockedEmail, escapeLike, MAX_TRIES } from '../_shared/signin_guard.ts';
+import { sendEmail } from '../_shared/send_email.ts';
+
+// Shown when neither a text nor an email could go out (PLAN.md BG1).
+const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -80,12 +85,25 @@ async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUr
   } catch (e) { return { sent: false, error: String(e) }; }
 }
 
+// The board code by email, when the text couldn't go (PLAN.md BG1). The
+// page is already waiting for the 6 digits, so the email carries the code.
+async function sendAdminEmailCode(args: { to: string; tenantName: string; code: string; adminName: string }) {
+  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
+    <p style="margin:0 0 8px">Hi ${escAdmin(args.adminName || 'there')},</p>
+    <p style="margin:0 0 6px;color:#64748b">We couldn't text you just now. Your ${escAdmin(args.tenantName)} BOARD sign-in code is:</p>
+    <p style="margin:0 0 18px;font:700 28px ui-monospace,monospace;letter-spacing:.2em;color:#0a3b5c">${escAdmin(args.code)}</p>
+    <p style="margin:0;color:#94a3b8;font-size:12px">It expires in 10 minutes. If you didn't ask for it, ignore this email.</p></div>`;
+  return await sendEmail({ to: args.to, subject: `${args.code} is your ${args.tenantName} board sign-in code`, html });
+}
+
 // SMS sign-in body: short, code-prominent. iOS + Android auto-detect the
 // "code is XXXXXX" pattern and offer one-tap autofill from the keyboard
 // suggestion bar — far better UX than asking users to copy/paste a long URL.
 async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string; sb: ReturnType<typeof createClient> }) {
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
-  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
+  // Sign-in codes skip the platform's daily text limit (PLAN.md BG1); the
+  // per-phone hourly limit still applies.
+  const gate = await checkGlobalSmsKillSwitch(args.sb, args.to, { skipDailyCap: true });
   if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };
   const sid = TWILIO_SID, tok = TWILIO_TOKEN;
   // Prefer MessagingServiceSid when set — it routes the send through our
@@ -323,19 +341,34 @@ Deno.serve(async (req) => {
 
     // Find the admin user inside that tenant. Match on either email or
     // username so people can log in with whatever they typed at signup.
-    const { data: user } = await sb.from('admin_users')
-      .select('id, email, username, display_name, password_hash, is_super, is_default_pw, active, scopes, role_template, phone_e164')
-      .eq('tenant_id', tenant.id)
-      .or(`email.eq.${email},username.eq.${email}`)
-      .maybeSingle();
+    // Two plain lookups: what's typed is never pasted into a filter (BG1).
+    const COLS = 'id, email, username, display_name, password_hash, is_super, is_default_pw, active, scopes, role_template, phone_e164, failed_logins, locked_until';
+    let { data: user } = await sb.from('admin_users').select(COLS)
+      .eq('tenant_id', tenant.id).eq('email', email).maybeSingle();
+    if (!user) {
+      ({ data: user } = await sb.from('admin_users').select(COLS)
+        .eq('tenant_id', tenant.id).eq('username', email).maybeSingle());
+    }
     if (!user || !user.active) {
       return jsonResponse({ ok: false, error: 'Invalid credentials' }, 401);
     }
 
-    const ok = await bcrypt.compare(password, user.password_hash || '');
-    if (!ok) return jsonResponse({ ok: false, error: 'Invalid credentials' }, 401);
+    // 5 wrong passwords in a row pause sign-in for 15 minutes (BG1).
+    const now = new Date();
+    if (isLocked(user, now)) return jsonResponse({ ok: false, error: lockedMessage(user, now) }, 429);
 
-    await sb.from('admin_users').update({ last_login_at: new Date().toISOString() }).eq('id', user.id);
+    const ok = await bcrypt.compare(password, user.password_hash || '');
+    if (!ok) {
+      const next = afterFailure(user, now);
+      await sb.from('admin_users').update({ failed_logins: next.failed_logins, locked_until: next.locked_until }).eq('id', user.id);
+      if (next.just_locked && user.email) {
+        const m = lockedEmail({ name: user.display_name, where: `${tenant.display_name} board`, what: 'password' });
+        await sendEmail({ to: user.email, subject: m.subject, html: m.html });
+      }
+      return jsonResponse({ ok: false, error: next.just_locked ? lockedMessage(next, now) : 'Invalid credentials' }, next.just_locked ? 429 : 401);
+    }
+
+    await sb.from('admin_users').update({ last_login_at: now.toISOString(), failed_logins: 0, locked_until: null }).eq('id', user.id);
 
     const token = await signToken(user.id, tenant.id, tenant.slug, {
       role_template: user.role_template ?? 'owner',
@@ -396,7 +429,7 @@ Deno.serve(async (req) => {
     let q = sb.from('admin_users').select('id, display_name, email, phone_e164, active')
       .eq('tenant_id', tenant.id).eq('active', true);
     if (phone_e164) q = q.eq('phone_e164', phone_e164);
-    else q = q.ilike('email', email as string);
+    else q = q.ilike('email', escapeLike(email as string));
     const { data: admin } = await q.maybeSingle();
 
     if (!admin) {
@@ -435,10 +468,20 @@ Deno.serve(async (req) => {
         success: send.sent, error: send.error ?? null, source: 'tenant_admin_auth.start_link',
       });
       if (send.sent) return jsonResponse(generic);
-      // Dev-mode fallback: surface the code so the developer can sign in
-      // even when Twilio isn't configured (testing, local). NEVER exposed
-      // in production paths once Twilio is set up.
-      return jsonResponse({ ok: true, sent: false, channel, message: 'SMS not configured. Use the code below.', dev_code: finalCode, dev_error: send.error });
+      // The text couldn't go (the per-phone limit, an outage). Never hand
+      // the code back: it would sign in whoever typed the number (PLAN.md
+      // BG1). Email it instead when there's an address.
+      if (admin.email) {
+        const mail = await sendAdminEmailCode({ to: admin.email as string, tenantName: tenant.display_name, code: finalCode, adminName: admin.display_name || '' });
+        if (mail.sent) {
+          return jsonResponse({ ...generic, via: 'email',
+            message: 'We couldn\'t text you just now, so we emailed your code. Check your email.' });
+        }
+        console.error('tenant_admin_auth.start_link: text and email both failed', send.error, mail.error);
+      } else {
+        console.error('tenant_admin_auth.start_link: text failed, no email on file', send.error);
+      }
+      return jsonResponse({ ok: false, error: SEND_FAILED }, 503);
     }
 
     // Email path: long random magic-link token (15-min expiry, one-tap
@@ -457,7 +500,8 @@ Deno.serve(async (req) => {
     const verifyLink = `${clubUrl}/club/admin/login.html#magic=${encodeURIComponent(tokRaw)}`;
     const send = await sendAdminEmailLink({ to: admin.email as string, tenantName: tenant.display_name, clubUrl, verifyLink, adminName: admin.display_name || '' });
     if (send.sent) return jsonResponse(generic);
-    return jsonResponse({ ok: true, sent: false, channel, message: 'Email not configured. Use the link below.', dev_link: verifyLink, dev_error: send.error });
+    console.error('tenant_admin_auth.start_link: email failed', send.error);
+    return jsonResponse({ ok: false, error: SEND_FAILED }, 503);
   }
 
   // verify_code: phone-OTP sign-in. Take phone + code, hash, look up an
@@ -498,6 +542,27 @@ Deno.serve(async (req) => {
       .eq('token_hash', codeHash)
       .maybeSingle();
     if (!link || link.used_at || new Date(link.expires_at).getTime() < Date.now()) {
+      // Wrong code: count it against this person's newest live code. After
+      // 5 wrong tries every live code is spent, so guessing needs a new
+      // text each time (PLAN.md BG1, the same rule members have).
+      const nowIso = new Date().toISOString();
+      const { data: live } = await sb.from('admin_magic_links')
+        .select('id, code_attempts').eq('tenant_id', tenant.id).eq('admin_user_id', admin.id)
+        .is('used_at', null).gt('expires_at', nowIso)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (live) {
+        const attempts = Number(live.code_attempts ?? 0) + 1;
+        if (attempts >= MAX_TRIES) {
+          await sb.from('admin_magic_links').update({ used_at: nowIso, code_attempts: attempts })
+            .eq('tenant_id', tenant.id).eq('admin_user_id', admin.id).is('used_at', null);
+          if (admin.email) {
+            const m = lockedEmail({ name: admin.display_name, where: `${tenant.display_name} board`, what: 'code' });
+            await sendEmail({ to: admin.email as string, subject: m.subject, html: m.html });
+          }
+          return jsonResponse({ ok: false, error: 'Too many wrong codes. Ask for a new code.' }, 429);
+        }
+        await sb.from('admin_magic_links').update({ code_attempts: attempts }).eq('id', live.id);
+      }
       return jsonResponse({ ok: false, error: 'Wrong code or expired' }, 401);
     }
     await sb.from('admin_magic_links').update({ used_at: new Date().toISOString() }).eq('id', link.id);
