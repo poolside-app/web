@@ -3,6 +3,7 @@
 // =============================================================================
 //   node scripts/demo_video/record.mjs [out.mp4]     (about 3 minutes)
 // Writes handouts/poolside-board-demo.mp4 by default (handouts/ isn't in git).
+// DEMO_SIZE=720 makes the small copy (1280×720, about 21 MB) instead.
 // Env: DEMO_WORK (scratch folder, default /tmp/poolside-demo), DEMO_VOICE (a
 // Mac voice, default Samantha; a Premium voice from System Settings sounds
 // better), ONLY=<scene id> (record one scene to check it), DEMO_ENCODER (an

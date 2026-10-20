@@ -27,7 +27,10 @@ let silent = out.deletingPathExtension().appendingPathExtension("silent.mp4")
 try? FileManager.default.removeItem(at: silent)
 try? FileManager.default.removeItem(at: out)
 
-let W = 1920, H = 1080, FPS: Int32 = 30
+// DEMO_SIZE=720: a smaller copy for phones and email (about 25 MB for 2.5 minutes).
+let small = ProcessInfo.processInfo.environment["DEMO_SIZE"] == "720"
+let W = small ? 1280 : 1920, H = small ? 720 : 1080, FPS: Int32 = 30
+let BITRATE = small ? 1_250_000 : 3_000_000   // mostly still screens; plenty
 
 func image(_ path: String) -> CGImage? {
   guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
@@ -40,7 +43,7 @@ let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
   AVVideoCodecKey: AVVideoCodecType.h264,
   AVVideoWidthKey: W, AVVideoHeightKey: H,
   AVVideoCompressionPropertiesKey: [
-    AVVideoAverageBitRateKey: 10_000_000,
+    AVVideoAverageBitRateKey: BITRATE,
     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
     AVVideoMaxKeyFrameIntervalKey: 60,
   ],
@@ -86,22 +89,39 @@ writer.finishWriting { done.signal() }
 done.wait()
 guard writer.status == .completed else { print("writer failed:", writer.error as Any); exit(1) }
 
-// ── 2. The voice: each line placed where its scene starts ──
-let comp = AVMutableComposition()
+// ── 2. The voice: each line where its scene starts, as one continuous track ──
+// The silences are encoded too: some phone players ignore gaps in a track,
+// which would slide the voice off the picture.
 let picture = AVURLAsset(url: silent)
-let vSrc = picture.tracks(withMediaType: .video)[0]
-let vTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!
-try vTrack.insertTimeRange(CMTimeRange(start: .zero, duration: picture.duration), of: vSrc, at: .zero)
-let aTrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)!
+let voiceComp = AVMutableComposition()
+let vo = voiceComp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)!
 for v in voice {
   let a = AVURLAsset(url: URL(fileURLWithPath: v.f))
   guard let src = a.tracks(withMediaType: .audio).first else { print("no audio in", v.f); exit(1) }
   let at = CMTime(seconds: v.t, preferredTimescale: 600)
   let len = CMTimeMinimum(a.duration, CMTimeSubtract(picture.duration, at))
-  if CMTimeCompare(len, .zero) > 0 { try aTrack.insertTimeRange(CMTimeRange(start: .zero, duration: len), of: src, at: at) }
+  if CMTimeCompare(len, .zero) > 0 { try vo.insertTimeRange(CMTimeRange(start: .zero, duration: len), of: src, at: at) }
 }
+let tail = CMTimeSubtract(picture.duration, voiceComp.duration)
+if CMTimeCompare(tail, .zero) > 0 { vo.insertEmptyTimeRange(CMTimeRange(start: voiceComp.duration, duration: tail)) }
+let voiceFile = out.deletingPathExtension().appendingPathExtension("voice.m4a")
+try? FileManager.default.removeItem(at: voiceFile)
+guard let vx = AVAssetExportSession(asset: voiceComp, presetName: AVAssetExportPresetAppleM4A) else { print("no voice export"); exit(1) }
+vx.outputURL = voiceFile; vx.outputFileType = .m4a
+let vDone = DispatchSemaphore(value: 0)
+vx.exportAsynchronously { vDone.signal() }
+vDone.wait()
+guard vx.status == .completed else { print("voice export failed:", vx.error as Any); exit(1) }
 
-guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1920x1080) else { print("no export session"); exit(1) }
+// ── 3. Picture and voice together, copied as they are ──
+let comp = AVMutableComposition()
+let vTrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)!
+try vTrack.insertTimeRange(CMTimeRange(start: .zero, duration: picture.duration), of: picture.tracks(withMediaType: .video)[0], at: .zero)
+let sound = AVURLAsset(url: voiceFile)
+let aTrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)!
+try aTrack.insertTimeRange(CMTimeRange(start: .zero, duration: CMTimeMinimum(sound.duration, picture.duration)), of: sound.tracks(withMediaType: .audio)[0], at: .zero)
+
+guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetPassthrough) else { print("no export session"); exit(1) }
 export.outputURL = out
 export.outputFileType = .mp4
 export.shouldOptimizeForNetworkUse = true
@@ -110,4 +130,5 @@ export.exportAsynchronously { exported.signal() }
 exported.wait()
 guard export.status == .completed else { print("export failed:", export.error as Any); exit(1) }
 try? FileManager.default.removeItem(at: silent)
+try? FileManager.default.removeItem(at: voiceFile)
 print("wrote", out.path, String(format: "%.1f s", CMTimeGetSeconds(comp.duration)))
