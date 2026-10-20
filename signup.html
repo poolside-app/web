@@ -124,9 +124,25 @@
 
     <div id="signup-err" style="display:none;margin-top:14px;padding:10px 14px;font-size:13px;background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px"></div>
 
-    <p class="small">Already a club admin? <a href="/admin/login.html">Provider sign in</a></p>
     <p class="small" style="margin-top:8px;color:var(--muted);text-align:center">By signing up you agree to our <a href="/terms.html">Terms</a> and <a href="/privacy.html">Privacy Policy</a>.</p>
+  <!-- A club's board signs in at its own address. This pointed at Poolside's
+       own provider sign-in before, where a treasurer couldn't get in (PLAN.md BG7). -->
+  <div class="small" style="margin:18px auto 0;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+    <div>Already on Poolside? Your board signs in at your club's own address:</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;max-width:100%">
+      <span style="display:inline-flex;align-items:center;min-width:0"><input id="find-slug" aria-label="Your club's address" placeholder="yourclub" autocomplete="off" autocapitalize="none" spellcheck="false"
+        style="width:7em;min-width:0;padding:6px 8px;border:1.5px solid var(--border, #e5e7eb);border-radius:8px;font:inherit;text-align:right">.poolsideapp.com</span>
+      <button type="button" onclick="goToClub()" style="padding:6px 12px;border:1.5px solid var(--border, #e5e7eb);border-radius:8px;background:#fff;font:inherit;cursor:pointer">Board sign-in →</button>
+    </div>
+  </div>
   </form>
+  <script>
+    function goToClub() {
+      const slug = (document.getElementById('find-slug').value || '').trim().toLowerCase().replace(/\.poolsideapp\.com.*$/, '').replace(/[^a-z0-9-]/g, '');
+      if (slug) location.href = `https://${slug}.poolsideapp.com/club/admin/login.html`;
+    }
+    document.getElementById('find-slug').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); goToClub(); } });
+  </script>
 </main>
 <script src="/js/phone-format.js"></script>
 <script>
@@ -219,7 +235,7 @@ async function fakeSubmit() {
         <button class="btn" id="open-now-btn" type="button" style="background:var(--blue);color:#fff;font-weight:600;border:0;padding:12px 22px;border-radius:10px;cursor:pointer;font-size:14px">Open my club site →</button>
         <button class="btn" id="dashboard-btn" type="button" style="background:transparent;color:var(--blue);font-weight:600;border:1.5px solid var(--blue);padding:12px 22px;border-radius:10px;cursor:pointer;font-size:14px">Go to admin login</button>
       </div>
-      <p class="small" style="margin-top:18px">Stuck? Email <a href="mailto:doug@poolsideapp.com">doug@poolsideapp.com</a>.</p>
+      <p class="small" style="margin-top:18px">Stuck? Email <a href="mailto:support@poolsideapp.com">support@poolsideapp.com</a>.</p>
     `;
     document.getElementById('open-now-btn').addEventListener('click', () => window.open(targetUrl, '_blank'));
     document.getElementById('dashboard-btn').addEventListener('click', () => window.open(`${targetUrl}club/admin/login.html`, '_blank'));

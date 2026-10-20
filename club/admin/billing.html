@@ -146,10 +146,11 @@
   </div>
 
   <div class="card" id="setup-card">
-    <h2>Premium Setup — $500</h2>
+    <h2 id="setup-title">Premium Setup — $500</h2>
     <p style="font-size:14px;line-height:1.6">Have us set up your club for you. Data import, payments wiring, policies, kickoff call, follow-up. 5 business days. <a href="/setup-service.html" target="_blank">See what's included →</a></p>
     <p style="margin-top:14px">
       <button class="btn" id="setup-btn" type="button" style="background:var(--sun);color:#422006">Buy Premium Setup ($500)</button>
+      <span style="font-size:12.5px;color:var(--muted);margin-left:8px">$500 up to 100 households, $750 above</span>
     </p>
     <div id="setup-err" style="display:none;margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px;background:#fee2e2;color:#7f1d1d;border:1px solid #fecaca"></div>
     <div id="setup-banner" style="display:none;margin-top:10px;padding:10px 14px;border-radius:10px;font-size:13px"></div>
@@ -315,6 +316,13 @@ const TIERS = [
   document.getElementById('cur-plan').textContent  = u.plan_label || 'First season free';
   document.getElementById('cur-usage').textContent = u.unlimited ? `${u.count} of ∞` : `${u.count} of ${u.cap}`;
   document.getElementById('cur-status').textContent = me.tenant.status || '—';
+  // Premium Setup is $500 up to 100 households, $750 above (Doug 9/9,
+  // PLAN.md BG7); the server charges the same.
+  {
+    const usd = (u.count || 0) > 100 ? 750 : 500;
+    document.getElementById('setup-title').textContent = `Premium Setup — $${usd}`;
+    document.getElementById('setup-btn').textContent = `Buy Premium Setup ($${usd})`;
+  }
   if (me.tenant.platform_fees_waived) {
     document.getElementById('fees-waived-note').style.display = 'block';
     // A club on a plan Poolside set (Bishop's "Club plan"): its plan, usage

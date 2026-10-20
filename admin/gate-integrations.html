@@ -202,7 +202,7 @@
          Estates' request and the landing tab had no action button. -->
     <div class="tabs">
       <button class="tab active" data-tab="deployments" onclick="showTab('deployments')">🏊 Tenant deployments</button>
-      <button class="tab" data-tab="templates" onclick="showTab('templates')">📋 Templates (retired)</button>
+      <!-- Retired templates tab hidden (PLAN.md BG7); its section stays for reference. -->
       <button class="tab" data-tab="requests" onclick="showTab('requests')">🔍 Gate enquiries</button>
       <button class="tab" data-tab="hardware" onclick="showTab('hardware')">📦 Hardware inventory</button>
     </div>
@@ -295,7 +295,7 @@
         <div class="card-head"><h2 style="font-size:16px">📋 Provisioning workflow (updated 2026-05-22)</h2></div>
         <ol style="margin: 0; padding-left: 22px; font-size: 13px; line-height: 1.8;">
           <li><b>Requested</b> → tenant clicked "Request integration." You get an email + Slack-style admin task with their <b>name + phone</b>. Call them — no invoice goes out automatically anymore.</li>
-          <li><b>Verify integration</b> → confirm panel is compatible, agree on plan, ship the Pi bridge, run on-site test.</li>
+          <li><b>Verify integration</b> → confirm panel is compatible, agree on plan, install the bridge on the club's gate computer (a Windows service, <code>bridge/gate_bridge.py</code>), run on-site test.</li>
           <li><b>Active</b> → bridge phones home, flip status to <b>active</b>. Members can unlock.</li>
           <li><b>Send invoice</b> → hit <b>💸 Send invoice</b> on the tenant's row. Enter amount + optional override email. Tenant gets an email + in-app banner. Status is unaffected (orthogonal column).</li>
           <li><b>Mark paid</b> → when the payment lands (Venmo / check / wire), click <b>✓ Mark paid</b>. Recorded in the audit log; the tenant sees a "paid" pill.</li>
@@ -631,7 +631,7 @@ async function activateGate(tenantId, displayName) {
     `  • Flip status to 'active' immediately\n` +
     `  • Email + push the club's owners that gate access is live\n` +
     `  • Enable the gate + keyfob features in their admin nav\n\n` +
-    `(Panel host / credentials can be filled in later via 🔧 Configure when the on-site Pi is installed.)`
+    `(Panel host / credentials can be filled in later via 🔧 Configure when the bridge is installed on the gate computer.)`
   );
   if (!ok) return;
   const notes = prompt('Optional activation note (e.g. "Bishop Estates grandfathered", "shipped 2026-05-23"):', '');
@@ -903,7 +903,7 @@ notepad 'C:\\PoolsideGateBridge\\.env'</pre>
     </details>
 
     <h3 style="margin:0 0 8px;font-family:'Fraunces',serif">Panel config</h3>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">The on-site Pi bridge connects to this panel over the club's LAN. Plaintext credentials live in service_role-only DB rows; treat them like ssh keys.</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">The bridge on the club's gate computer connects to this panel over the club's LAN. Plaintext credentials live in service_role-only DB rows; treat them like ssh keys.</p>
     <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:8px 0 4px">Panel type</label>
     <select id="cfg-panel_type" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px 'Inter';width:100%;background:#fff">
       <option value="mengqi_hxc7000" ${p.panel_type === 'mengqi_hxc7000' ? 'selected' : ''}>MENGQI-CONTROL HXC-7000 (verified)</option>
@@ -936,7 +936,7 @@ notepad 'C:\\PoolsideGateBridge\\.env'</pre>
     </div>
 
     <details style="margin-top:22px">
-      <summary style="cursor:pointer;font-weight:600;color:var(--blue);font-size:13px">Bridge identity (for the .env file on the Pi)</summary>
+      <summary style="cursor:pointer;font-weight:600;color:var(--blue);font-size:13px">Bridge identity (for the bridge's .env file on the gate computer)</summary>
       <div style="margin-top:10px;padding:14px;background:var(--bg-2);border-radius:10px;font-size:12px;line-height:1.6;font-family:Consolas,monospace">
         BRIDGE_ID=${escapeHtml(p.bridge_id || '')}<br>
         BRIDGE_SECRET=&lt;rotate to reveal — secret is hashed in DB&gt;<br>
@@ -1017,7 +1017,7 @@ async function saveConfig(tenantId) {
 }
 
 async function rotateSecret(tenantId) {
-  if (!confirm('Rotate the bridge secret?\n\nThe currently-installed Pi bridge will stop working until its .env file is updated with the new secret. Only do this if you have access to the Pi (or it hasn\'t been installed yet).')) return;
+  if (!confirm('Rotate the bridge secret?\n\nThe installed bridge will stop working until its .env file is updated with the new secret. Only do this if you have access to the gate computer (or it hasn\'t been installed yet).')) return;
   const r = await gateApi('super_rotate_bridge_secret', { tenant_id: tenantId });
   if (!r.ok) { alert(r.error || 'Rotate failed'); return; }
   // Surface the secret one-time + give a copyable .env block.
@@ -1027,7 +1027,7 @@ async function rotateSecret(tenantId) {
     `TENANT_ID=${tenantId}\n` +
     `BRIDGE_ENDPOINT=${SUPABASE_URL}/functions/v1/gate_bridge\n`;
   const ok = window.prompt(
-    `🔑 New bridge credentials (one-time):\n\n${envBlock}\nPaste this into the Pi's /etc/poolside-bridge.env file. Click OK to copy to clipboard.`,
+    `🔑 New bridge credentials (one-time):\n\n${envBlock}\nPaste this into the bridge's .env file on the gate computer. Click OK to copy to clipboard.`,
     envBlock,
   );
   if (ok !== null) {

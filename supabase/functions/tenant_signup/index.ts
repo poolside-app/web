@@ -159,6 +159,24 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+  // A few clubs per hour from one place, and two a day per email (PLAN.md
+  // BG7). Each club also adds a domain to Vercel, so a script making clubs
+  // in a loop would fill that list. Still instant for a real club.
+  const ip = (req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || '').split(',')[0].trim().slice(0, 64) || null;
+  {
+    const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+    const dayAgo  = new Date(Date.now() - 86400_000).toISOString();
+    const [{ count: byIp }, { count: byEmail }] = await Promise.all([
+      ip ? sb.from('audit_log').select('id', { count: 'exact', head: true })
+        .eq('kind', 'tenant.self_signup').gte('created_at', hourAgo).filter('metadata->>ip', 'eq', ip) : Promise.resolve({ count: 0 }),
+      email ? sb.from('audit_log').select('id', { count: 'exact', head: true })
+        .eq('kind', 'tenant.self_signup').gte('created_at', dayAgo).filter('metadata->>email', 'eq', email) : Promise.resolve({ count: 0 }),
+    ]);
+    if ((byIp ?? 0) >= 3 || (byEmail ?? 0) >= 2) {
+      return jsonResponse({ ok: false, error: 'That\'s a lot of new clubs at once. Try again later, or email support@poolsideapp.com and we\'ll set it up.' }, 429);
+    }
+  }
+
   // ── Pre-check: slug must not already be taken (cheaper than catching the
   // unique-violation, and gives a friendlier error).
   {
@@ -291,6 +309,13 @@ Deno.serve(async (req) => {
   // ── Auto-provision the Vercel subdomain so <slug>.poolsideapp.com works
   // immediately. Best-effort — never fails the signup if Vercel hiccups.
   const vercel = await addVercelSubdomain(tenant.slug);
+
+  // Counted by the per-hour and per-email limits above (PLAN.md BG7).
+  await sb.from('audit_log').insert({
+    tenant_id: tenant.id, kind: 'tenant.self_signup', entity_type: 'tenant', entity_id: tenant.id,
+    summary: `New club from the website: ${tenant.display_name}`, actor_kind: 'public',
+    metadata: { ip, email },
+  });
 
   return jsonResponse({
     ok: true,

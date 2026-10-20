@@ -1335,12 +1335,17 @@ Deno.serve(async (req) => {
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]', 'Poolside Premium Setup');
     params.append('line_items[0][price_data][product_data][description]', 'White-glove onboarding: data import, payments wiring, kickoff + follow-up calls.');
-    params.append('line_items[0][price_data][unit_amount]', '50000');   // $500.00
+    // $500 up to 100 households, $750 above (Doug 9/9, PLAN.md BG7).
+    const { count: hhCount } = await sb.from('households').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenant.id).eq('active', true);
+    const setupCents = (hhCount ?? 0) > 100 ? 75000 : 50000;
+    params.append('line_items[0][price_data][unit_amount]', String(setupCents));
     params.append('line_items[0][quantity]', '1');
     params.append('success_url', `${clubUrl}/club/admin/billing.html?setup_service=1`);
     params.append('cancel_url',  `${clubUrl}/club/admin/billing.html?setup_service=0`);
     if (tenant.stripe_customer_id) params.append('customer', tenant.stripe_customer_id);
     params.append('metadata[kind]',         'setup_service');
+    params.append('metadata[amount_cents]', String(setupCents));
     params.append('metadata[tenant_id]',    tenant.id);
     params.append('metadata[tenant_slug]',  tenant.slug);
     params.append('metadata[admin_id]',     payload.sub);

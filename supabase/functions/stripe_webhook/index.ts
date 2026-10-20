@@ -784,7 +784,7 @@ Deno.serve(async (req) => {
             from: RESEND_FROM,
             to:   [PROVIDER],
             subject: `🎉 Premium Setup booking — ${clubName}`,
-            html: `<p><b>${clubName}</b> just paid $500 for Premium Setup.</p>
+            html: `<p><b>${clubName}</b> just paid $${((Number(md.amount_cents) || Number(session.amount_total) || 50000) / 100).toFixed(0)} for Premium Setup.</p>
                    <ul>
                      <li>Tenant: <code>${slug}</code></li>
                      <li>Buyer admin: ${adminEmail || '(unknown)'}</li>
