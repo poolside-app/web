@@ -13,6 +13,7 @@
 
 import { partyHours } from '../_shared/party_length.ts';
 import { partySettings } from '../_shared/party_slots.ts';
+import { partyRules } from '../_shared/party_rules.ts';
 import { fobSettings } from '../_shared/keyfobs.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { poolDayBounds, validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.ts';
@@ -140,7 +141,8 @@ Deno.serve(async (req) => {
     party_length_hours: partyHours(v),
     // The fee, whether an open time is approved on the spot, and how long an
     // unpaid party holds its time (PLAN.md O).
-    parties: (() => { const p = partySettings(v); return { fee_cents: p.fee_cents, auto_approve: p.auto_approve, hold_days: p.hold_days }; })(),
+    // Plus which days and times parties can be booked (PLAN.md BJ4), for the member's calendar.
+    parties: (() => { const p = partySettings(v); return { fee_cents: p.fee_cents, auto_approve: p.auto_approve, hold_days: p.hold_days, ...partyRules(v.parties) }; })(),
     // Free fobs for a new family and the fee for another (PLAN.md P).
     keyfobs: (() => { const k = fobSettings(v); return { included_free: k.included_free, fee_cents: k.fee_cents, max_per_family: k.max_per_family }; })(),
     features: {

@@ -11,6 +11,18 @@ On **Calendar → Parties**, under **Party settings**, set how long every party 
 
 With automatic approval, an open time is the family's on the spot, and paying by card books it right away. Two parties can share a day but not the same hours.
 
+### When parties can be booked
+
+Under **When parties can be booked**, in the same place, you can set:
+
+- **First party day** and **Last party day**: the party season, separate from the pool's. The pool can be open on a day you don't want parties.
+- **Days**: the days of the week parties can be booked.
+- **Start between**: the earliest and latest start time.
+- **Book at least** and **at most** how many days ahead.
+- **Blocked dates**: swim meets, holidays, maintenance or unheated weeks, with a reason. Members see the reason ("No parties: swim meet").
+
+Leave any of these blank for no limit. Members' party calendars grey out the days you've blocked, and Poolside refuses a request for one.
+
 ### Reviewing a request
 
 1. Open the request.

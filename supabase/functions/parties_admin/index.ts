@@ -15,7 +15,8 @@
 //   { action: 'reject', id, admin_notes? }
 //     → { ok, booking }
 //
-//   { action: 'settings_get' } / { action: 'settings_save', length_hours?, fee_cents?, auto_approve? }
+//   { action: 'settings_get' } / { action: 'settings_save', length_hours?, fee_cents?, auto_approve?, rules? }
+//                                   rules: when parties can be booked (PLAN.md BJ4, _shared/party_rules.ts)
 //     → { ok, length_hours, fee_cents, auto_approve, hold_days }
 //        how long every party runs (N3), the fee, and whether an open time is
 //        approved on the spot (PLAN.md O)
@@ -151,9 +152,12 @@ Deno.serve(async (req) => {
   // ── settings: how long every party runs (N3) ──────────────────────────
   if (action === 'settings_get' || action === 'settings_save') {
     const { partySettings } = await import('../_shared/party_slots.ts');
+    const { partyRules, cleanRules } = await import('../_shared/party_rules.ts');
     const { data: row } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
     const value = (row?.value as Record<string, unknown> | undefined) ?? {};
-    const shape = (v: unknown) => { const p = partySettings(v); return { length_hours: p.hours, fee_cents: p.fee_cents, auto_approve: p.auto_approve, hold_days: p.hold_days }; };
+    // Which days and times parties can be booked (PLAN.md BJ4) come back as `rules`.
+    const shape = (v: unknown) => { const p = partySettings(v); return { length_hours: p.hours, fee_cents: p.fee_cents, auto_approve: p.auto_approve, hold_days: p.hold_days,
+      rules: partyRules((v as Record<string, unknown> | undefined)?.parties) }; };
     if (action === 'settings_get') return jsonResponse({ ok: true, ...shape(value) });
     const parties = { ...((value.parties as Record<string, unknown> | undefined) ?? {}) };
     if (body.length_hours !== undefined) {
@@ -167,6 +171,12 @@ Deno.serve(async (req) => {
       parties.fee_cents = Math.round(fee);
     }
     if (body.auto_approve !== undefined) parties.auto_approve = body.auto_approve === true;
+    // The party season, blocked dates, days, start window and how far ahead (BJ4).
+    if (body.rules !== undefined) {
+      const c = cleanRules(body.rules);
+      if (!c.ok) return jsonResponse({ ok: false, error: c.error }, 400);
+      Object.assign(parties, c.rules);
+    }
     const next = { ...value, parties };
     const { error } = row
       ? await sb.from('settings').update({ value: next }).eq('tenant_id', TID)

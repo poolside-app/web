@@ -149,6 +149,20 @@
     <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;font-weight:500">
       <input type="checkbox" id="party-auto" style="width:auto"> Approve open times automatically
     </label>
+
+    <!-- When parties can be booked (PLAN.md BJ4), separate from the pool's own
+         season. Blank means no limit. Members' calendars grey out the rest. -->
+    <div class="pd">
+      <div style="font-weight:600;margin:14px 0 4px">When parties can be booked</div>
+      <div class="pd-row">First party day <input type="date" id="pd-from"> Last party day <input type="date" id="pd-until"></div>
+      <div class="pd-row">Days <span id="pd-days"></span></div>
+      <div class="pd-row">Start between <input type="time" id="pd-earliest" step="1800"> and <input type="time" id="pd-latest" step="1800"></div>
+      <div class="pd-row">Book at least <input type="number" id="pd-notice" min="0" max="365" style="width:64px"> days ahead, at most <input type="number" id="pd-ahead" min="0" max="730" style="width:70px"> days ahead</div>
+      <div style="font-weight:600;margin:10px 0 2px;font-size:13.5px">Blocked dates</div>
+      <div style="font-size:12px;color:var(--muted)">Swim meets, holidays, maintenance, unheated weeks. Members see the reason.</div>
+      <div id="pd-blackouts"></div>
+      <button class="btn btn-ghost" type="button" onclick="addBlackout()" style="padding:6px 12px;margin-top:6px">+ Add blocked dates</button>
+    </div>
     <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
       <button class="btn" type="button" onclick="savePartyHours()" style="padding:8px 14px">Save</button>
       <span id="party-hours-msg" style="font-size:12.5px;color:var(--muted)"></span>
@@ -156,6 +170,15 @@
     <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">Members pick a date and start time; the end follows. Two parties can share a day but not a time. With automatic approval, an open time is theirs on the spot and paying by card books it instantly (the card fee is added to what the member pays). An unpaid party gives its time back after <span id="party-hold">2</span> days; a Venmo they say they sent holds it until you confirm it.</div>
   </div>
 </main>
+
+<style>
+  .pd-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; margin-top: 8px; }
+  .pd input[type="date"], .pd input[type="time"], .pd input[type="number"], .pd input[type="text"] { padding: 7px 9px; border: 1.5px solid var(--border); border-radius: 8px; font: 14px Inter; }
+  .pd-day { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 500; }
+  .pd-day input { width: auto; }
+  .pd-bl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  .pd-bl input[type="text"] { flex: 1 1 140px; min-width: 0; }
+</style>
 
 <!-- Detail / decision modal -->
 <div class="scrim" id="scrim">
@@ -300,6 +323,7 @@ async function loadPartyHours() {
       document.getElementById('party-fee').value = r.fee_cents ? Math.round(r.fee_cents / 100) : '';
       document.getElementById('party-auto').checked = !!r.auto_approve;
       document.getElementById('party-hold').textContent = r.hold_days;
+      paintPartyRules(r.rules || {});
       document.querySelectorAll('.party-hours').forEach(el => { el.textContent = r.length_hours; });
     }
   } catch (_) { /* leave blank */ }
@@ -311,11 +335,49 @@ async function savePartyHours() {
       length_hours: Number(document.getElementById('party-hours').value),
       fee_cents: Math.round((Number(document.getElementById('party-fee').value) || 0) * 100),
       auto_approve: document.getElementById('party-auto').checked,
+      rules: readPartyRules(),
     });
     if (!r.ok) throw new Error(r.error || 'Could not save');
     document.querySelectorAll('.party-hours').forEach(el => { el.textContent = r.length_hours; });
     msg.style.color = '#15803d'; msg.textContent = '✓ Saved';
   } catch (e) { msg.style.color = 'var(--red)'; msg.textContent = e.message; }
+}
+
+// ── When parties can be booked (PLAN.md BJ4) ──────────────────────────
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+let BLACKOUTS = [];
+function paintPartyRules(r) {
+  document.getElementById('pd-from').value = r.from || '';
+  document.getElementById('pd-until').value = r.until || '';
+  document.getElementById('pd-earliest').value = r.earliest || '';
+  document.getElementById('pd-latest').value = r.latest || '';
+  document.getElementById('pd-notice').value = r.notice_days ? r.notice_days : '';
+  document.getElementById('pd-ahead').value = r.ahead_days ?? '';
+  const days = r.days || [0, 1, 2, 3, 4, 5, 6];
+  document.getElementById('pd-days').innerHTML = WEEKDAY_SHORT.map((d, i) =>
+    `<label class="pd-day"><input type="checkbox" data-wd="${i}" ${days.includes(i) ? 'checked' : ''}>${d}</label>`).join(' ');
+  BLACKOUTS = (r.blackouts || []).map(b => ({ ...b }));
+  paintBlackouts();
+}
+function paintBlackouts() {
+  document.getElementById('pd-blackouts').innerHTML = BLACKOUTS.map((b, i) => `<div class="pd-bl">
+    <input type="date" value="${escapeHtml(b.from || '')}" onchange="BLACKOUTS[${i}].from = this.value" aria-label="From">
+    to <input type="date" value="${escapeHtml(b.to || '')}" onchange="BLACKOUTS[${i}].to = this.value" aria-label="To">
+    <input type="text" maxlength="80" placeholder="Reason, e.g. Swim meet" value="${escapeHtml(b.reason || '')}" oninput="BLACKOUTS[${i}].reason = this.value" aria-label="Reason">
+    <button class="btn btn-ghost" type="button" onclick="BLACKOUTS.splice(${i}, 1); paintBlackouts()" style="padding:6px 10px" aria-label="Remove">✕</button></div>`).join('');
+}
+function addBlackout() { BLACKOUTS.push({ from: '', to: '', reason: '' }); paintBlackouts(); }
+function readPartyRules() {
+  const num = id => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
+  return {
+    from: document.getElementById('pd-from').value || null,
+    until: document.getElementById('pd-until').value || null,
+    days: [...document.querySelectorAll('#pd-days input:checked')].map(el => Number(el.dataset.wd)),
+    earliest: document.getElementById('pd-earliest').value || null,
+    latest: document.getElementById('pd-latest').value || null,
+    notice_days: num('pd-notice'), ahead_days: num('pd-ahead'),
+    blackouts: BLACKOUTS.filter(b => b.from || b.to || b.reason).map(b => ({ from: b.from, to: b.to || b.from, reason: (b.reason || '').trim() })),
+  };
 }
 
 async function refresh() {

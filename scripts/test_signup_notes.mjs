@@ -54,7 +54,8 @@ console.log('N3 · parties: a start time and the club\'s length (offline)');
   const home = read('m/index.html');
   const auth = read('supabase/functions/member_auth/index.ts');
   const admin = read('club/admin/parties.html');
-  check('members pick a date and start time only', !/id="p-ends"/.test(home) && /Date and start time/.test(home) && /paintPartyEnd/.test(home));
+  // A calendar and a start-time list since PLAN.md BJ4; still no end to pick.
+  check('members pick a date and start time only', !/id="p-ends"/.test(home) && /id="p-cal"/.test(home) && /id="p-time"/.test(home) && /paintPartyEnd/.test(home));
   check('the server sets the end, ignoring any sent', /partyEnd\(startsDate\.toISOString\(\), ps\.hours\)/.test(auth));
   check('approving with a new start moves the whole party', !/ov-ends_at/.test(admin) && /newEnd = newStart \? partyEnd/.test(read('supabase/functions/parties_admin/index.ts')));
   check('the approve window fits a phone', /@media \(max-width: 640px\)[\s\S]*?\.row2 \{ grid-template-columns: 1fr; \}/.test(admin));

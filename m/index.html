@@ -6,6 +6,7 @@
 <script src="/js/phone-fit.js"></script>
 <title>My Club — Poolside</title>
 <script src="/js/pooltime.js"></script>
+<script src="/js/party-rules.js"></script>
 <script src="/js/errors.js" defer></script>
 <!-- PWA / "Add to Home Screen" wiring. Manifest is per-tenant via Vercel
      rewrite; apple-touch-icon + theme-color get set by /js/pwa.js once the
@@ -209,7 +210,7 @@
     width: 100%; max-width: 540px; box-shadow: 0 20px 60px rgba(10,59,92,.18);
   }
   .pmodal label { display:block; font-weight:600; font-size:12px; margin: 12px 0 4px; }
-  .pmodal input, .pmodal textarea {
+  .pmodal input, .pmodal textarea, .pmodal select {
     width: 100%; min-width: 0; padding: 10px 12px; font: 14px/1.4 'Inter';
     border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
     font-family: inherit;
@@ -221,6 +222,18 @@
     -webkit-appearance: none; appearance: none; min-height: 44px;
   }
   .pmodal textarea { resize: vertical; min-height: 80px; }
+  /* The party calendar (PLAN.md BJ4): days the club allows, the rest greyed out. */
+  .pcal { margin-top: 6px; border: 1.5px solid var(--border); border-radius: 12px; padding: 10px; background: #fff; }
+  .pcal-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 6px; }
+  .pcal-head button { border: 0; background: var(--bg-2); border-radius: 8px; width: 36px; height: 32px; font-size: 16px; cursor: pointer; color: var(--blue); }
+  .pcal-head button:disabled { opacity: .35; cursor: default; }
+  .pcal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+  .pcal-grid .wd { font-size: 11px; font-weight: 700; color: var(--muted); padding: 2px 0; }
+  .pcal-grid button { min-height: 38px; border: 1.5px solid transparent; border-radius: 9px; background: var(--bg-2); font: 600 14px Inter, sans-serif; color: var(--blue); cursor: pointer; padding: 0; }
+  .pcal-grid button.off { background: transparent; color: #b8c2cc; text-decoration: line-through; cursor: help; }
+  .pcal-grid button.sel { background: var(--blue); color: #fff; }
+  .pcal-why { font-size: 12.5px; color: #92400e; min-height: 18px; margin-top: 6px; }
+  .pmodal select { min-height: 44px; }
   .pmodal .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   /* Phone viewports: stack two-column rows so datetime inputs don't run
      off the right edge. Same fix shape as apply.html. */
@@ -366,8 +379,13 @@
 
     <label>Title</label>
     <input id="p-title" placeholder="Smith Family birthday party" maxlength="140">
-    <label>Date and start time</label>
-    <input type="datetime-local" id="p-starts" oninput="paintPartyEnd();loadPartyBusy()">
+    <!-- The club's party days and start times (PLAN.md BJ4); blocked days say why. -->
+    <label>Date</label>
+    <div id="p-cal" class="pcal"></div>
+    <div id="p-day-why" class="pcal-why"></div>
+    <label>Start time</label>
+    <select id="p-time" onchange="setPartyStart()"></select>
+    <input type="hidden" id="p-starts">
     <div id="p-ends-note" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
     <div id="p-busy" style="font-size:12.5px;color:#92400e;margin-top:4px"></div>
     <div id="p-fee-note" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div>
@@ -980,19 +998,75 @@ function paintPartyFee() {
   const btn = document.getElementById('p-submit');
   if (btn) btn.textContent = r.auto_approve ? 'Book it' : 'Send request';
 }
-let PARTY_BUSY_T = null;
-function loadPartyBusy() {
-  clearTimeout(PARTY_BUSY_T);
-  PARTY_BUSY_T = setTimeout(async () => {
-    const v = document.getElementById('p-starts').value;
-    const out = document.getElementById('p-busy');
-    if (!v || !out) return;
-    try {
-      const r = await callMember('party_busy', { date: v.slice(0, 10) });
-      const t = iso => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-      out.textContent = r.ok && r.busy.length ? `Already booked that day: ${r.busy.map(b => `${t(b.starts_at)}–${t(b.ends_at)}`).join(', ')}. Pick a time that doesn't overlap.` : '';
-    } catch (_) { out.textContent = ''; }
-  }, 400);
+// ── Party days and times (PLAN.md BJ4) ─────────────────────────────────
+// The club's rules (js/party-rules.js, the same as the server's): a month
+// calendar with blocked days greyed out, then the start times in the club's
+// window, with times another party holds marked booked.
+let PCAL_MONTH = null, PCAL_DAY = null, PCAL_BUSY = [];
+function partyDateRules() { return PartyRules.partyRules(partyRules()); }
+function firstPartyDay() {
+  const r = partyDateRules(), today = PoolTime.todayKey();
+  for (let i = 0; i < 800; i++) { const d = PoolTime.addDays(today, i); if (PartyRules.dayStatus(r, d, today).ok) return d; }
+  return null;
+}
+function shiftMonth(ym, n) { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); }
+function paintPartyCal() {
+  const host = document.getElementById('p-cal');
+  const r = partyDateRules(), today = PoolTime.todayKey();
+  const [y, m] = PCAL_MONTH.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1)), days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const label = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const cells = [];
+  for (let i = 0; i < first.getUTCDay(); i++) cells.push('<span></span>');
+  for (let d = 1; d <= days; d++) {
+    const day = `${PCAL_MONTH}-${String(d).padStart(2, '0')}`;
+    const st = PartyRules.dayStatus(r, day, today);
+    cells.push(`<button type="button" data-day="${day}" class="${st.ok ? '' : 'off'}${day === PCAL_DAY ? ' sel' : ''}"${st.ok ? '' : ` title="${escapeHtml(st.reason)}"`} onclick="pickPartyDay('${day}')">${d}</button>`);
+  }
+  host.innerHTML = `<div class="pcal-head"><button type="button" aria-label="Previous month" onclick="moveParty(-1)" ${PCAL_MONTH <= today.slice(0, 7) ? 'disabled' : ''}>‹</button>
+    <span>${escapeHtml(label)}</span><button type="button" aria-label="Next month" onclick="moveParty(1)">›</button></div>
+    <div class="pcal-grid">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(w => `<span class="wd">${w}</span>`).join('')}${cells.join('')}</div>`;
+}
+function moveParty(n) { PCAL_MONTH = shiftMonth(PCAL_MONTH, n); paintPartyCal(); }
+function pickPartyDay(day) {
+  const st = PartyRules.dayStatus(partyDateRules(), day, PoolTime.todayKey());
+  const why = document.getElementById('p-day-why');
+  if (!st.ok) { why.textContent = st.reason; return; }
+  why.textContent = '';
+  PCAL_DAY = day;
+  paintPartyCal();
+  paintPartyTimes();
+}
+// The club's start times; once the day's busy times are in, those taken are marked booked.
+async function paintPartyTimes() {
+  const sel = document.getElementById('p-time');
+  const want = sel.value || '14:00';
+  const times = PartyRules.startTimes(partyDateRules());
+  const busyFor = PCAL_DAY;
+  const opts = list => list.map(t => `<option value="${t}">${PartyRules.clock(t)}</option>`).join('');
+  sel.innerHTML = opts(times);
+  sel.value = times.includes(want) ? want : (times.find(t => t >= '14:00') || times[0] || '');
+  setPartyStart();
+  PCAL_BUSY = [];
+  document.getElementById('p-busy').textContent = '';
+  if (!PCAL_DAY) return;
+  try {
+    const r = await callMember('party_busy', { date: PCAL_DAY });
+    if (busyFor !== PCAL_DAY || !r.ok) return;
+    PCAL_BUSY = r.busy || [];
+  } catch (_) { return; }
+  const len = partyHours() * 3600_000;
+  const taken = t => { const a = Date.parse(fromLocalInput(`${PCAL_DAY}T${t}`)); return PCAL_BUSY.some(b => a < Date.parse(b.ends_at) && a + len > Date.parse(b.starts_at)); };
+  [...sel.options].forEach(o => { if (taken(o.value)) { o.disabled = true; o.textContent = `${PartyRules.clock(o.value)} (booked)`; } });
+  if (sel.selectedOptions[0]?.disabled) sel.value = ([...sel.options].find(o => !o.disabled) || {}).value || '';
+  const t = iso => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  document.getElementById('p-busy').textContent = PCAL_BUSY.length ? `Already booked that day: ${PCAL_BUSY.map(b => `${t(b.starts_at)}–${t(b.ends_at)}`).join(', ')}.` : '';
+  setPartyStart();
+}
+function setPartyStart() {
+  const t = document.getElementById('p-time').value;
+  document.getElementById('p-starts').value = PCAL_DAY && t ? `${PCAL_DAY}T${t}` : '';
+  paintPartyEnd();
 }
 function paintPartyEnd() {
   const v = document.getElementById('p-starts').value;
@@ -1004,10 +1078,13 @@ function paintPartyEnd() {
   note.textContent = `Parties run ${partyHours()} hours, so yours ends at ${end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.`;
 }
 function openPartyModal() {
-  const start = PoolTime.atTime(PoolTime.addDays(PoolTime.todayKey(), 7), 14, 0);   // a week out, 2 PM at the pool
+  // The first day the club allows, at 2 PM when that's a start time (PLAN.md BJ4).
   document.getElementById('p-title').value = '';
-  document.getElementById('p-starts').value = toLocalInput(start.toISOString());
-  paintPartyEnd(); paintPartyFee(); loadPartyBusy();
+  PCAL_DAY = firstPartyDay();
+  PCAL_MONTH = (PCAL_DAY || PoolTime.todayKey()).slice(0, 7);
+  document.getElementById('p-day-why').textContent = PCAL_DAY ? '' : 'There are no party days open right now.';
+  document.getElementById('p-time').value = '';
+  paintPartyCal(); paintPartyFee(); paintPartyTimes();
   document.getElementById('p-guests').value = '';
   document.getElementById('p-body').value = '';
   document.getElementById('p-err').classList.remove('show');

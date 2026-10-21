@@ -22,7 +22,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { partyWhen, fmtPoolDate, fmtPoolStamp, poolDate, poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
+import { partyWhen, fmtPoolDate, fmtPoolStamp, poolDate, poolToday, tenantTimeZone, wallParts } from '../_shared/pool_time.ts';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 import { escapeLike } from '../_shared/signin_guard.ts';
@@ -1037,10 +1037,22 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'You must accept the party policies before submitting' }, 400);
     }
 
+    // The club's party days and times (PLAN.md BJ4): a blocked date, a day
+    // outside the party season or a start outside the window is refused with
+    // the reason the member's calendar shows.
+    const tz = await tenantTimeZone(sb, payload.tid as string);
+    {
+      const { partyRules, checkPartyStart } = await import('../_shared/party_rules.ts');
+      const w = wallParts(startsDate, tz);
+      const hhmm = `${String(w.hour).padStart(2, '0')}:${String(w.minute).padStart(2, '0')}`;
+      const why = checkPartyStart(partyRules((lenRow?.value as Record<string, unknown> | undefined)?.parties),
+        poolDate(startsDate, tz), hhmm, poolToday(tz));
+      if (why) return jsonResponse({ ok: false, error: why }, 400);
+    }
+
     // Two parties can share a day but not a time (Doug, 2026-10-07). A time
     // another party holds is refused, with the taken times, so the family can
     // pick an open one.
-    const tz = await tenantTimeZone(sb, payload.tid as string);
     const taken = await clashes(sb, payload.tid as string, startsDate.toISOString(), endsAt, ps);
     if (taken.length) {
       const fmt = (iso: string) => fmtPoolDate(iso, tz, { hour: 'numeric', minute: '2-digit' });
