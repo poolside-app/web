@@ -28,13 +28,13 @@
 //
 //   { action: 'amend', id, ...partial fields }
 //     → { ok, meeting }              // fix a closed meeting: stays closed and
-//                                    // public, keeps its start/end times,
+//                                    // on the members' page, keeps its times,
 //                                    // sets edited_at/edited_by, and puts the
 //                                    // old version in audit_log
 //
 //   { action: 'finalize', id }
 //     → { ok, meeting }              // "Close meeting": status='completed',
-//                                    // ended_at=now. A public meeting (the
+//                                    // ended_at=now. A Members meeting (the
 //                                    // default) is on the members' page
 //                                    // (governance) from here.
 //                                    // Closing twice keeps the first time.
@@ -44,7 +44,7 @@
 //                                    // only, and a copy goes to audit_log.
 //
 // There is no 'reopen': it cleared the real end time and pulled the
-// minutes off the public page while they were edited. amend replaced it.
+// minutes off the members' page while they were edited. amend replaced it.
 //
 //   { action: 'list_active_admins' }
 //     → { ok, admins: [{id, name, role_label}] }
@@ -146,7 +146,8 @@ const PUBLIC_FIELDS = 'id, title, meeting_date, location, started_at, ended_at, 
 // What a correction can change, and what the audit log keeps of the old one.
 const CONTENT = ['title', 'meeting_date', 'location', 'notes_md', 'attendees_json', 'votes_json', 'follow_ups_json', 'visibility'] as const;
 
-const VALID_VIS = new Set(['private', 'public']);
+// Members (the default, on the members' page) or Board only (PLAN.md BJ2: no public option).
+const VALID_VIS = new Set(['private', 'members']);
 
 function strOrNull(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -259,7 +260,8 @@ function contentPatch(body: Record<string, unknown>, opts: { open?: boolean } = 
   if (body.votes !== undefined)      patch.votes_json      = sanitizeVotes(body.votes, !!opts.open);
   if (body.follow_ups !== undefined) patch.follow_ups_json = sanitizeFollowUps(body.follow_ups);
   if (body.visibility !== undefined) {
-    const v = String(body.visibility);
+    // A page from before BJ2 still sends 'public': that's 'members' now.
+    const v = String(body.visibility) === 'public' ? 'members' : String(body.visibility);
     if (!VALID_VIS.has(v)) return { patch, bad: jsonResponse({ ok: false, error: 'invalid visibility' }, 400) };
     patch.visibility = v;
   }
@@ -296,7 +298,7 @@ Deno.serve(async (req) => {
     const { data, error } = await sb.from('board_meetings').select(PUBLIC_FIELDS)
       .eq('tenant_id', tid)
       .eq('status', 'completed')
-      .eq('visibility', 'public')
+      .eq('visibility', 'members')
       .order('meeting_date', { ascending: false })
       .limit(100);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
@@ -524,7 +526,7 @@ Deno.serve(async (req) => {
       if (date < poolToday(await tenantTimeZone(sb, TID))) return jsonResponse({ ok: false, error: 'Pick a date that hasn\'t passed.' }, 400);
       const { data, error } = await sb.from('board_meetings').insert({
         tenant_id: TID, title: 'Board Meeting', meeting_date: date, planned_time: plannedTime,
-        location: strOrNull(body.location), status: 'draft', visibility: 'public',
+        location: strOrNull(body.location), status: 'draft', visibility: 'members',
         created_by: payload.synthetic ? null : me.id,
       }).select(FIELDS).single();
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
@@ -704,7 +706,7 @@ Deno.serve(async (req) => {
       title, meeting_date, location,
       status: startNow ? 'in_progress' : 'draft',
       started_at: startNow ? new Date().toISOString() : null,
-      visibility: 'public',   // board-only is a switch, for closed sessions
+      visibility: 'members',   // board-only is a switch, for closed sessions
       created_by,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);

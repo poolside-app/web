@@ -19,6 +19,6 @@ category: "News, Photos & Texts"
 
 ### Who can see them
 
-**🌐 Everyone** puts the minutes on your club's public minutes page when you close the meeting. **🔒 Board only** keeps them private, for things like legal matters.
+**👥 Members** (the default) puts the minutes on your club's **Bylaws & board minutes** page when you close the meeting. Only signed-in members and the board can open that page. **🔒 Board only** keeps them for the board, for things like legal matters.
 
 > Tip: Your bylaws live on the same page, under **📜 Bylaws**.

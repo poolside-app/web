@@ -105,13 +105,14 @@ console.log('\nEvery board member can find it (offline)');
   check('the server no longer needs the secretary permission',
     !/requireScope\([^)]*'meetings'\)/.test(read('supabase/functions/board_meetings/index.ts')));
   check('the button says Close meeting and says where the minutes go',
-    /Close meeting/.test(page) && /public page/i.test(page.slice(page.indexOf('async function finalize'))));
+    /Close meeting/.test(page) && /Bylaws & board minutes page|members won/i.test(page.slice(page.indexOf('async function finalize'))));
   check('a closed meeting is fixed with Save changes, not by re-opening it',
     !/'reopen'/.test(page) && /'amend'/.test(page) && /Save changes/.test(page));
   check('a follow-up assigned to someone on the board list is linked to them',
     /assigned_admin_id/.test(page) && /dashboard/i.test(page.slice(page.indexOf('function paintFollowUps'))));
-  check('Public is the first choice, board-only is for closed sessions',
-    page.indexOf('id="vis-public"') > 0 && page.indexOf('id="vis-public"') < page.indexOf('id="vis-private"')
+  // Members replaced Public (PLAN.md BJ2, Doug 10/21).
+  check('Members is the first choice, board-only is for closed sessions',
+    page.indexOf('id="vis-members"') > 0 && page.indexOf('id="vis-members"') < page.indexOf('id="vis-private"')
     && /closed session/i.test(page));
 }
 
@@ -157,7 +158,7 @@ try {
   console.log('\nClosing a meeting posts the minutes (F2)');
   const [{ d }] = await sql(`select column_default as d from information_schema.columns
     where table_schema = 'public' and table_name = 'board_meetings' and column_name = 'visibility'`);
-  check('new meetings are public unless switched to board-only', m.visibility === 'public' && /'public'/.test(d ?? ''),
+  check('new meetings are for members unless switched to board-only', m.visibility === 'members' && /'members'/.test(d ?? ''),
     `${m.visibility} / default ${d}`);
   const f = await meetings('finalize', tok(noteId), { id: m.id });
   check('the note-taker closes it', f.ok && f.meeting?.status === 'completed', short(f));
@@ -188,7 +189,7 @@ try {
   const am = x2.meeting || {};
   check('the note-taker can fix them', x2.ok && am.notes_md === 'Pool opens May 23. Snack bar opens June 1.', short(x2));
   check('…they stay closed and public, with the real start and end times',
-    am.status === 'completed' && am.visibility === 'public'
+    am.status === 'completed' && am.visibility === 'members'
     && Date.parse(am.started_at) === Date.parse(before.started_at) && Date.parse(am.ended_at) === Date.parse(before.ended_at),
     short({ status: am.status, visibility: am.visibility, started_at: am.started_at, ended_at: am.ended_at }));
   check('…and record who edited them', !!am.edited_at && am.edited_by_name === 'SimTest Note', short(am));
@@ -217,11 +218,13 @@ try {
       }
       r.continue();
     });
+    // Members only since PLAN.md BJ1: the page uses the board sign-in on the phone.
+    await pg.evaluateOnNewDocument(t => { try { localStorage.setItem('poolside_tenant_token', t); } catch (_) {} }, tok(owner.id));
     await pg.goto('https://bishopestates.poolsideapp.com/governance.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
     // Its two requests run side by side, so wait for the list itself.
     await pg.waitForSelector('#meetings-host details, #meetings-host .empty', { timeout: 20000 });
     const text = (await pg.evaluate(() => document.body.innerText)).replace(/[\u202f\u00a0]/g, ' ');
-    check('the public page shows the minutes', /SimTest board meeting/.test(text) && /Pool opens May 23/.test(text));
+    check('the members\' page shows the minutes', /SimTest board meeting/.test(text) && /Pool opens May 23/.test(text));
     check('…with the start and end time, in pool time on a New York phone', /7:02 PM – 8:15 PM/.test(text),
       (text.match(/[^\n]*\d:\d\d[^\n]*/) || ['no time shown'])[0].slice(0, 120));
     check('…and not the closed session', !/SimTest closed session/.test(text));

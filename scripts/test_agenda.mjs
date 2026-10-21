@@ -213,8 +213,8 @@ if (live('L2')) {
     check('L2: any board member sees the agenda, with who made it',
       view.ok && /Late addition/.test(view.text || '') && /Bathrooms have been complained about/.test(view.text || '') && /L2 Adder/.test(view.created_by_name || ''),
       short({ err: view.error, by: view.created_by_name }));
-    const pub = await fn('board_meetings', 'list_public', null, { slug: 'bishopestates' });
-    check('L2: the agenda isn\'t on the public page', pub.ok && !JSON.stringify(pub).includes(tag), '');
+    const pub = await fn('board_meetings', 'governance', tok(b), {});   // the members' page (PLAN.md BJ1)
+    check('L2: the agenda isn\'t on the members\' page', pub.ok && !JSON.stringify(pub).includes(tag), '');
   } finally {
     if (meetingId) await sql(`delete from board_meetings where id = '${meetingId}'`);
     await cleanup();

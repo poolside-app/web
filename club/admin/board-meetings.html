@@ -74,7 +74,7 @@
   .badge-draft { background: var(--bg-2); color: var(--muted); }
   .badge-progress { background: var(--yellow-l); color: var(--yellow); }
   .badge-completed { background: var(--green-l); color: #14532d; }
-  .badge-public { background: #dbeafe; color: #1e3a8a; }
+  .badge-members { background: #dbeafe; color: #1e3a8a; }
   .badge-private { background: var(--bg-2); color: var(--muted); }
 
   .empty {
@@ -269,9 +269,9 @@
       <button class="btn btn-primary" onclick="startNewMeeting()">▶ Start a meeting</button>
     </div>
   </div>
-  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Closing a meeting posts its minutes on the club's public page, unless you switch it to board-only for a closed session.</p>
+  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Closing a meeting posts its minutes for the club's members on the Bylaws &amp; board minutes page, unless you switch it to board only for a closed session.</p>
 
-  <!-- PLAN.md K6 (Doug, 2026-10-04): the bylaws, always public, at the top
+  <!-- PLAN.md K6 (Doug, 2026-10-04): the bylaws, for members since BJ1, at the top
        of the club's "Bylaws & board minutes" page. The President or the
        Secretary uploads a new version; earlier ones are kept. -->
   <div class="card" id="bylaws-card"><div style="height:40px"></div></div>
@@ -373,10 +373,10 @@
     <p class="lede" style="margin:0 0 10px">Decide before you close the meeting.</p>
     <div style="display:flex;gap:14px;flex-wrap:wrap">
       <label class="vis-radio">
-        <input type="radio" name="vis" value="public" id="vis-public" onchange="scheduleSave()">
+        <input type="radio" name="vis" value="members" id="vis-members" onchange="scheduleSave()">
         <div>
-          <div style="font-weight:700">🌐 Everyone</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">Goes on the club's public minutes page when you close the meeting. Default.</div>
+          <div style="font-weight:700">👥 Members</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Goes on the members' Bylaws &amp; board minutes page when you close the meeting. Default.</div>
         </div>
       </label>
       <label class="vis-radio">
@@ -733,7 +733,7 @@ async function loadList() {
       const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Closed</span>'
                        : m.status === 'in_progress' ? '<span class="badge badge-progress">In progress</span>'
                        : '<span class="badge badge-draft">Draft</span>';
-      const visBadge = m.visibility === 'public' ? '<span class="badge badge-public">Everyone</span>' : '<span class="badge badge-private">Board only</span>';
+      const visBadge = m.visibility === 'private' ? '<span class="badge badge-private">Board only</span>' : '<span class="badge badge-members">Members</span>';
       const attCount = (m.attendees_json || []).length;
       const voteCount = (m.votes_json || []).length;
       const sub = [
@@ -849,7 +849,8 @@ function paintEditor() {
   document.getElementById('m-location').value = m.location || '';
   document.getElementById('m-time').value = m.planned_time || '';
   document.getElementById('m-notes').value = m.notes_md || '';
-  document.getElementById(`vis-${m.visibility === 'public' ? 'public' : 'private'}`).checked = true;
+  // Members unless it was switched to board only (PLAN.md BJ2), so one is always picked.
+  document.getElementById(`vis-${m.visibility === 'private' ? 'private' : 'members'}`).checked = true;
 
   paintStateBanner();
   paintAttendance();
@@ -908,13 +909,13 @@ function paintStateBanner() {
   saveBtn.textContent = m.status === 'completed' ? '💾 Save changes' : '💾 Save';
   if (m.status === 'completed') {
     banner.classList.add('completed');
-    const posted = m.visibility === 'public'
-      ? ' · <a href="/governance.html" target="_blank" rel="noopener" style="color:inherit">posted on the public page</a>'
-      : ' · board only';
+    const posted = m.visibility === 'private'
+      ? ' · board only'
+      : ' · <a href="/governance.html" target="_blank" rel="noopener" style="color:inherit">posted for members</a>';
     const edited = m.edited_at
       ? ` · edited ${escapeHtml(new Date(m.edited_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}${m.edited_by_name ? ' by ' + escapeHtml(m.edited_by_name) : ''}`
       : '';
-    const fixLine = m.can_edit ? '<br><span style="font-size:12.5px">To fix something, change it below and tap Save changes. The times and public page stay as they are.</span>' : '';
+    const fixLine = m.can_edit ? '<br><span style="font-size:12.5px">To fix something, change it below and tap Save changes. The times stay as they are, and members see the fix.</span>' : '';
     text.innerHTML = `<b>✓ Closed</b> · ${escapeHtml(meetingTimes(m) || 'no times recorded')}${posted}${byLine}${edited}${roLine}${fixLine}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = 'none';
@@ -1202,7 +1203,7 @@ function removeFollowUp(i) {
 function scheduleSave() {
   if (!MEETING || !MEETING.can_edit) return;
   // Fixes to closed minutes wait for Save changes, so a half-typed edit
-  // never lands on the public page.
+  // never lands on the members' page.
   if (MEETING.status === 'completed') { DIRTY = true; setSaveStatus('saving', 'Not saved yet'); return; }
   if (SAVE_TIMER) clearTimeout(SAVE_TIMER);
   setSaveStatus('saving', 'Saving…');
@@ -1218,7 +1219,7 @@ async function saveNow() {
   MEETING.location = document.getElementById('m-location').value.trim() || null;
   MEETING.planned_time = document.getElementById('m-time').value || null;
   MEETING.notes_md = document.getElementById('m-notes').value;
-  MEETING.visibility = document.getElementById('vis-public').checked ? 'public' : 'private';
+  MEETING.visibility = document.getElementById('vis-private').checked ? 'private' : 'members';
   try {
     const r = await call(closed ? 'amend' : 'update', {
       id: MEETING.id,
@@ -1262,10 +1263,10 @@ async function startMeeting() {
   } catch (e) { alert(e.message); }
 }
 async function finalize() {
-  const isPublic = document.getElementById('vis-public').checked;
-  const where = isPublic
-    ? 'The minutes go on the club\'s public page right away.'
-    : 'It\'s set to board only, so it won\'t go on the public page.';
+  const forMembers = !document.getElementById('vis-private').checked;
+  const where = forMembers
+    ? 'The minutes go on the members\' Bylaws & board minutes page right away.'
+    : 'It\'s set to board only, so members won\'t see it.';
   if (!confirm(`Close this meeting? ${where}`)) return;
   await saveNow();
   try {
@@ -1278,7 +1279,7 @@ async function finalize() {
 async function deleteMeeting() {
   const closed = MEETING.status === 'completed';
   const what = closed
-    ? `Delete the minutes of "${MEETING.title}" (${MEETING.meeting_date})? They come off the public page. A copy is kept in the audit log.`
+    ? `Delete the minutes of "${MEETING.title}" (${MEETING.meeting_date})? They come off the members' page. A copy is kept in the audit log.`
     : `Delete "${MEETING.title}" (${MEETING.meeting_date})? This can't be undone.`;
   if (!confirm(what)) return;
   try {

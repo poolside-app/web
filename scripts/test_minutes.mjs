@@ -4,6 +4,7 @@
 // /governance.html in Chrome with the demo video's harness (no Supabase calls).
 //
 // BJ1: the bylaws, minutes and board names are for the club's members only.
+// BJ2: minutes are for Members (the default) or Board only; no public option.
 //
 // Usage: node scripts/test_minutes.mjs
 import { readFileSync, readdirSync } from 'node:fs';
@@ -67,6 +68,21 @@ if (safeSrc) {
   check('  back to a page on this site', safeNext('/governance.html') === '/governance.html');
   check('  never to another site', [null, '', '//evil.com', 'https://evil.com', '/\\evil.com', 'javascript:alert(1)', 'governance.html'].every(v => safeNext(v) === null));
 }
+
+console.log('BJ2 · Members or Board only');
+const mig2 = readdirSync(new URL('supabase/migrations/', root)).filter(f => /minutes_members/.test(f)).map(f => read('supabase/migrations/' + f)).join('\n');
+check("existing public minutes become Members", /update public\.board_meetings set visibility = 'members' where visibility = 'public'/.test(mig2));
+check('the database allows only Members or Board only, Members by default',
+  /check \(visibility in \('private', 'members'\)\)/.test(mig2) && /set default 'members'/.test(mig2));
+check("the server accepts Members or Board only", /VALID_VIS = new Set\(\['private', 'members'\]\)/.test(fn));
+check('a new meeting is Members', !/visibility: 'public'/.test(fn) && (fn.match(/visibility: 'members'/g) || []).length >= 2);
+check("the members' page shows Members minutes", /\.eq\('visibility', 'members'\)/.test(govBlock));
+check("an old page still sending 'public' gets Members", /'public'[^\n]*'members'/.test(fn.slice(fn.indexOf('if (body.visibility !== undefined)'), fn.indexOf('if (body.visibility !== undefined)') + 400)));
+const bm = read('club/admin/board-meetings.html');
+check('the editor offers Members first, then Board only', bm.indexOf('id="vis-members"') > 0 && bm.indexOf('id="vis-members"') < bm.indexOf('id="vis-private"') && !/id="vis-public"/.test(bm));
+check('Members is picked when a meeting has no choice yet', /vis-\$\{m\.visibility === 'private' \? 'private' : 'members'\}/.test(bm));
+check('no "Everyone" and no "public page" on the Board minutes page', !/Everyone<\/div>|public page|public minutes|on the public/i.test(bm));
+check('the help article says Members too', !/public minutes page|🌐 Everyone/.test(read('club/admin/help/articles/board-minutes.md')) && /Members/.test(read('club/admin/help/articles/board-minutes.md')));
 
 console.log('BJ1 · the page, signed in and signed out');
 const SAMPLE = { ok: true, meetings: [{ id: 'm1', title: 'May board meeting', meeting_date: '2027-05-27', notes_md: 'Opening day plan approved.', attendees_json: [{ name: 'Mei Chen' }], votes_json: [], follow_ups_json: [] }],
