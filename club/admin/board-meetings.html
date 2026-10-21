@@ -128,6 +128,16 @@
   .state-banner.completed { background: var(--green-l); color: #14532d; border: 1px solid #86efac; }
   .state-banner b { font-weight: 700; }
   .state-banner .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  /* Minutes approval (PLAN.md BJ3): who's asked, and the buttons for this person. */
+  .approval { margin: -6px 0 18px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md); background: #fff; font-size: 14px; }
+  .approval .who { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+  .approval .who li { display: flex; gap: 8px; align-items: baseline; }
+  .approval .who .ok { color: var(--green); font-weight: 700; }
+  .approval .who .wait { color: var(--muted); }
+  .approval .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .approval .note { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--yellow-l); color: #92400e; }
+  .approval textarea { width: 100%; min-height: 70px; margin-top: 10px; }
+  .badge-approval { background: var(--yellow-l); color: #92400e; }
 
   /* Attendance */
   .attendee-row {
@@ -269,7 +279,7 @@
       <button class="btn btn-primary" onclick="startNewMeeting()">▶ Start a meeting</button>
     </div>
   </div>
-  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. Closing a meeting posts its minutes for the club's members on the Bylaws &amp; board minutes page, unless you switch it to board only for a closed session.</p>
+  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. When the meeting closes, the note-taker submits the minutes, and each board member who was there approves them. Then members see them on the Bylaws &amp; board minutes page, unless you switched them to board only for a closed session.</p>
 
   <!-- PLAN.md K6 (Doug, 2026-10-04): the bylaws, for members since BJ1, at the top
        of the club's "Bylaws & board minutes" page. The President or the
@@ -317,6 +327,7 @@
       <span class="save-status" id="save-status"></span>
       <div class="actions" id="state-actions"></div>
     </div>
+    <div id="approval" class="approval" style="display:none"></div>
 
     <div class="row2">
       <div>
@@ -730,7 +741,10 @@ async function loadList() {
       // meeting_date is a date, not a moment — format it without a zone shift.
       const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
       const year = String(m.meeting_date).slice(0, 4);
-      const statusBadge = m.status === 'completed'   ? '<span class="badge badge-completed">Closed</span>'
+      const a = m.approval || {};
+      const statusBadge = m.status === 'completed' && m.minutes_status === 'approved' ? '<span class="badge badge-completed">Approved</span>'
+                       : m.status === 'completed' && m.minutes_status === 'submitted' ? `<span class="badge badge-approval">${a.approved || 0} of ${a.total || 0} approved</span>`
+                       : m.status === 'completed'   ? '<span class="badge badge-draft">Minutes draft</span>'
                        : m.status === 'in_progress' ? '<span class="badge badge-progress">In progress</span>'
                        : '<span class="badge badge-draft">Draft</span>';
       const visBadge = m.visibility === 'private' ? '<span class="badge badge-private">Board only</span>' : '<span class="badge badge-members">Members</span>';
@@ -857,15 +871,22 @@ function paintEditor() {
   paintVotes();
   paintFollowUps();
   applyReadOnly();
+  paintApproval();
 }
 
 // Every board member can read a meeting; only the note-taker and the
 // president can change it (the server enforces this too).
 function applyReadOnly() {
-  const ro = !MEETING.can_edit;
+  // Waiting for approval, the minutes are locked for everyone (PLAN.md BJ3).
+  const ro = !MEETING.can_edit || MEETING.minutes_status === 'submitted';
   const modal = document.querySelector('#scrim .modal');
   modal.classList.toggle('read-only', ro);
-  if (!ro) return;
+  if (!ro) {
+    // Opened after a read-only meeting: everything works again.
+    modal.querySelectorAll('input, textarea, select, button').forEach(el => { el.disabled = false; });
+    modal.querySelectorAll('button[onclick^="add"]').forEach(el => { el.style.display = ''; });
+    return;
+  }
   modal.querySelectorAll('input, textarea, select, button').forEach(el => {
     if (!el.classList.contains('modal-close')) el.disabled = true;
   });
@@ -909,14 +930,19 @@ function paintStateBanner() {
   saveBtn.textContent = m.status === 'completed' ? '💾 Save changes' : '💾 Save';
   if (m.status === 'completed') {
     banner.classList.add('completed');
-    const posted = m.visibility === 'private'
-      ? ' · board only'
-      : ' · <a href="/governance.html" target="_blank" rel="noopener" style="color:inherit">posted for members</a>';
-    const edited = m.edited_at
-      ? ` · edited ${escapeHtml(new Date(m.edited_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}${m.edited_by_name ? ' by ' + escapeHtml(m.edited_by_name) : ''}`
-      : '';
-    const fixLine = m.can_edit ? '<br><span style="font-size:12.5px">To fix something, change it below and tap Save changes. The times stay as they are, and members see the fix.</span>' : '';
-    text.innerHTML = `<b>✓ Closed</b> · ${escapeHtml(meetingTimes(m) || 'no times recorded')}${posted}${byLine}${edited}${roLine}${fixLine}`;
+    const shortDay = iso => escapeHtml(new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }));
+    // Where the minutes stand (PLAN.md BJ3): a draft, waiting for approval, or approved.
+    const where = m.minutes_status === 'approved'
+      ? ` · ✓ approved ${m.approved_at ? shortDay(m.approved_at) : ''}${m.visibility === 'private' ? ' · board only'
+        : ' · <a href="/governance.html" target="_blank" rel="noopener" style="color:inherit">members can read them</a>'}`
+      : m.minutes_status === 'submitted' ? ' · waiting for approval'
+      : ' · minutes not approved yet';
+    const edited = m.edited_at ? ` · edited ${shortDay(m.edited_at)}${m.edited_by_name ? ' by ' + escapeHtml(m.edited_by_name) : ''}` : '';
+    const fixLine = !m.can_edit || m.minutes_status === 'submitted' ? ''
+      : m.minutes_status === 'approved'
+        ? '<br><span style="font-size:12.5px">To change approved minutes, edit below and tap Save changes. The change goes back to the board members who attended for approval; members see the approved version until then.</span>'
+        : '<br><span style="font-size:12.5px">Fix anything below and tap Save changes, then Submit for approval.</span>';
+    text.innerHTML = `<b>✓ Closed</b> · ${escapeHtml(meetingTimes(m) || 'no times recorded')}${where}${byLine}${edited}${roLine}${fixLine}`;
     actions.innerHTML = '';
     document.getElementById('final-btn').style.display = 'none';
     saveBtn.style.display = '';
@@ -1253,6 +1279,75 @@ function setSaveStatus(cls, text) {
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────
+// ── Minutes approval (PLAN.md BJ3) ─────────────────────────────────────
+// Closed meetings only: Submit for approval (note-taker or president), then
+// each board member who attended approves or asks for changes. Drawn after
+// the read-only pass, so an attendee's buttons work on minutes they can't edit.
+function paintApproval() {
+  const host = document.getElementById('approval');
+  const m = MEETING, a = m.approval || {};
+  if (m.status !== 'completed') { host.style.display = 'none'; host.innerHTML = ''; return; }
+  const asked = (a.rows || []);
+  const who = asked.length ? `<ul class="who">${asked.map(r => `<li>${r.status === 'approved'
+      ? `<span class="ok">✓</span> ${escapeHtml(r.name)}${r.on_behalf && r.decided_by_name ? ` <span class="wait">(approved for them by ${escapeHtml(r.decided_by_name)})</span>` : ''}`
+      : `<span class="wait">⏳</span> ${escapeHtml(r.name)}`}</li>`).join('')}</ul>` : '';
+  const changes = m.changes_note ? `<div class="note">✏️ ${escapeHtml(m.changes_by_name || 'A board member')} asked for changes: “${escapeHtml(m.changes_note)}”</div>` : '';
+  let html = '';
+  if (m.minutes_status === 'submitted') {
+    html = `<b>Waiting for approval: ${a.approved} of ${a.total} approved</b>${a.pending && a.pending.length ? ` · waiting on ${escapeHtml(a.pending.join(', '))}` : ''}${who}
+      <div class="row">
+        ${a.can_approve ? `<button class="btn btn-success" onclick="approveMinutes()">✓ Approve</button>
+          <button class="btn btn-ghost" onclick="showChanges()">✏️ Request changes</button>` : ''}
+        ${(a.can_approve_for || []).map(p => `<button class="btn btn-ghost" onclick="approveFor('${escapeHtml(p.admin_id)}', this)" data-name="${escapeHtml(p.name)}">Approve for ${escapeHtml(p.name)}</button>`).join('')}
+        ${a.can_edit_again ? `<button class="btn btn-ghost" onclick="editAgain()">Edit again</button>` : ''}
+      </div>
+      <div id="changes-box" style="display:none">
+        <textarea id="changes-note" maxlength="500" placeholder="What should change? The note-taker sees this."></textarea>
+        <div class="row"><button class="btn" onclick="requestChanges()">Send back for changes</button></div>
+      </div>`;
+  } else if (m.minutes_status === 'approved') {
+    html = `<b>✓ Approved${m.visibility === 'private' ? ' (board only)' : ''}</b>${who}`;
+  } else {
+    const amending = (m.posted_count || 0) > 0;
+    html = `<b>${amending ? 'A change to approved minutes' : 'Minutes not approved yet'}</b>${amending ? '<div style="margin-top:4px;color:var(--muted)">Members see the approved version until this change is approved.</div>' : ''}${changes}
+      ${a.can_submit ? `<div style="margin-top:6px;color:var(--muted)">Each board member ticked in "Who's here?" approves them. Members see them once everyone has.</div>
+        <div class="row"><button class="btn btn-success" onclick="submitMinutes()">📨 Submit for approval</button></div>` : ''}`;
+  }
+  host.innerHTML = html;
+  host.style.display = '';
+}
+function showChanges() {
+  document.getElementById('changes-box').style.display = '';
+  document.getElementById('changes-note').focus();
+}
+async function minutesAction(action, extra = {}) {
+  try {
+    const r = await call(action, { id: MEETING.id, ...extra });
+    if (!r.ok) throw new Error(r.error || 'That didn\'t work');
+    MEETING = r.meeting;
+    paintEditor();
+  } catch (e) { alert(e.message); }
+}
+async function submitMinutes() {
+  if (DIRTY) await saveNow();
+  if (!confirm('Send these minutes to the board members who were here for approval? They\'re locked while they wait.')) return;
+  await minutesAction('submit_minutes');
+}
+async function approveMinutes() { await minutesAction('approve_minutes'); }
+async function approveFor(adminId, btn) {
+  if (!confirm(`Approve these minutes for ${btn.dataset.name}? It's recorded that you approved for them.`)) return;
+  await minutesAction('approve_for', { admin_id: adminId });
+}
+async function requestChanges() {
+  const note = document.getElementById('changes-note').value.trim();
+  if (!note) { alert('Say what to change.'); return; }
+  await minutesAction('request_changes', { note });
+}
+async function editAgain() {
+  if (!confirm('Take the minutes back to change them? Everyone will be asked to approve again.')) return;
+  await minutesAction('edit_again');
+}
+
 async function startMeeting() {
   await saveNow();
   try {
@@ -1265,8 +1360,8 @@ async function startMeeting() {
 async function finalize() {
   const forMembers = !document.getElementById('vis-private').checked;
   const where = forMembers
-    ? 'The minutes go on the members\' Bylaws & board minutes page right away.'
-    : 'It\'s set to board only, so members won\'t see it.';
+    ? 'Then fix anything and tap Submit for approval. Once the board members who were here approve, members see the minutes on the Bylaws & board minutes page.'
+    : 'Then fix anything and tap Submit for approval. It\'s set to board only, so members won\'t see it.';
   if (!confirm(`Close this meeting? ${where}`)) return;
   await saveNow();
   try {

@@ -18,7 +18,8 @@
 // =============================================================================
 
 import { platformFeeCents, feePolicyFromTenant, type FeePolicy } from '../_shared/fees.ts';
-import { poolDate, fmtPoolDay } from '../_shared/pool_time.ts';
+import { poolDate, fmtPoolDay, poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
+import { remindDay } from '../_shared/minutes_approval.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
@@ -442,6 +443,42 @@ async function askForApproval(sb: SupabaseClient, onlyTenant: string | null): Pr
   return { asked, reminded, closed };
 }
 
+// Minutes waiting for approval (PLAN.md BJ3): a pop-up to each board member
+// who hasn't approved, 3 and 6 days after they were sent; on day 7 one to the
+// President, who can now approve for them. Days are the pool's.
+async function remindMinutes(sb: SupabaseClient, onlyTenant: string | null): Promise<{ reminded: number; president: number }> {
+  let reminded = 0, president = 0;
+  let q = sb.from('board_meetings').select('id, tenant_id, meeting_date, submitted_at, approval_round').eq('minutes_status', 'submitted');
+  if (onlyTenant) q = q.eq('tenant_id', onlyTenant);
+  const { data: waiting } = await q;
+  if (!waiting?.length) return { reminded, president };
+  const { pushBoard } = await import('../_shared/enqueue_task.ts');
+  for (const m of waiting) {
+    if (!m.submitted_at) continue;
+    const tz = await tenantTimeZone(sb, m.tenant_id as string);
+    const what = remindDay(poolDate(m.submitted_at as string, tz), poolToday(tz));
+    if (!what) continue;
+    const { data: rows } = await sb.from('board_minutes_approvals').select('admin_id, name')
+      .eq('meeting_id', m.id).eq('round', m.approval_round).eq('status', 'pending');
+    if (!rows?.length) continue;
+    const day = fmtPoolDay(m.meeting_date as string, { month: 'long', day: 'numeric' });
+    const url = `/club/admin/board-meetings.html#m=${m.id}`, tag = `board_minutes:${m.id}`;
+    if (what === 'remind') {
+      await pushBoard({ tenant_id: m.tenant_id as string, target_scopes: [], admin_ids: rows.map(r => r.admin_id as string),
+        title: '📝 Minutes still waiting for you', body: `The minutes of the ${day} board meeting are waiting for your approval.`, url, tag });
+      reminded += rows.length;
+    } else {
+      const { data: owners } = await sb.from('admin_users').select('id')
+        .eq('tenant_id', m.tenant_id).eq('active', true).eq('role_template', 'owner');
+      if (!owners?.length) continue;
+      await pushBoard({ tenant_id: m.tenant_id as string, target_scopes: [], admin_ids: owners.map(o => o.id as string),
+        title: '📝 Minutes still waiting', body: `The minutes of the ${day} board meeting still need ${rows.map(r => r.name).join(', ')}. You can approve for them now.`, url, tag });
+      president++;
+    }
+  }
+  return { reminded, president };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -581,6 +618,8 @@ Deno.serve(async (req) => {
     // Ask the board to approve what's coming due (PLAN.md S3), first.
     let approval = { asked: 0, reminded: 0, closed: 0 };
     try { approval = await askForApproval(sb, null); } catch (e) { console.error('approval ask:', (e as Error).message); }
+    let minutes = { reminded: 0, president: 0 };
+    try { minutes = await remindMinutes(sb, null); } catch (e) { console.error('minutes reminders:', (e as Error).message); }
     // Every club's own "today" (pool time), loaded once per club.
     const clubs = new Map<string, PlanClub | null>();
     const clubFor = async (tid: string) => {
@@ -849,7 +888,7 @@ Deno.serve(async (req) => {
       console.error('text queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, minutes, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';

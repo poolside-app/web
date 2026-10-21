@@ -43,6 +43,22 @@
 //     → { ok }                       // hard-delete. Once closed, president
 //                                    // only, and a copy goes to audit_log.
 //
+// Minutes approval (PLAN.md BJ3, Doug 10/21; rules in _shared/minutes_approval.ts).
+// Closing a meeting leaves its minutes a draft; members see them only once the
+// board members who attended have approved them:
+//   { action: 'submit_minutes', id }      note-taker or president, after Close
+//                                          meeting: asks each board member who
+//                                          attended (a pop-up and a to-do); the
+//                                          submitter counts as approving
+//   { action: 'approve_minutes', id }     one of those asked
+//   { action: 'request_changes', id, note }  one of those asked: back to draft,
+//                                          the note-taker is told
+//   { action: 'approve_for', id, admin_id }  the president, after 7 days
+//   { action: 'edit_again', id }          note-taker or president: back to
+//                                          draft (approvals start over)
+// Approved minutes are locked; amend on them starts an amendment (a draft
+// again; members keep seeing the approved copy, posted_json).
+//
 // There is no 'reopen': it cleared the real end time and pulled the
 // minutes off the members' page while they were edited. amend replaced it.
 //
@@ -89,6 +105,8 @@ import { loadBoard } from '../_shared/positions_db.ts';
 import { boardRoster } from '../_shared/positions.ts';
 import { readerFromClaims } from '../_shared/governance.ts';
 import { moveToPrivate, withLinks, type DocRow } from '../_shared/club_docs.ts';
+import { approversFor, progress, mayApproveFor, editMode, snapshot, ON_BEHALF_DAYS, type Attendee } from '../_shared/minutes_approval.ts';
+import { enqueueAdminTask, pushBoard } from '../_shared/enqueue_task.ts';
 
 // The bylaws (PLAN.md K6): every upload is kept; the newest is current. The
 // files are private (BJ1): readers get links that work for an hour.
@@ -141,8 +159,7 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
-const FIELDS = 'id, tenant_id, title, meeting_date, location, status, started_at, ended_at, visibility, notes_md, attendees_json, votes_json, follow_ups_json, created_by, created_at, updated_at, edited_at, edited_by, planned_time, agenda_created_at, agenda_created_by, agenda_sent_at, agenda_sent_by';
-const PUBLIC_FIELDS = 'id, title, meeting_date, location, started_at, ended_at, notes_md, attendees_json, votes_json, follow_ups_json, edited_at, edited_by';
+const FIELDS = 'id, tenant_id, title, meeting_date, location, status, started_at, ended_at, visibility, notes_md, attendees_json, votes_json, follow_ups_json, created_by, created_at, updated_at, edited_at, edited_by, planned_time, agenda_created_at, agenda_created_by, agenda_sent_at, agenda_sent_by, minutes_status, approval_round, submitted_at, submitted_by, changes_note, changes_by_name, changes_at, posted_at, posted_count, approved_at';
 // What a correction can change, and what the audit log keeps of the old one.
 const CONTENT = ['title', 'meeting_date', 'location', 'notes_md', 'attendees_json', 'votes_json', 'follow_ups_json', 'visibility'] as const;
 
@@ -295,23 +312,18 @@ Deno.serve(async (req) => {
       return refuse();
     }
     const tid = reader.tid;
-    const { data, error } = await sb.from('board_meetings').select(PUBLIC_FIELDS)
+    // The approved copy of each meeting's minutes (PLAN.md BJ3): a change
+    // waiting for approval doesn't show until it's approved.
+    const { data, error } = await sb.from('board_meetings').select('id, posted_json, posted_at, posted_count')
       .eq('tenant_id', tid)
-      .eq('status', 'completed')
-      .eq('visibility', 'members')
+      .not('posted_json', 'is', null)
+      .eq('posted_json->>visibility', 'members')
       .order('meeting_date', { ascending: false })
       .limit(100);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    // "Edited Sep 30 by Pat": the editor's name, never their login id.
-    const editors = new Map<string, string>();
-    const ids = [...new Set((data ?? []).map(m => m.edited_by).filter(Boolean))] as string[];
-    if (ids.length) {
-      const { data: who } = await sb.from('admin_users').select('id, display_name')
-        .eq('tenant_id', tid).in('id', ids);
-      for (const a of who ?? []) editors.set(a.id, a.display_name || 'the board');
-    }
-    const meetings = (data ?? []).map(({ edited_by, ...m }) => ({
-      ...m, edited_by_name: edited_by ? editors.get(edited_by) ?? 'the board' : null,
+    const meetings = (data ?? []).map(m => ({
+      ...(m.posted_json as Record<string, unknown>), id: m.id, approved_at: m.posted_at,
+      amended_at: Number(m.posted_count ?? 0) > 1 ? m.posted_at : null,
     }));
     // Who's on the board: names and positions only. Job descriptions stay with the board.
     const b = await loadBoard(sb as never, tid);
@@ -343,14 +355,40 @@ Deno.serve(async (req) => {
         .eq('tenant_id', TID).in('id', ids);
       for (const a of data ?? []) names.set(a.id, a.display_name || a.email);
     }
-    return rows.map(r => ({
+    // Minutes approval (BJ3): the current round's approvers.
+    const asked = new Map<string, Array<Record<string, unknown>>>();
+    const roundIds = rows.filter(r => Number(r.approval_round ?? 0) > 0).map(r => r.id as string);
+    if (roundIds.length) {
+      const { data: ap } = await sb.from('board_minutes_approvals')
+        .select('meeting_id, round, admin_id, name, status, decided_at, decided_by_name, on_behalf')
+        .in('meeting_id', roundIds).order('created_at');
+      for (const a of ap ?? []) {
+        const r = rows.find(x => x.id === a.meeting_id);
+        if (!r || Number(a.round) !== Number(r.approval_round) || a.status === 'voided') continue;
+        const list = asked.get(a.meeting_id as string) ?? []; list.push(a); asked.set(a.meeting_id as string, list);
+      }
+    }
+    return rows.map(r => {
+      const list = asked.get(r.id as string) ?? [];
+      const pr = progress(list as Array<{ name: string; status: string }>);
+      const submitted = r.minutes_status === 'submitted';
+      const canEdit = canEditMeeting(r as { created_by?: string | null }, me!);
+      return {
       ...r,
+      approval: {
+        round: r.approval_round ?? 0, rows: list, approved: pr.approved, total: pr.total, pending: pr.pending,
+        can_submit: canEdit && r.status === 'completed' && r.minutes_status === 'draft',
+        can_approve: submitted && list.some(a => a.admin_id === me!.id && a.status === 'pending'),
+        can_approve_for: submitted && me!.isOwner && mayApproveFor(true, r.submitted_at as string | null)
+          ? list.filter(a => a.status === 'pending' && a.admin_id !== me!.id).map(a => ({ admin_id: a.admin_id, name: a.name })) : [],
+        can_edit_again: submitted && canEdit,
+      },
       note_taker: r.created_by ? names.get(r.created_by as string) ?? null : null,
       edited_by_name: r.edited_by ? names.get(r.edited_by as string) ?? null : null,
       agenda_sent_by_name: r.agenda_sent_by ? names.get(r.agenda_sent_by as string) ?? null : null,
       can_edit: canEditMeeting(r as { created_by?: string | null }, me!),
       can_delete: canDeleteMeeting(r as { created_by?: string | null; status?: string }, me!),
-    }));
+    }; });
   }
   const one = async (row: Record<string, unknown>) => (await decorate([row]))[0];
 
@@ -378,6 +416,42 @@ Deno.serve(async (req) => {
         metadata: { before: Object.fromEntries(CONTENT.map(k => [k, row[k]])) },
       });
     } catch { /* never block the change on the audit write */ }
+  }
+
+  // ── Minutes approval helpers (PLAN.md BJ3) ─────────────────────────────
+  const minutesLink = (id: string) => `/club/admin/board-meetings.html#m=${id}`;
+  const meetingName = (m: Record<string, unknown>) => `the ${longDate(String(m.meeting_date), false)} board meeting`;
+  async function closeMinutesTasks(id: string, kinds: string[], adminId?: string) {
+    let q = sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
+      .eq('tenant_id', TID).eq('source_kind', 'board_minutes').eq('source_id', id).in('kind', kinds).is('completed_at', null);
+    if (adminId) q = q.eq('assigned_admin_id', adminId);
+    await q;
+  }
+  async function voidRound(id: string, round: number) {
+    await sb.from('board_minutes_approvals').update({ status: 'voided' })
+      .eq('meeting_id', id).eq('round', round).eq('status', 'pending');
+  }
+  // The moment everyone asked has approved: keep the copy members see.
+  async function postIfDone(m: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data: rows } = await sb.from('board_minutes_approvals').select('name, status')
+      .eq('meeting_id', m.id).eq('round', m.approval_round);
+    if (!progress((rows ?? []) as Array<{ name: string; status: string }>).done) return m;
+    const now = new Date().toISOString();
+    const { data } = await sb.from('board_meetings').update({
+      minutes_status: 'approved', approved_at: now, posted_json: snapshot(m), posted_at: now,
+      posted_count: Number(m.posted_count ?? 0) + 1, updated_at: now,
+    }).eq('id', m.id).eq('tenant_id', TID).eq('minutes_status', 'submitted').eq('approval_round', m.approval_round)
+      .select(FIELDS).maybeSingle();
+    if (!data) return m;   // another approval posted it a moment ago
+    await closeMinutesTasks(m.id as string, ['minutes.approve']);
+    const where = m.visibility === 'private' ? 'They\'re board only, so members won\'t see them.' : 'Members can read them now.';
+    await audit('board_meeting.approved', m, `Minutes approved${Number(m.posted_count ?? 0) > 0 ? ' (an amendment)' : ''}: "${m.title}" (${m.meeting_date})`);
+    if (m.created_by) {
+      await pushBoard({ tenant_id: TID, target_scopes: [], admin_ids: [m.created_by as string],
+        title: '✅ Minutes approved', body: `Everyone approved the minutes of ${meetingName(m)}. ${where}`,
+        url: minutesLink(m.id as string), tag: `board_minutes:${m.id}` });
+    }
+    return data;
   }
 
   // ── Agenda items (PLAN.md L1) ──────────────────────────────────────────
@@ -762,18 +836,26 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     const { row: existing, deny } = await editable(id);
     if (deny) return deny;
-    if (existing!.status !== 'completed') {
+    const mode = editMode(existing!);
+    if (mode === 'open') {
       return jsonResponse({ ok: false, error: 'This meeting is still open; its changes save as you type.' }, 409);
+    }
+    if (mode === 'locked') {
+      return jsonResponse({ ok: false, error: 'These minutes are waiting for approval. Tap Edit again to change them (the approvals start over).' }, 409);
     }
     const { patch, bad } = contentPatch(body);
     if (bad) return bad;
     patch.edited_at = patch.updated_at;
     patch.edited_by = payload.synthetic ? null : me.id;
+    // Approved minutes: the change is an amendment. They're a draft again and
+    // go through the same approval; members keep the approved copy till then.
+    if (mode === 'amend') Object.assign(patch, { minutes_status: 'draft' });
 
     const { data, error } = await sb.from('board_meetings').update(patch)
       .eq('id', id).eq('tenant_id', TID).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    await audit('board_meeting.edited', existing!, `Edited minutes: "${existing!.title}" (${existing!.meeting_date})`);
+    await audit(mode === 'amend' ? 'board_meeting.amendment_started' : 'board_meeting.edited', existing!,
+      `${mode === 'amend' ? 'Started an amendment to approved minutes' : 'Edited minutes'}: "${existing!.title}" (${existing!.meeting_date})`);
     await syncFollowUpTasks(sb, data as MeetingForTasks, payload.synthetic ? null : me.id);
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
@@ -803,6 +885,119 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
+  // ── Minutes approval (PLAN.md BJ3) ─────────────────────────────────────
+  if (action === 'submit_minutes') {
+    const id = String(body.id ?? '');
+    const { row: existing, deny } = await editable(id);
+    if (deny) return deny;
+    const m = existing!;
+    if (m.status !== 'completed') return jsonResponse({ ok: false, error: 'Close the meeting first, then submit the minutes.' }, 409);
+    if (m.minutes_status === 'submitted') return jsonResponse({ ok: true, meeting: await one(m) });
+    if (m.minutes_status === 'approved') return jsonResponse({ ok: false, error: 'These minutes are already approved.' }, 409);
+    // The board members who attended, with board logins that are still active.
+    const { data: logins } = await sb.from('admin_users').select('id, role_template, roles, active').eq('tenant_id', TID);
+    const boardIds = new Set((logins ?? []).filter(isBoardMember).map(a => a.id as string));
+    const submitter = payload.synthetic ? null : me.id;
+    const rows = approversFor((m.attendees_json ?? []) as Attendee[], boardIds, submitter);
+    const round = Number(m.approval_round ?? 0) + 1;
+    const now = new Date().toISOString();
+    if (rows.length) {
+      const { error } = await sb.from('board_minutes_approvals').insert(rows.map(r => ({
+        tenant_id: TID, meeting_id: id, round, admin_id: r.admin_id, name: r.name, status: r.status,
+        decided_at: r.status === 'approved' ? now : null, decided_by: r.status === 'approved' ? submitter : null,
+        decided_by_name: r.status === 'approved' ? me.name : null,
+      })));
+      if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    }
+    const { data: upd, error } = await sb.from('board_meetings').update({
+      minutes_status: 'submitted', approval_round: round, submitted_at: now, submitted_by: submitter,
+      changes_note: null, changes_by_name: null, changes_at: null, updated_at: now,
+    }).eq('id', id).eq('tenant_id', TID).eq('minutes_status', 'draft').select(FIELDS).maybeSingle();
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (!upd) return jsonResponse({ ok: true, meeting: await one(m) });   // someone submitted it a moment ago
+    await closeMinutesTasks(id, ['minutes.changes']);
+    const asked = rows.filter(r => r.status === 'pending');
+    for (const r of asked) {
+      await enqueueAdminTask(sb, {
+        tenant_id: TID, target_scopes: [], assigned_admin_id: r.admin_id, kind: 'minutes.approve',
+        summary: `Approve the minutes of ${meetingName(m)}`, link_url: minutesLink(id),
+        source_kind: 'board_minutes', source_id: id,
+        push_title: '📝 Minutes to approve', push_body: `${me.name} sent the minutes of ${meetingName(m)} for your approval.`,
+      });
+    }
+    await audit('board_meeting.submitted', m, `${me.name} submitted the minutes of "${m.title}" (${m.meeting_date}) for approval: ${asked.map(r => r.name).join(', ') || 'nobody else attended'}`);
+    return jsonResponse({ ok: true, meeting: await one(await postIfDone(upd)) });
+  }
+
+  if (action === 'approve_minutes' || action === 'approve_for') {
+    const id = String(body.id ?? '');
+    const { data: m } = await sb.from('board_meetings').select(FIELDS).eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!m) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
+    if (m.minutes_status !== 'submitted') return jsonResponse({ ok: false, error: 'These minutes aren\'t waiting for approval.' }, 409);
+    const forOther = action === 'approve_for';
+    if (forOther && !me.isOwner) return jsonResponse({ ok: false, error: 'Only the President can approve for someone.' }, 403);
+    if (forOther && !mayApproveFor(true, m.submitted_at as string)) {
+      return jsonResponse({ ok: false, error: `The President can approve for someone once the minutes have waited ${ON_BEHALF_DAYS} days.` }, 409);
+    }
+    const who = forOther ? String(body.admin_id ?? '') : me.id;
+    const { data: row } = await sb.from('board_minutes_approvals').update({
+      status: 'approved', decided_at: new Date().toISOString(), decided_by: payload.synthetic ? null : me.id,
+      decided_by_name: me.name, on_behalf: forOther,
+    }).eq('meeting_id', id).eq('round', m.approval_round).eq('admin_id', who).eq('status', 'pending').select('name').maybeSingle();
+    if (!row) {
+      return jsonResponse({ ok: false, error: forOther ? 'They have nothing waiting on these minutes.' : 'You\'re not one of the board members asked to approve these minutes.' }, 403);
+    }
+    await closeMinutesTasks(id, ['minutes.approve'], who);
+    await audit(forOther ? 'board_meeting.approved_for' : 'board_meeting.minutes_approved', m,
+      forOther ? `${me.name} approved the minutes of "${m.title}" (${m.meeting_date}) for ${row.name}`
+               : `${me.name} approved the minutes of "${m.title}" (${m.meeting_date})`);
+    return jsonResponse({ ok: true, meeting: await one(await postIfDone(m)) });
+  }
+
+  if (action === 'request_changes') {
+    const id = String(body.id ?? '');
+    const { data: m } = await sb.from('board_meetings').select(FIELDS).eq('id', id).eq('tenant_id', TID).maybeSingle();
+    if (!m) return jsonResponse({ ok: false, error: 'Meeting not found' }, 404);
+    if (m.minutes_status !== 'submitted') return jsonResponse({ ok: false, error: 'These minutes aren\'t waiting for approval.' }, 409);
+    const note = String(body.note ?? '').trim().slice(0, 500);
+    if (!note) return jsonResponse({ ok: false, error: 'Say what to change.' }, 400);
+    const { data: mine } = await sb.from('board_minutes_approvals').select('id')
+      .eq('meeting_id', id).eq('round', m.approval_round).eq('admin_id', me.id).eq('status', 'pending').maybeSingle();
+    if (!mine && !me.isOwner) return jsonResponse({ ok: false, error: 'Only the board members asked to approve these minutes can ask for changes.' }, 403);
+    const now = new Date().toISOString();
+    const { data: upd } = await sb.from('board_meetings').update({
+      minutes_status: 'draft', changes_note: note, changes_by_name: me.name, changes_at: now, updated_at: now,
+    }).eq('id', id).eq('tenant_id', TID).eq('minutes_status', 'submitted').select(FIELDS).maybeSingle();
+    if (!upd) return jsonResponse({ ok: false, error: 'These minutes changed a moment ago. Open them again.' }, 409);
+    await voidRound(id, Number(m.approval_round));
+    await closeMinutesTasks(id, ['minutes.approve']);
+    if (m.created_by) {
+      await enqueueAdminTask(sb, {
+        tenant_id: TID, target_scopes: [], assigned_admin_id: m.created_by as string, kind: 'minutes.changes',
+        summary: `Changes asked on the minutes of ${meetingName(m)}: ${note.slice(0, 140)}`, link_url: minutesLink(id),
+        source_kind: 'board_minutes', source_id: id,
+        push_title: '✏️ Changes asked on the minutes', push_body: `${me.name}: ${note.slice(0, 160)}`,
+      });
+    }
+    await audit('board_meeting.changes_requested', m, `${me.name} asked for changes to the minutes of "${m.title}" (${m.meeting_date}): ${note}`);
+    return jsonResponse({ ok: true, meeting: await one(upd) });
+  }
+
+  if (action === 'edit_again') {
+    const id = String(body.id ?? '');
+    const { row: existing, deny } = await editable(id);
+    if (deny) return deny;
+    const m = existing!;
+    if (m.minutes_status !== 'submitted') return jsonResponse({ ok: true, meeting: await one(m) });
+    const { data: upd } = await sb.from('board_meetings').update({ minutes_status: 'draft', updated_at: new Date().toISOString() })
+      .eq('id', id).eq('tenant_id', TID).eq('minutes_status', 'submitted').select(FIELDS).maybeSingle();
+    if (!upd) return jsonResponse({ ok: true, meeting: await one(m) });
+    await voidRound(id, Number(m.approval_round));
+    await closeMinutesTasks(id, ['minutes.approve']);
+    await audit('board_meeting.edit_again', m, `${me.name} took back the minutes of "${m.title}" (${m.meeting_date}) to change them; approvals start over`);
+    return jsonResponse({ ok: true, meeting: await one(upd) });
+  }
+
   // ── delete ─────────────────────────────────────────────────────────────
   if (action === 'delete') {
     const id = String(body.id ?? '');
@@ -818,6 +1013,7 @@ Deno.serve(async (req) => {
       .delete().eq('id', id).eq('tenant_id', TID);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await clearFollowUpTasks(sb, TID, id);
+    await closeMinutesTasks(id, ['minutes.approve', 'minutes.changes']);
     return jsonResponse({ ok: true });
   }
 
