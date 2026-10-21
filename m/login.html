@@ -172,6 +172,21 @@ function boardInstead() {
   return false;
 }
 
+// After signing in, back to the page that sent them here, such as the bylaws
+// and minutes (PLAN.md BJ1): ?next= takes a path on this site only.
+function safeNext(v) {
+  if (typeof v !== 'string' || !/^\/(?![\/\\])[^\s:]*$/.test(v)) return null;
+  return v;
+}
+const NEXT = (() => {
+  try {
+    const n = safeNext(new URLSearchParams(location.search).get('next'));
+    if (n) sessionStorage.setItem('poolside_next', n);
+    return n || safeNext(sessionStorage.getItem('poolside_next'));
+  } catch (_) { return null; }
+})();
+function afterSignIn() { try { sessionStorage.removeItem('poolside_next'); } catch (_) {} return NEXT || '/m/'; }
+
 async function autoSignInIfPossible() {
   const tok = localStorage.getItem('poolside_member_token');
   if (!tok) return false;
@@ -198,7 +213,7 @@ async function autoSignInIfPossible() {
     if (data.refreshed_token) {
       try { localStorage.setItem('poolside_member_token', data.refreshed_token); } catch (_) {}
     }
-    window.location.replace('/m/');
+    window.location.replace(afterSignIn());
     return true;
   } catch {
     return false;
@@ -403,7 +418,7 @@ async function submitCode() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'That code did not work');
     localStorage.setItem('poolside_member_token', data.token);
-    window.location.href = '/m/';
+    window.location.href = afterSignIn();
   } catch (e) {
     errEl.textContent = e.message;
     errEl.classList.add('show');

@@ -182,8 +182,9 @@ console.log('\nK6 · the bylaws (offline)');
   const bm = read('supabase/functions/board_meetings/index.ts');
   check('K6: the President or Secretary sets the bylaws; only a file stored with the club counts',
     /action === 'set_bylaws'/.test(bm) && /policies/.test(between(bm, "action === 'set_bylaws'", 'return jsonResponse({ ok: true')) && /club-assets/.test(bm), '');
-  check('K6: the public minutes page gets the bylaws and the board (names and positions)',
-    /bylaws/.test(between(bm, "action === 'list_public'", "Admin-only actions below")) && /boardRoster/.test(bm), '');
+  // Members only since PLAN.md BJ1 (Doug, 10/21): 'governance' replaced the anonymous 'list_public'.
+  check('K6: the minutes page (members only, BJ1) gets the bylaws and the board (names and positions)',
+    /bylaws/.test(between(bm, "action === 'governance'", "Admin-only actions below")) && /boardRoster/.test(bm), '');
   const page = read('board-meetings.html'.replace(/^/, 'club/admin/'));
   check('K6: the Board minutes page has the bylaws, with upload', /id="bylaws-card"/.test(page) && /tenant_upload/.test(page) && /set_bylaws/.test(page), '');
   const gov = read('governance.html');

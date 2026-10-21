@@ -4,7 +4,8 @@
 // Auth: tenant_admin token of a board member (_shared/board.ts). Any board
 // member can start a meeting and read all minutes; only the note-taker
 // (created_by) and the president can change one. Lifeguard / gate-iPad
-// logins are refused. Public list is anonymous (slug-based).
+// logins are refused. The club's members read the bylaws and closed minutes
+// with their own sign-in (governance, below); nobody signed out reads anything.
 //
 // Admin actions:
 //   { action: 'list' }
@@ -34,7 +35,8 @@
 //   { action: 'finalize', id }
 //     → { ok, meeting }              // "Close meeting": status='completed',
 //                                    // ended_at=now. A public meeting (the
-//                                    // default) is on list_public from here.
+//                                    // default) is on the members' page
+//                                    // (governance) from here.
 //                                    // Closing twice keeps the first time.
 //
 //   { action: 'delete', id }
@@ -69,9 +71,12 @@
 //                                           up; preview: true says who'd get
 //                                           it how, and sends nothing
 //
-// Public action (no auth, used by the /governance.html public page):
-//   { action: 'list_public', slug }
-//     → { ok, meetings: [...] }      // only completed + visibility='public'
+// For the club's members (PLAN.md BJ1, Doug 10/21), used by /governance.html:
+//   { action: 'governance' }  with a member's or a board member's sign-in
+//     → { ok, meetings, bylaws, board }   // closed minutes the members may
+//                                          // see, the bylaws (links that work
+//                                          // for an hour), who's on the board.
+//                                          // Signed out → 401 and nothing else.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -82,13 +87,16 @@ import { clearFollowUpTasks, syncFollowUpTasks, type MeetingForTasks } from '../
 import { cleanItem, itemProblem, buildAgenda, agendaText, longDate, clock, type AgendaItem, type FollowUp } from '../_shared/agenda.ts';
 import { loadBoard } from '../_shared/positions_db.ts';
 import { boardRoster } from '../_shared/positions.ts';
+import { readerFromClaims } from '../_shared/governance.ts';
+import { moveToPrivate, withLinks, type DocRow } from '../_shared/club_docs.ts';
 
-// The bylaws (PLAN.md K6): every upload is kept; the newest is current.
-const DOC_FIELDS = 'id, url, file_name, uploaded_by_name, uploaded_at';
+// The bylaws (PLAN.md K6): every upload is kept; the newest is current. The
+// files are private (BJ1): readers get links that work for an hour.
+const DOC_FIELDS = 'id, url, storage_path, file_name, uploaded_by_name, uploaded_at';
 async function bylawsFor(sb: ReturnType<typeof createClient>, tenantId: string) {
   const { data } = await sb.from('club_documents').select(DOC_FIELDS)
     .eq('tenant_id', tenantId).eq('kind', 'bylaws').order('uploaded_at', { ascending: false }).limit(20);
-  const rows = data ?? [];
+  const rows = await withLinks(sb, SUPABASE_URL, tenantId, (data ?? []) as DocRow[]);
   return { current: rows[0] ?? null, earlier: rows.slice(1) };
 }
 
@@ -109,6 +117,17 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 type Payload = { sub: string; kind: string; tid: string; synthetic?: boolean };
+// Any Poolside sign-in's claims, if it's genuine (governance reads members' too).
+async function verifyClaims(token: string): Promise<Record<string, unknown> | null> {
+  if (!JWT_SECRET || !token) return null;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+    );
+    return await verify(token, key) as Record<string, unknown>;
+  } catch { return null; }
+}
 async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   if (!JWT_SECRET) return null;
   try {
@@ -256,17 +275,26 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '');
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-  // ── list_public — anonymous, slug-keyed ────────────────────────────────
-  // The /governance.html public page hits this; no auth required. Returns
-  // ONLY completed + visibility='public' meetings, with admin-only fields
-  // (created_by, internal status) stripped.
-  if (action === 'list_public') {
-    const slug = String(body.slug ?? '').trim().toLowerCase();
-    if (!slug) return jsonResponse({ ok: false, error: 'slug required' }, 400);
-    const { data: tenant } = await sb.from('tenants').select('id').eq('slug', slug).maybeSingle();
-    if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+  // ── governance — the club's members (PLAN.md BJ1, Doug 10/21) ──────────
+  // /governance.html: the bylaws, the closed minutes members may see, and
+  // who's on the board. Only with the sign-in of an active member of the club
+  // or a board member; nobody else gets anything, not even the club's name.
+  // The club is the one in the sign-in.
+  if (action === 'governance') {
+    const hdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+    const reader = readerFromClaims(hdr.startsWith('Bearer ') ? await verifyClaims(hdr.slice(7)) : null);
+    const refuse = () => jsonResponse({ ok: false, signin: true, error: 'Sign in to see the bylaws and minutes.' }, 401);
+    if (!reader) return refuse();
+    if (reader.kind === 'member') {
+      const { data: m } = await sb.from('household_members').select('id, active')
+        .eq('id', reader.id).eq('tenant_id', reader.tid).maybeSingle();
+      if (!m || m.active === false) return refuse();
+    } else if (!reader.synthetic && !(await boardCaller(sb, reader.id, reader.tid))) {
+      return refuse();
+    }
+    const tid = reader.tid;
     const { data, error } = await sb.from('board_meetings').select(PUBLIC_FIELDS)
-      .eq('tenant_id', tenant.id)
+      .eq('tenant_id', tid)
       .eq('status', 'completed')
       .eq('visibility', 'public')
       .order('meeting_date', { ascending: false })
@@ -277,18 +305,17 @@ Deno.serve(async (req) => {
     const ids = [...new Set((data ?? []).map(m => m.edited_by).filter(Boolean))] as string[];
     if (ids.length) {
       const { data: who } = await sb.from('admin_users').select('id, display_name')
-        .eq('tenant_id', tenant.id).in('id', ids);
+        .eq('tenant_id', tid).in('id', ids);
       for (const a of who ?? []) editors.set(a.id, a.display_name || 'the board');
     }
     const meetings = (data ?? []).map(({ edited_by, ...m }) => ({
       ...m, edited_by_name: edited_by ? editors.get(edited_by) ?? 'the board' : null,
     }));
-    // The bylaws, always public (K6), and who's on the board: names and
-    // positions only. Job descriptions stay with the board.
-    const b = await loadBoard(sb as never, tenant.id);
+    // Who's on the board: names and positions only. Job descriptions stay with the board.
+    const b = await loadBoard(sb as never, tid);
     return jsonResponse({
       ok: true, meetings,
-      bylaws: await bylawsFor(sb, tenant.id),
+      bylaws: await bylawsFor(sb, tid),
       board: boardRoster(b.positions, b.holders, b.logins),
     });
   }
@@ -596,7 +623,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Only the President or the Secretary can change the bylaws.' }, 403);
     }
     const url = String(body.url ?? '').trim();
-    // Only a file the club uploaded (tenant_upload → public club-assets).
+    // Only a file the club uploaded (tenant_upload → club-assets); it moves to
+    // the private club-docs folder just below.
     const ours = `${SUPABASE_URL}/storage/v1/object/public/club-assets/${TID}/`;
     if (!url.startsWith(ours) || !/\.pdf$/i.test(url)) {
       return jsonResponse({ ok: false, error: 'Upload the bylaws as a PDF.' }, 400);
@@ -607,6 +635,8 @@ Deno.serve(async (req) => {
       uploaded_by: payload.synthetic ? null : me.id, uploaded_by_name: me.name,
     }).select(DOC_FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    // Out of the public folder at once (BJ1): the bylaws are for members only.
+    const moved = await moveToPrivate(sb, SUPABASE_URL, TID, row as DocRow);
     try {
       await sb.from('audit_log').insert({
         tenant_id: TID, kind: 'bylaws.uploaded', entity_type: 'club_document', entity_id: row.id,
@@ -614,7 +644,8 @@ Deno.serve(async (req) => {
         actor_id: payload.synthetic ? null : me.id, actor_kind: 'tenant_admin',
       });
     } catch { /* never block on the audit write */ }
-    return jsonResponse({ ok: true, bylaws: row });
+    const [shown] = await withLinks(sb, SUPABASE_URL, TID, [{ ...(row as DocRow), storage_path: moved }]);
+    return jsonResponse({ ok: true, bylaws: shown });
   }
 
   // ── list ────────────────────────────────────────────────────────────────

@@ -478,7 +478,7 @@ async function loadBylaws() {
             ? `<a href="${escapeHtml(cur.url)}" target="_blank" rel="noopener" style="font-weight:600">${escapeHtml(cur.file_name || 'Bylaws.pdf')}</a>
                <span style="color:var(--muted)"> · posted ${escapeHtml(day(cur.uploaded_at))}${cur.uploaded_by_name ? ' by ' + escapeHtml(cur.uploaded_by_name) : ''}</span>`
             : '<span style="color:var(--muted)">Not posted yet.</span>'}</div>
-          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">Always public, at the top of the club's <a href="/governance.html" target="_blank" rel="noopener">Bylaws &amp; board minutes</a> page.</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">For members only, at the top of the club's <a href="/governance.html" target="_blank" rel="noopener">Bylaws &amp; board minutes</a> page (in the member app).</div>
         </div>
         ${r.can_change ? `<label class="btn btn-ghost" style="cursor:pointer">${cur ? 'Upload a new version' : 'Upload the bylaws (PDF)'}
           <input type="file" accept="application/pdf" id="bylaws-file" style="display:none" onchange="uploadBylaws(this)"></label>` : ''}

@@ -191,7 +191,7 @@ export function siteRespond(fn, body, ctx) {
       if (a === 'list') return { ok: true, meetings: [{ id: 'mtg-may', title: 'May board meeting', meeting_date: '2027-05-27', status: 'closed', visibility: 'public', attendees: ['Mei Chen', 'Sam Brooks', 'Erik Larsen'], notes: 'Opening day plan approved. Shade sail quotes reviewed.', motions: [{ text: 'Approve opening day May 29', result: 'passed' }], followups: [], created_at: ago(60 * 24 * 23) }] };
       if (a === 'next') return { ok: true, meeting: { id: 'mtg', title: 'June board meeting', meeting_date: '2027-06-24', status: 'draft' }, items: [{ id: 'ai1', body: 'Shade sail install date', added_by_name: 'Erik Larsen', created_at: ago(60 * 24 * 2) }] };
       if (a === 'bylaws') return { ok: true, text: 'Article I. Name. The club is Maple Grove Swim Club.\n\nArticle II. Purpose. To run a neighborhood pool for its members.', updated_at: ago(60 * 24 * 300), can_change: true };
-      if (a === 'list_public') return { ok: true, meetings: [], bylaws: { text: 'Article I. Name. The club is Maple Grove Swim Club.', updated_at: ago(60 * 24 * 300) }, board: [{ name: 'Mei Chen', titles: ['President'] }, { name: 'Sam Brooks', titles: ['Treasurer'] }, { name: 'Erik Larsen', titles: ['Facilities Director'] }] };
+      if (a === 'governance') return { ok: true, meetings: [], bylaws: { text: 'Article I. Name. The club is Maple Grove Swim Club.', updated_at: ago(60 * 24 * 300) }, board: [{ name: 'Mei Chen', titles: ['President'] }, { name: 'Sam Brooks', titles: ['Treasurer'] }, { name: 'Erik Larsen', titles: ['Facilities Director'] }] };
       return { ok: true };
     case 'donations':
       if (a === 'list') return { ok: true, donations: [
