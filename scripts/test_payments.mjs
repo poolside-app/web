@@ -109,9 +109,13 @@ async function assertMember(id, method, label) {
 console.log(`Test payments on ${SLUG} — run ${STAMP}\n`);
 
 const [tenant] = await sql(`select id from tenants where slug = ${q(SLUG)}`);
+// Put back whatever the club had at the end: once a club takes real card
+// payments, leaving Test payments on would send its families to the fake page
+// (PLAN.md BL3).
+const [{ was }] = await sql(`select coalesce((value->'payments'->>'test_mode')::boolean, false) as was from settings where tenant_id = ${q(tenant.id)}`);
 await sql(`update settings set value = jsonb_set(coalesce(value, '{}'::jsonb), '{payments,test_mode}', 'true'::jsonb, true)
   where tenant_id = ${q(tenant.id)}`);
-console.log('Test mode switched on.\n');
+console.log(`Test mode switched on (it was ${was ? 'on' : 'off'}).\n`);
 
 // ── Card ────────────────────────────────────────────────────────────────
 console.log('Card (fake Stripe checkout)');
@@ -151,8 +155,8 @@ check('forged checkout token rejected', forged.ok === false && forged.status ===
 await sql(`update settings set value = jsonb_set(value, '{payments,test_mode}', 'false'::jsonb) where tenant_id = ${q(tenant.id)}`);
 const off = await fn('applications', { action: 'simulate_venmo_paid', id: venmo.application_id || card.application_id });
 check('test mode off → simulating is refused', off.ok === false && off.status === 403, JSON.stringify(off).slice(0, 160));
-await sql(`update settings set value = jsonb_set(value, '{payments,test_mode}', 'true'::jsonb) where tenant_id = ${q(tenant.id)}`);
-console.log('  (test mode switched back on)');
+await sql(`update settings set value = jsonb_set(value, '{payments,test_mode}', '${was}'::jsonb) where tenant_id = ${q(tenant.id)}`);
+console.log(`  (test mode put back ${was ? 'on' : 'off'})`);
 
 await purgeTestFamilies(sql, tenant.id, `SimTest % ${STAMP}`);
 console.log('  (test families removed)');

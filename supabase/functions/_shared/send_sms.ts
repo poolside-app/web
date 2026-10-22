@@ -74,8 +74,13 @@ export async function sendSms(args: {
   if (Deno.env.get('SMS_DEV_MODE') === '1') {
     return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   }
-  // A made-up test number (the 555 area code): never sent (PLAN.md BL3).
-  if (isTestPhone(args.to)) return { sent: true };
+  // A made-up test number (the 555 area code): never sent, logged and
+  // answered as Twilio would have refused it (PLAN.md BL3).
+  if (isTestPhone(args.to)) {
+    const error = 'Not sent: a made-up test number (555 area code)';
+    await recordSms(args.sb, { tenantId: args.tenantId, category: kind, toPhone: args.to, success: false, error, source, segments });
+    return { sent: false, error };
+  }
 
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to, { skipDailyCap: !!args.critical });
   if (gate.blocked && gate.reason === 'global_daily' && args.queueIfCapped) {

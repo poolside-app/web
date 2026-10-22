@@ -106,7 +106,7 @@ async function sendAdminEmailCode(args: { to: string; tenantName: string; clubUr
 // "code is XXXXXX" pattern and offer one-tap autofill from the keyboard
 // suggestion bar — far better UX than asking users to copy/paste a long URL.
 async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string; sb: ReturnType<typeof createClient> }) {
-  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
+  if (isTestRecipient(args.to)) return { sent: false, error: 'Not sent: a made-up test number (555 area code)' };   // PLAN.md BL3
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   // Sign-in codes skip the platform's daily text limit (PLAN.md BG1); the
   // per-phone hourly limit still applies.
@@ -146,7 +146,7 @@ async function sendAdminSmsCode(args: { to: string; tenantName: string; code: st
 // a code — an invitee has never visited the site, so a bare code has nowhere
 // to be typed. Tapping the link signs them in (passwordless) via verify_link.
 async function sendAdminSmsInviteLink(args: { to: string; tenantName: string; link: string; sb: ReturnType<typeof createClient> }) {
-  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
+  if (isTestRecipient(args.to)) return { sent: false, error: 'Not sent: a made-up test number (555 area code)' };   // PLAN.md BL3
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
   if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };

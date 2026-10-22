@@ -4,8 +4,9 @@
 // The live tests make families with example.com emails and 555 numbers. Mail
 // to example.com bounces, and bounces count against Poolside's sending
 // reputation, which every club's receipts and sign-in emails depend on; a
-// text to a 555 area code is refused by Twilio. So every send skips them and
-// reports it as sent, the way the test expects.
+// text to a 555 area code is refused by Twilio. So every send skips them,
+// answering as before: an email as sent (Resend took them, then they
+// bounced), a text as not sent (Twilio refused them), and still logged.
 //
 // Test addresses: the reserved example domains (example.com/.net/.org and
 // anything under .example), .test, .invalid and localhost; and US numbers in

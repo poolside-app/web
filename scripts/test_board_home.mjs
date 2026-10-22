@@ -192,7 +192,7 @@ if (LIVE) {
     const ls = await fn('admin_tasks', { action: 'list' }, admTok(owner.id));
     check('W1: the plain task list (tab numbers on every page) still works', ls.ok && Array.isArray(ls.tasks) && !ls.home && Array.isArray(ls.my_positions), short(ls.error));
     check('W1: today, the week and the season come with it', own.ok && own.home.season >= 2026 && Array.isArray(own.home.events) && /^\d{4}-\d{2}-\d{2}$/.test(own.home.today), short({ season: own.home?.season, today: own.home?.today }));
-    if (own.ok && own.home.gate.show) check('W1: the gate shows as offline while the bridge is off', own.home.gate.online === false, short(own.home.gate));
+    if (own.ok && own.home.gate.show) check('W1: the gate shows online or offline', typeof own.home.gate.online === 'boolean', short(own.home.gate));
     const id = await makeTempAdmin(sql, club.id, 'Home Treasurer', POS.treasurer.scopes);
     const t1 = await fn('admin_tasks', { action: 'home' }, admTok(id));
     check('W1: a Treasurer gets the money numbers', t1.ok && same(keys(t1), ['collected', 'owed', 'on_plan']) && t1.home.signup_link === true, short(t1.error || keys(t1)));
@@ -200,10 +200,13 @@ if (LIVE) {
     await sql(`update admin_users set scopes = array['check_in','shifts','keyfobs']::text[] where id = '${id}'`);
     const t2 = await fn('admin_tasks', { action: 'home' }, admTok(id));
     // W2: with the bridge off, a board member's tap is refused, and nothing
-    // waits in the queue to open the gate when the bridge comes back.
-    const un = await fn('gate_admin', { action: 'board_unlock' }, admTok(id));
-    const [{ queued }] = await sql(`select count(*)::int as queued from gate_unlocks where admin_user_id = '${id}'`);
-    check('W2: bridge off: the tap is refused and nothing is queued', un.ok === false && /offline/i.test(un.error || '') && queued === 0, short({ un, queued }));
+    // waits in the queue to open the gate when the bridge comes back. Never
+    // tapped while the bridge is on: that would open the club's real gate.
+    if (own.ok && own.home.gate.online === false) {
+      const un = await fn('gate_admin', { action: 'board_unlock' }, admTok(id));
+      const [{ queued }] = await sql(`select count(*)::int as queued from gate_unlocks where admin_user_id = '${id}'`);
+      check('W2: bridge off: the tap is refused and nothing is queued', un.ok === false && /offline/i.test(un.error || '') && queued === 0, short({ un, queued }));
+    } else console.log('  - W2 skipped: the bridge is on, and a tap would open the real gate');
     const me = await fn('tenant_admin_auth', { action: 'me' }, admTok(owner.id));
     check('W1: the dues bar numbers still come with sign-in', me.ok && me.usage?.dues && me.usage.dues.season >= 2026 && typeof me.usage.dues.paid === 'number', short(me.usage?.dues));
     check('W1: change the ticks, and the next visit shows the new ones', t2.ok && same(keys(t2), ['checkins', 'fobs_to_make', 'fobs_in_use']) && t2.home.signup_link === false, short(t2.error || keys(t2)));

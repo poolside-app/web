@@ -137,7 +137,7 @@ function generateOtpCode(): string {
 }
 
 async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string; code?: string; sb: ReturnType<typeof createClient> }): Promise<{ sent: boolean; error?: string }> {
-  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test number (PLAN.md BL3)
+  if (isTestRecipient(args.to)) return { sent: false, error: 'Not sent: a made-up test number (555 area code)' };   // PLAN.md BL3
   // SMS_DEV_MODE skips Twilio for testing. The function does NOT call
   // Twilio when set.
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
