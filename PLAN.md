@@ -900,6 +900,29 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BK. Test card payments end to end, then go live (Doug, 10/21) — planned, BK1 is Doug's
+Doug: "how can we successfully test the payments... i think this is the next step". His answers 10/21: all 8 test-card tests; "once we test and working its live, i want to keep it live and active for payments"; every family stays ("i'm going to test the payments... ensure they work.. and then import the csv"); real $1 tests ("i want to test payments like $1 weekly... i'm willing to pay for these tests"), on a weekly test plan; Bishop uses Doug's own Stripe account for now; whose account long term is decided later.
+
+Where it stands (checked 10/21, read-only): Bishop has Poolside's own Test payments on (the fake card page, used since 9/24), so Stripe has never run there. The platform's Stripe key is a test key. Bishop's Stripe connection (Standard, test mode) was started 5/20 and never finished: 6 things still due, charges off. The webhook listens to connected accounts for the 7 events the code handles. A plan's first payment has never gone through Stripe's real checkout (PLAN.md M tested the rest with stand-ins). There's no way yet to swap a club's Stripe account, and a test-mode account can't be used once the live key is in.
+
+- **BK1. Finish Bishop's Stripe connection, in test mode (Doug, ~5 minutes).** Settings → Payments → Connect Stripe. Stripe's test form takes its own made-up answers. I check Stripe says charges are on and Poolside saw it (`account.updated`).
+- **BK2. Turn off Poolside's Test payments at Bishop** so card buttons open Stripe's real checkout. Still test money: no real card works.
+- **BK3. The 8 test-card tests.** I fill each signup or booking in my browser up to Stripe's page and send Doug the link; he types the test card on his phone (I can't type card numbers into the live site, even test ones). I check every result (the signup, emails, to-dos, the gate, the money split in Stripe) and write it down.
+  1. A new family by card: approved on its own, welcome, gate on.
+  2. A payment plan signup; then the next payment approved on Money → Upcoming and charged to the saved card.
+  3. A declined card (4000 0000 0000 0002): nothing approved, a clear message.
+  4. A card the bank asks to confirm (4000 0025 0000 3155).
+  5. A party by card: booked, the Snack Shack pass, the party person's to-do.
+  6. Keyfobs by card.
+  7. A refund in Stripe: the Treasurer's to-do.
+  8. A disputed charge (4000 0000 0000 0259): the Treasurer's to-do.
+- **BK4. Fix what breaks**, one at a time, failing test first.
+- **BK5. A hidden $1 test level on a weekly plan.** A membership level marked "test" isn't shown on the signup page; only someone whose email or phone matches one of the club's board logins can pick it (by a link, `?level=`). Its plan charges $1 today and $1 a week for 4 weeks ($1.34 each with Bishop's card fee passed on), each still ticked by the board on Money → Upcoming. Real levels keep their monthly plans. Offline tests first.
+- **BK6. Going live.** Doug: activate Poolside's own Stripe account for live payments and Connect, add the live webhook (connected accounts, the same events), and set the live `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in Supabase. Me, before that: Settings → Payments gets "Connect a different Stripe account" (for the club taking over from Doug later), Connect Stripe starts fresh when the saved account belongs to test mode, and plans saved with Stripe test cards are closed quietly (their families stay paid). Then Doug connects Bishop to his own Stripe account and bank.
+- **BK7. Real $1 tests.** Doug signs up a family on the $1 test level with his real card and approves each weekly payment; I check each charge, receipt and the money in his Stripe; the first $1 is refunded from Stripe to check the live refund. Bishop then stays live. The CSV import comes after.
+
+Cost: about 100–150 Supabase calls over the month. The only texts are welcome texts, to Doug's own number. Real money: about $7 in charges, less the one refund.
+
 ### BJ. The demo walkthrough fix list (Doug, 10/21) — ✅ BJ1–BJ8 done 10/21
 Doug walked demo.poolsideapp.com with Claude chat and brought a 27-item list (`handouts/poolside-fix-list-for-claude-code.md`). Broken out item by item (where the problem is, size, what I'd do) as a picker; most "broken screens" were the demo answering unknown calls with an empty OK. His picks: "do 1, 2, 3, 4a, 5, 22, 24a, 26, 28, 29. Skip 4b, 6–21, 23, 24b, 25, 27. Order: as listed … with a short report after each step." And: "lots of these were from the demo page.. really dont care much about it.. dont change those unless it was checked… on the minutes… if you are already a member and logged in, it should load, you dont need to sign in again." Minutes approval answers: board members who attended approve; the President can approve for someone after 7 days.
 - **BJ1. Bylaws, minutes and board names: members only (item 1).** Today `/governance.html` is public (K6, "always public") and `board_meetings` `list_public` answers anyone with a club's slug; the bylaws PDF sits in the public `club-assets` folder.
