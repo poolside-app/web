@@ -19,6 +19,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { partyWhen, tenantTimeZone } from '../_shared/pool_time.ts';
 import { verifyAny } from '../_shared/stripe_sig.ts';
 import { planFromSubscription } from '../_shared/poolside_plans.ts';
+import { isTestRecipient } from '../_shared/test_recipients.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -748,7 +749,7 @@ Deno.serve(async (req) => {
     if (kind === 'setup_service' && tenantId) {
       const RESEND_KEY  = Deno.env.get('RESEND_API_KEY');
       const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Poolside <onboarding@resend.dev>';
-      const PROVIDER    = Deno.env.get('PROVIDER_NOTIFY_EMAIL') || 'doug.frevele@gmail.com';
+      const PROVIDER    = Deno.env.get('PROVIDER_NOTIFY_EMAIL') || 'support@poolsideapp.com';
       const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
       const adminId = md.admin_id;
       let adminEmail = '';
@@ -759,7 +760,9 @@ Deno.serve(async (req) => {
       const clubName = (tenant?.display_name as string) || 'A club';
       const slug     = (tenant?.slug as string) || '';
 
-      if (RESEND_KEY) {
+      // A made-up test buyer (PLAN.md BL3) gets no confirmation; Doug still hears.
+      if (isTestRecipient(adminEmail)) adminEmail = '';
+      if (RESEND_KEY && !isTestRecipient(PROVIDER)) {
         // Notify Doug
         await fetch('https://api.resend.com/emails', {
           method: 'POST',

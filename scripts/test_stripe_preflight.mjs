@@ -171,6 +171,35 @@ check('after Stripe\'s sign-up, back to Payments (where Connect Stripe is), whic
 check('  an expired Stripe link starts a fresh one', /club\/admin\/payments\.html#stripe=retry/.test(connect) && /hash\.includes\('stripe=retry'\)[\s\S]{0,300}connectStripe\(\)/.test(pay));
 check('  the note names the button that\'s there ("Resume onboarding")', !/Click <b>Resume setup<\/b>/.test(pay) && /Click <b>Resume onboarding<\/b>/.test(pay));
 
+// ── BL3 ──────────────────────────────────────────────────────────────────
+console.log('BL3 · test runs never email or text made-up addresses');
+// The live tests use example.com emails and 555 numbers. Mail to example.com
+// bounces, and bounces count against Poolside's sending reputation, which
+// every club's receipts and sign-in emails depend on.
+check('a shared check for addresses no real person has (_shared/test_recipients.ts)', has('supabase/functions/_shared/test_recipients.ts'));
+if (has('supabase/functions/_shared/test_recipients.ts')) {
+  const { isTestRecipient } = await importTs(shared('test_recipients.ts'));
+  const test = ['pat@example.com', 'a@EXAMPLE.org', 'x@mail.example.net', 'b@club.test', 'c@nowhere.invalid', 'd@localhost', '+15551234560001', '+1 (555) 123-4567'];
+  const real = ['doug.frevele+simtest@gmail.com', 'treasurer@bishopestates.org', 'me@examples.com', 'me@testing.com', '+19255551234', '+14155550100', ''];
+  check('  example.com/.org/.net, .test, .invalid, localhost and the 555 area code are test addresses', test.every(isTestRecipient), test.filter(x => !isTestRecipient(x)).join(', '));
+  check('  real-looking addresses are not (a 555 exchange in a real area code is real)', real.every(x => !isTestRecipient(x)), real.filter(isTestRecipient).join(', '));
+}
+const sendsUnguarded = [];
+let sendPoints = 0;
+for (const f of files) {
+  if (/smoke_sms/.test(f)) continue;   // its whole job is one real text to Doug
+  const lines = read(f).split('\n');
+  lines.forEach((l, i) => {
+    if (!/fetch\([^)]*api\.(resend\.com|twilio\.com)/.test(l)) return;
+    sendPoints++;
+    // Back to the start of the function (or the nearest guard) this send is in.
+    let j = i;
+    while (j > 0 && i - j < 80 && !/^(export )?async function |^\s*if \(canEmail/.test(lines[j])) j--;
+    if (!/isTest(Recipient|Email|Phone)\(/.test(lines.slice(j, i).join('\n'))) sendsUnguarded.push(`${f}:${i + 1}`);
+  });
+}
+check(`every email and text Poolside sends skips test addresses first (${sendPoints} found)`, sendPoints >= 10 && sendsUnguarded.length === 0, sendsUnguarded.join(', '));
+
 // ── BL1b against Stripe's test mode ─────────────────────────────────────
 if (process.argv.includes('--stripe')) {
   console.log('BL1b · the plan switch against Stripe\'s TEST mode (throwaway objects, removed after)');

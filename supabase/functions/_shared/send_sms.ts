@@ -11,6 +11,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isTestPhone } from './test_recipients.ts';
 import type { SmsCategory } from './sms_cap.ts';
 import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch, consumeSmsCredit } from './sms_cap.ts';
 import { measureSms } from './sms_text.ts';
@@ -73,6 +74,8 @@ export async function sendSms(args: {
   if (Deno.env.get('SMS_DEV_MODE') === '1') {
     return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   }
+  // A made-up test number (the 555 area code): never sent (PLAN.md BL3).
+  if (isTestPhone(args.to)) return { sent: true };
 
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to, { skipDailyCap: !!args.critical });
   if (gate.blocked && gate.reason === 'global_daily' && args.queueIfCapped) {

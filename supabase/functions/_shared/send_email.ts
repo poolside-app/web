@@ -6,6 +6,8 @@
 // when RESEND_API_KEY is missing (early-stage testing without a key).
 // =============================================================================
 
+import { isTestEmail } from './test_recipients.ts';
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const RESEND_FROM    = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsideapp.com>';
 
@@ -17,6 +19,8 @@ export type SendResult = {
   quotaUsed?: number | null;
   /** True when Resend refused because the day's quota is gone. */
   dailyQuotaExceeded?: boolean;
+  /** Not sent: a made-up test address (PLAN.md BL3). Reported as sent. */
+  skipped?: boolean;
 };
 
 // File attachment as accepted by Resend. content is base64-encoded bytes.
@@ -48,6 +52,7 @@ export async function sendEmail(args: {
   if (!args.to || !args.subject || !args.html) {
     return { sent: false, error: 'to, subject, html required' };
   }
+  if (isTestEmail(args.to)) return { sent: true, skipped: true };
   try {
     const body: Record<string, unknown> = {
       from: RESEND_FROM,

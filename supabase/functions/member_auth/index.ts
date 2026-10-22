@@ -22,6 +22,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isTestRecipient } from '../_shared/test_recipients.ts';
 import { partyWhen, fmtPoolDate, fmtPoolStamp, poolDate, poolToday, tenantTimeZone, wallParts } from '../_shared/pool_time.ts';
 import { create, verify, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
@@ -136,6 +137,7 @@ function generateOtpCode(): string {
 }
 
 async function sendMagicLinkSms(args: { to: string; tenantName: string; verifyLink: string; code?: string; sb: ReturnType<typeof createClient> }): Promise<{ sent: boolean; error?: string }> {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test number (PLAN.md BL3)
   // SMS_DEV_MODE skips Twilio for testing. The function does NOT call
   // Twilio when set.
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
@@ -186,6 +188,7 @@ async function sendMagicLinkEmail(args: {
   /** Set when a text couldn't go: the code the app is waiting for. */
   code?: string;
 }): Promise<{ sent: boolean; error?: string }> {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   const codeBlock = args.code
     ? `<p style="margin:0 0 6px;color:#64748b">We couldn't text you just now. Your sign-in code is:</p>

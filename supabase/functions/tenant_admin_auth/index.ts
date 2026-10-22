@@ -30,6 +30,7 @@ import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 import { isLocked, afterFailure, lockedMessage, lockedEmail, escapeLike, MAX_TRIES } from '../_shared/signin_guard.ts';
 import { sendEmail, emailShell } from '../_shared/send_email.ts';
 import { changePlan, stripeCaller } from '../_shared/poolside_plans.ts';
+import { isTestRecipient } from '../_shared/test_recipients.ts';
 
 // Shown when neither a text nor an email could go out (PLAN.md BG1).
 const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
@@ -58,6 +59,7 @@ async function sendAdminInviteEmail(args: {
   to: string; tenantName: string; clubUrl: string; activationLink: string;
   inviteeName: string; roleLabel: string;
 }) {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   const signInHost = `${escAdmin(args.clubUrl.replace(/^https?:\/\//, ''))}/club/admin`;
   // The club look every other club email has (PLAN.md BG5).
@@ -74,6 +76,7 @@ async function sendAdminInviteEmail(args: {
 }
 
 async function sendAdminEmailLink(args: { to: string; tenantName: string; clubUrl: string; verifyLink: string; adminName: string }) {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   // The club look every other club email has (PLAN.md BG5).
   const html = emailShell({ tenantName: args.tenantName, clubUrl: args.clubUrl, contentHtml: `<h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">Sign in to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.adminName || 'there')} — click below to sign in. The link is good for one use and expires in 15 minutes.</p><p style="margin:24px 0"><a href="${args.verifyLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Sign in</a></p>` });
@@ -103,6 +106,7 @@ async function sendAdminEmailCode(args: { to: string; tenantName: string; clubUr
 // "code is XXXXXX" pattern and offer one-tap autofill from the keyboard
 // suggestion bar — far better UX than asking users to copy/paste a long URL.
 async function sendAdminSmsCode(args: { to: string; tenantName: string; code: string; sb: ReturnType<typeof createClient> }) {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   // Sign-in codes skip the platform's daily text limit (PLAN.md BG1); the
   // per-phone hourly limit still applies.
@@ -142,6 +146,7 @@ async function sendAdminSmsCode(args: { to: string; tenantName: string; code: st
 // a code — an invitee has never visited the site, so a bare code has nowhere
 // to be typed. Tapping the link signs them in (passwordless) via verify_link.
 async function sendAdminSmsInviteLink(args: { to: string; tenantName: string; link: string; sb: ReturnType<typeof createClient> }) {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
   if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };

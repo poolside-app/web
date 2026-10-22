@@ -67,7 +67,7 @@ check('every email ilike escapes wildcards', ilikes.flat().length > 0 && ilikes.
 
 console.log('BG1 · sign-in codes skip the daily text limit');
 check('member codes skip the daily limit (per-phone limit stays)', /checkGlobalSmsKillSwitch\(args\.sb, args\.to, \{ skipDailyCap: true \}\)/.test(member));
-check('board codes skip the daily limit (per-phone limit stays)', /async function sendAdminSmsCode[\s\S]{0,400}checkGlobalSmsKillSwitch\(args\.sb, args\.to, \{ skipDailyCap: true \}\)/.test(board));
+check('board codes skip the daily limit (per-phone limit stays)', /async function sendAdminSmsCode[\s\S]{0,600}checkGlobalSmsKillSwitch\(args\.sb, args\.to, \{ skipDailyCap: true \}\)/.test(board));
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

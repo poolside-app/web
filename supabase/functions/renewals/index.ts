@@ -35,6 +35,7 @@
 // =============================================================================
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isTestRecipient } from '../_shared/test_recipients.ts';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { checkSmsCap, recordSms, checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 import { sendSms } from '../_shared/send_sms.ts';
@@ -142,6 +143,7 @@ function renewalEmailHtml(args: RenewalEmailArgs): string {
 }
 
 async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean; error?: string; quotaUsed?: number | null; dailyQuotaExceeded?: boolean }> {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test address (PLAN.md BL3)
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   const html = renewalEmailHtml(args);
   try {
@@ -178,6 +180,7 @@ async function sendRenewalEmail(args: RenewalEmailArgs): Promise<{ sent: boolean
 async function sendRenewalSms(args: {
   to: string; tenantName: string; verifyLink: string; earlyBirdLine: string; sb: SupabaseClient; message?: string;
 }): Promise<{ sent: boolean; error?: string }> {
+  if (isTestRecipient(args.to)) return { sent: true };   // a made-up test number (PLAN.md BL3)
   if (Deno.env.get('SMS_DEV_MODE') === '1') return { sent: false, error: 'SMS_DEV_MODE on (testing)' };
   const gate = await checkGlobalSmsKillSwitch(args.sb, args.to);
   if (gate.blocked) return { sent: false, error: `SMS kill-switch tripped (${gate.reason}: ${gate.used}/${gate.cap})` };

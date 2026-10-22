@@ -21,6 +21,7 @@
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isTestEmail } from '../_shared/test_recipients.ts';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, requireOwner } from '../_shared/auth.ts';
 import { fmtPoolDate, poolToday, tenantTimeZone, zoneOrDefault } from '../_shared/pool_time.ts';
@@ -247,7 +248,9 @@ async function sendClaimInvite(
     else if (r.capped) out.capped = r.capped_by === 'platform' ? 'platform' : 'club';
   }
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-  if (canEmail && RESEND_API_KEY) {
+  // A made-up test address is never sent (PLAN.md BL3): isTestEmail below.
+  if (canEmail && RESEND_API_KEY && isTestEmail(app.primary_email)) { out.delivered = true; out.email = true; }
+  else if (canEmail && RESEND_API_KEY) {
     const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Poolside <noreply@poolsideapp.com>';
     const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
     const html = `
