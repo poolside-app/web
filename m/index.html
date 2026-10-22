@@ -2766,8 +2766,10 @@ async function submitProfile() {
     sponsors: publicData.sponsors || [],
     config:   publicData.public_settings?.sponsors_config || {},
   });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showSponsor, { once: true });
-  else showSponsor();
+  // Deferred scripts run after the page is read ("interactive") and before
+  // DOMContentLoaded; if it never loaded, there's no pop-up.
+  if (window.SponsorPopup) showSponsor();
+  else if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', showSponsor, { once: true });
 
   const { user, household, tenant } = me;
   ME_HOUSEHOLD = household;

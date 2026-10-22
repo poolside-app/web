@@ -28,11 +28,26 @@ check('the pop-up still shows only when it\'s on, and only if there are sponsors
 // PLAN.md BJ8: sponsor-popup.js is deferred, so the club's answer can come
 // back before it has run (the demo answers in milliseconds; so can a fast
 // phone). Then the pages wait for it instead of skipping the pop-up.
+// The browser says "interactive" once the page is read, before deferred
+// scripts run, so the snippet is run in exactly that moment here.
 for (const f of ['m/index.html', 'club/index.html']) {
   const src = read(f);
-  const at = src.indexOf('SponsorPopup.maybeShow');
-  const near = src.slice(Math.max(0, at - 400), at + 600);
-  check(`${f} waits for the pop-up script when the club's answer comes first`, at > 0 && /document\.readyState === 'loading'/.test(near) && /DOMContentLoaded/.test(near), near.slice(0, 160));
+  const from = src.indexOf('const showSponsor');
+  const to = src.indexOf('\n', src.indexOf("addEventListener('DOMContentLoaded', showSponsor", from));
+  const snippet = from > 0 && to > from ? src.slice(from, to) : '';
+  const run = (readyState, loaded) => {
+    const shown = [], heard = [];
+    const window = loaded ? { SponsorPopup: { maybeShow: o => shown.push(o) } } : {};
+    const document = { readyState, addEventListener: (ev, fn) => heard.push([ev, fn]) };
+    try { new Function('window', 'document', 'publicData', 'data', snippet)(window, document, { sponsors: [1], public_settings: {} }, { sponsors: [1], public_settings: {} }); } catch (e) { return { err: e.message }; }
+    return { shown, heard, window };
+  };
+  const early = run('interactive', false);
+  let later = 0;
+  if (early.heard?.length) { early.window.SponsorPopup = { maybeShow: () => later++ }; early.heard.filter(([ev]) => ev === 'DOMContentLoaded').forEach(([, fn]) => fn()); }
+  check(`${f}: the club's answer first (page read, pop-up script not run yet): it waits, then shows`, !early.err && early.shown.length === 0 && later === 1, JSON.stringify(early.err || early.heard?.map(h => h[0])));
+  const ready = run('interactive', true);
+  check(`${f}: the pop-up script first: it shows straight away`, !ready.err && ready.shown.length === 1, ready.err || '');
 }
 
 console.log('Y2 · Sponsors under Content (offline)');

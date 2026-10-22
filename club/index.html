@@ -1014,8 +1014,10 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
       sponsors: data.sponsors || [],
       config:   (data.public_settings && data.public_settings.sponsors_config) || {},
     });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showSponsor, { once: true });
-    else showSponsor();
+    // Deferred scripts run after the page is read ("interactive") and before
+    // DOMContentLoaded; if it never loaded, there's no pop-up.
+    if (window.SponsorPopup) showSponsor();
+    else if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', showSponsor, { once: true });
     // Recent supporters list under the fundraiser card. Best-effort.
     loadDonationsLeaderboard(slug);
     // Stripe donation success bounce-back.
