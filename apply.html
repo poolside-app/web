@@ -437,6 +437,8 @@ async function refreshQuote() {
         tier_slug: document.querySelector('input[name="tier_slug"]:checked')?.value || null,
         code: APPLIED_CODE || null,
         referral_code: window.__POOLSIDE_REF_CODE__ || null,
+        // The referral discount is for families who weren't members last season (PLAN.md BJ5).
+        address: document.getElementById('address').value.trim() || null,
         email: primary.email || document.getElementById('primary_email').value.trim() || null,
         phone: primary.phone || document.getElementById('primary_phone').value.trim() || null,
         ...(PLAN_SEL.payoff_month ? { plan_today_cents: PLAN_SEL.today_cents ?? 0, plan_payoff_month: PLAN_SEL.payoff_month } : {}),
@@ -491,7 +493,7 @@ function paintPrice() {
       : PRICE.discount_kind === 'code' ? `✓ ${PRICE.code}: ${fmt(PRICE.discount_cents)} off.`
       : `${PRICE.code} works, but your referral saves more, so we used that.`);
   } else { msg.textContent = ''; }
-  if (!PRICE.discount_cents && !PRICE.fob_count) { box.style.display = 'none'; return; }
+  if (!PRICE.discount_cents && !PRICE.fob_count && !PRICE.referral_problem) { box.style.display = 'none'; return; }
   const why = PRICE.discount_kind === 'code'
     ? `Code ${escapeHtml(PRICE.code || '')}${PRICE.code_label ? ' (' + escapeHtml(PRICE.code_label) + ')' : ''}`
     : `Referral discount${PRICE.referral_family ? ' — invited by the ' + escapeHtml(PRICE.referral_family) : ''}`;
@@ -500,7 +502,8 @@ function paintPrice() {
     ${PRICE.discount_cents ? `<div style="display:flex;justify-content:space-between;color:#15803d"><span>${why}</span><span>−${fmt(PRICE.discount_cents)}</span></div>` : ''}
     ${PRICE.fob_count ? `<div style="display:flex;justify-content:space-between"><span>${PRICE.fob_count} extra keyfob${PRICE.fob_count === 1 ? '' : 's'}</span><span>${fmt(PRICE.fob_cents)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>You pay</span><span>${fmt(PRICE.amount_due_cents)}</span></div>
-    ${PRICE.note ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${escapeHtml(PRICE.note)}</div>` : ''}`;
+    ${PRICE.note ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${escapeHtml(PRICE.note)}</div>` : ''}
+    ${PRICE.referral_problem ? `<div style="font-size:12px;color:#92400e;margin-top:6px">${escapeHtml(PRICE.referral_problem)}</div>` : ''}`;
   box.style.display = '';
 }
 function toggleCode(e) {

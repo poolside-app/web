@@ -1241,9 +1241,12 @@ function rewardRow(ref, kind) {
           : `Credit toward their next dues, approved by ${escapeHtml(ref.approved_by || 'a board member')} on ${escapeHtml(refDay(ref.approved_at))}`)
       : ref.status === 'declined' ? `Declined by ${escapeHtml(ref.declined_by || 'a board member')}: ${escapeHtml(ref.decline_reason || '')}`
       : ref.status === 'void' ? `Void: ${escapeHtml(ref.void_reason || '')}`
-      : ref.status === 'rejected' ? `Not a new family: ${escapeHtml(ref.rejection_reason || '')}`
+      : ref.status === 'rejected' ? `Doesn't count: ${escapeHtml(ref.rejection_reason || 'they were a member last season')}`
       : 'Waiting for the new family to pay';
   }
+  // The rule turned it down (PLAN.md BJ5): a board member can count it anyway.
+  if (ref.status === 'rejected') buttons = `<button class="btn" onclick="countAnyway('${escapeHtml(ref.id)}')">Count it anyway</button>`;
+  if (ref.override_at) status += ` · counted anyway by ${escapeHtml(ref.override_by_name || 'a board member')} on ${escapeHtml(refDay(ref.override_at))}`;
   const highlight = kind === 'approve' || kind === 'send';
   return `<div style="border:1px solid ${highlight ? '#fcd34d' : 'var(--border)'};background:${highlight ? '#fffbeb' : '#fff'};border-radius:12px;padding:12px 14px;margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
@@ -1290,6 +1293,17 @@ async function approveReward(referralId) {
   loadReferrals();
 }
 
+// A referral that didn't count (PLAN.md BJ5), counted after all: the member
+// gets their reward as usual. The family paid full price; refunding their
+// referral discount is by hand.
+async function countAnyway(referralId) {
+  if (!confirm('Count this referral anyway? The member who referred them gets their reward as usual. The family paid the full price; refund their referral discount by hand if you want to.')) return;
+  try {
+    const r = await api(REFERRALS_URL, 'count_anyway', { referral_id: referralId });
+    if (!r.ok) throw new Error(r.error || 'Could not count it');
+  } catch (e) { alert(e.message); }
+  loadReferrals();
+}
 async function declineReward(referralId) {
   // Required, not optional: "declined" with no explanation is the version of
   // this that ends in an argument at a board meeting.

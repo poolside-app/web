@@ -497,7 +497,7 @@
 
       <!-- Fine print -->
       <div style="margin-top:18px;padding:10px 12px;background:#fafaf8;border-radius:8px;font-size:11.5px;color:var(--muted);line-height:1.55">
-        Only for families who have never been members here. If their payment is refunded, the reward is canceled.
+        Only for families who weren't members here last season. If their payment is refunded, the reward is canceled.
       </div>
     </div>
 
@@ -1626,7 +1626,7 @@ function renderReferModal() {
       else if (ref.status === 'verified') { badge = `✓ Joined, ${amt} unlocks ${ref.unlocks_at ? new Date(ref.unlocks_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'in 30 days'}`; color = '#7c2d12'; }
       else if (ref.status === 'declined') { badge = `✗ Not approved${ref.decline_reason ? ': ' + escapeHtml(ref.decline_reason) : ''}`; color = 'var(--muted)'; }
       else if (ref.status === 'void')     { badge = `✗ Cancelled${ref.void_reason ? ': ' + escapeHtml(ref.void_reason) : ''}`; color = 'var(--muted)'; }
-      else if (ref.status === 'rejected') { badge = '✗ Not a new family'; color = 'var(--muted)'; }
+      else if (ref.status === 'rejected') { badge = '✗ A member last season'; color = 'var(--muted)'; }   // PLAN.md BJ5
       else                                 { badge = '⏳ Waiting for them to pay'; color = 'var(--muted)'; }
       return `<div style="padding:7px 0;border-top:1px solid var(--border)"><b>${who}</b> · <span style="color:${color}">${badge}</span> <span style="color:var(--muted);font-size:11.5px">· ${escapeHtml(when)}</span></div>`;
     }).join('');

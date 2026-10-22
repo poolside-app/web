@@ -18,6 +18,8 @@ import {
 } from './pricing.ts';
 import { poolToday, tenantTimeZone } from './pool_time.ts';
 import { fobSettings, fobExtras, liveFobCount, listFobNumbers } from './keyfobs.ts';
+import { lastSeasonMember, FAMILY_MESSAGE } from './referral_eligibility.ts';
+import { sellingYear } from './membership_year.ts';
 
 // deno-lint-ignore no-explicit-any
 type SB = SupabaseClient<any, any, any>;
@@ -30,6 +32,8 @@ export type PriceResult = Price & {
   code_problem: string | null;
   /** "The Smiths" when the referral discount applied. */
   referral_family: string | null;
+  /** Why a referral link didn't take $25 off (PLAN.md BJ5): the rule, never what matched. */
+  referral_problem: string | null;
   /** Extra keyfobs bought with the membership (PLAN.md Q), already in amount_due_cents. */
   fob_count: number;
   fob_cents: number;
@@ -60,44 +64,24 @@ export async function codeUses(sb: SB, codeId: string, exceptAppId?: string | nu
   return count ?? 0;
 }
 
-/** Has anyone with this email or phone ever been a member here? Not
- *  counting `exceptHousehold`: once approved, a new family's own members
- *  exist and would otherwise count against them. */
-export async function wasMember(
-  sb: SB, tenantId: string, email?: string | null, phone?: string | null, exceptHousehold?: string | null,
-): Promise<boolean> {
-  if (email) {
-    let q = sb.from('household_members').select('id')
-      .eq('tenant_id', tenantId).ilike('email', email.trim().toLowerCase());
-    if (exceptHousehold) q = q.neq('household_id', exceptHousehold);
-    const { data } = await q.limit(1);
-    if (data && data.length) return true;
-  }
-  if (phone) {
-    let q = sb.from('household_members').select('id')
-      .eq('tenant_id', tenantId).eq('phone_e164', phone);
-    if (exceptHousehold) q = q.neq('household_id', exceptHousehold);
-    const { data } = await q.limit(1);
-    if (data && data.length) return true;
-  }
-  return false;
-}
-
 /** The referral discount a new family gets through a member's link. */
 export async function referralOff(
   sb: SB, tenantId: string, settingsValue: unknown,
-  args: { referralCode?: string | null; email?: string | null; phone?: string | null; householdId?: string | null },
-): Promise<{ cents: number; family: string | null }> {
+  args: { referralCode?: string | null; email?: string | null; phone?: string | null; householdId?: string | null; address?: string | null; season?: number | null },
+): Promise<{ cents: number; family: string | null; problem: string | null }> {
   const raw = String(args.referralCode ?? '').trim().toUpperCase();
-  if (!raw) return { cents: 0, family: null };
+  if (!raw) return { cents: 0, family: null, problem: null };
   const { data: rc } = await sb.from('referral_codes')
     .select('id, household_id, active').eq('tenant_id', tenantId).eq('code', raw).maybeSingle();
-  if (!rc || !rc.active) return { cents: 0, family: null };
-  // For families new to the club. A lapsed member coming back through a
-  // friend's link pays the regular price.
-  if (await wasMember(sb, tenantId, args.email, args.phone, args.householdId)) return { cents: 0, family: null };
+  if (!rc || !rc.active) return { cents: 0, family: null, problem: null };
+  // For families who weren't members last season (PLAN.md BJ5): last
+  // season's members coming back through a friend's link pay the regular
+  // price, and are told why.
+  const lastSeason = Number(args.season ?? sellingYear(settingsValue)) - 1;
+  const match = await lastSeasonMember(sb, tenantId, { emails: [args.email], phones: [args.phone], address: args.address }, lastSeason, args.householdId);
+  if (match) return { cents: 0, family: null, problem: FAMILY_MESSAGE };
   const { data: hh } = await sb.from('households').select('family_name').eq('id', rc.household_id).maybeSingle();
-  return { cents: referralSettings(settingsValue).new_family_cents, family: (hh?.family_name as string | null) ?? null };
+  return { cents: referralSettings(settingsValue).new_family_cents, family: (hh?.family_name as string | null) ?? null, problem: null };
 }
 
 export type PriceInput = {
@@ -107,6 +91,9 @@ export type PriceInput = {
   referralCode?: string | null;
   email?: string | null;
   phone?: string | null;
+  /** Their street address and the season they're joining, for the referral rule (BJ5). */
+  address?: string | null;
+  season?: number | null;
   /** A code the family just typed. '' clears it. */
   code?: string | null;
   /** A code already on the application. */
@@ -135,7 +122,7 @@ export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown,
   }
 
   const ref = input.isRenewal
-    ? { cents: 0, family: null }
+    ? { cents: 0, family: null, problem: null }
     : await referralOff(sb, tenantId, sv, input);
 
   let credit = 0;
@@ -157,10 +144,11 @@ export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown,
     code_label: code?.label ?? null,
     code_problem: typed ? problem : null,
     referral_family: price.discount_kind === 'referral' ? ref.family : null,
+    referral_problem: ref.problem,
   };
 }
 
-const APP_PRICE_FIELDS = 'id, tenant_id, tier_slug, household_id, is_renewal, referral_code, primary_email, primary_phone, payment_status, '
+const APP_PRICE_FIELDS = 'id, tenant_id, tier_slug, household_id, is_renewal, referral_code, primary_email, primary_phone, address, membership_year, payment_status, '
   + 'discount_code_id, discount_recorded_at, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, '
   + 'fob_extra_count, fob_cents, need_new_fob, is_new_member, prior_fob_number';
 
@@ -191,6 +179,8 @@ export async function priceApplication(
     referralCode: app.referral_code as string | null,
     email: app.primary_email as string | null,
     phone: app.primary_phone as string | null,
+    address: app.address as string | null,
+    season: app.membership_year as number | null,
     exceptAppId: app.id as string,
   };
 
@@ -205,7 +195,7 @@ export async function priceApplication(
       credit_cents: Number(app.credit_cents ?? 0),
       amount_due_cents: Number(app.amount_due_cents ?? stored.amount_due_cents),
       fob_count: Number(app.fob_extra_count ?? 0), fob_cents: Number(app.fob_cents ?? 0),
-      note: null, code_problem: null,
+      note: null, code_problem: null, referral_problem: null,
       application_id: app.id as string,
     };
   }

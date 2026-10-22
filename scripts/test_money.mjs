@@ -233,8 +233,11 @@ console.log('\nH6 · referral rewards (offline)');
         && /by Venmo \(ref 123\)/.test(rr.sentText('C', 10000, 'venmo', 'ref 123')), '');
   }
   const ref = read('supabase/functions/referrals/index.ts');
-  check('H6: "new to the club" doesn\'t count the new family\'s own household', /exceptHousehold|neq\('household_id'/.test(between(ref, 'async function isEligibleNewMember', '\n}\n')), 'eligibility would reject every referral');
-  check('H6: verifying starts the 30 days and texts the member', /unlocks_at/.test(between(ref, "action === 'verify_referral'", "// ── Below this point")) && /paidText/.test(ref), 'no unlock date on verify');
+  // The rule is "not a member last season" since PLAN.md BJ5 (_shared/referral_eligibility.ts).
+  check('H6: "new to the club" doesn\'t count the new family\'s own household', /app\.household_id/.test(between(ref, 'async function verifyReferral', '\n}\n')) && /exceptHousehold/.test(read('supabase/functions/_shared/referral_eligibility.ts')), 'eligibility would reject every referral');
+  // verify_referral and the board's count_anyway share verifyReferral (PLAN.md BJ5).
+  check('H6: verifying starts the 30 days and texts the member', /verifyReferral/.test(between(ref, "action === 'verify_referral'", "// ── Below this point"))
+    && /unlocks_at/.test(between(ref, 'async function verifyReferral', '\n}\n')) && /paidText/.test(ref), 'no unlock date on verify');
   check('H6: approve and refund refuse your own family and early approvals', /approvalProblem/.test(between(ref, "action === 'approve_reward'", "action === 'decline_reward'")) && /isOwnFamily/.test(between(ref, "action === 'issue_refund'", "action === 'decline_refund'")), '');
   check('H6: a Venmo or check refund needs its reference', /reference is required|needs the (Venmo|reference)/i.test(between(ref, "action === 'issue_refund'", "action === 'decline_refund'")), 'reference optional');
   check('H6: the nightly job unlocks rewards', /unlockDueRewards/.test(read('supabase/functions/payment_plans/index.ts')), '');

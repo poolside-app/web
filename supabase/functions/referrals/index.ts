@@ -45,6 +45,8 @@
 //        called by stripe_webhook + applications.verify_payment + .approve
 //   { action: 'list' }                            → admin JWT (membership scope)
 //   { action: 'mark_rejected', referral_id, reason }  → admin JWT
+//   { action: 'count_anyway', referral_id }  → admin JWT + payments (PLAN.md BJ5):
+//        a referral the rule turned down counts after all; recorded who
 //   { action: 'approve_reward', referral_id }          → admin JWT + payments
 //   { action: 'decline_reward', referral_id, reason }  → admin JWT + payments
 // =============================================================================
@@ -57,6 +59,7 @@ import {
   paidText, approvedText, sentText, declinedText, textReferrer, unlockDueRewards,
 } from '../_shared/referral_rewards.ts';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { lastSeasonMember, boardReason } from '../_shared/referral_eligibility.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -95,16 +98,9 @@ function genCode(name: string | null): string {
   return `${slug}-${suffix}`;
 }
 
-function normalizeEmail(s: string | null | undefined): string | null {
-  if (!s) return null;
-  const trimmed = String(s).trim().toLowerCase();
-  return trimmed.includes('@') ? trimmed : null;
-}
-
-// Eligibility gate: a referral counts ONLY if the applicant isn't a current
-// or prior member of this tenant. Match on email + phone (separately — either
-// hit means "this person was here before"). Address/family-name fuzzy match
-// would catch more but introduces false positives — skip for v1.
+// Eligibility (PLAN.md BJ5, Doug 10/21): a referral counts only if the new
+// family wasn't a member last season, matched by phone, email or street
+// address (_shared/referral_eligibility.ts). The board can count one anyway.
 // ── The cap ────────────────────────────────────────────────────────────
 // A member can earn up to the price of their own membership and no further.
 // Refer enough neighbors and your season is free; refer more and the club
@@ -157,46 +153,75 @@ async function referralCap(
   return capState(dues, awarded);
 }
 
-async function isEligibleNewMember(
-  sb: ReturnType<typeof createClient>,
-  tenantId: string,
-  email: string | null,
-  phone: string | null,
-  // The new family's own household. By the time their payment is verified
-  // they have been approved, so their own members exist and would otherwise
-  // match — which rejected every referral.
-  exceptHousehold?: string | null,
-): Promise<{ eligible: boolean; reason?: string }> {
-  if (!email && !phone) return { eligible: true };  // nothing to match on
-
-  // Match against EVERY household_member ever created on this tenant —
-  // active or inactive. A returning member who lapsed and re-applied
-  // shouldn't count as a "new member" for referral purposes.
-  let query = sb.from('household_members')
-    .select('id, name, active, created_at')
-    .eq('tenant_id', tenantId);
-  if (exceptHousehold) query = query.neq('household_id', exceptHousehold);
-  if (email) query = query.ilike('email', email);
-  // Note: can't use OR with two ilike on different columns easily; do
-  // separate phone check below.
-  const { data: emailMatches } = await query;
-  if (emailMatches && emailMatches.length) {
-    return { eligible: false, reason: `Email ${email} was already on file as a member` };
+// A referred family has paid: unless they were a member last season (or the
+// board counted it anyway), the 30-day wait starts and the member is texted.
+// verify_referral (after payment) and count_anyway (the board) both use it.
+async function verifyReferral(sb: ReturnType<typeof createClient>, applicationId: string, tenantId: string): Promise<Record<string, unknown>> {
+  const { data: ref } = await sb.from('referrals')
+    .select('id, status, applied_by_email, referral_code_id, override_at')
+    .eq('application_id', applicationId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (!ref) return { ok: true, message: 'no referral on this application' };
+  if (ref.status !== 'applied') {
+    return { ok: true, message: `already ${ref.status}` };
   }
 
-  if (phone) {
-    let pq = sb.from('household_members')
-      .select('id, name')
-      .eq('tenant_id', tenantId)
-      .eq('phone_e164', phone);
-    if (exceptHousehold) pq = pq.neq('household_id', exceptHousehold);
-    const { data: phoneMatches } = await pq;
-    if (phoneMatches && phoneMatches.length) {
-      return { eligible: false, reason: `Phone ${phone} was already on file as a member` };
+  // Pull the application's email + phone for eligibility check.
+  const { data: app } = await sb.from('applications')
+    .select('primary_email, primary_phone, address, adults_json, membership_year, family_name, household_id, paid_at')
+    .eq('id', applicationId).maybeSingle();
+  if (!app) return { ok: false, error: 'application not found' };
+
+  // Not a member last season (BJ5), unless the board counted it anyway. The
+  // family's own household doesn't count against them: they're approved by now.
+  if (!ref.override_at) {
+    const adults = (app.adults_json ?? []) as Array<Record<string, unknown>>;
+    const match = await lastSeasonMember(sb, tenantId, {
+      emails: [app.primary_email as string | null, ...adults.map(a => a.email as string | null)],
+      phones: [app.primary_phone as string | null, ...adults.map(a => a.phone as string | null)],
+      address: app.address as string | null,
+    }, Number(app.membership_year) - 1, app.household_id as string | null);
+    if (match) {
+      await sb.from('referrals').update({
+        status: 'rejected', rejection_reason: boardReason(match), updated_at: new Date().toISOString(),
+      }).eq('id', ref.id);
+      return { ok: true, status: 'rejected', reason: boardReason(match) };
     }
   }
 
-  return { eligible: true };
+  // The 30-day wait starts now (H6). The reward is the club's setting at
+  // the moment the family paid; the member's choice starts as credit.
+  const paidAt = (app.paid_at as string | null) ?? new Date().toISOString();
+  const unlocks = unlockAt(paidAt);
+  const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+  const reward = referralSettings(settingsRow?.value).reward_cents;
+  await sb.from('referrals').update({
+    status: 'verified',
+    referee_paid_at: paidAt,
+    unlocks_at: unlocks,
+    reward_amount_cents: reward,
+    reward_type: 'next_year_discount',
+    updated_at: new Date().toISOString(),
+  }).eq('id', ref.id);
+
+  // Tell the member now, with the date. Audit log for the durable trail.
+  const who = await referrerOf(sb as never, ref.referral_code_id as string);
+  const { data: tenant } = await sb.from('tenants').select('display_name, timezone').eq('id', tenantId).maybeSingle();
+  const { zoneOrDefault } = await import('../_shared/pool_time.ts');
+  const unlockDay = shortDate(unlocks, zoneOrDefault(tenant?.timezone));
+  const texted = await textReferrer(sb as never, tenantId, ref.referral_code_id as string,
+    paidText((tenant?.display_name as string) || 'Your pool', app.family_name as string, reward, unlockDay),
+    'referrals.verified');
+  await sb.from('audit_log').insert({
+    tenant_id: tenantId,
+    kind: 'referral.verified',
+    entity_type: 'referral', entity_id: ref.id,
+    summary: `Referral verified: ${who?.name || 'A member'} (${theFamily(who?.family)}) referred ${theFamily(app.family_name as string)}. ${dollars(reward)} unlocks ${unlockDay}${texted ? '; member texted' : ''}`,
+    actor_kind: 'system',
+    metadata: { application_id: applicationId, referral_id: ref.id, unlocks_at: unlocks, reward_cents: reward },
+  });
+return { ok: true, status: 'verified', unlocks_at: unlocks };
 }
 
 Deno.serve(async (req) => {
@@ -252,65 +277,7 @@ Deno.serve(async (req) => {
     const tenantId      = String(body.tenant_id ?? '');
     if (!applicationId || !tenantId) return jsonResponse({ ok: false, error: 'application_id + tenant_id required' }, 400);
 
-    const { data: ref } = await sb.from('referrals')
-      .select('id, status, applied_by_email, referral_code_id')
-      .eq('application_id', applicationId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
-    if (!ref) return jsonResponse({ ok: true, message: 'no referral on this application' });
-    if (ref.status !== 'applied') {
-      return jsonResponse({ ok: true, message: `already ${ref.status}` });
-    }
-
-    // Pull the application's email + phone for eligibility check.
-    const { data: app } = await sb.from('applications')
-      .select('primary_email, primary_phone, family_name, household_id, paid_at')
-      .eq('id', applicationId).maybeSingle();
-    if (!app) return jsonResponse({ ok: false, error: 'application not found' }, 404);
-
-    const elig = await isEligibleNewMember(sb, tenantId, normalizeEmail(app.primary_email as string | null),
-      app.primary_phone as string | null, app.household_id as string | null);
-    if (!elig.eligible) {
-      await sb.from('referrals').update({
-        status: 'rejected',
-        rejection_reason: elig.reason || 'Not a new member',
-        updated_at: new Date().toISOString(),
-      }).eq('id', ref.id);
-      return jsonResponse({ ok: true, status: 'rejected', reason: elig.reason });
-    }
-
-    // The 30-day wait starts now (H6). The reward is the club's setting at
-    // the moment the family paid; the member's choice starts as credit.
-    const paidAt = (app.paid_at as string | null) ?? new Date().toISOString();
-    const unlocks = unlockAt(paidAt);
-    const { data: settingsRow } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
-    const reward = referralSettings(settingsRow?.value).reward_cents;
-    await sb.from('referrals').update({
-      status: 'verified',
-      referee_paid_at: paidAt,
-      unlocks_at: unlocks,
-      reward_amount_cents: reward,
-      reward_type: 'next_year_discount',
-      updated_at: new Date().toISOString(),
-    }).eq('id', ref.id);
-
-    // Tell the member now, with the date. Audit log for the durable trail.
-    const who = await referrerOf(sb as never, ref.referral_code_id as string);
-    const { data: tenant } = await sb.from('tenants').select('display_name, timezone').eq('id', tenantId).maybeSingle();
-    const { zoneOrDefault } = await import('../_shared/pool_time.ts');
-    const unlockDay = shortDate(unlocks, zoneOrDefault(tenant?.timezone));
-    const texted = await textReferrer(sb as never, tenantId, ref.referral_code_id as string,
-      paidText((tenant?.display_name as string) || 'Your pool', app.family_name as string, reward, unlockDay),
-      'referrals.verified');
-    await sb.from('audit_log').insert({
-      tenant_id: tenantId,
-      kind: 'referral.verified',
-      entity_type: 'referral', entity_id: ref.id,
-      summary: `Referral verified: ${who?.name || 'A member'} (${theFamily(who?.family)}) referred ${theFamily(app.family_name as string)}. ${dollars(reward)} unlocks ${unlockDay}${texted ? '; member texted' : ''}`,
-      actor_kind: 'system',
-      metadata: { application_id: applicationId, referral_id: ref.id, unlocks_at: unlocks, reward_cents: reward },
-    });
-    return jsonResponse({ ok: true, status: 'verified', unlocks_at: unlocks });
+    return jsonResponse(await verifyReferral(sb, applicationId, tenantId));
   }
 
   // ── unlock_due: the daily sweep (H6). payment_plans' daily job runs the
@@ -341,6 +308,11 @@ Deno.serve(async (req) => {
     const { data: member } = await sb.from('household_members')
       .select('id, name, active, household_id').eq('id', sub).maybeSingle();
     if (!member || !member.active) return jsonResponse({ ok: false, error: 'Member not active' }, 403);
+    // Only a current member gets a referral link (PLAN.md BJ5).
+    const { householdStatus } = await import('../_shared/membership_status.ts');
+    if (!(await householdStatus(sb as never, tid, member.household_id as string)).member) {
+      return jsonResponse({ ok: false, error: 'Referral links are for current members. Renew to get yours.' }, 403);
+    }
 
     // Find or create their persistent code
     let { data: rc } = await sb.from('referral_codes')
@@ -474,7 +446,7 @@ Deno.serve(async (req) => {
       .select(`
         id, status, applied_at, applied_by_email, applied_by_family,
         reward_type, reward_amount_cents, reward_chosen_at,
-        rejection_reason, application_id, referral_code_id,
+        rejection_reason, application_id, referral_code_id, override_by_name, override_at,
         refund_method, refund_id, refund_amount_cents, refund_at, refund_by, refund_decline_reason,
         approved_by, approved_at, declined_by, declined_at, decline_reason,
         referee_paid_at, unlocks_at, voided_at, void_reason
@@ -560,6 +532,7 @@ Deno.serve(async (req) => {
         reward_amount_cents: r.reward_amount_cents,
         reward_chosen_at: r.reward_chosen_at,
         rejection_reason: r.rejection_reason,
+        override_by_name: r.override_by_name, override_at: r.override_at,
         referee_paid_at: r.referee_paid_at,
         unlocks_at: r.unlocks_at,
         unlocked: !!r.unlocks_at && Date.now() >= new Date(r.unlocks_at).getTime(),
@@ -786,6 +759,40 @@ Deno.serve(async (req) => {
   // both reward types come through here — a credit against next season is
   // just as much the club's money as a refund is, it simply arrives as
   // revenue that never shows up.
+
+  // ── count_anyway: the board counts a referral the rule turned down (BJ5) ──
+  // A family that matched last season's members (or this season's) didn't
+  // count; a board member with the payments permission can count it anyway,
+  // and it's recorded who. Once the family has paid, the member's 30 days
+  // start as usual; until then it waits for their payment like any other.
+  if (action === 'count_anyway') {
+    if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);
+    const { requireScope } = await import('../_shared/auth.ts');
+    if (!(await requireScope(sb, payload as never, 'payments'))) {
+      return jsonResponse({ ok: false, error: 'Missing payments scope' }, 403);
+    }
+    const referralId = String(body.referral_id ?? '');
+    const { data: ref } = await sb.from('referrals').select('id, status, application_id, applied_by_family, rejection_reason')
+      .eq('id', referralId).eq('tenant_id', tid).maybeSingle();
+    if (!ref) return jsonResponse({ ok: false, error: 'Referral not found' }, 404);
+    if (ref.status !== 'rejected') return jsonResponse({ ok: false, error: 'Only a referral that didn\'t count can be counted anyway.' }, 409);
+    const { data: who } = await sb.from('admin_users').select('display_name, email').eq('id', sub).maybeSingle();
+    const name = (who?.display_name as string) || (who?.email as string) || 'A board member';
+    const now = new Date().toISOString();
+    await sb.from('referrals').update({
+      status: 'applied', rejection_reason: null, override_by: (payload as { synthetic?: boolean }).synthetic ? null : sub,
+      override_by_name: name, override_at: now, updated_at: now,
+    }).eq('id', ref.id);
+    await sb.from('audit_log').insert({
+      tenant_id: tid, kind: 'referral.counted_anyway', entity_type: 'referral', entity_id: ref.id,
+      summary: `${name} counted the ${ref.applied_by_family || 'family'} referral anyway (${ref.rejection_reason || 'it didn\'t count'})`,
+      actor_kind: 'tenant_admin', actor_id: (payload as { synthetic?: boolean }).synthetic ? null : sub,
+    });
+    const { data: app } = ref.application_id
+      ? await sb.from('applications').select('payment_status').eq('id', ref.application_id).maybeSingle() : { data: null };
+    const result = app?.payment_status === 'paid' ? await verifyReferral(sb, ref.application_id as string, tid) : { status: 'applied' };
+    return jsonResponse({ ok: true, status: result.status ?? 'applied' });
+  }
 
   if (action === 'approve_reward') {
     if (kind !== 'tenant_admin') return jsonResponse({ ok: false, error: 'Admin only' }, 403);

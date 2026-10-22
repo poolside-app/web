@@ -149,6 +149,8 @@ function publicPrice(p: import('../_shared/membership_price.ts').PriceResult) {
     credit_cents: p.credit_cents, amount_due_cents: p.amount_due_cents,
     code: p.code, code_label: p.code_label, code_problem: p.code_problem,
     referral_family: p.referral_family, note: p.note, tier_label: p.tier_label,
+    // Why a referral link didn't take money off (PLAN.md BJ5).
+    referral_problem: p.referral_problem,
     // Extra keyfobs, already in amount_due_cents (PLAN.md Q).
     fob_count: p.fob_count, fob_cents: p.fob_cents, fob_fee_cents: p.fob_fee_cents, fob_room: p.fob_room,
   };
@@ -920,21 +922,30 @@ Deno.serve(async (req) => {
     }
 
     // Referral capture: if this application came in via a code, create a
-    // referrals row at status='applied'. Will flip to 'verified' (or
-    // 'rejected' on returning-member detection) when payment clears.
+    // referrals row at status='applied'. It flips to 'verified' when payment
+    // clears. A family that was a member last season doesn't count (PLAN.md
+    // BJ5): recorded at once as 'rejected', with the board's reason, so the
+    // board sees the attempt and can count it anyway.
     if (body.referral_code) {
       try {
         const code = String(body.referral_code).trim().toUpperCase().slice(0, 32);
         const { data: rc } = await sb.from('referral_codes')
           .select('id').eq('tenant_id', tenant.id).eq('code', code).eq('active', true).maybeSingle();
         if (rc) {
+          const { lastSeasonMember, boardReason } = await import('../_shared/referral_eligibility.ts');
+          const match = await lastSeasonMember(sb, tenant.id as string, {
+            emails: [email, ...adults_json.map(a => a.email as string | null)],
+            phones: [phone, ...adults_json.map(a => a.phone as string | null)],
+            address: strOrNull(body.address),
+          }, membership_year - 1);
           await sb.from('referrals').insert({
             tenant_id: tenant.id,
             referral_code_id: rc.id,
             application_id: data.id,
             applied_by_email: email,
             applied_by_family: family_name,
-            status: 'applied',
+            status: match ? 'rejected' : 'applied',
+            rejection_reason: match ? boardReason(match) : null,
           });
         }
       } catch { /* best-effort — referral failure never blocks the application */ }
@@ -1107,6 +1118,7 @@ Deno.serve(async (req) => {
       fobExtra: body.fob_extra ?? 0, fobHave, fobFree,
       tierSlug: strOrNull(body.tier_slug),
       referralCode: strOrNull(body.referral_code),
+      address: strOrNull(body.address),
       email: strOrNull(body.email)?.toLowerCase() ?? null,
       phone: rawPhone ? normalizePhoneE164(rawPhone) : null,
       code: body.code != null ? String(body.code) : null,

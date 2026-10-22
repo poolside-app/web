@@ -41,7 +41,7 @@ jobs:
             test_plan_approval test_positions test_posts_delete test_screens test_season_home \
             test_signup_notes test_sponsor_popup test_time_saved test_venmo_codes \
             test_signin_safety test_texts test_money_fixes test_signup_fixes test_email_fixes \
-            test_screen_fixes test_site_fixes test_housekeeping test_demo_site test_minutes test_party_dates \
+            test_screen_fixes test_site_fixes test_housekeeping test_demo_site test_minutes test_party_dates test_referral_rule \
             errors_test fees_test share_test sms_test terms_test; do
             echo "::group::$t"
             if ! node "scripts/$t.mjs" --offline; then failed="$failed $t"; fi
