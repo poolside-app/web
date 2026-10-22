@@ -51,8 +51,11 @@
     document.body.insertBefore(b, document.body.firstChild);
     document.getElementById('demo-reset').addEventListener('click', function () {
       try { localStorage.clear(); sessionStorage.clear(); } catch (_) {}
+      // Everything the visitor did (parties, Venmo, settings, minutes) is kept
+      // in Cache Storage by demo-sw.js: wipe it, then start again (PLAN.md BJ8).
+      var wipe = window.caches ? caches.delete('demo-state').catch(function () {}) : Promise.resolve();
       if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: 'demo-reset' });
-      location.href = '/';
+      wipe.then(function () { setTimeout(function () { location.href = '/'; }, 150); });
     });
   }
   var timer = null;

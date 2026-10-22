@@ -30,7 +30,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     // Drop old caches if we ever bump CACHE_NAME.
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
+    // The demo club's saved state ('demo-state', PLAN.md BJ8) stays until its Start over.
+    await Promise.all(keys.filter(k => k !== CACHE_NAME && k !== 'demo-state').map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });

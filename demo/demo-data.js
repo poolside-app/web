@@ -543,11 +543,17 @@ const WOULD = {
   'stripe_checkout:party': 'In a real club, this opens Stripe\'s secure card page.',
   'member_auth:family_invite': 'In a real club, this texts them a link to get the app.',
   'referrals:issue_refund': 'In a real club, this refunds their card through Stripe.',
+  'stripe_checkout:party_booking': 'In a real club, this opens Stripe\'s secure card page. In the demo, the party is paid and booked.',
+  'board_meetings:submit_minutes': 'In a real club, each board member who was there gets a pop-up and approves on their phone. In the demo, the others approve in a few seconds: open the meeting again to see.',
+  'board_meetings:send_agenda': 'In a real club, every board member gets the agenda as a pop-up.',
 };
 
 function siteRespond(fn, body, ctx) {
   const { state, pre = {} } = ctx;
   const a = body.action;
+  // What the visitor did, kept until Start over (PLAN.md BJ8).
+  const kept = demoKept(fn, body, ctx);
+  if (kept !== undefined) return kept;
   const first = respond(fn, body, ctx);
   if (first !== undefined && !(first && Object.keys(first).length === 1 && first.ok === true && QUIET_REPLACED.has(`${fn}:${a}`))) return first;
   switch (fn) {
@@ -690,6 +696,276 @@ function siteRespond(fn, body, ctx) {
 // data.mjs answers these with a bare { ok: true } for the video; the site has
 // the real shape.
 const QUIET_REPLACED = new Set(['tenant_settings:get', 'payment_plans:config_get', 'payment_plans:list_plans', 'referrals:list', 'stripe_connect:status', 'gate_admin:pass_list']);
+
+// =============================================================================
+// What the visitor does, kept until Start over (PLAN.md BJ8, Doug: "All of 29")
+// =============================================================================
+// demo-sw.js saves `state` in this browser after every call, so a booked
+// party, a confirmed Venmo, a saved setting or a meeting's minutes are still
+// there on the next page. Everything here is the demo's own answers; the real
+// app is unchanged. `ctx.now` is the clock (tests move it; the worker doesn't).
+
+const POOL_TODAY = '2027-06-19';
+const poolDay = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: CLUB.timezone });
+const SPONSORS = [{ id: 'sp1', name: 'Grove Hardware', logo_url: null, link_url: 'https://example.com', description: 'Your neighborhood hardware store.', tier: 'gold' }];
+const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+function merge(into, from) {
+  for (const [k, v] of Object.entries(from || {})) into[k] = isObj(v) && isObj(into[k]) ? merge({ ...into[k] }, v) : v;
+  return into;
+}
+
+// The demo's clock: June 19, 2027, moving forward from the visitor's first call.
+function demoNow(state, now) {
+  state.t0 ??= now;
+  return DEMO_NOW + Math.max(0, now - state.t0);
+}
+
+// ── Parties ─────────────────────────────────────────────────────────────
+// The made-up ones (parties() above) plus the visitor's, with what happened to each.
+function allParties(state) {
+  const made = parties(state).map(p => ({ ...p, ...(state.partyPaid?.[p.id] ? { payment_status: 'paid' } : {}) }));
+  return [...made, ...(state.parties || [])];
+}
+const RIVERA_MEMBER = { id: 'm-Rivera-1', name: 'Jamie Rivera', email: 'jamie@example.com', phone_e164: '+15555550101' };
+function newParty(state, body, now) {
+  const n = (state.partySeq = (state.partySeq || 0) + 1);
+  const starts = new Date(body.starts_at).toISOString();
+  const party = {
+    id: `party-demo-${n}`, tenant_id: CLUB.id, household_id: 'hh-rivera', requested_by: RIVERA_MEMBER.id, title: String(body.title || 'Party').slice(0, 140),
+    body: body.body || null, starts_at: starts, ends_at: new Date(Date.parse(starts) + 3 * 3600000).toISOString(), expected_guests: body.expected_guests ?? null,
+    location: 'Main pool', status: 'approved', admin_notes: null, decided_at: new Date(demoNow(state, now)).toISOString(), decided_by: null, event_id: null,
+    price_cents: 15000, payment_method: null, payment_status: 'unpaid', paid_at: null, verified_at: null, verified_by: null,
+    created_at: new Date(demoNow(state, now)).toISOString(), venmo_code: `PD${n}X`, family_name: 'Rivera Family',
+    household: { id: 'hh-rivera', family_name: 'Rivera Family', address: null, city: 'Maple Grove' }, requester: RIVERA_MEMBER,
+  };
+  (state.parties ??= []).push(party);
+  return party;
+}
+function markPartyPaid(state, id, method, now) {
+  const own = (state.parties || []).find(p => p.id === id);
+  if (own) Object.assign(own, { payment_status: 'paid', payment_method: method, paid_at: new Date(demoNow(state, now)).toISOString() });
+  else (state.partyPaid ??= {})[id] = true;
+}
+const paidParties = state => allParties(state).filter(p => p.status === 'approved' && p.payment_status === 'paid');
+// Paid parties are on the club calendar (the real app adds an event when a party is paid).
+const partyEvents = (state, forBoard) => paidParties(state).map(p => ({
+  id: `ev-${p.id}`, tenant_id: CLUB.id, title: forBoard ? `${p.title} (${p.family_name})` : 'Private event', body: null, kind: 'party', location: p.location,
+  starts_at: p.starts_at, ends_at: p.ends_at, all_day: false, source_url: null, recurrence: null, recurrence_until: null, active: true,
+}));
+
+// ── Board minutes (PLAN.md BJ3, in the demo) ───────────────────────────
+const ME = 'demo-board';
+const BOARD_PEOPLE = [{ id: 'adm-chen', name: 'Mei Chen', board_title: 'President' }, { id: 'demo-board', name: 'Sam Brooks', board_title: 'Treasurer' },
+  { id: 'adm-larsen', name: 'Erik Larsen', board_title: 'Facilities Director' }];
+const nameOf = id => BOARD_PEOPLE.find(b => b.id === id)?.name ?? null;
+const at = (id, name) => ({ admin_user_id: id, name, role: null, source: 'admin' });
+const snapshot = m => ({ title: m.title, meeting_date: m.meeting_date, location: m.location, started_at: m.started_at, ended_at: m.ended_at, notes_md: m.notes_md,
+  attendees_json: m.attendees_json, votes_json: m.votes_json, follow_ups_json: m.follow_ups_json, visibility: m.visibility });
+function meetings(state) {
+  if (!state.meetings) {
+    const may = { id: 'mtg-may', title: 'May board meeting', meeting_date: '2027-05-27', location: 'Pool house', planned_time: '19:00', status: 'completed', visibility: 'members',
+      started_at: '2027-05-28T02:00:00Z', ended_at: '2027-05-28T03:10:00Z', notes_md: 'Opening day plan approved. Shade sail quotes reviewed: three bids, all under $9,000.',
+      attendees_json: [at('adm-chen', 'Mei Chen'), at('demo-board', 'Sam Brooks'), at('adm-larsen', 'Erik Larsen')],
+      votes_json: [{ motion: 'Open the pool May 29', yes: 3, no: 0, abstain: 0, outcome: 'passed' }], follow_ups_json: [],
+      created_by: 'adm-chen', created_at: '2027-05-28T02:00:00Z', edited_at: null, edited_by: null,
+      minutes_status: 'approved', approval_round: 1, approved_at: '2027-05-30T17:00:00Z', posted_count: 1, posted_at: '2027-05-30T17:00:00Z', changes_note: null,
+      approvals: [{ admin_id: 'adm-chen', name: 'Mei Chen', status: 'approved', round: 1 }, { admin_id: 'demo-board', name: 'Sam Brooks', status: 'approved', round: 1 },
+        { admin_id: 'adm-larsen', name: 'Erik Larsen', status: 'approved', round: 1 }] };
+    may.posted_json = snapshot(may);
+    const june = { id: 'mtg-june', title: 'June board meeting', meeting_date: '2027-06-24', location: 'Pool house', planned_time: '19:00', status: 'draft', visibility: 'members',
+      started_at: null, ended_at: null, notes_md: '', attendees_json: [], votes_json: [], follow_ups_json: [], created_by: 'adm-chen', created_at: ago(60 * 24 * 5),
+      edited_at: null, edited_by: null, minutes_status: 'draft', approval_round: 0, approved_at: null, posted_count: 0, posted_at: null, posted_json: null, changes_note: null, approvals: [] };
+    state.meetings = [june, may];
+    state.agendaItems = [{ id: 'ai1', meeting_id: null, body: 'Shade sail install date', added_by: 'adm-larsen', covered: false, created_at: ago(60 * 24 * 2) }];
+  }
+  return state.meetings;
+}
+// The others who were there approve a few seconds after Sam submits (one person can't be three).
+function autoApprove(state, now) {
+  for (const m of meetings(state)) {
+    if (m.minutes_status !== 'submitted') continue;
+    for (const r of m.approvals) if (r.round === m.approval_round && r.status === 'pending' && r.auto_at && now >= r.auto_at) { r.status = 'approved'; r.decided_by_name = r.name; }
+    const live = m.approvals.filter(r => r.round === m.approval_round && r.status !== 'voided');
+    if (live.every(r => r.status === 'approved')) {
+      Object.assign(m, { minutes_status: 'approved', approved_at: new Date(demoNow(state, now)).toISOString(), posted_json: snapshot(m),
+        posted_at: new Date(demoNow(state, now)).toISOString(), posted_count: (m.posted_count || 0) + 1 });
+    }
+  }
+}
+function decorate(m) {
+  const rows = (m.approvals || []).filter(r => r.round === m.approval_round && r.status !== 'voided');
+  const approved = rows.filter(r => r.status === 'approved').length;
+  const { approvals, posted_json, ...rest } = m;
+  return { ...rest, note_taker: nameOf(m.created_by), edited_by_name: nameOf(m.edited_by), can_edit: true, can_delete: true,
+    approval: { round: m.approval_round, rows: rows.map(({ auto_at, ...r }) => r), approved, total: rows.length, pending: rows.filter(r => r.status === 'pending').map(r => r.name),
+      can_submit: m.status === 'completed' && m.minutes_status === 'draft', can_approve: m.minutes_status === 'submitted' && rows.some(r => r.admin_id === ME && r.status === 'pending'),
+      can_approve_for: [], can_edit_again: m.minutes_status === 'submitted' } };
+}
+function patchMeeting(m, b) {
+  for (const k of ['title', 'meeting_date', 'location', 'planned_time', 'notes_md', 'visibility']) if (b[k] !== undefined) m[k] = k === 'visibility' && b[k] === 'public' ? 'members' : b[k];
+  if (b.attendees !== undefined) m.attendees_json = (b.attendees || []).filter(x => x && x.name).map(x => ({ admin_user_id: x.admin_user_id || null, name: x.name, role: x.role || null, source: x.source === 'admin' ? 'admin' : 'manual' }));
+  if (b.votes !== undefined) m.votes_json = b.votes || [];
+  if (b.follow_ups !== undefined) m.follow_ups_json = (b.follow_ups || []).filter(f => f && (f.description || f.input));
+}
+function itemShape(state, it) {
+  const who = BOARD_PEOPLE.find(b => b.id === it.added_by);
+  return { id: it.id, body: it.body, added_by_name: who?.name ?? 'A board member', added_by_title: who?.board_title ?? null, can_change: true,
+    covered: !!it.covered, carried_from_date: it.carried_from_date ?? null, created_at: it.created_at };
+}
+function minutes(a, body, state, now, pre) {
+  const all = meetings(state);
+  autoApprove(state, now);
+  const find = id => all.find(m => m.id === id);
+  const iso = () => new Date(demoNow(state, now)).toISOString();
+  const one = m => ({ ok: true, meeting: decorate(m) });
+  const m = body.id ? find(String(body.id)) : null;
+  switch (a) {
+    case 'list': return { ok: true, meetings: [...all].sort((x, y) => String(y.meeting_date).localeCompare(String(x.meeting_date))).map(decorate) };
+    case 'get': return m ? one(m) : { ok: false, error: 'Meeting not found' };
+    case 'list_active_admins': return { ok: true, admins: BOARD_PEOPLE.map(b => ({ id: b.id, name: b.name, board_title: b.board_title, role_label: b.board_title })) };
+    case 'create': {
+      const n = (state.mtgSeq = (state.mtgSeq || 0) + 1);
+      const start = body.start === true;
+      const mt = { id: `mtg-demo-${n}`, title: body.title || 'Board Meeting', meeting_date: body.meeting_date || POOL_TODAY, location: body.location || null, planned_time: null,
+        status: start ? 'in_progress' : 'draft', visibility: 'members', started_at: start ? iso() : null, ended_at: null, notes_md: '', attendees_json: [], votes_json: [], follow_ups_json: [],
+        created_by: ME, created_at: iso(), edited_at: null, edited_by: null, minutes_status: 'draft', approval_round: 0, approved_at: null, posted_count: 0, posted_at: null, posted_json: null,
+        changes_note: null, approvals: [] };
+      all.unshift(mt);
+      return one(mt);
+    }
+    case 'start': if (!m) break; Object.assign(m, { status: 'in_progress', started_at: m.started_at || iso() }); return one(m);
+    case 'update': if (!m) break; if (m.status === 'completed') return { ok: false, error: 'This meeting is closed; use Save changes.' }; patchMeeting(m, body); return one(m);
+    case 'amend':
+      if (!m) break;
+      if (m.minutes_status === 'submitted') return { ok: false, error: 'These minutes are waiting for approval. Tap Edit again to change them (the approvals start over).' };
+      patchMeeting(m, body); Object.assign(m, { edited_at: iso(), edited_by: ME }); if (m.minutes_status === 'approved') m.minutes_status = 'draft';
+      return one(m);
+    case 'finalize':
+      if (!m) break;
+      if (m.status !== 'completed') {
+        Object.assign(m, { status: 'completed', ended_at: iso() });
+        for (const it of state.agendaItems || []) if (it.meeting_id === m.id && !it.covered) { it.meeting_id = null; it.carried_from_date = m.meeting_date; }
+      }
+      return one(m);
+    case 'submit_minutes': {
+      if (!m) break;
+      if (m.status !== 'completed') return { ok: false, error: 'Close the meeting first, then submit the minutes.' };
+      if (m.minutes_status !== 'draft') return one(m);
+      const round = (m.approval_round || 0) + 1;
+      const seen = new Set();
+      for (const x of m.attendees_json || []) {
+        if (!x.admin_user_id || seen.has(x.admin_user_id) || !nameOf(x.admin_user_id)) continue;
+        seen.add(x.admin_user_id);
+        m.approvals.push({ admin_id: x.admin_user_id, name: x.name, round, status: x.admin_user_id === ME ? 'approved' : 'pending', auto_at: x.admin_user_id === ME ? null : now + 6000 });
+      }
+      Object.assign(m, { approval_round: round, minutes_status: 'submitted', submitted_at: iso(), changes_note: null });
+      autoApprove(state, now);
+      return one(m);
+    }
+    case 'approve_minutes': {
+      if (!m) break;
+      const r = m.approvals.find(x => x.round === m.approval_round && x.admin_id === ME && x.status === 'pending');
+      if (!r) return { ok: false, error: 'You\'re not one of the board members asked to approve these minutes.' };
+      r.status = 'approved'; autoApprove(state, now); return one(m);
+    }
+    case 'request_changes':
+    case 'edit_again':
+      if (!m) break;
+      if (a === 'request_changes' && !String(body.note || '').trim()) return { ok: false, error: 'Say what to change.' };
+      for (const r of m.approvals) if (r.round === m.approval_round && r.status === 'pending') r.status = 'voided';
+      Object.assign(m, { minutes_status: 'draft', ...(a === 'request_changes' ? { changes_note: String(body.note).trim(), changes_by_name: 'Sam Brooks' } : {}) });
+      return one(m);
+    case 'approve_for': return { ok: false, error: 'The President can approve for someone once the minutes have waited 7 days.' };
+    case 'delete': state.meetings = all.filter(x => x.id !== body.id); return { ok: true };
+    case 'next': {
+      const nx = all.filter(x => x.status === 'draft' && x.meeting_date >= POOL_TODAY).sort((x, y) => x.meeting_date.localeCompare(y.meeting_date))[0] || null;
+      return { ok: true, meeting: nx ? decorate(nx) : null, items: (state.agendaItems || []).filter(it => !it.meeting_id || (nx && it.meeting_id === nx.id)).map(it => itemShape(state, it)) };
+    }
+    case 'add_item': {
+      const it = { id: `ai-${(state.itemSeq = (state.itemSeq || 1) + 1)}`, meeting_id: null, body: String(body.body || '').slice(0, 100), added_by: ME, covered: false, created_at: iso() };
+      (state.agendaItems ??= []).push(it); return { ok: true, item: itemShape(state, it) };
+    }
+    case 'update_item': { const it = (state.agendaItems || []).find(x => x.id === body.id); if (it) it.body = String(body.body || '').slice(0, 100); return { ok: true }; }
+    case 'delete_item': state.agendaItems = (state.agendaItems || []).filter(x => x.id !== body.id); return { ok: true };
+    case 'cover_item': { const it = (state.agendaItems || []).find(x => x.id === body.id); if (it) it.covered = !!body.covered; return { ok: true }; }
+    case 'create_agenda': {
+      const target = body.meeting_id ? find(body.meeting_id) : all.find(x => x.status === 'draft');
+      if (!target) return { ok: false, error: 'Pick the meeting date.' };
+      for (const it of state.agendaItems || []) if (!it.meeting_id) it.meeting_id = target.id;
+      target.agenda_created_at = iso(); return one(target);
+    }
+    case 'agenda': {
+      const mt = find(String(body.meeting_id || '')) || all[0];
+      const items = (state.agendaItems || []).filter(it => it.meeting_id === mt.id || (mt.status === 'draft' && !it.meeting_id));
+      const people = BOARD_PEOPLE.map(b => ({ name: b.name, titles: [b.board_title], items: items.filter(it => it.added_by === b.id).map(it => itemShape(state, it)) }));
+      const agenda = { title: mt.title, date: mt.meeting_date, time: mt.planned_time, location: mt.location,
+        sections: [{ key: 'reports', title: 'Reports', people }, { key: 'follow', title: 'Follow-ups from earlier meetings', follow: [] }] };
+      const text = `${mt.title}\n${mt.meeting_date}\n\n${people.filter(p => p.items.length).map(p => `${p.name}\n${p.items.map(i => '- ' + i.body).join('\n')}`).join('\n\n')}`;
+      return { ok: true, meeting: decorate(mt), agenda, text };
+    }
+    case 'send_agenda': return body.preview ? { ok: true, reached: BOARD_PEOPLE.map(b => b.name), popped: [], missed: [] } : { ok: true, reached: BOARD_PEOPLE.length, popped: BOARD_PEOPLE.length, missed: [] };
+    case 'governance': {
+      const posted = all.filter(x => x.posted_json && x.posted_json.visibility === 'members')
+        .map(x => ({ ...x.posted_json, id: x.id, approved_at: x.posted_at, amended_at: x.posted_count > 1 ? x.posted_at : null }));
+      return { ok: true, meetings: posted, bylaws: { current: { id: 'doc1', url: '/demo/bylaws.html', file_name: 'Maple Grove bylaws.pdf', uploaded_by_name: 'Mei Chen', uploaded_at: ago(60 * 24 * 300) }, earlier: [] },
+        board: BOARD_PEOPLE.map(b => ({ name: b.name, titles: [b.board_title] })) };
+    }
+  }
+  return undefined;
+}
+
+function demoKept(fn, body, ctx) {
+  const { state } = ctx;
+  const now = ctx.now ?? Date.now();
+  const a = body.action;
+  switch (fn) {
+    case 'tenant_public': {
+      const base = respond(fn, body, ctx);
+      const ps = merge(merge({ ...base.public_settings }, { parties: state.partySettings || {} }), { sponsors_config: state.settings?.sponsors_config || {} });
+      return { ...base, public_settings: ps, sponsors: SPONSORS, events: [...(base.events || []), ...partyEvents(state, false)] };
+    }
+    case 'tenant_settings':
+      if (a === 'save') { state.settings = merge(state.settings || {}, body.value || {}); return { ok: true, settings: merge(SETTINGS_FULL(), state.settings) }; }
+      if (a === 'get') return { ok: true, settings: merge(SETTINGS_FULL(), state.settings || {}), tenant: { slug: 'demo', display_name: CLUB.display_name, timezone: CLUB.timezone, status: 'active' } };
+      break;
+    case 'events_admin':
+      if (a === 'list') return { ok: true, events: [...EVENTS.map(e => ({ ...e, tenant_id: CLUB.id, active: true, recurrence: null, recurrence_until: null, created_at: ago(60 * 24 * 10), updated_at: ago(60 * 24 * 10) })), ...partyEvents(state, true)] };
+      break;
+    case 'member_auth':
+      if (a === 'request_party') {
+        const party = newParty(state, body, now);
+        return { ok: true, party, approved: true, hold_until: new Date(Date.parse(party.created_at) + 2 * 86400000).toISOString(), card_total_cents: 15479, fee_cents: 15000 };
+      }
+      if (a === 'list_my_parties') return { ok: true, parties: allParties(state).filter(p => p.household_id === 'hh-rivera' && p.status !== 'cancelled') };
+      if (a === 'party_busy') return { ok: true, busy: allParties(state).filter(p => p.status === 'approved' && poolDay(p.starts_at) === body.date).map(p => ({ starts_at: p.starts_at, ends_at: p.ends_at })) };
+      if (a === 'claim_party_paid') { const p = (state.parties || []).find(x => x.id === body.id); if (p) Object.assign(p, { payment_status: 'pending_verify', payment_method: 'venmo' }); return { ok: true }; }
+      if (a === 'cancel_my_party') { const p = (state.parties || []).find(x => x.id === body.id); if (p) p.status = 'cancelled'; return { ok: true }; }
+      break;
+    case 'stripe_checkout':
+      if (a === 'party_booking') { markPartyPaid(state, body.party_id, 'stripe', now); return { ok: true, url: '/m/?party_paid=1' }; }
+      break;
+    case 'unlock_gate':
+      // The host family gets the party door on party day (the Riveras have one today).
+      if (a === 'check') state.partyToday = paidParties(state).some(p => p.household_id === 'hh-rivera' && poolDay(p.starts_at) === POOL_TODAY);
+      return undefined;
+    case 'parties_admin':
+      if (a === 'list') return { ok: true, bookings: allParties(state).filter(b => !body.status || body.status === 'all' || b.status === body.status) };
+      if (a === 'verify_payment') { markPartyPaid(state, body.id, body.method || 'venmo', now); (state.confirmed ??= new Set()).add(body.id); return { ok: true }; }
+      if (a === 'settings_save') { state.partySettings = merge(state.partySettings || {}, { ...(body.rules || {}), ...(body.auto_approve !== undefined ? { auto_approve: body.auto_approve } : {}) }); return { ok: true, length_hours: 3, fee_cents: 15000, auto_approve: state.partySettings.auto_approve !== false, hold_days: 2, rules: state.partySettings }; }
+      if (a === 'settings_get') return { ok: true, length_hours: 3, fee_cents: 15000, auto_approve: state.partySettings?.auto_approve !== false, hold_days: 2, rules: state.partySettings || {} };
+      break;
+    case 'payments_admin':
+      if (a === 'venmo_waiting') {
+        state.confirmed ??= new Set();
+        const mine = (state.parties || []).filter(p => p.payment_status === 'pending_verify').map(p => ({ kind: 'party', id: p.id, family_name: p.family_name,
+          label: `Party: ${p.title}`, amount_cents: p.price_cents, code: p.venmo_code, claimed: true, age_days: 0 }));
+        return { ok: true, items: [...VENMO_WAITING.filter(i => !state.confirmed.has(i.id)), ...mine] };
+      }
+      break;
+    case 'board_meetings': return minutes(a, body, state, now, ctx.pre);
+  }
+  return undefined;
+}
 
 self.DemoSite = { siteRespond, weather, WOULD, DEMO_NOW, CLUB };
 })();
