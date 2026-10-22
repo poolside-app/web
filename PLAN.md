@@ -900,6 +900,22 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BL. Pre-flight before the payment tests (Doug, 10/22) — planned, waiting for Doug
+Doug: "is there anything we can go through to ensure the app works well? ... i want to 100% make sure we are good to go". He starts BK next week.
+
+Checked 10/22 (free, read-only): all 5 daily and repeating jobs ran on schedule for the last 4 days with no failures, and today's payment run answered cleanly. The email domain (poolsideapp.com on Resend) is verified and sending. Vercel builds pushes on its own again (b9f05d7 deployed without help). Club payments' webhook is set up right.
+
+Found: Poolside's own sales (text-message packs, setup help, a club's plan upgrade) are charged on Poolside's own Stripe account, but Stripe's one webhook only reports club accounts' payments. Those payments would go through and never be recorded (no credits, no plan change). No such Stripe payment has ever happened, test or real.
+
+- **BL1. Fix that webhook gap.** A second Stripe webhook for Poolside's own account (the same address, its own signing secret) and `stripe_webhook` accepting either secret. Test mode now, live again in BK6. Offline test first.
+- **BL2. Walk every card payment in the code before Doug's phone time.** Each kind (signup, renewal, plan start, party, keyfobs, donation, program, pass, reactivation, text packs, setup help, plan upgrade) from the button to Stripe to the webhook to what the family and board see, run offline with Stripe's real message shapes. Fix what's wrong, failing test first. So BK3 finds nothing silly.
+- **BL3. One full live run of every check.** Smoke, end to end, every page rendered (board, member, public), every page at phone width, and the live parts of the targeted suites. About 1,000 Supabase calls; Poolside uses about 35,000 of the free plan's 500,000 a month. The live suites haven't all run together since September, so some failures will be out-of-date tests; each real one gets fixed with a failing test first.
+- **BL4. Doug's decisions before real families pay (not before testing).**
+  - Supabase is on the free plan, which has no backups you can restore (Supabase: daily backups start on Pro, $25 a month). Upgrade before real families' money and details go in.
+  - Bishop passes the card fee on: about 3.04% ($18.23 on $600). Card networks generally cap a surcharge at 3%. Cap it at 3% or present it differently; ask whoever handles the club's money.
+  - Real dues should land in the club's own Stripe and bank, not Doug's (taxes, the club's records). Connect the club's account before the CSV import.
+  - Vercel's free Hobby plan is for non-commercial use, and check it can still deploy before making the repo private.
+
 ### BK. Test card payments end to end, then go live (Doug, 10/21) — planned, BK1 is Doug's
 Doug: "how can we successfully test the payments... i think this is the next step". His answers 10/21: all 8 test-card tests; "once we test and working its live, i want to keep it live and active for payments"; every family stays ("i'm going to test the payments... ensure they work.. and then import the csv"); real $1 tests ("i want to test payments like $1 weekly... i'm willing to pay for these tests"), on a weekly test plan; Bishop uses Doug's own Stripe account for now; whose account long term is decided later.
 
