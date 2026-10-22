@@ -2760,12 +2760,14 @@ async function submitProfile() {
       displayName: me.tenant.display_name,
     });
   }
-  if (window.SponsorPopup) {
-    window.SponsorPopup.maybeShow({
-      sponsors: publicData.sponsors || [],
-      config:   publicData.public_settings?.sponsors_config || {},
-    });
-  }
+  // sponsor-popup.js is deferred: when the club's answer comes back before it
+  // has run (a fast phone, the demo club), wait for it (PLAN.md BJ8).
+  const showSponsor = () => window.SponsorPopup && window.SponsorPopup.maybeShow({
+    sponsors: publicData.sponsors || [],
+    config:   publicData.public_settings?.sponsors_config || {},
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showSponsor, { once: true });
+  else showSponsor();
 
   const { user, household, tenant } = me;
   ME_HOUSEHOLD = household;

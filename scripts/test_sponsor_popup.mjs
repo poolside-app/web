@@ -25,6 +25,16 @@ check('it saves only the pop-up setting, never a stale copy of everything', /cal
 const pop = read('js/sponsor-popup.js');
 check('the pop-up still shows only when it\'s on, and only if there are sponsors', /if \(!config\.popup_enabled\) return;/.test(pop) && /if \(!sponsors\.length\) return;/.test(pop));
 
+// PLAN.md BJ8: sponsor-popup.js is deferred, so the club's answer can come
+// back before it has run (the demo answers in milliseconds; so can a fast
+// phone). Then the pages wait for it instead of skipping the pop-up.
+for (const f of ['m/index.html', 'club/index.html']) {
+  const src = read(f);
+  const at = src.indexOf('SponsorPopup.maybeShow');
+  const near = src.slice(Math.max(0, at - 400), at + 600);
+  check(`${f} waits for the pop-up script when the club's answer comes first`, at > 0 && /document\.readyState === 'loading'/.test(near) && /DOMContentLoaded/.test(near), near.slice(0, 160));
+}
+
 console.log('Y2 · Sponsors under Content (offline)');
 const sub = read('js/admin-subtabs.js');
 const strip = key => sub.slice(sub.indexOf(`${key}: [`), sub.indexOf('],', sub.indexOf(`${key}: [`)));

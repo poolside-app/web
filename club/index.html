@@ -1008,12 +1008,14 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
 
     // Sponsor popup — rotates through active sponsors per the tenant's
     // configured frequency (every load / once per session / once per day).
-    if (window.SponsorPopup) {
-      window.SponsorPopup.maybeShow({
-        sponsors: data.sponsors || [],
-        config:   (data.public_settings && data.public_settings.sponsors_config) || {},
-      });
-    }
+    // sponsor-popup.js is deferred: when this answer comes back before it has
+    // run (a fast phone, the demo club), wait for it (PLAN.md BJ8).
+    const showSponsor = () => window.SponsorPopup && window.SponsorPopup.maybeShow({
+      sponsors: data.sponsors || [],
+      config:   (data.public_settings && data.public_settings.sponsors_config) || {},
+    });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showSponsor, { once: true });
+    else showSponsor();
     // Recent supporters list under the fundraiser card. Best-effort.
     loadDonationsLeaderboard(slug);
     // Stripe donation success bounce-back.
