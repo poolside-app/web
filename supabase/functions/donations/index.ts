@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
 
     const params = new URLSearchParams();
     params.append('mode', 'payment');
+    params.append('payment_method_types[0]', 'card');   // card only (PLAN.md BL1c)
     params.append('success_url', `${clubUrl}/?donated=1`);
     params.append('cancel_url',  `${clubUrl}/?donated=0`);
     params.append('line_items[0][price_data][currency]', 'usd');

@@ -900,14 +900,31 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
-### BL. Pre-flight before the payment tests (Doug, 10/22) — planned, waiting for Doug
+### BL. Pre-flight before the payment tests (Doug, 10/22) — BL1 done 10/22; BL2, BL3 next
 Doug: "is there anything we can go through to ensure the app works well? ... i want to 100% make sure we are good to go". He starts BK next week.
 
 Checked 10/22 (free, read-only): all 5 daily and repeating jobs ran on schedule for the last 4 days with no failures, and today's payment run answered cleanly. The email domain (poolsideapp.com on Resend) is verified and sending. Vercel builds pushes on its own again (b9f05d7 deployed without help). Club payments' webhook is set up right.
 
 Found: Poolside's own sales (text-message packs, setup help, a club's plan upgrade) are charged on Poolside's own Stripe account, but Stripe's one webhook only reports club accounts' payments. Those payments would go through and never be recorded (no credits, no plan change). No such Stripe payment has ever happened, test or real.
 
-- **BL1. Fix that webhook gap.** A second Stripe webhook for Poolside's own account (the same address, its own signing secret) and `stripe_webhook` accepting either secret. Test mode now, live again in BK6. Offline test first.
+Where those sales live: every club's Settings → Plan (`club/admin/billing.html`), for the club's owner: its Poolside plan and upgrades, extra texts ($100 for 3,000), Premium Setup ($500, $750 over 100 households) and the subscription. That money goes to Poolside. Money → Payments is separate: the club's own money from families, into the club's Stripe. None of this affects Bishop (Enterprise, Poolside's fees waived, 25,000 texts a year); it matters from the second club on.
+
+More found 10/22 (Stripe test mode, read-only plus one test-mode payment never charged and canceled):
+- Plan upgrades can't start at all: the three plan prices were never set up in Stripe (`STRIPE_PRICE_STARTER`/`PRO`/`ENTERPRISE` unset), and the message sends clubs to hello@poolsideapp.com, not support@ (BG7).
+- A club's subscription being canceled or failing to renew would also never reach Poolside (the same webhook gap).
+- Family checkouts (signup, party, keyfobs, donations, plan payments) don't say "card", so Stripe shows whatever the club's account allows. Bishop's allows Affirm, Klarna, Cash App Pay, Amazon Pay and Link by default. The card fee passed on assumes a card (2.9% + 30¢); Affirm and Klarna cost the club about 6%. Saving a card for a plan is already card only.
+- Checked fine: Stripe takes the $0 Poolside fee every Bishop payment sends.
+
+Doug's answers 10/22: family checkouts card only; self-serve plan upgrades; he clicks the Stripe setup himself; then the full live run.
+
+- **BL1. Fix that webhook gap.** `stripe_webhook` accepts either of two signing secrets: `STRIPE_WEBHOOK_SECRET` (club accounts, as now) and `STRIPE_WEBHOOK_SECRET_PLATFORM` (Poolside's own account), checked in `_shared/stripe_sig.ts`. Doug adds the second webhook in Stripe (the same address; "your account" events: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted) and puts its secret in Supabase. Offline test first.
+- **BL1b. Self-serve plans that work.** Also found: a club already on a plan that picks another would start a second subscription and pay twice, and Bishop-style lower plans say "Upgrade to". Now:
+  - The three yearly prices live in `_shared/poolside_plans.ts` and must match Plan & billing, pricing.html and home.html (checked). The checkout carries the price itself on a fixed Stripe product per plan (`poolside_plan_starter`…, made on first use), so Stripe needs no prices made by hand, in test or live.
+  - A club with no plan pays by Stripe checkout. A club already on one switches that same subscription: going up charges the difference for the rest of the year now, going down leaves a credit for its next renewal. Never two subscriptions.
+  - Plan & billing says "Switch to" for a lower plan; the error points to support@. The webhook reads the plan from the subscription (or its product), not price IDs.
+  - Offline tests first, then one check against Stripe's test mode with throwaway objects removed afterwards (no Supabase calls).
+- **BL1c. Family checkouts are card only** (Apple Pay and Google Pay still show). Every checkout Poolside makes says `payment_method_types[0]=card`: signup, renewal, plan, party, keyfobs, program, pass, donation, reactivation, and Poolside's own sales. Offline test that no checkout is missing it.
+- ✅ BL1, BL1b, BL1c done 10/22. `test_stripe_preflight` 28 offline checks (all failed first; the card-only check first passed two checkouts that weren't, and was tightened), plus 5 against Stripe's test mode (Starter → Pro charged the difference on the same subscription; Pro → Starter left a credit). Deployed `stripe_webhook`, `tenant_admin_auth`, `stripe_checkout`, `donations`, `payment_plans`; live, Plan & billing's upgrade made a card-only yearly $2,400 checkout on `poolside_plan_pro` (closed afterwards; Bishop stays Enterprise). Doug's part: the second webhook in Stripe test mode and its secret in Supabase (`STRIPE_WEBHOOK_SECRET_PLATFORM`); again in live at BK6.
 - **BL2. Walk every card payment in the code before Doug's phone time.** Each kind (signup, renewal, plan start, party, keyfobs, donation, program, pass, reactivation, text packs, setup help, plan upgrade) from the button to Stripe to the webhook to what the family and board see, run offline with Stripe's real message shapes. Fix what's wrong, failing test first. So BK3 finds nothing silly.
 - **BL3. One full live run of every check.** Smoke, end to end, every page rendered (board, member, public), every page at phone width, and the live parts of the targeted suites. About 1,000 Supabase calls; Poolside uses about 35,000 of the free plan's 500,000 a month. The live suites haven't all run together since September, so some failures will be out-of-date tests; each real one gets fixed with a failing test first.
 - **BL4. Doug's decisions before real families pay (not before testing).**

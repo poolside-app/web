@@ -180,6 +180,10 @@ async function stripeCheckout(params: {
     : Math.max(0, Math.floor(params.amountCents * params.feeBps / 10000));
   const body = new URLSearchParams();
   body.append('mode', 'payment');
+  // Card only (Apple Pay and Google Pay included), never whatever else the
+  // club's Stripe account allows (Affirm, Klarna, Cash App...): the card fee a
+  // club passes on is worked out for a card (PLAN.md BL1c).
+  body.append('payment_method_types[0]', 'card');
   body.append('success_url', params.successUrl);
   body.append('cancel_url', params.cancelUrl);
   body.append('line_items[0][price_data][currency]', 'usd');
@@ -510,6 +514,7 @@ Deno.serve(async (req) => {
     for (const [k, v] of Object.entries(metadata)) params.append(`metadata[${k}]`, v);
     if (first) {
       params.append('mode', 'payment');
+      params.append('payment_method_types[0]', 'card');   // card only (PLAN.md BL1c)
       params.append('line_items[0][price_data][currency]', 'usd');
       params.append('line_items[0][price_data][product_data][name]', productName);
       params.append('line_items[0][price_data][product_data][description]', description);
@@ -664,6 +669,7 @@ Deno.serve(async (req) => {
     } else {
       const platformFee = policy.waived ? 0 : platformFeeCents(dues, 'dues', policy) + planFees;
       params.append('mode', 'payment');
+      params.append('payment_method_types[0]', 'card');   // card only (PLAN.md BL1c)
       params.append('line_items[0][price_data][currency]', 'usd');
       params.append('line_items[0][price_data][product_data][name]', name);
       params.append('line_items[0][price_data][product_data][description]', desc);

@@ -1106,6 +1106,7 @@ Deno.serve(async (req) => {
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params: Record<string, string | number> = {
       mode: 'payment',
+      'payment_method_types[0]': 'card',   // card only (PLAN.md BL1c)
       success_url: `${clubUrl}/club/admin/payments.html?reactivated=1`,
       cancel_url:  `${clubUrl}/club/admin/payments.html?reactivated=0`,
       'line_items[0][price_data][currency]': 'usd',

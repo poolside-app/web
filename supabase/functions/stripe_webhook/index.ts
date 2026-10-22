@@ -1,22 +1,29 @@
 // =============================================================================
 // stripe_webhook — verifies signed events from Stripe and flips paid status
 // =============================================================================
-// One platform-level webhook endpoint for ALL connected accounts. Stripe
-// sends `checkout.session.completed` here when a customer pays; we route
-// based on the session's metadata.kind to the right table.
+// Two Stripe webhook endpoints point here (PLAN.md BL1). Stripe sends
+// `checkout.session.completed` when someone pays; we route on the session's
+// metadata.kind to the right table.
 //
-// Configure in Stripe Dashboard:
+// Configure in Stripe Dashboard, both at
 //   POST https://<your-supabase>/functions/v1/stripe_webhook
-//   Events: checkout.session.completed, account.updated
-// Add the signing secret as STRIPE_WEBHOOK_SECRET.
+//   1. Connected accounts (families paying their club): checkout.session.completed,
+//      account.updated, charge.refunded, charge.dispute.created,
+//      payment_intent.payment_failed. Secret: STRIPE_WEBHOOK_SECRET.
+//   2. Your account (clubs paying Poolside: texts, Premium Setup, plans):
+//      checkout.session.completed, customer.subscription.updated,
+//      customer.subscription.deleted. Secret: STRIPE_WEBHOOK_SECRET_PLATFORM.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { partyWhen, tenantTimeZone } from '../_shared/pool_time.ts';
+import { verifyAny } from '../_shared/stripe_sig.ts';
+import { planFromSubscription } from '../_shared/poolside_plans.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+const PLATFORM_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET_PLATFORM');
 // CRITICAL: this used to be missing — without it, the payment_method ID never
 // gets persisted on the plan, and the off-session re-charge for installment 2
 // always fails. Every payment-plan family lapsed silently. Don't remove.
@@ -27,29 +34,6 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-
-// Stripe signs payloads with HMAC-SHA256 using the webhook secret.
-// Header format: t=<unix-ts>,v1=<signature>
-async function verifyStripeSignature(rawBody: string, sigHeader: string, secret: string, toleranceSec = 300): Promise<boolean> {
-  const parts = sigHeader.split(',').reduce<Record<string, string>>((acc, p) => {
-    const [k, v] = p.split('=', 2); if (k && v) acc[k] = v; return acc;
-  }, {});
-  const ts = parseInt(parts.t || '0', 10);
-  const v1 = parts.v1;
-  if (!ts || !v1) return false;
-  if (Math.abs(Math.floor(Date.now() / 1000) - ts) > toleranceSec) return false;
-
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${ts}.${rawBody}`));
-  const expected = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-  // Constant-time-ish compare
-  if (expected.length !== v1.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < expected.length; i++) mismatch |= expected.charCodeAt(i) ^ v1.charCodeAt(i);
-  return mismatch === 0;
-}
 
 
 // Pull the reusable payment method off a completed Checkout session and keep it
@@ -163,8 +147,8 @@ Deno.serve(async (req) => {
   // Internal callers (stripe_checkout's test-payment simulator) authenticate
   // with the service-role key instead of a Stripe signature.
   const internal = req.headers.get('x-poolside-internal') === SERVICE_ROLE;
-  if (WEBHOOK_SECRET && !internal) {
-    const ok = await verifyStripeSignature(rawBody, sig, WEBHOOK_SECRET);
+  if ((WEBHOOK_SECRET || PLATFORM_WEBHOOK_SECRET) && !internal) {
+    const ok = await verifyAny(rawBody, sig, [WEBHOOK_SECRET, PLATFORM_WEBHOOK_SECRET]);
     if (!ok) return new Response('Invalid signature', { status: 400 });
   }
 
@@ -837,9 +821,11 @@ Deno.serve(async (req) => {
   }
 
   // ── customer.subscription.updated — admin changed plan via the Stripe
-  //    Customer Portal, OR Doug updated a subscription manually in the
-  //    Stripe dashboard. Map the price ID back to our plan slug and flip
-  //    tenants.plan to match. No-op if nothing actually changed.
+  //    Customer Portal, a switch from Plan & billing (PLAN.md BL1b), OR Doug
+  //    updated a subscription in the Stripe dashboard. The plan is read off
+  //    the subscription (its note, else its product); old price IDs still
+  //    count. Only while it's live: a failed renewal doesn't change the plan,
+  //    and a cancellation arrives as .deleted.
   if (type === 'customer.subscription.updated') {
     const sub = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
     const items = (sub?.items as Record<string, unknown>)?.data as Array<Record<string, unknown>> | undefined;
@@ -851,14 +837,15 @@ Deno.serve(async (req) => {
     const sK = Deno.env.get('STRIPE_PRICE_STARTER');    if (sK)  PRICE_TO_PLAN[sK]  = 'starter';
     const pK = Deno.env.get('STRIPE_PRICE_PRO');        if (pK)  PRICE_TO_PLAN[pK]  = 'pro';
     const eK = Deno.env.get('STRIPE_PRICE_ENTERPRISE'); if (eK)  PRICE_TO_PLAN[eK]  = 'enterprise';
-    const newPlan = PRICE_TO_PLAN[priceId];
+    const newPlan = planFromSubscription(sub) ?? PRICE_TO_PLAN[priceId];
+    const live = ['active', 'trialing'].includes(String(sub?.status || ''));
 
     let tenantId = md.tenant_id || '';
     if (!tenantId && customerId) {
       const { data: t } = await sb.from('tenants').select('id, plan').eq('stripe_customer_id', customerId).maybeSingle();
       if (t) tenantId = t.id as string;
     }
-    if (tenantId && newPlan) {
+    if (tenantId && newPlan && live) {
       await sb.from('tenants').update({ plan: newPlan, updated_at: new Date().toISOString() }).eq('id', tenantId);
     }
     return new Response('ok', { status: 200 });

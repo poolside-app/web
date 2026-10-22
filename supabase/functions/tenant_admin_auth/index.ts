@@ -29,6 +29,7 @@ import { requireOwner } from '../_shared/auth.ts';
 import { checkGlobalSmsKillSwitch } from '../_shared/sms_cap.ts';
 import { isLocked, afterFailure, lockedMessage, lockedEmail, escapeLike, MAX_TRIES } from '../_shared/signin_guard.ts';
 import { sendEmail, emailShell } from '../_shared/send_email.ts';
+import { changePlan, stripeCaller } from '../_shared/poolside_plans.ts';
 
 // Shown when neither a text nor an email could go out (PLAN.md BG1).
 const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
@@ -1332,6 +1333,7 @@ Deno.serve(async (req) => {
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
+    params.append('payment_method_types[0]', 'card');
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]', 'Poolside Premium Setup');
     params.append('line_items[0][price_data][product_data][description]', 'White-glove onboarding: data import, payments wiring, kickoff + follow-up calls.');
@@ -1444,6 +1446,7 @@ Deno.serve(async (req) => {
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const params = new URLSearchParams();
     params.append('mode', 'payment');
+    params.append('payment_method_types[0]', 'card');
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]', `Poolside — ${pack.label}`);
     params.append('line_items[0][price_data][product_data][description]',
@@ -1483,15 +1486,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Only the club owner can change the plan' }, 403);
     }
     const newPlan = String(body.new_plan ?? '').trim().toLowerCase();
-    const PRICE_IDS: Record<string, string | undefined> = {
-      starter:    Deno.env.get('STRIPE_PRICE_STARTER'),
-      pro:        Deno.env.get('STRIPE_PRICE_PRO'),
-      enterprise: Deno.env.get('STRIPE_PRICE_ENTERPRISE'),
-    };
-    const priceId = PRICE_IDS[newPlan];
-    if (!priceId) {
-      return jsonResponse({ ok: false, error: `Plan "${newPlan}" not available for self-serve upgrade yet — email hello@poolsideapp.com.` }, 400);
-    }
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     if (!stripeKey) return jsonResponse({ ok: false, error: 'Stripe not configured' }, 500);
 
@@ -1503,37 +1497,23 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: `Already on the ${newPlan} plan.` }, 400);
     }
 
-    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    const params = new URLSearchParams();
-    params.append('mode', 'subscription');
-    params.append('line_items[0][price]', priceId);
-    params.append('line_items[0][quantity]', '1');
-    params.append('success_url', `${clubUrl}/club/admin/billing.html?upgraded=1`);
-    params.append('cancel_url',  `${clubUrl}/club/admin/billing.html?upgraded=0`);
-    if (tenant.stripe_customer_id) {
-      params.append('customer', tenant.stripe_customer_id);
-    }
-    params.append('client_reference_id', `plan_upgrade:${tenant.id}:${newPlan}`);
-    params.append('metadata[tenant_id]', tenant.id);
-    params.append('metadata[new_plan]',  newPlan);
-    params.append('metadata[kind]',      'plan_upgrade');
-    params.append('subscription_data[metadata][tenant_id]', tenant.id);
-    params.append('subscription_data[metadata][new_plan]',  newPlan);
-
-    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + btoa(`${stripeKey}:`),
-        'Content-Type':  'application/x-www-form-urlencoded',
-      },
-      body: params.toString(),
+    // A club with no plan gets a checkout link; one already on a plan has that
+    // subscription switched, never a second one (PLAN.md BL1b).
+    const r = await changePlan(stripeCaller(stripeKey), {
+      tenantId: tenant.id as string, newPlan,
+      customerId: (tenant.stripe_customer_id as string | null) ?? null,
+      clubUrl: `https://${tenant.slug}.poolsideapp.com`,
     });
-    if (!res.ok) {
-      const t = await res.text();
-      return jsonResponse({ ok: false, error: `Stripe ${res.status}: ${t.slice(0, 300)}` }, 502);
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error || 'Stripe could not change the plan. Email support@poolsideapp.com.' }, 502);
+    if (r.switched) {
+      // Stripe has already charged or credited the difference; the webhook
+      // says the same, but the page shouldn't wait for it.
+      await sb.from('tenants').update({ plan: r.plan, updated_at: new Date().toISOString() }).eq('id', tenant.id);
+      await sb.from('audit_log').insert({ tenant_id: tenant.id, kind: 'plan.switched', summary: `Plan switched from ${tenant.plan} to ${r.plan}`,
+        actor_id: payload.synthetic ? null : payload.sub, actor_kind: 'tenant_admin' });
+      return jsonResponse({ ok: true, switched: true, plan: r.plan });
     }
-    const session = await res.json();
-    return jsonResponse({ ok: true, url: session.url, session_id: session.id });
+    return jsonResponse({ ok: true, url: r.url });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

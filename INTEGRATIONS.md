@@ -70,15 +70,22 @@ to the tenant's account; Poolside takes a 1.5% `application_fee_amount`.
 1. Sign up at [stripe.com](https://stripe.com) under Doug's own Gmail (account separation per memory).
 2. Enable Connect in the Stripe dashboard (Settings → Connect → Get started).
 3. Get your platform's Secret Key (starts with `sk_test_` or `sk_live_`).
-4. **Configure the webhook** in Stripe Dashboard → Developers → Webhooks:
-   - URL: `https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/stripe_webhook`
-   - Events: `checkout.session.completed`, `account.updated`
-   - Copy the signing secret (starts with `whsec_`).
+4. **Configure two webhooks** in Stripe Dashboard → Developers → Webhooks, both to
+   `https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/stripe_webhook` (PLAN.md BL1):
+   - **Connected accounts** (families paying their club): `checkout.session.completed`,
+     `account.updated`, `charge.refunded`, `charge.dispute.created`,
+     `payment_intent.payment_failed`. Its signing secret is `STRIPE_WEBHOOK_SECRET`.
+   - **Your account** (clubs paying Poolside: texts, Premium Setup, plans):
+     `checkout.session.completed`, `customer.subscription.updated`,
+     `customer.subscription.deleted`. Its signing secret is `STRIPE_WEBHOOK_SECRET_PLATFORM`.
+   - Plans need no prices made in Stripe: each checkout carries its price on a
+     fixed product per plan (`_shared/poolside_plans.ts`), made on first use.
 
 **Set secrets:**
 ```
 STRIPE_SECRET_KEY=<your-stripe-secret-key>
 STRIPE_WEBHOOK_SECRET=<your-stripe-webhook-signing-secret>
+STRIPE_WEBHOOK_SECRET_PLATFORM=<the-your-account-webhook-signing-secret>
 ```
 
 **After setting:** each tenant clicks "Connect Stripe" in their settings to

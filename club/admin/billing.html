@@ -107,7 +107,7 @@
 
   <div class="card" id="upgrade-card">
     <h2>Upgrade</h2>
-    <p style="font-size:14px;line-height:1.6" id="upgrade-blurb">Pick a tier and we'll take you to Stripe to set up your subscription. Your plan changes the moment Stripe confirms the payment — no waiting.</p>
+    <p style="font-size:14px;line-height:1.6" id="upgrade-blurb">Pick a plan. The first time, we take you to Stripe to pay for the year. After that, switching is instant: going up charges your card the difference for the rest of your year, going down leaves a credit for your next renewal.</p>
     <div id="upgrade-banner" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
     <div id="upgrade-actions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
   </div>
@@ -121,6 +121,7 @@
       only messages you choose to send to everyone.
     </p>
     <p id="sms-balance" style="font-size:14px;margin:0 0 12px">Loading…</p>
+    <div id="texts-banner" style="display:none;margin:0 0 12px;padding:12px 14px;border-radius:10px;font-size:14px"></div>
     <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
       Buy extra if you run out mid-season — they're used only after your yearly
       allowance is gone, and they don't expire. Prepaid, so there's never a
@@ -378,17 +379,25 @@ const TIERS = [
     document.getElementById('upgrade-blurb').textContent = 'Only the club owner can change the plan. Ask your owner to upgrade from this page.';
   } else {
     const upgradeableTiers = TIERS.filter(t => t.key !== 'free' && t.key !== planKey);
+    // A cheaper plan is a switch, not an upgrade (PLAN.md BL1b).
+    const curPrice = (TIERS.find(t => t.key === planKey) || { price: 0 }).price;
+    const verb = t => t.price < curPrice ? 'Switch to' : 'Upgrade to';
     if (upgradeableTiers.length === 0) {
       document.getElementById('upgrade-blurb').textContent = "You're on the top tier — nothing to upgrade to. Need custom limits? Email support@poolsideapp.com.";
     } else {
       actions.innerHTML = upgradeableTiers.map(t => `
         <button class="btn" data-plan="${t.key}" style="background:${t.featured ? 'var(--sun)' : 'var(--blue)'};color:${t.featured ? '#422006' : '#fff'}">
-          Upgrade to ${escapeHtml(t.name)} — $${t.price}/yr
+          ${verb(t)} ${escapeHtml(t.name)} — $${t.price}/yr
         </button>`).join('');
       actions.addEventListener('click', async (e) => {
         const btn = e.target.closest('button[data-plan]');
         if (!btn) return;
-        btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Opening Stripe…';
+        const t = TIERS.find(x => x.key === btn.dataset.plan);
+        const ask = t.price < curPrice
+          ? `Switch to ${t.name} ($${t.price} a year)? If you already pay for a plan, it changes now and the difference is a credit on your next renewal.`
+          : `Upgrade to ${t.name} ($${t.price} a year)? If you already pay for a plan, your card on file is charged the difference for the rest of your year. Otherwise you'll pay on Stripe's page.`;
+        if (!confirm(ask)) return;
+        btn.disabled = true; const orig = btn.textContent; btn.textContent = 'One moment…';
         try {
           const r = await fetch(ME_URL, {
             method: 'POST',
@@ -396,6 +405,14 @@ const TIERS = [
             body: JSON.stringify({ action: 'start_plan_upgrade', new_plan: btn.dataset.plan }),
           });
           const d = await r.json();
+          // Already on a plan: switched in place, nothing to pay on Stripe's page.
+          if (d.ok && d.switched) {
+            banner.style.display = 'block';
+            banner.style.background = '#dcfce7'; banner.style.color = '#14532d'; banner.style.border = '1px solid #86efac';
+            banner.textContent = `✓ You're on ${t.name} now. Stripe emails the receipt for the difference.`;
+            setTimeout(() => location.reload(), 2500);
+            return;
+          }
           if (!d.ok || !d.url) throw new Error(d.error || 'Could not start upgrade');
           window.location.href = d.url;
         } catch (err) {
@@ -405,6 +422,20 @@ const TIERS = [
           btn.disabled = false; btn.textContent = orig;
         }
       });
+    }
+  }
+
+  // Back from buying texts (PLAN.md BL1): the webhook adds them a moment later.
+  {
+    const tb = document.getElementById('texts-banner');
+    if (params.get('texts') === '1') {
+      tb.style.display = 'block';
+      tb.style.background = '#dcfce7'; tb.style.color = '#14532d'; tb.style.border = '1px solid #86efac';
+      tb.textContent = '✓ Thanks. Your 3,000 texts are added to the balance above within a minute (refresh to see them).';
+    } else if (params.get('texts') === '0') {
+      tb.style.display = 'block';
+      tb.style.background = '#fef3c7'; tb.style.color = '#92400e'; tb.style.border = '1px solid #fcd34d';
+      tb.textContent = 'No texts bought. No charge made.';
     }
   }
 
