@@ -18,6 +18,8 @@ const LOCAL = {
   '/js/pooltime.js': 'js/pooltime.js', '/club/admin/events.html': 'club/admin/events.html', '/club/admin/member-help.html': 'club/admin/member-help.html', '/js/calendar.js': 'js/calendar.js', '/governance.html': 'governance.html', '/club/admin/board-meetings.html': 'club/admin/board-meetings.html', '/club/admin/board.html': 'club/admin/board.html', '/club/admin/admins.html': 'club/admin/admins.html', '/m/renew.html': 'm/renew.html', '/renew.html': 'renew.html', '/club/index.html': 'club/index.html', '/club/admin/events.html': 'club/admin/events.html',
 };
 
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';   // as the pages have it
+
 // RENDER_ONLY=apply,login,members,home limits the run to those pages.
 const ONLY = (process.env.RENDER_ONLY || '').split(',').map(x => x.trim()).filter(Boolean);
 const want = page => !ONLY.length || ONLY.includes(page);
@@ -85,8 +87,10 @@ export async function renderChecks({ check, read, sql, jwt }) {
     await a.evaluate(() => { for (const [id, v] of [['address', '1 Main St'], ['primary_phone', '(925) 555-0100'], ['primary_email', 'jamie@example.com'], ['emergency_name', 'Pat Rivera'], ['emergency_phone', '(925) 555-0101']]) document.getElementById(id).value = v; });
     await a.evaluate(() => document.getElementById('next-btn').click());
     await wait(300);
+    await a.waitForFunction(() => document.querySelector('[data-adult="0"][data-field="name"]')?.value, { timeout: 5000 }).catch(() => {});
     const adult1 = await a.evaluate(() => document.querySelector('[data-adult="0"][data-field="name"]')?.value);
-    check('H1: "Your name" fills the last name and Adult #1', fam === 'Rivera' && adult1 === 'Jamie Rivera', `last "${fam}", adult #1 "${adult1}"`);
+    const stuck = adult1 === undefined ? await a.evaluate(() => [...document.querySelectorAll('.field-err, .err.show')].map(e => e.textContent.trim()).filter(Boolean).join(' | ')) : '';
+    check('H1: "Your name" fills the last name and Adult #1', fam === 'Rivera' && adult1 === 'Jamie Rivera', `last "${fam}", adult #1 "${adult1}"${stuck ? `; page 1 says: ${stuck}` : ''}`);
     // H2: headcount picks the level (unless they chose one). The levels
     // render after the policies load.
     await a.waitForSelector('input[name="tier_slug"]', { timeout: 20000 });
@@ -158,16 +162,18 @@ export async function renderChecks({ check, read, sql, jwt }) {
             links: [...card.querySelectorAll('a[data-setup]')].map(a => a.getAttribute('href')) };
         });
         // K4: "Your job" with the President's purpose and job description.
-        await pg.waitForFunction(() => document.getElementById('my-job-card')?.style.display !== 'none', { timeout: 15000 }).catch(() => {});
-        const job = await pg.evaluate(() => ({
-          title: document.querySelector('#my-job-card h2')?.textContent,
-          desc: document.querySelector('#my-job-card details')?.textContent || '',
-          shown: document.getElementById('my-job-card')?.style.display !== 'none',
-        }));
-        check('K4: the dashboard shows "Your job: President" with the job description',
-          job.shown && /Your job: President/.test(job.title || '') && /Every month/.test(job.desc), JSON.stringify(job).slice(0, 200));
-        check('J1: the dashboard shows the one checklist (9 items, real screens)',
-          setup.shown && (setup.folded || (setup.rows === 9 && setup.links.every(h => !/wizard|setup\.html/.test(h)))), JSON.stringify(setup).slice(0, 220));
+        // Since the board home (PLAN.md W): "Your job as President", folded, with the job description inside.
+        await pg.waitForFunction(() => !!document.getElementById('my-job'), { timeout: 15000 }).catch(() => {});
+        const job = await pg.evaluate(() => { const d = document.getElementById('my-job'); if (d) d.open = true;
+          return { title: d?.querySelector('summary')?.textContent || '', shown: !!d }; });
+        await wait(1000);
+        job.desc = await pg.evaluate(() => document.getElementById('my-job-body')?.textContent.trim() || '');
+        check('K4: the dashboard shows "Your job as President" with the job description',
+          job.shown && /Your job as President/.test(job.title) && job.desc.length > 40, JSON.stringify(job).slice(0, 200));
+        // The checklist goes away once the club's setup is done (Bishop's is).
+        const st = await fetch(`${SUPABASE_URL}/functions/v1/tenant_settings`, { method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${tok}` }, body: JSON.stringify({ action: 'setup_status' }) }).then(r => r.json()).catch(() => ({}));
+        check('J1: the dashboard shows the one checklist (9 items, real screens) until setup is done',
+          st.complete ? !setup.shown : setup.shown && (setup.folded || (setup.rows === 9 && setup.links.every(h => !/wizard|setup\.html/.test(h)))), JSON.stringify({ complete: st.complete, setup }).slice(0, 220));
       }
       if (path === '/club/admin/payments.html') {
         // J8: prices are on this page, inside Money setup with the rest.
@@ -196,16 +202,17 @@ export async function renderChecks({ check, read, sql, jwt }) {
       }
       if (path === '/club/admin/settings.html') {
         // J5–J7: Season has the on-sale month, hours per day, one gate section.
+        // The on-sale month became one current season with a button (PLAN.md U2).
         const set = await pg.evaluate(() => ({
-          onSale: document.getElementById('renewal_opens_month')?.value,
-          note: document.getElementById('selling-note')?.textContent || '',
+          season: document.getElementById('season-current')?.textContent.trim(),
+          button: !!document.getElementById('season-close-btn'),
           days: document.querySelectorAll('[data-day-hours]').length,
           gate: document.getElementById('gate-card')?.innerText.slice(0, 40) || '',
           methods: document.querySelectorAll('#access-methods input[type="checkbox"]').length,
           remote: getComputedStyle(document.getElementById('gate-remote')).display,
         }));
-        check('J5–J7: Settings shows the on-sale month, 7 day rows and one Gate & check-in section',
-          set.onSale && /season/.test(set.note) && set.days === 7 && /Gate & check-in/.test(set.gate) && set.methods >= 1 && set.remote !== 'none', JSON.stringify(set));
+        check('J5–J7: Settings shows the current season with its button, 7 day rows and one Gate & check-in section',
+          /^20\d\d$/.test(set.season || '') && set.button && set.days === 7 && /Gate & check-in/.test(set.gate) && set.methods >= 1 && set.remote !== 'none', JSON.stringify(set));
       }
       if (path === '/club/admin/board.html') {
         // K2: the Board page: the spending rule, every position with its
@@ -229,7 +236,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
       if (path === '/club/admin/board-meetings.html') {
         await pg.waitForFunction(() => /Bylaws/.test(document.getElementById('bylaws-card')?.textContent || ''), { timeout: 15000 }).catch(() => {});
         const by = await pg.evaluate(() => document.getElementById('bylaws-card')?.innerText.replace(/\s+/g, ' ') || '');
-        check('K6: the Board minutes page has the bylaws card, with upload for the president', /Bylaws/.test(by) && /Upload/.test(by) && /public/.test(by), by.slice(0, 160));
+        check('K6: the Board minutes page has the bylaws card, with upload for the president', /Bylaws/.test(by) && /Upload/.test(by) && /members only/i.test(by), by.slice(0, 160));
         // L1–L3: the Next meeting card, and the agenda view (sample data, so
         // nothing real is created).
         await pg.waitForFunction(() => /Not planned yet|·/.test(document.getElementById('next-when')?.textContent || ''), { timeout: 15000 }).catch(() => {});
@@ -277,14 +284,15 @@ export async function renderChecks({ check, read, sql, jwt }) {
     const txt = await pub.evaluate(() => document.body.innerText);
     check('public page: loads with no errors, no anonymous feedback', pub.errs.length === 0 && !/anonymous feedback/i.test(txt), pub.errs.join(' | '));
     // K6: the public "Bylaws & board minutes" page: bylaws first, then the board.
-    const gov = await open('/governance.html');
+    // Members only since PLAN.md BJ1: opened with the board sign-in on the phone.
+    const gov = await open('/governance.html', { poolside_tenant_token: jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' }) });
     await gov.waitForFunction(() => !document.querySelector('#bylaws-host .meeting-card[style*="height"]'), { timeout: 15000 }).catch(() => {});
     const g = await gov.evaluate(() => ({
       bylaws: document.getElementById('bylaws-host')?.innerText.trim(),
       board: document.getElementById('board-host')?.innerText.trim(),
       wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     }));
-    check('K6: the public page shows the bylaws section and the board (names and positions)',
+    check('K6: the members\' page shows the bylaws section and the board (names and positions)',
       /bylaws/i.test(g.bylaws || '') && /Doug.*President/.test(g.board || '') && g.wide <= 1 && gov.errs.length === 0, JSON.stringify(g).slice(0, 200));
     await gov.screenshot({ path: '/tmp/poolside-governance.png' });
     }
@@ -294,7 +302,7 @@ export async function renderChecks({ check, read, sql, jwt }) {
     // H5: the signed-in renewal page takes their referral credit off. Outside
     // the renewal window the page says renewals aren't open, so the answer's
     // open/paid flags are set for the render; the price is the server's.
-    await sql(`update households set referral_credits_cents = 10000, paid_until_year = extract(year from now())::int - 1 where id = '${m.household_id}'`);
+    await sql(`update households set referral_credits_cents = 10000, paid_until_year = (select coalesce((value->'membership'->>'year')::int, extract(year from now())::int) from settings where tenant_id = '${club.id}') - 1 where id = '${m.household_id}'`);
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
     const rp = await open('/m/renew.html', { poolside_member_token: memTok },
       (action, json) => action === 'renewal_options' && json ? { ...json, open: true, already_paid: false } : json);
@@ -333,20 +341,19 @@ export async function renderChecks({ check, read, sql, jwt }) {
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
     // H7: a code marked for the member home shows as a banner while they
     // still owe. A sample code is added to the page's data for the render.
-    await sql(`update households set paid_until_year = extract(year from now())::int - 1 where id = '${m.household_id}'`);
+    await sql(`update households set paid_until_year = (select coalesce((value->'membership'->>'year')::int, extract(year from now())::int) from settings where tenant_id = '${club.id}') - 1 where id = '${m.household_id}'`);
     const h = await open('/m/', { poolside_member_token: memTok }, (action, json) =>
       json && json.public_settings ? { ...json, public_settings: { ...json.public_settings,
         home_codes: [{ code: 'EARLYBIRD', label: 'Early bird', amount_cents: 5000, percent_off: null, expires_on: '2099-03-01' }] } } : json);
     await h.waitForSelector('.hero-card', { timeout: 30000 });
     await wait(2500);   // the calendar feeds load after the page
-    const first = await h.$eval('.hero-card .sub', el => el.textContent.trim());
-    const order = await h.evaluate(() => {
-      const fam = document.querySelector('a[href="/m/family.html"].card'), today = document.getElementById('today-block');
-      return fam && today ? !!(fam.compareDocumentPosition(today) & Node.DOCUMENT_POSITION_FOLLOWING) : null;
-    });
+    // The home's small banner (PLAN.md U4, V): "Hi, <first name>!" and the date.
+    const first = await h.$eval('.hero-card', el => el.textContent.replace(/\s+/g, ' ').trim());
+    // The family and dues card lives on the My family tab (PLAN.md V).
+    const order = await h.evaluate(() => !!document.querySelector('section[data-pane="family"] a[href="/m/family.html"].card'));
     const coming = await h.$eval('#coming-up', el => el.innerText.replace(/\s+/g, ' '));
-    check('D3: a first visit says "Welcome to"', /^Welcome to /.test(first), first);
-    check('D8: the family and dues card is above Today', order === true, String(order));
+    check('D3: the home greets them by first name, with today\'s date', /^Hi, \S+!/.test(first) && /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \w+ \d+/.test(first), first.slice(0, 120));
+    check('D8: the family and dues card is on the My family tab', order === true, String(order));
     const trimmed = await h.evaluate(() => ({
       feedback: /anonymous feedback/i.test(document.body.innerText),
       popup: !!document.querySelector('.campaign-popup-host'),
@@ -381,8 +388,8 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('D4: sign-ups pick from your family in the page', pick.open && pick.text.includes(`${FAMILY} Tester`) && /Someone else/.test(pick.text), pick.text.slice(0, 160));
     await h.reload({ waitUntil: 'networkidle2' });
     await h.waitForSelector('.hero-card', { timeout: 30000 });
-    const again = await h.$eval('.hero-card .sub', el => el.textContent.trim());
-    check('D3: the next visit says "Welcome back"', /^Welcome back to /.test(again), again);
+    const again = await h.$eval('.hero-card', el => el.textContent.replace(/\s+/g, ' ').trim());
+    check('D3: and the same on the next visit', /^Hi, \S+!/.test(again), again.slice(0, 120));
     check('member home: no page errors or browser pop-ups', h.errs.length === 0, h.errs.join(' | '));
     }
 
@@ -496,7 +503,8 @@ export async function renderChecks({ check, read, sql, jwt }) {
     check('N3: parties page has no page errors', pa.errs.length === 0, pa.errs.join(' | '));
 
     const memTok3 = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
-    const mh = await open('/m/', { poolside_member_token: memTok3 });
+    // A phone: the prompt stays hidden on a computer (js/member-push.js isComputer).
+    const mh = await open('/m/', { poolside_member_token: memTok3 }, null, 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36');
     await mh.waitForSelector('.hero-card', { timeout: 30000 });
     await wait(1500);
     const prompt = await mh.evaluate(() => { const el = document.getElementById('push-prompt'); return el && getComputedStyle(el).display !== 'none' ? el.innerText.replace(/\s+/g, ' ') : ''; });

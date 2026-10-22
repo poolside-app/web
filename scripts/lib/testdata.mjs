@@ -5,9 +5,14 @@
 const q = s => `'${String(s).replace(/'/g, "''")}'`;
 
 /** A paid, gate-enabled household with one primary member. */
+// The club's current season: its pinned year (Settings → Season), else this
+// year. Bishop has been on 2027 since October, so "paid this calendar year"
+// is no longer paid for the season (PLAN.md BL3).
+export const seasonSql = tenantId => `coalesce((select (value->'membership'->>'year')::int from settings where tenant_id = ${q(tenantId)}), extract(year from now())::int)`;
+
 export async function makeTempMember(sql, tenantId, familyName) {
   const [hh] = await sql(`insert into households (tenant_id, family_name, tier, active, dues_paid_for_year, paid_until_year)
-    values (${q(tenantId)}, ${q(familyName)}, 'family', true, true, extract(year from now())::int)
+    values (${q(tenantId)}, ${q(familyName)}, 'family', true, true, ${seasonSql(tenantId)})
     returning id`);
   const [m] = await sql(`insert into household_members (tenant_id, household_id, name, role, active, can_unlock_gate, can_book_parties, confirmed_at)
     values (${q(tenantId)}, ${q(hh.id)}, ${q(familyName + ' Tester')}, 'primary', true, true, true, now())

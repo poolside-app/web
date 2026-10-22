@@ -319,8 +319,14 @@ if (live('K6')) {
     check('K6: only the President or Secretary posts the bylaws', no.status === 403, short(no));
     const elsewhere = await fn('board_meetings', 'set_bylaws', tok(s), { url: 'https://example.com/bylaws.pdf' });
     check('K6: only a PDF uploaded to the club counts', elsewhere.status === 400, short(elsewhere));
-    const v1 = await fn('board_meetings', 'set_bylaws', tok(s), { url: fileUrl(1), file_name: 'Bishop Bylaws 2025.pdf' });
-    const v2 = await fn('board_meetings', 'set_bylaws', tok(s), { url: fileUrl(2), file_name: 'Bishop Bylaws 2026.pdf' });
+    // Real files, uploaded the way the page does (tenant_upload), so the move
+    // to the private club-docs folder (PLAN.md BJ1) really happens.
+    const upload = async n => (await fetch(`${SUPABASE_URL}/functions/v1/tenant_upload`, {
+      method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${tok(s)}` },
+      body: JSON.stringify({ filename: `simtest-bylaws-${STAMP}-${n}.pdf`, content_type: 'application/pdf', base64: Buffer.from('%PDF-1.4\n%%EOF\n').toString('base64') }),
+    }).then(r => r.json())).url;
+    const v1 = await fn('board_meetings', 'set_bylaws', tok(s), { url: await upload(1), file_name: 'Bishop Bylaws 2025.pdf' });
+    const v2 = await fn('board_meetings', 'set_bylaws', tok(s), { url: await upload(2), file_name: 'Bishop Bylaws 2026.pdf' });
     check('K6: the Secretary posts the bylaws, and a new version keeps the old', v1.ok && v2.ok, short({ v1: v1.error, v2: v2.error }));
     // Members only since PLAN.md BJ1: a signed-in member or board member, and
     // the files behind hour-long private links.
@@ -332,10 +338,20 @@ if (live('K6')) {
       && pub.board.some(m => /Doug/.test(m.name) && m.titles.includes('President')) && pub.board.some(m => m.titles.includes('Secretary'))
       && !JSON.stringify(pub.board).includes('description'), short(pub.board));
   } finally {
-    await sql(`delete from club_documents where tenant_id = '${club.id}' and url like '%simtest-bylaws-${STAMP}%'`);
+    // The test's files: moved to the private folder (url cleared, storage_path set), or not.
+    const docs = await sql(`select id, storage_path from club_documents where tenant_id = '${club.id}' and uploaded_at >= '${started}'
+      and (url like '%simtest-bylaws-${STAMP}%' or file_name in ('Bishop Bylaws 2025.pdf', 'Bishop Bylaws 2026.pdf'))`);
+    const paths = docs.map(d => d.storage_path).filter(Boolean);
+    if (paths.length) {
+      // SQL can't remove storage files: the storage API with the project's service key, held only for this call.
+      const keys = await fetch(`https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/api-keys?reveal=true`, { headers: { Authorization: `Bearer ${SUPABASE_ACCESS_TOKEN}` } }).then(r => r.json());
+      const service = (Array.isArray(keys) ? keys : []).find(k => k.name === 'service_role')?.api_key;
+      if (service) await fetch(`${SUPABASE_URL}/storage/v1/object/club-docs`, { method: 'DELETE', headers: { 'content-type': 'application/json', Authorization: `Bearer ${service}`, apikey: service }, body: JSON.stringify({ prefixes: paths }) });
+    }
+    if (docs.length) await sql(`delete from club_documents where id in (${docs.map(d => `'${d.id}'`).join(',')})`);
     await sql(`delete from audit_log where tenant_id = '${club.id}' and (kind like 'board_position.%' or kind = 'bylaws.uploaded') and created_at >= '${started}'`);
     await purgeTempAdmins(sql, club.id);
-    const [left] = await sql(`select (select count(*) from club_documents where url like '%simtest%')::int as docs,
+    const [left] = await sql(`select (select count(*) from club_documents where url like '%simtest%' or uploaded_by_name like 'SimTest%')::int as docs,
       (select count(*) from board_position_holders h join board_positions p on p.id = h.position_id where p.tenant_id = '${club.id}' and p.slug = 'secretary')::int as sec`);
     check('K6: Bishop is back as it was', left.docs === 0 && left.sec === 0, short(left));
   }

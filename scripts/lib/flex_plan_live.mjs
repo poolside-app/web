@@ -364,6 +364,10 @@ export async function runLive({ check, short }) {
     if (run('S9')) {
       console.log('M8 · S9 the paid-in-full deadline');
       await setSettings({ ...planCfg, milestones: [{ date: '2026-09-01', min_pct: 50, label: 'Half paid' }, { date: '2026-10-06', min_pct: 100, label: 'Paid in full' }] });
+      // A plan never ends over a payment the board hadn't approved (PLAN.md
+      // S): here the board had ticked every payment still owed.
+      await sql(`update payment_plan_installments set approved_at = now()
+        where tenant_id = ${q(tenantId)} and status in ('pending', 'retrying') and approved_at is null`);
       const c = await cron();
       const ended = await sql(`select id, status, ended_reason, enforced_at, household_id from payment_plans where tenant_id = ${q(tenantId)} and ended_reason = 'deadline'`);
       check('S9: plans still owing after the deadline end', c.ok && c.past_deadline >= 1 && ended.length >= 1, short({ c, ended: ended.length }));

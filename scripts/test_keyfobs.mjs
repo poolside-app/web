@@ -164,6 +164,8 @@ if (LIVE) {
       const c3m = await fn('keyfobs', { action: 'cancel', ids: [r3.fob?.id] }, memTok);
       const c3b = await fn('keyfobs', { action: 'cancel', id: r3.fob?.id }, admTok);
       check('X2: once they say they sent the Venmo, neither side can cancel', !c3m.ok && !c3b.ok && !(await gone(r3.fob?.id)), short({ c3m, c3b }));
+      // That claimed request stays in their list; clear it so the later steps start from one fob.
+      if (r3.fob?.id) await sql(`delete from keyfobs where id = '${r3.fob.id}'`);
       // The checkout was still open when they canceled, then they paid.
       const r4 = await fn('keyfobs', { action: 'request' }, memTok);
       const p4 = await fn('stripe_checkout', { action: 'keyfob', keyfob_id: r4.fob?.id }, memTok);
@@ -197,7 +199,8 @@ if (LIVE) {
 
     // The family asks for another one ($15) and pays by card.
     const mine = await fn('keyfobs', { action: 'mine' }, memTok);
-    check('P3: the family sees its fobs and the $15 fee', mine.ok && mine.fobs.length === 1 && mine.fee_cents === 1500 && mine.card_total_cents === 1576, short(mine));
+    check('P3: the family sees its fobs and the $15 fee', mine.ok && mine.fobs.length === 1 && mine.fee_cents === 1500 && mine.card_total_cents === 1576,
+      short({ fobs: (mine.fobs || []).map(f => `${f.status}/${f.reason}/${f.price_cents}`), fee: mine.fee_cents, card: mine.card_total_cents }));
     const req = await fn('keyfobs', { action: 'request' }, memTok);
     check('P3: "Request another fob" makes a $15 request', req.ok && req.fob?.price_cents === 1500 && req.fob?.payment_status === 'unpaid' && !req.fob?.included, short(req));
     const pay = await fn('stripe_checkout', { action: 'keyfob', keyfob_id: req.fob.id }, memTok);

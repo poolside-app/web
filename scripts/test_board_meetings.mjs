@@ -203,7 +203,8 @@ try {
   // A fix goes through approval again before members see it (BJ3).
   const re = await meetings('submit_minutes', tok(noteId), { id: m.id });
   check('the fix, submitted again, is approved and posted', re.ok && re.meeting?.minutes_status === 'approved', short(re));
-  const [aud] = await sql(`select metadata from audit_log where entity_id = '${m.id}' and kind = 'board_meeting.edited'
+  // Approved minutes: a fix starts an amendment (BJ3); either way the old version is kept.
+  const [aud] = await sql(`select metadata from audit_log where entity_id = '${m.id}' and kind in ('board_meeting.edited', 'board_meeting.amendment_started')
     order by created_at desc limit 1`);
   check('the old version is kept in the audit log', aud?.metadata?.before?.notes_md === before.notes_md, short(aud ?? {}));
   const d1 = await meetings('delete', tok(noteId), { id: m.id });
