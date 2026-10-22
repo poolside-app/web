@@ -950,7 +950,7 @@ function demoKept(fn, body, ctx) {
       if (a === 'cancel_my_party') { const p = (state.parties || []).find(x => x.id === body.id); if (p) p.status = 'cancelled'; return { ok: true }; }
       break;
     case 'stripe_checkout':
-      if (a === 'party_booking') { markPartyPaid(state, body.party_id, 'stripe', now); return { ok: true, url: '/m/?party_paid=1' }; }
+      if (a === 'party_booking') { markPartyPaid(state, body.party_id, 'stripe', now); return { ok: true, url: '/m/index.html?paid=1#parties' }; }
       break;
     case 'unlock_gate':
       // The host family gets the party door on party day (the Riveras have one today).
