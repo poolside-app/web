@@ -69,8 +69,28 @@ for (const [side, path] of pages) {
   if (errs.length || shown.length) problems.push(`${path}: ${[...errs, ...shown].join(' / ').slice(0, 200)}`);
   await p.close();
 }
-await b.close();
 check(`${pages.length} screens open with no script errors or error boxes`, !problems.length, problems.join('\n      '));
+
+// PLAN.md BJ7 (Doug's walkthrough list, items 24a and 26).
+console.log('BJ7 · the demo shows card payments working; a connected gate ticks Keyfob / RFID gate');
+check('the demo\'s Stripe answer says Poolside\'s card setup is done', siteRespond('stripe_connect', { action: 'status' }, { side: 'board', state: {}, pre })?.stripe_configured === true);
+{
+  const p = await b.newPage();
+  await p.setViewport({ width: 390, height: 844 });
+  await attach(p, { state: {}, answer: (fn, body, ctx) => siteRespond(fn, body, { ...ctx, pre }) });
+  await p.goto(BOARD + '/club/admin/payments.html', { waitUntil: 'networkidle0', timeout: 30000 });
+  await new Promise(r => setTimeout(r, 900));
+  const stripe = await p.evaluate(() => document.getElementById('stripe-status')?.textContent || '');
+  check('  Money → Payments says Stripe is ready, not "aren\'t available yet"', /Stripe ready/.test(stripe) && !/available yet/.test(stripe), stripe.slice(0, 100));
+  await p.goto(BOARD + '/club/admin/settings.html', { waitUntil: 'networkidle0', timeout: 30000 });
+  await new Promise(r => setTimeout(r, 1200));
+  const fob = await p.evaluate(() => { const el = document.querySelector('#access-methods input[data-method="keyfob"]'); return el ? { checked: el.checked, disabled: el.disabled, text: el.closest('label').textContent } : null; });
+  check('  the demo\'s connected gate shows Keyfob / RFID gate ticked, and why', fob?.checked === true && fob?.disabled === true && /connected/i.test(fob?.text || ''), JSON.stringify(fob));
+  await p.close();
+}
+const st = readFileSync(new URL('club/admin/settings.html', root), 'utf8');
+check('a connected gate keeps Keyfob / RFID gate on in any club (it can\'t be unticked while it\'s connected)', /GATE_CONNECTED/.test(st) && /paintAccessMethods\(LAST_SETTINGS/.test(st));
+await b.close();
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

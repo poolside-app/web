@@ -672,7 +672,8 @@ function siteRespond(fn, body, ctx) {
       if (a === 'list') return { ok: true, referrals: [], totals: { pending: 0, approved: 0, paid: 0 } };
       return { ok: true };
     case 'stripe_connect':
-      if (a === 'status') return { ok: true, connected: true, account_id: 'acct_demo', charges_enabled: true, payouts_enabled: true, details_submitted: true, requirements: [] };
+      // stripe_configured: Poolside's own card setup is done, so the demo shows "Stripe ready" (PLAN.md BJ7).
+      if (a === 'status') return { ok: true, stripe_configured: true, connected: true, account_id: 'acct_demo', charges_enabled: true, payouts_enabled: true, details_submitted: true, requirements: [] };
       return { ok: true };
     case 'checkins':
       if (a === 'search') {
