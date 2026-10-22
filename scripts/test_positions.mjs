@@ -267,6 +267,13 @@ if (live('K3')) {
     await fn('board', 'set_holders', ownerTok, { position_id: pos.grounds, admin_ids: [g] });
 
     // A member reports a grounds problem: it goes to the Grounds Director.
+    // Unless another position takes grounds first (Bishop's President takes
+    // every topic, Doug 10/8: "leave them alone"): then a test question would
+    // reach a real board member's phone, so that part is skipped.
+    const before = await fn('help_requests', 'topics', ownerTok);
+    if (before.ok && before.topics?.grounds?.admin_id !== g) {
+      console.log(`  - skipped the grounds question: it goes to ${before.topics?.grounds?.name} (${before.topics?.grounds?.position}), a real board member`);
+    } else {
     const m = await makeTempMember(sql, club.id, `SimPos Family ${STAMP}`);
     const memTok = jwt({ sub: m.id, kind: 'member', tid: club.id, slug: 'bishopestates', hid: m.household_id });
     const ask = await fn('help_requests', 'submit', memTok, { topic: 'grounds', body: 'The women\'s bathroom is out of paper towels. (test)' });
@@ -277,6 +284,7 @@ if (live('K3')) {
       && (gList.help_topics_mine || []).includes('Grounds, bathrooms & cleaning'), short({ n: gList.tasks?.length, mine: gList.help_topics_mine }));
     const topics = await fn('help_requests', 'topics', ownerTok);
     check('K3: Member help shows who handles grounds, by position', topics.ok && topics.topics?.grounds?.admin_id === g && topics.topics?.grounds?.position === 'Grounds Director', short(topics.topics?.grounds));
+    }
 
     // A payments task: the Treasurer's, not everyone who can open Money.
     const [task] = await sql(`insert into admin_tasks (tenant_id, target_scopes, kind, summary, source_kind, source_id)
