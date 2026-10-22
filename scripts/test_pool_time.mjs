@@ -142,18 +142,24 @@ await attempt('parties carry a pool date', async () => {
     check('a 6 PM Pacific party is stamped with that pool day', rows[0]?.pool_date === '2026-07-12', JSON.stringify(rows));
   } finally { await sql(`delete from party_bookings where title like 'tz-test%'`); }
 });
-await attempt('one party per pool day', async () => {
-  let blocked = false, msg = '';
-  try {
-    await sql(`begin;
-      insert into party_bookings (tenant_id, household_id, title, starts_at, status, payment_status)
-        values (${q(tenant.id)}, ${q(member.household_id)}, 'tz-test morning', '2026-07-12T18:00:00Z', 'approved', 'paid');
-      insert into party_bookings (tenant_id, household_id, title, starts_at, status, payment_status)
-        values (${q(tenant.id)}, ${q(member.household_id)}, 'tz-test evening', '2026-07-13T01:00:00Z', 'approved', 'paid');
-      rollback;`);
-  } catch (e) { msg = e.message; blocked = /duplicate key|unique/i.test(e.message); }
-  finally { await sql(`delete from party_bookings where title like 'tz-test%'`); }
-  check('two paid parties on the same pool day are refused (11 AM and 6 PM Pacific)', blocked, msg);
+// Two parties can share a pool day but never overlap (CLAUDE.md, Parties;
+// the party_bookings_booked_no_overlap constraint), not one party a day.
+await attempt('paid parties share a pool day but never overlap', async () => {
+  const two = async (a, b) => {
+    try {
+      await sql(`begin;
+        insert into party_bookings (tenant_id, household_id, title, starts_at, ends_at, status, payment_status)
+          values (${q(tenant.id)}, ${q(member.household_id)}, 'tz-test one', '${a}', '${new Date(Date.parse(a) + 3 * 3600000).toISOString()}', 'approved', 'paid');
+        insert into party_bookings (tenant_id, household_id, title, starts_at, ends_at, status, payment_status)
+          values (${q(tenant.id)}, ${q(member.household_id)}, 'tz-test two', '${b}', '${new Date(Date.parse(b) + 3 * 3600000).toISOString()}', 'approved', 'paid');
+        rollback;`);
+      return '';
+    } catch (e) { return e.message; } finally { await sql(`delete from party_bookings where title like 'tz-test%'`); }
+  };
+  const apart = await two('2026-07-12T18:00:00Z', '2026-07-13T01:00:00Z');   // 11 AM and 6 PM Pacific
+  check('two paid parties on the same pool day, hours apart, are both booked', apart === '', apart);
+  const clash = await two('2026-07-12T18:00:00Z', '2026-07-12T19:00:00Z');   // 11 AM and noon
+  check('two paid parties that overlap are refused', /exclusion|conflicting|overlap/i.test(clash), clash || 'both booked');
 });
 
 // ── A3.3 ────────────────────────────────────────────────────────────────
@@ -185,6 +191,7 @@ await attempt('_shared/ical.ts loads', async () => {
 });
 await attempt('Bishop\'s real feed matches Google after a re-sync', async () => {
   const [feed] = await sql(`select id, ical_url from external_calendar_feeds where tenant_id = ${q(tenant.id)} and enabled limit 1`);
+  if (!feed) { console.log('  - skipped: Bishop has no calendar feed turned on'); return; }
   const text = await (await fetch(feed.ical_url)).text();
   // Only events the sync keeps: from a week ago to six months out.
   const lo = new Date(Date.now() - 6 * 86400_000).toISOString().slice(0, 10).replace(/-/g, '');

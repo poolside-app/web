@@ -244,8 +244,13 @@ if (live('L3')) {
     meetingId = made.meeting?.id;
     const pv = await fn('board_meetings', 'send_agenda', tok(y), { meeting_id: meetingId, preview: true });
     const ch = name => (pv.recipients || []).find(r => r.name.includes(name))?.channel;
-    check('L3: it goes to every board member their way, and not to gate iPads',
-      pv.ok && ch('L3 Texter') === 'text' && ch('L3 Emailer') === 'email' && ch('Doug') === 'email' && !ch('L3 Gate iPad'), short(pv.recipients));
+    // Agendas reach the board by pop-up only (Doug's notification rule,
+    // 10/7): a board member without pop-ups on is listed as missed, whatever
+    // their text or email preference. Gate iPads aren't on the list at all.
+    const names = (pv.recipients || []).map(r => r.name);
+    check('L3: it goes to every board member by pop-up, says who has them off, and not to gate iPads',
+      pv.ok && ch('L3 Texter') === null && ch('L3 Emailer') === null && (pv.recipients || []).every(r => r.channel === 'popup' || r.channel === null)
+      && names.some(n => /L3 Texter/.test(n)) && !names.some(n => /L3 Gate iPad/.test(n)), short(pv.recipients));
     const [m] = await sql(`select agenda_sent_at from board_meetings where id = '${meetingId}'`);
     check('L3: a preview sends nothing and isn\'t recorded as sent', m && !m.agenda_sent_at, short(m));
   } finally {

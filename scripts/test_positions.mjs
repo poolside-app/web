@@ -322,9 +322,12 @@ if (live('K6')) {
     const v1 = await fn('board_meetings', 'set_bylaws', tok(s), { url: fileUrl(1), file_name: 'Bishop Bylaws 2025.pdf' });
     const v2 = await fn('board_meetings', 'set_bylaws', tok(s), { url: fileUrl(2), file_name: 'Bishop Bylaws 2026.pdf' });
     check('K6: the Secretary posts the bylaws, and a new version keeps the old', v1.ok && v2.ok, short({ v1: v1.error, v2: v2.error }));
-    const pub = await fn('board_meetings', 'list_public', null, { slug: 'bishopestates' });
-    check('K6: the public page gets the current bylaws and earlier versions, with no sign-in',
-      pub.ok && pub.bylaws?.current?.url === fileUrl(2) && pub.bylaws?.earlier?.some(v => v.url === fileUrl(1)), short(pub.bylaws));
+    // Members only since PLAN.md BJ1: a signed-in member or board member, and
+    // the files behind hour-long private links.
+    const pub = await fn('board_meetings', 'governance', tok(n));
+    check('K6: the members\' page gets the current bylaws and earlier versions, behind private links',
+      pub.ok && pub.bylaws?.current?.file_name === 'Bishop Bylaws 2026.pdf' && /\/object\/sign\/club-docs\//.test(pub.bylaws?.current?.url || '')
+      && pub.bylaws?.earlier?.some(v => v.file_name === 'Bishop Bylaws 2025.pdf'), short(pub.bylaws));
     check('K6: and the board: names and positions only', Array.isArray(pub.board)
       && pub.board.some(m => /Doug/.test(m.name) && m.titles.includes('President')) && pub.board.some(m => m.titles.includes('Secretary'))
       && !JSON.stringify(pub.board).includes('description'), short(pub.board));

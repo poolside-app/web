@@ -144,6 +144,27 @@ rows = mgmt_query(f"select id from public.tenants where slug = '{SLUG_A}' limit 
 if not rows: print('Tenant A not found'); sys.exit(1)
 TENANT_A_ID = rows[0]['id']
 
+# Bishop has real families now. On 10/22 a run texted four of them ("Closed
+# today - back at 10am ...") and deleted the club's season and payment plan
+# settings. So (PLAN.md BL3): anything that reaches every family (Text all,
+# the renewal message) is skipped while real families are there, and the
+# settings this suite changes are put back exactly as they were.
+REAL_FAMILIES = int(mgmt_query(f"""select count(distinct h.id) as n from public.households h
+    join public.household_members m on m.household_id = h.id
+    where h.tenant_id = '{TENANT_A_ID}' and h.active and m.active
+      and ((m.phone_e164 is not null and m.phone_e164 not like '+1555%')
+        or (m.email is not null and m.email !~* '@(.+[.])?(example[.](com|net|org)|example|test|invalid|localhost)$'));""")[0]['n'])
+SAVED_SETTINGS = mgmt_query(f"""select value->'membership' as m, value->'payments'->'plan' as p
+    from public.settings where tenant_id = '{TENANT_A_ID}';""")[0]
+SAVED_SMS_CREDITS = mgmt_query(f"select sms_credits from public.tenants where id = '{TENANT_A_ID}';")[0]['sms_credits']
+if REAL_FAMILIES:
+    print(f'  ({REAL_FAMILIES} real families: Text all and the renewal message are not sent)')
+def skip_for_real_families(what):
+    if REAL_FAMILIES:
+        print(f'    skipped: {what} would reach the club\'s {REAL_FAMILIES} real families')
+        return True
+    return False
+
 # Find Doug's provider_admin id (for provider_metrics tests)
 prov_rows = mgmt_query("select id from public.provider_admins where active = true order by created_at limit 1;")
 PROVIDER_ID = prov_rows[0]['id'] if prov_rows else None
@@ -419,10 +440,10 @@ def settings_round_trip():
     # faithfully preserved it. That accumulated 37 junk keys in Bishop's
     # live settings blob before anyone looked. Sweeping the whole prefix
     # makes the test clean up after its own past failures too.
-    cleaned = {k: v for k, v in after.items() if not k.startswith('_e2e_marker_')}
-    post(f'{SUPABASE_URL}/functions/v1/tenant_settings', {
-        'action': 'save', 'value': cleaned,
-    }, TOKEN_A)
+    # A settings save merges and never removes a key, so the markers go by SQL.
+    mgmt_query(f"""update public.settings
+        set value = value - array(select k from jsonb_object_keys(value) k where k like '_e2e_marker_%')
+        where tenant_id = '{TENANT_A_ID}';""")
 
 step('settings save preserves unrelated keys', settings_round_trip)
 
@@ -1434,26 +1455,29 @@ def ren_already_paid_is_refused():
 
 
 def ren_options_offers_valid_schedules():
+    # Since PLAN.md M (10/7) the family picks how much today and the month to
+    # be paid off by; the old fixed list of payment counts ("options") is
+    # retired and always empty. The plan on offer must meet the club's deadlines.
     r = post(f'{SUPABASE_URL}/functions/v1/member_auth', {'action': 'renewal_options'}, REN_TOKEN)
     assert r.get('ok'), f'renewal_options: {r}'
-    assert r.get('plans_enabled'), f'plans should be enabled: {r}'
+    plan = r.get('plan') or {}
+    assert r.get('plans_enabled') and plan.get('available'), f'a plan should be on offer: {plan}'
     assert r.get('dues_cents', 0) > 0, f'no dues amount: {r}'
-    opts = r.get('options') or []
-    assert len(opts) >= 2, f'expected several payment options: {opts}'
-
-    total = r['dues_cents']
-    april = f'{NEXT_YEAR}-04-01'
-    for o in opts:
-        insts = o['installments']
-        paid = sum(i['amount_cents'] for i in insts)
-        assert paid == total, f"option {o['count']} sums to {paid}, dues are {total}"
-        by_april = sum(i['amount_cents'] for i in insts if i['due_date'] <= april)
-        need = round(total * 0.75)
-        assert by_april >= need, \
-            f"option {o['count']} only has {by_april} by April, club needs {need}"
-        # Dates a member can actually plan around, not arbitrary intervals.
-        assert all(i['due_date'][-2:] in ('01', '28', '29', '30', '31') or True for i in insts)
-        assert insts == sorted(insts, key=lambda i: i['due_date']), 'dates out of order'
+    months = plan.get('months') or []
+    assert months, f'no paid-off-by months to pick: {plan}'
+    for m in (months[0], months[-1]):
+        q = post(f'{SUPABASE_URL}/functions/v1/member_auth',
+                 {'action': 'renewal_options', 'plan_payoff_month': m['value']}, REN_TOKEN)
+        ch = (q.get('plan') or {}).get('choice') or {}
+        assert ch.get('ok'), f"paid off by {m['value']}: {ch}"
+        rows = ch.get('rows') or []
+        total = ch['totals']['dues_cents']
+        assert sum(x['amount_cents'] for x in rows) == total, f"paid off by {m['value']}: rows don't add up to {total}"
+        assert rows == sorted(rows, key=lambda x: x['due_date']), 'dates out of order'
+        assert rows[-1]['due_date'][:7] <= m['value'][:7], f"last payment {rows[-1]['due_date']} is after {m['value']}"
+        for d in plan.get('deadlines') or []:
+            by = sum(x['amount_cents'] for x in rows if x['due_date'] <= d['date'])
+            assert by >= round(total * d['pct'] / 100), f"paid off by {m['value']}: only {by} by {d['date']}, the club needs {d['pct']}%"
 
 def ren_auto_renew_toggles():
     on = post(f'{SUPABASE_URL}/functions/v1/member_auth',
@@ -1586,6 +1610,7 @@ def auto_renew_emails_are_registered():
 
 
 def link_renewal_works_without_login():
+    if skip_for_real_families('the renewal message'): return
     # The whole point: a household that never signs in can still renew. Send
     # links, then use one exactly as a member would — no token, no session.
     comms = sign_jwt({
@@ -1625,9 +1650,10 @@ def link_renewal_works_without_login():
     assert got.get('application_id') == rows[0]['id'], f'wrong application: {got}'
     assert got.get('dues_cents', 0) > 0, f'no price quoted: {got}'
     assert got.get('year') == NEXT_YEAR, f'wrong season quoted: {got}'
-    assert (got.get('options') or []), 'no payment options offered on the link path'
+    assert (got.get('plan') or {}).get('available'), f"no payment plan offered on the link path: {got.get('plan')}"
 
 def link_renewal_stamps_first_open():
+    if skip_for_real_families('the renewal message'): return
     # Boards need to tell "ignoring us" apart from "never arrived".
     rows = mgmt_query(f"""select claimed_at from public.applications
                           where household_id = '{REN_HH_ID}' and is_renewal
@@ -1637,6 +1663,7 @@ def link_renewal_stamps_first_open():
     assert rows[0]['claimed_at'], 'first open was not recorded'
 
 def link_renewal_price_matches_the_app():
+    if skip_for_real_families('the renewal message'): return
     # A member forwarding their link to a spouse must not see a different
     # offer than the signed-in page shows.
     raw = f'e2e-renew-{STAMP}'
@@ -1718,16 +1745,17 @@ def csv_invites_can_target_individuals():
     assert other[0]['invited_at'] is None, 'an unselected member was invited anyway'
 
 def ren_restore_settings():
-    # Leave the real club exactly as we found it — this suite runs against
-    # production, so a stray "renewals are open" flag would be visible to
-    # actual members.
-    mgmt_query(f"""
-        update public.settings
-           set value = (value - 'membership') #- '{{payments,plan}}'
-         where tenant_id = '{TENANT_A_ID}';""")
-    rows = mgmt_query(f"""select value ? 'membership' as still_there
-                          from public.settings where tenant_id = '{TENANT_A_ID}';""")
-    assert rows[0]['still_there'] is False, 'membership settings not cleaned up'
+    # Leave the real club exactly as we found it: put back the season and
+    # payment plan settings this suite changed (until 10/22 it deleted them).
+    def lit(v): return "'" + json.dumps(v).replace("'", "''") + "'::jsonb"
+    expr = 'value'
+    m, p = SAVED_SETTINGS['m'], SAVED_SETTINGS['p']
+    expr = f"jsonb_set({expr}, '{{membership}}', {lit(m)})" if m is not None else f"({expr} - 'membership')"
+    expr = f"jsonb_set({expr}, '{{payments,plan}}', {lit(p)})" if p is not None else f"({expr} #- '{{payments,plan}}')"
+    mgmt_query(f"update public.settings set value = {expr} where tenant_id = '{TENANT_A_ID}';")
+    back = mgmt_query(f"""select value->'membership' as m, value->'payments'->'plan' as p
+                          from public.settings where tenant_id = '{TENANT_A_ID}';""")[0]
+    assert back['m'] == m and back['p'] == p, f'settings not put back: {back}'
 
 step('setup: household paid through last season',   ren_setup_household)
 step('membership_year stamped on new applications', ren_membership_year_is_stamped_on_submit)
@@ -1822,6 +1850,7 @@ def blast_solo_confirm_does_not_bypass_when_others_exist():
     assert not r.get('ok'), 'solo_confirm bypassed the second-admin rule'
 
 def blast_second_admin_can_release():
+    if skip_for_real_families('releasing a Text all'): return
     r = post(BLAST_URL, {'action': 'approve', 'id': BLAST_ID}, _admin_tok(ADMIN_B))
     assert r.get('ok'), f'second admin could not release: {r}'
     row = mgmt_query(f"""select status, approved_by, sent_at from public.sms_blasts
@@ -1844,7 +1873,7 @@ def blast_expired_cannot_be_released():
 def blast_refuses_a_partial_send():
     # All-or-nothing. Reaching some of the club is worse than reaching none:
     # the board thinks everyone was told.
-    mgmt_query(f"""update public.tenants set sms_credits = 0 where id = '{TENANT_A_ID}';""")
+    mgmt_query(f"""update public.tenants set sms_credits = 0 where id = '{TENANT_A_ID}';""")   # put back in blast_cleanup
     # Burn the allowance down to one segment of headroom.
     #
     # Rewritten 2026-09-07: this used to add 250 ROWS against a hardcoded
@@ -1867,7 +1896,10 @@ def blast_refuses_a_partial_send():
     mgmt_query(f"delete from public.sms_log where source = 'e2e-fill';")
 
 def blast_cleanup():
-    mgmt_query(f"delete from public.sms_blasts where tenant_id = '{TENANT_A_ID}';")
+    # Only this suite's own messages: the club's real Text all history stays.
+    mgmt_query(f"""delete from public.sms_blasts where tenant_id = '{TENANT_A_ID}'
+                    and created_by in ('{ADMIN_A}', '{ADMIN_B}');""")
+    mgmt_query(f"update public.tenants set sms_credits = {int(SAVED_SMS_CREDITS or 0)} where id = '{TENANT_A_ID}';")
     mgmt_query(f"delete from public.admin_users where id in ('{ADMIN_A}','{ADMIN_B}');")
 
 step('setup: two admins + a member with a phone', blast_setup_two_admins)
@@ -1911,9 +1943,11 @@ def cleanup_all():
     # task points at does NOT remove the task, so without this the real club's
     # queue fills up with test rows — one per run, forever. (The orphan sweep
     # in cron_cleanup_abandoned catches stragglers; this stops us relying on it.)
+    # This run's, and earlier runs' (their names end in a run number); never a
+    # real to-do that happens to mention smoke.
     mgmt_query(f"""delete from public.admin_tasks
-                    where summary like '%{STAMP}%'
-                       or summary ~* '(e2e|smoke)';""")
+                    where tenant_id = '{TENANT_A_ID}' and (summary like '%{STAMP}%'
+                       or summary ~ '(E2E|e2e|Smoke|SimTest)[^0-9]{{0,40}}[0-9]{{6}}');""")
     # Payment plans + their installments created by the dunning tests.
     mgmt_query(f"delete from public.payment_plans where family_name like '%{STAMP}%';")
     # send_renewal_links deliberately covers EVERY unpaid household in the club,

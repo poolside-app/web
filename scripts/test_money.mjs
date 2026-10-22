@@ -356,9 +356,10 @@ if (live('H5')) {
     const ro = await fn('member_auth', 'renewal_options', memTok);
     check('H5: the renewal page takes their $100 credit off', ro.ok && ro.price?.credit_cents === 10000 && ro.price?.amount_due_cents === base - 10000
       && ro.dues_cents === gross(base - 10000), short({ price: ro.price, dues: ro.dues_cents, err: ro.error }));
+    // Already signed: checkout refuses an unsigned renewal (PLAN.md R6).
     const [ren] = await sql(`insert into applications (tenant_id, household_id, is_renewal, is_new_member, membership_year, status, payment_status,
-        family_name, primary_name, tier_slug) values (${q(club.id)}, ${q(m.household_id)}, true, false, extract(year from now())::int + 1,
-        'pending', 'unpaid', ${q(`SimMoney Renew ${STAMP}`)}, 'Sim Renew', 'family') returning id`);
+        family_name, primary_name, tier_slug, accepted_at, signature_primary) values (${q(club.id)}, ${q(m.household_id)}, true, false, extract(year from now())::int + 1,
+        'pending', 'unpaid', ${q(`SimMoney Renew ${STAMP}`)}, 'Sim Renew', 'family', now(), 'data:image/png;base64,iVBORw0KGgo=') returning id`);
     const rco = await fn('stripe_checkout', 'application', null, { application_id: ren.id });
     const rsim = decodeSim(rco.url);
     check('H5: renewal checkout charges after the credit', rsim && rsim.amt === gross(base - 10000), short({ err: rco.error, amt: rsim?.amt }));

@@ -312,7 +312,11 @@ export async function renderChecks({ check, read, sql, jwt }) {
     // D12: Members list fits a phone (with at least one family in it)
     const ownerTok = jwt({ sub: owner.id, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const mem = await open('/club/admin/members.html#households', { poolside_tenant_token: ownerTok });
-    await mem.waitForSelector('#hh-card table, #hh-card .empty', { timeout: 20000 });
+    // The card starts as "Loading…" (also .empty), and a long list starts
+    // folded behind "Show all N families" (PLAN.md AP): open it, then wait for the list.
+    await mem.waitForFunction(() => { const c = document.getElementById('hh-card'); return c && (c.querySelector('table, #hh-showall') || (c.querySelector('.empty') && !/Loading/.test(c.innerText))); }, { timeout: 20000 });
+    await mem.evaluate(() => document.getElementById('hh-showall')?.click());
+    await mem.waitForFunction(() => { const c = document.getElementById('hh-card'); return c && (c.querySelector('table') || c.querySelector('.empty')); }, { timeout: 20000 });
     await wait(500);
     const fit = await mem.evaluate(() => {
       const c = document.getElementById('hh-card');

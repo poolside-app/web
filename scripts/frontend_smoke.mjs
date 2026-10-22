@@ -140,9 +140,19 @@ const FATAL_TEXT = ['Network error', 'Something went wrong', 'Cannot read', 'is 
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'] });
 
+// Answers a page is right to get from this run's logins. My shifts: the
+// test's board login isn't on the lifeguard roster, and the page says so.
+const EXPECTED = {
+  '/club/admin/my-shifts.html': [/^HTTP-400: \/functions\/v1\/lifeguards$/],
+};
+
 const results = [];
 for (const pg of PAGES) {
-  const page = await browser.newPage();
+  // Each page in its own browser profile: sharing one let the board sign-in
+  // from earlier pages send the member app straight to the board side, so
+  // the member home was never really checked (PLAN.md BL3).
+  const ctx = await browser.createBrowserContext();
+  const page = await ctx.newPage();
   const errs = [];
   await page.evaluateOnNewDocument((data) => {
     try { for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v); } catch (e) {}
@@ -165,13 +175,16 @@ for (const pg of PAGES) {
   // Authed page bounced to a login screen → token rejected / render bailed.
   const bounced = pg.auth !== 'none' && /login\.html/.test(finalUrl) && !/login\.html/.test(pg.url);
   if (bounced) errs.push('AUTH-BOUNCE: redirected to ' + finalUrl.replace(HOST, '').replace(ROOT, ''));
+  if (pg.auth === 'member' && /\/club\/admin\//.test(finalUrl)) errs.push('WRONG-SIDE: a member page went to the board side');
+  const path = pg.url.replace(ROOT, '').replace(HOST, '');
+  for (let i = errs.length - 1; i >= 0; i--) if ((EXPECTED[path] || []).some(re => re.test(errs[i]))) errs.splice(i, 1);
   for (const f of FATAL_TEXT) if (bodyText.includes(f)) errs.push('PAGE-TEXT: "' + f + '"');
   if (bodyText.trim().length < 15 && !errs.length) errs.push('EMPTY: body had <15 chars of text');
 
   const label = pg.url.replace(ROOT, '').replace(HOST, '') + '  [' + pg.auth + ']';
   results.push({ label, errs });
   console.log((errs.length ? 'FAIL ' : 'ok   ') + label + (errs.length ? '\n        ' + errs.join('\n        ') : ''));
-  await page.close();
+  await ctx.close();
 }
 
 await browser.close();

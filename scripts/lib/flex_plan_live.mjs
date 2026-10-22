@@ -126,7 +126,14 @@ export async function runLive({ check, short }) {
     await setSettings(planCfg);
     const [{ today }] = await sql(`select to_char(now() at time zone 'America/Los_Angeles', 'YYYY-MM-DD') as today`);
     const admin = jwt({ sub: '00000000-0000-0000-0000-000000000000', kind: 'tenant_admin', tid: tenantId, slug: SLUG, role_template: 'owner', is_super: true });
-    const cron = () => fn('payment_plans', { action: 'cron_run' }, { headers: { 'x-cron-secret': CRON_SECRET } });
+    // Nothing is charged until the board ticks it on Money → Upcoming (PLAN.md
+    // S; test_plan_approval checks the ticking). Here every payment due is
+    // ticked first, as the Treasurer would, then the daily run goes.
+    const cron = async () => {
+      await sql(`update payment_plan_installments set approved_at = now()
+        where tenant_id = ${q(tenantId)} and status in ('pending', 'retrying') and due_date <= ${q(today)} and approved_at is null`);
+      return fn('payment_plans', { action: 'cron_run' }, { headers: { 'x-cron-secret': CRON_SECRET } });
+    };
 
     const phoneBase = String(Date.now()).slice(-6);
     const mkApp = async (n, tier = 'family') => {

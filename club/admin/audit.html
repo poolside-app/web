@@ -51,7 +51,7 @@
   .entry .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--blue-l); font-size: 14px; }
   .entry.public .icon  { background: #ddd6fe; }
   .entry.member .icon  { background: #cffafe; }
-  .entry .body { flex: 1; min-width: 0; font-size: 13px; }
+  .entry .body { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }   /* a long link or id wraps on a phone (PLAN.md BL3) */
   .entry .summary { color: var(--text); }
   .entry .meta    { color: var(--muted); font-size: 11px; margin-top: 2px; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }

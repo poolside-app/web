@@ -63,8 +63,12 @@ for (const fn of JOBS) {
   const r = await rpc(fn, {}, SUPABASE_PUBLISHABLE_KEY);
   check(`can't start the ${fn.replace(/^run_|_cron$/g, '')} job`, denied(r), `HTTP ${r.status} ${r.body}`);
 }
+// The app's own functions. Functions that belong to a Postgres extension
+// (btree_gist's gbt_*, behind the parties-never-overlap constraint) are the
+// extension's: support routines and plain math, nothing of the club's.
 const open = await sql(`select string_agg(p.proname, ', ') as names from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.prokind = 'f'
+    and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
     and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))`);
 check('no function in the app\'s schema is open to outsiders', !open[0].names, open[0].names);
 await sql(`create or replace function public.zz_lockdown_probe() returns int language sql as 'select 1'`);

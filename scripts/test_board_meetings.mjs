@@ -170,12 +170,19 @@ try {
       started_at = (meeting_date + time '19:02') at time zone 'America/Los_Angeles',
       ended_at   = (meeting_date + time '20:15') at time zone 'America/Los_Angeles'
     where id = '${m.id}'`);
-  const lp = await fetch(`${SUPABASE_URL}/functions/v1/board_meetings`, {
+  // Since PLAN.md BJ1/BJ3 members see minutes once they're approved, on the
+  // members-only page. Nobody else attended these, so submitting approves them.
+  const sm = await meetings('submit_minutes', tok(noteId), { id: m.id });
+  await meetings('submit_minutes', tok(noteId), { id: cs.meeting?.id });
+  check('submitted with nobody else to ask: approved at once', sm.ok && sm.meeting?.minutes_status === 'approved', short(sm));
+  const anon = await fetch(`${SUPABASE_URL}/functions/v1/board_meetings`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'list_public', slug: 'bishopestates' }),
+    body: JSON.stringify({ action: 'governance', slug: 'bishopestates' }),
   }).then(r => r.json());
+  check('the minutes page needs a sign-in', !anon.ok && anon.signin === true, short(anon));
+  const lp = await meetings('governance', tok(otherId));
   const pubIds = (lp.meetings || []).map(x => x.id);
-  check('closing put it on the public list', pubIds.includes(m.id), short(lp));
+  check('approved, it\'s on the members\' list', pubIds.includes(m.id), short(lp));
   check('a board-only closed session stays off it', cs.meeting && !pubIds.includes(cs.meeting.id));
   const ol = await meetings('list', tok(otherId));
   check('…but every board member can still read it',
@@ -193,6 +200,9 @@ try {
     && Date.parse(am.started_at) === Date.parse(before.started_at) && Date.parse(am.ended_at) === Date.parse(before.ended_at),
     short({ status: am.status, visibility: am.visibility, started_at: am.started_at, ended_at: am.ended_at }));
   check('…and record who edited them', !!am.edited_at && am.edited_by_name === 'SimTest Note', short(am));
+  // A fix goes through approval again before members see it (BJ3).
+  const re = await meetings('submit_minutes', tok(noteId), { id: m.id });
+  check('the fix, submitted again, is approved and posted', re.ok && re.meeting?.minutes_status === 'approved', short(re));
   const [aud] = await sql(`select metadata from audit_log where entity_id = '${m.id}' and kind = 'board_meeting.edited'
     order by created_at desc limit 1`);
   check('the old version is kept in the audit log', aud?.metadata?.before?.notes_md === before.notes_md, short(aud ?? {}));
@@ -228,8 +238,8 @@ try {
     check('…with the start and end time, in pool time on a New York phone', /7:02 PM – 8:15 PM/.test(text),
       (text.match(/[^\n]*\d:\d\d[^\n]*/) || ['no time shown'])[0].slice(0, 120));
     check('…and not the closed session', !/SimTest closed session/.test(text));
-    check('…with the fix, marked edited', /Snack bar opens June 1/.test(text) && /Edited \w+ \d+ by SimTest Note/.test(text),
-      (text.match(/Edited[^\n]*/) || ['no edited line'])[0]);
+    check('…with the fix, marked amended', /Snack bar opens June 1/.test(text) && /Amended \w+ \d+/.test(text),
+      (text.match(/Amended[^\n]*/) || ['no amended line'])[0]);
   } finally {
     await browser.close();
   }
