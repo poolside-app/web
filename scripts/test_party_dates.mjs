@@ -4,7 +4,8 @@
 // reason, days of the week, a start-time window, and how far ahead. The same
 // rules on the server (_shared/party_rules.ts) and the member page
 // (js/party-rules.js). Offline: reads the code, runs both copies, and renders
-// the member's party calendar with the demo video's harness.
+// the member's party calendar with the demo video's harness. BJ6: the party
+// wording follows "Approve open times automatically".
 //
 // Usage: node scripts/test_party_dates.mjs
 import { readFileSync } from 'node:fs';
@@ -129,6 +130,27 @@ const browser = await launch();
   check('no script errors', !log.errors.length, log.errors.join(' | '));
   await page.close();
 }
+console.log('BJ6 · the party wording follows "Approve open times automatically"');
+for (const auto of [true, false]) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 390, height: 844 });
+  await attach(page, { state: { riveraPaid: true }, answer: (f, body, ctx) => {
+    const out = respond(f, body, ctx);
+    if (f === 'tenant_public' && out?.public_settings) return { ...out, public_settings: { ...out.public_settings, parties: { ...(out.public_settings.parties || {}), fee_cents: 15000, auto_approve: auto } } };
+    return out;
+  } });
+  await page.goto(FAMILY + '/m/', { waitUntil: 'networkidle0', timeout: 45000 });
+  await new Promise(r => setTimeout(r, 600));
+  await page.evaluate(() => openPartyModal());
+  await new Promise(r => setTimeout(r, 500));
+  const t = await page.evaluate(() => ({ head: document.getElementById('p-head')?.textContent || '', intro: document.getElementById('p-intro')?.textContent || '', btn: document.getElementById('p-submit')?.textContent || '' }));
+  check(auto ? '  on: "Book a party", booked on the spot by card' : '  off: "Request a party", the board lets them know',
+    auto ? t.head === 'Book a party' && /booked on the spot/.test(t.intro) && !/reviews requests/.test(t.intro) && t.btn === 'Book it'
+         : t.head === 'Request a party' && /lets you know/.test(t.intro) && t.btn === 'Send request', JSON.stringify(t));
+  await page.close();
+}
+const st = read('club/admin/settings.html');
+check('Settings → Features → Party rentals follows the setting', !/you approve with one click/.test(st) && /id="feat_parties_sub"/.test(st) && /booked on the spot/.test(st) && /auto_approve/.test(st));
 await browser.close();
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

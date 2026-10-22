@@ -374,8 +374,9 @@
 <!-- Party request modal -->
 <div class="scrim" id="party-scrim" onclick="if (event.target === this) closePartyModal()">
   <div class="pmodal">
-    <h2 style="margin:0">Request a party</h2>
-    <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Your club's admin reviews requests and approves them. Once approved + payment is received, the party officially books that day on the calendar.</p>
+    <!-- Follows "Approve open times automatically" (PLAN.md BJ6); paintPartyFee fills these. -->
+    <h2 style="margin:0" id="p-head">Book a party</h2>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 4px" id="p-intro"></p>
 
     <label>Title</label>
     <input id="p-title" placeholder="Smith Family birthday party" maxlength="140">
@@ -997,6 +998,13 @@ function paintPartyFee() {
     : 'No party fee.';
   const btn = document.getElementById('p-submit');
   if (btn) btn.textContent = r.auto_approve ? 'Book it' : 'Send request';
+  // The wording follows "Approve open times automatically" (PLAN.md BJ6).
+  document.getElementById('p-head').textContent = r.auto_approve ? 'Book a party' : 'Request a party';
+  document.getElementById('p-intro').textContent = !r.auto_approve
+    ? 'The board looks at your request and lets you know. Once it\'s approved and paid, it\'s on the club calendar.'
+    : r.fee_cents
+      ? 'Pick an open day and time. Pay by card and it\'s booked on the spot. Paying by Venmo holds the time until the board confirms your payment.'
+      : 'Pick an open day and time, and it\'s booked on the spot.';
 }
 // ── Party days and times (PLAN.md BJ4) ─────────────────────────────────
 // The club's rules (js/party-rules.js, the same as the server's): a month

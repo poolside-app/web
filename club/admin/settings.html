@@ -489,7 +489,7 @@
       <input type="checkbox" id="feat_parties">
       <div>
         <div class="ftitle">🎉 Party rentals</div>
-        <div class="fsub">Members request parties online; you approve with one click.</div>
+        <div class="fsub" id="feat_parties_sub">Members book open times online. Paid by card, it's booked on the spot.</div>
       </div>
     </label>
     <label class="feature">
@@ -1113,6 +1113,10 @@ function populate(s) {
   // Public page extras + apply heading override fields removed 2026-05-08.
   setChk('feat_programs',     s.features?.programs ?? s.features?.swim_lessons ?? true);
   setChk('feat_parties',      s.features?.parties      ?? true);
+  // Says what "Approve open times automatically" (Parties → Party settings) does (PLAN.md BJ6).
+  document.getElementById('feat_parties_sub').textContent = s.parties?.auto_approve !== false
+    ? 'Members book open times online. Paid by card, it\'s booked on the spot.'
+    : 'Members request parties online; you approve each one on Parties.';
   setChk('feat_volunteer',    s.features?.volunteer    ?? true);
   // Opt-IN, unlike the rest of this list — most clubs have no lifeguards.
   // Must match defaultOn:false for lifeguard_scheduling in admin-flags.js,

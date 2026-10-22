@@ -900,7 +900,7 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
-### BJ. The demo walkthrough fix list (Doug, 10/21) — BJ1–BJ5 done 10/21; BJ6 next
+### BJ. The demo walkthrough fix list (Doug, 10/21) — BJ1–BJ6 done 10/21; BJ7 next
 Doug walked demo.poolsideapp.com with Claude chat and brought a 27-item list (`handouts/poolside-fix-list-for-claude-code.md`). Broken out item by item (where the problem is, size, what I'd do) as a picker; most "broken screens" were the demo answering unknown calls with an empty OK. His picks: "do 1, 2, 3, 4a, 5, 22, 24a, 26, 28, 29. Skip 4b, 6–21, 23, 24b, 25, 27. Order: as listed … with a short report after each step." And: "lots of these were from the demo page.. really dont care much about it.. dont change those unless it was checked… on the minutes… if you are already a member and logged in, it should load, you dont need to sign in again." Minutes approval answers: board members who attended approve; the President can approve for someone after 7 days.
 - **BJ1. Bylaws, minutes and board names: members only (item 1).** Today `/governance.html` is public (K6, "always public") and `board_meetings` `list_public` answers anyone with a club's slug; the bylaws PDF sits in the public `club-assets` folder.
   - `board_meetings` `governance` replaces `list_public`: it needs a sign-in (a member of that club whose household member row is active, or a board member) and answers nothing without one. The club comes from the sign-in, not a slug.
@@ -938,6 +938,9 @@ Doug walked demo.poolsideapp.com with Claude chat and brought a 27-item list (`h
   - `node scripts/test_referral_rule.mjs` (offline).
   - ✅ Done 10/21. `test_referral_rule` 25 checks (14 failed first). All 46 offline suites pass (`test_money`'s two H6 checks point at the moved code). Six functions that share the pricing code redeployed together. Live with a throwaway referral code on a Bishop test family (3 checks, 4 calls, removed after): a family at a last-season member's address (typed in capitals with a period) gets no $25 and the rule in plain words, without what matched; a brand-new family gets the $25. Found by the live check: the signup price leaves out fields it doesn't list, so the reason didn't reach the form; fixed, with a check.
 - **BJ6. Party wording follows "Approve open times automatically" (item 22).**
+  - Found in two places: the member's party form ("Request a party … Your club's admin reviews requests and approves them") and Settings → Features → Party rentals ("you approve with one click"). The form's button and the message after booking already follow the setting.
+  - On: "Book a party … Pay by card and it's booked on the spot. Paying by Venmo holds the time until the board confirms your payment." Off: "Request a party … The board looks at your request and lets you know." Party rentals on Settings says the same, from the club's setting. Checked in `test_party_dates` (renders the form both ways).
+  - ✅ Done 10/21. `test_party_dates` 39 checks (3 new failed first). All 46 offline suites pass; `test_demo_site` caught an apostrophe that broke Settings' script before it shipped.
 - **BJ7. The demo shows card payments working (24a); the Keyfob / RFID gate box shows on when a club's gate is connected (26).**
 - **BJ8. The demo club: Start over resets everything (28); real screens for Doug's re-recording (29).** Ask Doug first: item 29 includes party booking, the Venmo confirm and the sponsor pop-up, which he unticked as items 9–12 and 14.
 
