@@ -159,6 +159,10 @@ check('Start over clears it (the page waits for that before starting again)', /c
     return { p, log };
   };
   let { p } = await page('board', '/club/admin/board-meetings.html');
+  const oops = await p.evaluate(() => (document.body.innerText.match(/[^\n]*(Cannot read properties|is not a function|is not iterable)[^\n]*/) || [''])[0]);
+  check('Board minutes on screen: opens with no error (the bylaws box, the list, the next meeting)', !oops, oops);
+  const byl = await p.evaluate(() => document.getElementById('bylaws-card')?.textContent.replace(/\s+/g, ' ').trim() || '');
+  check('  the bylaws box shows the bylaws', /bylaws/i.test(byl) && /posted/.test(byl), byl.slice(0, 120));
   const start = await p.evaluate(async () => {
     const btn = [...document.querySelectorAll('button')].find(x => /Start a meeting/.test(x.textContent));
     if (!btn) return 'no button';
@@ -167,6 +171,19 @@ check('Start over clears it (the page waits for that before starting again)', /c
       admins: document.querySelectorAll('#attend-host input[type=checkbox], [data-admin]').length, err: document.querySelector('.err.show')?.textContent || '' };
   });
   check('Board minutes on screen: ▶ Start a meeting opens a running meeting with the board to tick', start?.open && /in progress/i.test(start?.banner || '') && !start?.err, JSON.stringify(start));
+  await p.close();
+  // Minutes the others approved show on the members' page.
+  {
+    const R = (fn, body, side, now) => siteRespond(fn, body, { side, state: S, pre, now });
+    const ppl = R('board_meetings', { action: 'list_active_admins' }, 'board').admins;
+    const m = R('board_meetings', { action: 'create', start: true }, 'board').meeting;
+    R('board_meetings', { action: 'update', id: m.id, notes_md: 'Lifeguard schedule set for July.', attendees: ppl.map(x => ({ admin_user_id: x.id, name: x.name, source: 'admin' })) }, 'board');
+    R('board_meetings', { action: 'finalize', id: m.id }, 'board');
+    R('board_meetings', { action: 'submit_minutes', id: m.id }, 'board', Date.now() - 10000);
+  }
+  ({ p } = await page('family', '/governance.html'));
+  const gov = await p.evaluate(() => document.body.innerText);
+  check("members' Bylaws & board minutes on screen: the approved minutes and the bylaws link", /Lifeguard schedule set for July/.test(gov) && /Read the bylaws/.test(gov) && !/Cannot read properties/.test(gov), gov.replace(/\s+/g, ' ').slice(0, 160));
   await p.close();
   ({ p } = await page('board', '/club/admin/payments.html'));
   const before = await p.evaluate(() => document.querySelectorAll('.venmo-row').length);

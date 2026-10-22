@@ -194,10 +194,7 @@ export function siteRespond(fn, body, ctx) {
       ] };
       break;
     case 'board_meetings':
-      if (a === 'list') return { ok: true, meetings: [{ id: 'mtg-may', title: 'May board meeting', meeting_date: '2027-05-27', status: 'closed', visibility: 'public', attendees: ['Mei Chen', 'Sam Brooks', 'Erik Larsen'], notes: 'Opening day plan approved. Shade sail quotes reviewed.', motions: [{ text: 'Approve opening day May 29', result: 'passed' }], followups: [], created_at: ago(60 * 24 * 23) }] };
-      if (a === 'next') return { ok: true, meeting: { id: 'mtg', title: 'June board meeting', meeting_date: '2027-06-24', status: 'draft' }, items: [{ id: 'ai1', body: 'Shade sail install date', added_by_name: 'Erik Larsen', created_at: ago(60 * 24 * 2) }] };
-      if (a === 'bylaws') return { ok: true, text: 'Article I. Name. The club is Maple Grove Swim Club.\n\nArticle II. Purpose. To run a neighborhood pool for its members.', updated_at: ago(60 * 24 * 300), can_change: true };
-      if (a === 'governance') return { ok: true, meetings: [], bylaws: { text: 'Article I. Name. The club is Maple Grove Swim Club.', updated_at: ago(60 * 24 * 300) }, board: [{ name: 'Mei Chen', titles: ['President'] }, { name: 'Sam Brooks', titles: ['Treasurer'] }, { name: 'Erik Larsen', titles: ['Facilities Director'] }] };
+      // Answered by minutes() below, from what the visitor did (PLAN.md BJ8).
       return { ok: true };
     case 'donations':
       if (a === 'list') return { ok: true, donations: [
@@ -393,6 +390,10 @@ function autoApprove(state, now) {
     }
   }
 }
+// The bylaws, in the real answer's shape; an upload replaces them (the file itself isn't kept).
+function bylaws(state) {
+  return state.bylaws ??= { current: { id: 'doc1', url: '/demo/bylaws.html', file_name: 'Maple Grove bylaws.pdf', uploaded_by_name: 'Mei Chen', uploaded_at: ago(60 * 24 * 300) }, earlier: [] };
+}
 function decorate(m) {
   const rows = (m.approvals || []).filter(r => r.round === m.approval_round && r.status !== 'voided');
   const approved = rows.filter(r => r.status === 'approved').length;
@@ -504,11 +505,18 @@ function minutes(a, body, state, now, pre) {
       const text = `${mt.title}\n${mt.meeting_date}\n\n${people.filter(p => p.items.length).map(p => `${p.name}\n${p.items.map(i => '- ' + i.body).join('\n')}`).join('\n\n')}`;
       return { ok: true, meeting: decorate(mt), agenda, text };
     }
+    case 'bylaws': return { ok: true, ...bylaws(state), can_change: true };
+    case 'set_bylaws': {
+      const b = bylaws(state);
+      b.earlier.unshift(b.current);
+      b.current = { id: `doc-${b.earlier.length + 1}`, url: '/demo/bylaws.html', file_name: String(body.file_name || 'Bylaws.pdf').slice(0, 160), uploaded_by_name: 'Sam Brooks', uploaded_at: iso() };
+      return { ok: true, ...b };
+    }
     case 'send_agenda': return body.preview ? { ok: true, reached: BOARD_PEOPLE.map(b => b.name), popped: [], missed: [] } : { ok: true, reached: BOARD_PEOPLE.length, popped: BOARD_PEOPLE.length, missed: [] };
     case 'governance': {
       const posted = all.filter(x => x.posted_json && x.posted_json.visibility === 'members')
         .map(x => ({ ...x.posted_json, id: x.id, approved_at: x.posted_at, amended_at: x.posted_count > 1 ? x.posted_at : null }));
-      return { ok: true, meetings: posted, bylaws: { current: { id: 'doc1', url: '/demo/bylaws.html', file_name: 'Maple Grove bylaws.pdf', uploaded_by_name: 'Mei Chen', uploaded_at: ago(60 * 24 * 300) }, earlier: [] },
+      return { ok: true, meetings: posted, bylaws: bylaws(state),
         board: BOARD_PEOPLE.map(b => ({ name: b.name, titles: [b.board_title] })) };
     }
   }
