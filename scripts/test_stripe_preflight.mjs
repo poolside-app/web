@@ -142,6 +142,35 @@ for (const f of files) {
 }
 check(`every checkout Poolside makes says card (${sessions} found)`, sessions >= 10 && missing.length === 0, missing.join(', '));
 
+// ── BL2 ──────────────────────────────────────────────────────────────────
+console.log('BL2 · a card kept for later belongs to a Stripe customer');
+// Stripe only makes a customer at checkout when told to ("if_required" makes
+// none for a one-off payment), and a card with no customer can't be charged
+// again: next season's auto-renew would find nothing to charge.
+const orphans = [];
+let kept = 0;
+for (const f of files) {
+  const src = read(f);
+  if (!/checkout\/sessions/.test(src)) continue;
+  const lines = src.split('\n');
+  lines.forEach((l, i) => {
+    if (!/setup_future_usage/.test(l)) return;
+    kept++;
+    const block = lines.slice(Math.max(0, i - 25), i + 25).join('\n');
+    const customer = /customer_creation['"]?\s*[,:]\s*'always'/.test(block) || /append\('customer',|['"]customer['"]\s*:/.test(block);
+    if (!customer) orphans.push(`${f}:${i + 1}`);
+  });
+}
+check(`every checkout that keeps a card makes or names a customer (${kept} found)`, kept >= 3 && orphans.length === 0, orphans.join(', '));
+
+console.log('BL2 · connecting Stripe comes back to Money → Payments');
+const connect = read('supabase/functions/stripe_connect/index.ts');
+const pay = read('club/admin/payments.html');
+check('after Stripe\'s sign-up, back to Payments (where Connect Stripe is), which refreshes the status', /club\/admin\/payments\.html#stripe=connected/.test(connect) && !/settings\.html#stripe=/.test(connect)
+  && /stripe=connected/.test(pay));
+check('  an expired Stripe link starts a fresh one', /club\/admin\/payments\.html#stripe=retry/.test(connect) && /hash\.includes\('stripe=retry'\)[\s\S]{0,300}connectStripe\(\)/.test(pay));
+check('  the note names the button that\'s there ("Resume onboarding")', !/Click <b>Resume setup<\/b>/.test(pay) && /Click <b>Resume onboarding<\/b>/.test(pay));
+
 // ── BL1b against Stripe's test mode ─────────────────────────────────────
 if (process.argv.includes('--stripe')) {
   console.log('BL1b · the plan switch against Stripe\'s TEST mode (throwaway objects, removed after)');

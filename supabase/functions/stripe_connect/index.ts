@@ -108,8 +108,10 @@ Deno.serve(async (req) => {
     if (!STRIPE_KEY) return jsonResponse({ ok: false, error: 'Stripe not configured on the platform yet (STRIPE_SECRET_KEY missing)' }, 503);
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    const returnUrl  = String(body.return_url || `${clubUrl}/club/admin/settings.html#stripe=connected`);
-    const refreshUrl = `${clubUrl}/club/admin/settings.html#stripe=retry`;
+    // Back to Money → Payments, where Connect Stripe is and the status refreshes
+    // (PLAN.md BL2); an expired link lands there too and starts a fresh one.
+    const returnUrl  = String(body.return_url || `${clubUrl}/club/admin/payments.html#stripe=connected`);
+    const refreshUrl = `${clubUrl}/club/admin/payments.html#stripe=retry`;
 
     let accountId = tenant.stripe_account_id;
     if (!accountId) {

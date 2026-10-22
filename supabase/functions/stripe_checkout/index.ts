@@ -207,7 +207,12 @@ async function stripeCheckout(params: {
     body.append(`metadata[${k}]`, v);
     body.append(`payment_intent_data[metadata][${k}]`, v);
   }
-  if (params.saveCard) body.append('payment_intent_data[setup_future_usage]', 'off_session');
+  if (params.saveCard) {
+    body.append('payment_intent_data[setup_future_usage]', 'off_session');
+    // Stripe makes no customer for a one-off payment unless told to, and a card
+    // with no customer can't be charged again next season (PLAN.md BL2).
+    body.append('customer_creation', 'always');
+  }
 
   try {
     const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {

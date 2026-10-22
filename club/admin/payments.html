@@ -618,6 +618,13 @@ async function loadStripeStatus() {
     try { await api(STRIPE_URL, 'sync'); } catch (_) {}
     document.getElementById('setup-section').open = true;
   }
+  // Stripe's sign-up link expired or was opened twice: get a fresh one.
+  if (window.location.hash.includes('stripe=retry')) {
+    history.replaceState(null, '', window.location.pathname);
+    document.getElementById('setup-section').open = true;
+    connectStripe();
+    return;
+  }
   try {
     const r = await api(STRIPE_URL, 'status');
     if (!r.ok) throw new Error(r.error || 'Stripe status failed');
@@ -631,7 +638,7 @@ async function loadStripeStatus() {
       return;
     }
     if (!r.charges_enabled) {
-      box.innerHTML = `<b>Stripe account created</b> but onboarding isn't finished. Click <b>Resume setup</b> to finish entering your business info — once that's done, you can start accepting card payments.`;
+      box.innerHTML = `<b>Stripe account created</b> but onboarding isn't finished. Click <b>Resume onboarding</b> to finish entering your business info — once that's done, you can start accepting card payments.`;
       resumeBtn.style.display = 'inline-block';
       syncBtn.style.display = 'inline-block';
       return;
