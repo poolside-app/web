@@ -900,6 +900,27 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BM. Sign-ups: shifts and jobs, with a thank-you (Doug, 10/23) — planned, ready to build on Doug's go
+Doug: "some type of sign up genius feature... there is an event coming up and we need a person for the snack shack… or we have a broken sprinkler, here is a photo come fix it… bathrooms need painting. Someone do this." With a thank-you each time: "sometimes it's nothing, sometimes it might be free food at the event, sometimes it might be a discounted membership". On the member side: "I don't want a pop up of it, but maybe a bubble and a number saying that there are sign ups available... its own section."
+
+Already there (April, off at Bishop: Settings → Features → Volunteer): the board's Calendar → Volunteer page posts an opportunity (title, what to do, start and end, spots, place) and sees who signed up; members see a Volunteer card on Home and sign someone in the family up, or cancel. This builds on it.
+
+Doug's answers 10/23: any board member posts; the volunteer taps Done and the board member who posted it approves ("Board member who posted it also needs to approve it"), or the President; when approved, "auto post something on the news board with approval photo and thanking that member... only once it's approved"; shifts the same (the poster ticks who came); money off is a discount code ("A discount code"), shown in the app and emailed; the thank-you names the family; someone signing up gives the poster a to-do; no door access from a job ("the board will give the day pass in a text").
+
+How it works:
+- A **shift** has a date, time and spots ("Snack Shack, Saturday's meet, 10–2, 3 people") and can belong to a calendar event. A **job** has photos, a do-by date or "anytime", and usually one spot ("Broken sprinkler by the kiddie pool").
+- The **thank-you** on each post: nothing, a line the board writes ("Free lunch at the meet"), or money off next season ($ or %), given as a one-family discount code at approval, listed on Money → Discounts like any code.
+- **Members:** a Sign-ups tab at the bottom of the app (Home, Sign-ups, Ask the board, My family) with a number on it: open sign-ups the family could still take. No pop-ups, no texts. Shifts by date, jobs by do-by date, with photos and the thank-you; sign up picks someone in the family; Mine shows what they took, a Done button (with a photo) and, once approved, their thank-you and code. Members of the current season only, as with the gate and parties. A family can cancel until the shift starts or until they tap Done.
+- **The board:** Calendar → Sign-ups (was Volunteer). Post a shift or a job, add photos, set the thank-you, see who took it. To-dos for the poster: someone signed up; a job marked done (approve, or send it back with a note); a shift that ended (tick who came).
+- **On approval:** the thank-you is given, the code shows in their app and is emailed, and a news post goes up: "Thanks to the Rivera family for fixing the sprinkler by the kiddie pool!" with the Done photo. No pop-up with it. Thank-you posts don't count toward the 15 announcements Poolside keeps (PLAN.md AQ), so a real announcement is never pushed off; the newest 10 thank-yous are kept.
+
+Steps, one at a time, each with tests first (offline; live checks on a throwaway club, never Bishop's families, PLAN.md BL3):
+- **BM1.** The server: shifts and jobs, photos, the thank-you, Done and approve, any board member posts, the to-dos, the code at approval and its email, the thank-you news post.
+- **BM2.** The board's Sign-ups page.
+- **BM3.** The member Sign-ups tab with its number.
+- **BM4.** Ask the board: "Post as a job" on a member's question, bringing its photo.
+- **BM5.** Turn it on at Bishop, the help article, and the demo club's sample sign-ups.
+
 ### BL. Pre-flight before the payment tests (Doug, 10/22) — BL1 done 10/22; BL2, BL3 next
 Doug: "is there anything we can go through to ensure the app works well? ... i want to 100% make sure we are good to go". He starts BK next week.
 
