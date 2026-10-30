@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="/js/phone-fit.js"></script>
-<title>Volunteer — Poolside</title>
+<title>Sign-ups — Poolside</title>
 <script src="/js/pooltime.js"></script>
 <script src="/js/errors.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -65,6 +65,25 @@
   .roster-row .who { font-size: 14px; }
   .roster-row .who small { color: var(--muted); display: block; font-size: 11px; }
   footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+  /* Sign-ups (PLAN.md BM): shifts and jobs, photos, the thank-you, approving. */
+  .section-h { font: 700 12px 'Inter'; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px; }
+  .pill.shift { background: var(--blue-l); color: var(--blue); }
+  .pill.job { background: #fef3c7; color: #92400e; }
+  .pill.wait { background: #fde68a; color: #78350f; }
+  .pill.done { background: #dcfce7; color: #14532d; }
+  .opp .thumb { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: var(--bg-2); }
+  .opp .reward { font-size: 12.5px; color: #14532d; margin-top: 6px; font-weight: 600; }
+  .seg { display: flex; gap: 6px; margin-top: 4px; }
+  .seg button { flex: 1; padding: 9px; border-radius: 10px; border: 1.5px solid var(--border); background: #fff; font: 600 13px 'Inter'; cursor: pointer; color: var(--muted); }
+  .seg button.on { border-color: var(--blue); background: var(--blue-l); color: var(--blue); }
+  .photos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .photos .ph { position: relative; }
+  .photos img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; display: block; }
+  .photos .x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--red); color: #fff; font: 700 12px/22px 'Inter'; cursor: pointer; padding: 0; }
+  .add-photo { width: 72px; height: 72px; border-radius: 10px; border: 2px dashed var(--border); display: grid; place-items: center; color: var(--muted); font-size: 22px; cursor: pointer; }
+  .roster-row .done-ph { width: 100%; max-width: 260px; border-radius: 10px; margin-top: 6px; display: block; }
+  .roster-row { flex-wrap: wrap; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -89,28 +108,56 @@
 <main>
   <div class="toolbar">
     <div>
-      <h1>Volunteer</h1>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Snack-bar shifts, swim-meet timers, party helpers — anywhere you need a few volunteers.</div>
+      <h1>Sign-ups</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Shifts (a time and a few people) and jobs (fix it, paint it). Any board member can post one, with a thank-you. Families see them on their Sign-ups tab.</div>
     </div>
-    <button class="btn" onclick="openCreate()">+ New opportunity</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="openCreate('shift')">+ Shift</button>
+      <button class="btn" onclick="openCreate('job')">+ Job</button>
+    </div>
   </div>
   <div id="list"><div class="empty">Loading…</div></div>
 </main>
 
 <div class="scrim" id="scrim-edit">
   <div class="modal">
-    <h2 id="m-title">New opportunity</h2>
+    <h2 id="m-title">New sign-up</h2>
+    <div class="seg" id="m-kind">
+      <button type="button" data-kind="shift" onclick="setKind('shift')">🕐 Shift</button>
+      <button type="button" data-kind="job" onclick="setKind('job')">🔧 Job</button>
+    </div>
     <label>Title *</label>
-    <input id="m-name" maxlength="140" placeholder="e.g. Snack-bar shift Saturday meet">
-    <label>Description</label>
-    <textarea id="m-description" maxlength="800" placeholder="What the volunteer will do, what to bring, who to coordinate with."></textarea>
-    <div class="row2">
+    <input id="m-name" maxlength="140" placeholder="e.g. Snack Shack at Saturday's meet">
+    <label>What to do</label>
+    <textarea id="m-description" maxlength="2000" placeholder="What they'll do, what to bring, who to find."></textarea>
+    <div class="row2" id="m-shift-when">
       <div><label>Starts *</label><input id="m-starts_at" type="datetime-local"></div>
       <div><label>Ends</label><input id="m-ends_at" type="datetime-local"></div>
     </div>
+    <div id="m-job-when" style="display:none">
+      <label>Do by</label><input id="m-due_on" type="date">
+      <div class="hint">Leave empty for "anytime".</div>
+    </div>
     <div class="row2">
-      <div><label>Slots needed</label><input id="m-slots" type="number" min="1" value="2"></div>
-      <div><label>Location</label><input id="m-location" maxlength="120" placeholder="e.g. Snack bar"></div>
+      <div><label>How many people</label><input id="m-slots" type="number" min="1" max="100" value="2"></div>
+      <div><label>Where</label><input id="m-location" maxlength="120" placeholder="e.g. Snack Shack"></div>
+    </div>
+    <label>Photos <span style="font-weight:400;color:var(--muted)">(up to 4)</span></label>
+    <div class="photos" id="m-photos"></div>
+    <input type="file" id="m-photo-file" accept="image/*" style="display:none" onchange="addPhoto(this)">
+    <label>Thank-you</label>
+    <div class="seg" id="m-reward">
+      <button type="button" data-reward="none" onclick="setReward('none')">Nothing</button>
+      <button type="button" data-reward="note" onclick="setReward('note')">A line</button>
+      <button type="button" data-reward="discount" onclick="setReward('discount')">Money off</button>
+    </div>
+    <div id="m-reward-note" style="display:none"><input id="m-reward-text" maxlength="140" placeholder="e.g. Free lunch at the meet" style="margin-top:8px"></div>
+    <div id="m-reward-money" style="display:none">
+      <div class="row2" style="margin-top:8px">
+        <div><input id="m-reward-amount" type="number" min="1" max="1000" step="1" placeholder="25"></div>
+        <div><select id="m-reward-unit"><option value="usd">$ off next season</option><option value="pct">% off next season</option></select></div>
+      </div>
+      <div class="hint">Given as a one-family code when you approve their work, shown in their app and emailed.</div>
     </div>
     <div class="err" id="m-err"></div>
     <div class="modal-foot">
@@ -122,21 +169,23 @@
 </div>
 
 <div class="scrim" id="scrim-roster">
-  <div class="modal" style="max-width:520px">
+  <div class="modal" style="max-width:560px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
       <div>
-        <h2 id="r-title">Volunteers</h2>
+        <h2 id="r-title">People</h2>
         <div id="r-meta" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
       </div>
       <button class="btn btn-sm" onclick="closeRoster()">Close</button>
     </div>
     <hr style="margin:14px 0;border:0;border-top:1px solid var(--border)">
     <div id="r-list"></div>
+    <div class="err" id="r-err"></div>
   </div>
 </div>
 
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
+<script src="/js/photo-shrink.js"></script>
 <script>
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const URL_BASE     = `${SUPABASE_URL}/functions/v1/volunteer`;
@@ -144,25 +193,21 @@ const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 
 let CACHE = [];
 let EDITING = null;
-let ROSTER_OPP = null;
+let KIND = 'shift', REWARD = 'none', PHOTOS = [];
+let ROSTER = null;
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function logout() {
   // Self-healing: don't nuke a valid session on transient errors. Validate
-  // the token first; only really log out if it's confirmed bad. Random
-  // logouts Doug hit 2026-05-20 came from catch blocks calling logout()
-  // on network blips / parse errors / non-200s where the token was fine.
+  // the token first; only really log out if it's confirmed bad.
   try {
     const t = localStorage.getItem('poolside_tenant_token');
     if (t) {
-      const vr = await fetch('https://sdewylbddkcvidwosgxo.supabase.co/functions/v1/tenant_admin_auth', {
-        method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
-        body: JSON.stringify({ action: 'me' }),
-      });
-      if (vr.status !== 401) return;  // token still good - caller had a transient bug
+      const vr = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` }, body: JSON.stringify({ action: 'me' }) });
+      if (vr.status !== 401) return;
     }
-  } catch (_) { return; }  // network blip during validation - assume token is fine
+  } catch (_) { return; }
   ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
   window.location.href = '/club/admin/login.html';
 }
@@ -171,42 +216,53 @@ document.getElementById('signout').addEventListener('click', logout);
 async function call(action, extra = {}) {
   const t = token();
   if (!t) { logout(); throw new Error('Not signed in'); }
-  const res = await fetch(URL_BASE, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` },
-    body: JSON.stringify({ action, ...extra }),
-  });
+  const res = await fetch(URL_BASE, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` }, body: JSON.stringify({ action, ...extra }) });
   if (res.status === 401) { logout(); throw new Error('Session expired'); }
   return res.json();
 }
 
-function fmtDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
-// <input type="datetime-local"> holds POOL time (js/pooltime.js).
-function toLocalInput(iso) { return PoolTime.toInput(iso); }
-function fromLocalInput(v) { return PoolTime.fromInput(v); }
+const fmtWhen = iso => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+function whenText(o) {
+  if (o.kind === 'job') return o.due_on ? `Do by ${PoolTime.fmtDay(o.due_on, { weekday: 'short', month: 'short', day: 'numeric' })}` : 'Anytime';
+  return `${fmtWhen(o.starts_at)}${o.ends_at ? '–' + fmtTime(o.ends_at) : ''}`;
+}
+const isOver = o => o.kind === 'shift' && (o.ends_at || o.starts_at) && new Date(o.ends_at || o.starts_at) <= new Date();
+
+function card(o) {
+  const filled = o.slots_filled ?? 0, need = o.slots_needed ?? 1;
+  const status = o.closed_at ? '<span class="pill done">done</span>'
+    : o.waiting ? `<span class="pill wait">${o.waiting} to approve</span>`
+    : isOver(o) ? '<span class="pill wait">who came?</span>'
+    : filled >= need ? '<span class="pill full">full</span>' : `<span class="pill open">${filled}/${need}</span>`;
+  const pic = (o.photos || [])[0];
+  return `
+    <div class="opp" data-id="${o.id}" onclick="openRoster('${o.id}')">
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        ${pic ? `<img class="thumb" src="${escapeHtml(pic)}" alt="">` : ''}
+        <div style="flex:1;min-width:0">
+          <h3><span class="pill ${o.kind === 'job' ? 'job' : 'shift'}">${o.kind === 'job' ? 'Job' : 'Shift'}</span> ${escapeHtml(o.title)} ${status}</h3>
+          <div class="meta">${escapeHtml(whenText(o))}${o.location ? ' · ' + escapeHtml(o.location) : ''}${o.created_by_name ? ' · posted by ' + escapeHtml(o.created_by_name) : ''}</div>
+          ${o.reward_text ? `<div class="reward">🎁 ${escapeHtml(o.reward_text)}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="btn btn-sm" onclick="event.stopPropagation();openRoster('${o.id}')">People (${filled})</button>
+          ${o.closed_at ? '' : `<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEdit('${o.id}')">Edit</button>`}
+        </div>
+      </div>
+    </div>`;
+}
 
 function render() {
   const list = document.getElementById('list');
-  if (!CACHE.length) { list.innerHTML = `<div class="empty">No upcoming volunteer opportunities. Click <b>+ New opportunity</b>.</div>`; return; }
-  list.innerHTML = CACHE.map(o => {
-    const filled = o.slots_filled ?? 0;
-    const need = o.slots_needed ?? 0;
-    const isFull = filled >= need;
-    return `
-      <div class="opp" data-id="${o.id}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
-          <div style="flex:1;min-width:0">
-            <h3>${escapeHtml(o.title)} ${o.active ? (isFull ? '<span class="pill full">filled</span>' : `<span class="pill open">${filled}/${need}</span>`) : '<span class="pill inact">archived</span>'}</h3>
-            <div class="meta">${escapeHtml(fmtDate(o.starts_at))}${o.ends_at ? ' → ' + escapeHtml(new Date(o.ends_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})) : ''}${o.location ? ' · ' + escapeHtml(o.location) : ''}</div>
-            ${o.description ? `<div class="desc">${escapeHtml(o.description)}</div>` : ''}
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <button class="btn btn-sm" onclick="event.stopPropagation();openRoster('${o.id}')">Roster (${filled})</button>
-            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEdit('${o.id}')">Edit</button>
-          </div>
-        </div>
-      </div>`;
-  }).join('');
+  if (!CACHE.length) { list.innerHTML = `<div class="empty">Nothing posted yet. Tap <b>+ Shift</b> or <b>+ Job</b>.</div>`; return; }
+  const yours = CACHE.filter(o => !o.closed_at && o.can_approve && (o.waiting || isOver(o)));
+  const open = CACHE.filter(o => !o.closed_at && !yours.includes(o));
+  const done = CACHE.filter(o => o.closed_at);
+  const byDate = (a, b) => String(a.starts_at || a.due_on || '9999').localeCompare(String(b.starts_at || b.due_on || '9999'));
+  list.innerHTML = (yours.length ? `<div class="section-h">Waiting for you</div>${yours.map(card).join('')}` : '')
+    + (open.length ? `<div class="section-h">Open</div>${open.sort(byDate).map(card).join('')}` : '')
+    + (done.length ? `<div class="section-h">Done lately</div>${done.map(card).join('')}` : '');
 }
 
 async function refresh() {
@@ -220,50 +276,88 @@ async function refresh() {
   }
 }
 
-function openCreate() {
-  EDITING = null;
-  document.getElementById('m-title').textContent = 'New opportunity';
-  document.getElementById('m-delete').style.display = 'none';
-  document.getElementById('m-name').value = '';
-  document.getElementById('m-description').value = '';
-  document.getElementById('m-slots').value = '2';
-  document.getElementById('m-location').value = '';
-  const start = PoolTime.atTime(PoolTime.addDays(PoolTime.todayKey(), 7), 10, 0);   // a week out, 10 AM at the pool
-  document.getElementById('m-starts_at').value = toLocalInput(start.toISOString());
-  document.getElementById('m-ends_at').value = '';
+// ── Posting ──────────────────────────────────────────────────────────────
+function setKind(k) {
+  KIND = k;
+  document.querySelectorAll('#m-kind button').forEach(b => b.classList.toggle('on', b.dataset.kind === k));
+  document.getElementById('m-shift-when').style.display = k === 'shift' ? '' : 'none';
+  document.getElementById('m-job-when').style.display = k === 'job' ? '' : 'none';
+}
+function setReward(r) {
+  REWARD = r;
+  document.querySelectorAll('#m-reward button').forEach(b => b.classList.toggle('on', b.dataset.reward === r));
+  document.getElementById('m-reward-note').style.display = r === 'note' ? '' : 'none';
+  document.getElementById('m-reward-money').style.display = r === 'discount' ? '' : 'none';
+}
+function paintPhotos() {
+  document.getElementById('m-photos').innerHTML = PHOTOS.map((u, i) =>
+    `<div class="ph"><img src="${escapeHtml(u)}" alt=""><button type="button" class="x" onclick="PHOTOS.splice(${i},1);paintPhotos()" aria-label="Remove">×</button></div>`).join('')
+    + (PHOTOS.length < 4 ? `<label class="add-photo" for="m-photo-file" title="Add a photo">＋</label>` : '');
+}
+async function addPhoto(input) {
+  const err = document.getElementById('m-err'); err.classList.remove('show');
+  const f = input.files && input.files[0]; input.value = '';
+  if (!f) return;
+  try {
+    const p = await PoolsideShrink.photo(f);
+    const r = await call('upload_photo', { content_type: p.content_type, base64: p.base64 });
+    if (!r.ok) throw new Error(r.error || 'The photo could not be saved');
+    PHOTOS.push(r.url); paintPhotos();
+  } catch (e) { err.textContent = e.message; err.classList.add('show'); }
+}
+function fill(o) {
+  document.getElementById('m-name').value = o?.title || '';
+  document.getElementById('m-description').value = o?.description || '';
+  document.getElementById('m-slots').value = o?.slots_needed ?? (KIND === 'job' ? 1 : 2);
+  document.getElementById('m-location').value = o?.location || '';
+  document.getElementById('m-starts_at').value = o?.starts_at ? PoolTime.toInput(o.starts_at) : PoolTime.toInput(PoolTime.atTime(PoolTime.addDays(PoolTime.todayKey(), 7), 10, 0).toISOString());
+  document.getElementById('m-ends_at').value = o?.ends_at ? PoolTime.toInput(o.ends_at) : '';
+  document.getElementById('m-due_on').value = o?.due_on || '';
+  document.getElementById('m-reward-text').value = o?.reward_note || '';
+  document.getElementById('m-reward-amount').value = o?.reward_amount_cents ? o.reward_amount_cents / 100 : (o?.reward_percent ?? '');
+  document.getElementById('m-reward-unit').value = o?.reward_percent ? 'pct' : 'usd';
+  PHOTOS = [...(o?.photos || [])]; paintPhotos();
+  setReward(o?.reward_kind || 'none');
   document.getElementById('m-err').classList.remove('show');
+}
+function openCreate(kind) {
+  EDITING = null; setKind(kind);
+  document.getElementById('m-title').textContent = kind === 'job' ? 'New job' : 'New shift';
+  document.getElementById('m-delete').style.display = 'none';
+  fill(null);
   document.getElementById('scrim-edit').classList.add('open');
 }
-
 function openEdit(id) {
   const o = CACHE.find(x => x.id === id);
   if (!o) return;
-  EDITING = o;
-  document.getElementById('m-title').textContent = 'Edit opportunity';
-  document.getElementById('m-delete').style.display = o.active ? 'inline-block' : 'none';
-  document.getElementById('m-name').value = o.title || '';
-  document.getElementById('m-description').value = o.description || '';
-  document.getElementById('m-slots').value = o.slots_needed ?? 1;
-  document.getElementById('m-location').value = o.location || '';
-  document.getElementById('m-starts_at').value = toLocalInput(o.starts_at);
-  document.getElementById('m-ends_at').value   = toLocalInput(o.ends_at);
-  document.getElementById('m-err').classList.remove('show');
+  EDITING = o; setKind(o.kind || 'shift');
+  document.getElementById('m-title').textContent = o.kind === 'job' ? 'Edit job' : 'Edit shift';
+  document.getElementById('m-delete').style.display = 'inline-block';
+  fill(o);
   document.getElementById('scrim-edit').classList.add('open');
 }
 function closeM() { document.getElementById('scrim-edit').classList.remove('open'); }
 
 async function save() {
   const errEl = document.getElementById('m-err'); errEl.classList.remove('show');
+  const amount = Number(document.getElementById('m-reward-amount').value);
+  const pct = document.getElementById('m-reward-unit').value === 'pct';
   const payload = {
-    title:        document.getElementById('m-name').value.trim(),
-    description:  document.getElementById('m-description').value.trim(),
-    slots_needed: Math.max(0, parseInt(document.getElementById('m-slots').value, 10) || 0),
-    location:     document.getElementById('m-location').value.trim(),
-    starts_at:    fromLocalInput(document.getElementById('m-starts_at').value),
-    ends_at:      fromLocalInput(document.getElementById('m-ends_at').value),
+    kind: KIND,
+    title: document.getElementById('m-name').value.trim(),
+    description: document.getElementById('m-description').value.trim(),
+    slots_needed: parseInt(document.getElementById('m-slots').value, 10) || 1,
+    location: document.getElementById('m-location').value.trim(),
+    starts_at: KIND === 'shift' ? PoolTime.fromInput(document.getElementById('m-starts_at').value) : null,
+    ends_at: KIND === 'shift' ? PoolTime.fromInput(document.getElementById('m-ends_at').value) : null,
+    due_on: KIND === 'job' ? (document.getElementById('m-due_on').value || null) : null,
+    photos: PHOTOS,
+    reward_kind: REWARD,
+    reward_note: REWARD === 'note' ? document.getElementById('m-reward-text').value.trim() : null,
+    reward_amount_cents: REWARD === 'discount' && !pct && amount ? Math.round(amount * 100) : null,
+    reward_percent: REWARD === 'discount' && pct && amount ? amount : null,
   };
-  if (!payload.title)     { errEl.textContent = 'Title is required'; errEl.classList.add('show'); return; }
-  if (!payload.starts_at) { errEl.textContent = 'Start time is required'; errEl.classList.add('show'); return; }
+  if (!payload.title) { errEl.textContent = 'Give it a title.'; errEl.classList.add('show'); return; }
   try {
     const r = EDITING ? await call('update', { id: EDITING.id, ...payload }) : await call('create', payload);
     if (!r.ok) throw new Error(r.error || 'Save failed');
@@ -273,56 +367,89 @@ async function save() {
 
 async function del() {
   if (!EDITING) return;
-  if (!confirm(`Archive "${EDITING.title}"? Existing volunteers stay; new sign-ups are blocked.`)) return;
+  if (!confirm(`Archive "${EDITING.title}"? Families won't see it any more.`)) return;
   const r = await call('delete', { id: EDITING.id });
-  if (!r.ok) { document.getElementById('m-err').textContent = r.error || 'Delete failed'; document.getElementById('m-err').classList.add('show'); return; }
+  if (!r.ok) { const e = document.getElementById('m-err'); e.textContent = r.error || 'Could not archive it'; e.classList.add('show'); return; }
   closeM(); await refresh();
 }
 
+// ── People, Done and the thank-you ──────────────────────────────────────
+const STATUS = { confirmed: ['Signed up', 'open'], done: ['Marked done', 'wait'], approved: ['✓ Approved', 'done'], no_show: ["Didn't come", 'inact'], cancelled: ['Cancelled', 'inact'] };
 async function openRoster(id) {
   const r = await call('roster', { opportunity_id: id });
-  if (!r.ok) { alert(r.error || 'Failed to load roster'); return; }
-  ROSTER_OPP = r.opportunity;
-  document.getElementById('r-title').textContent = r.opportunity.title;
-  document.getElementById('r-meta').textContent = `${fmtDate(r.opportunity.starts_at)} · need ${r.opportunity.slots_needed}`;
+  if (!r.ok) { alert(r.error || 'Could not load who signed up'); return; }
+  ROSTER = r;
+  history.replaceState(null, '', `#o=${id}`);
+  const o = r.opportunity;
+  document.getElementById('r-title').textContent = o.title;
+  document.getElementById('r-meta').textContent = `${o.kind === 'job' ? 'Job' : 'Shift'} · ${whenText(o)} · ${o.slots_filled ?? 0} of ${o.slots_needed}${o.reward_text ? ' · 🎁 ' + o.reward_text : ''}`;
+  document.getElementById('r-err').classList.remove('show');
+  const live = r.signups.filter(s => s.status !== 'cancelled');
   const list = document.getElementById('r-list');
-  if (!r.signups.length) {
-    list.innerHTML = `<div class="empty" style="padding:30px;border-radius:10px">No volunteers yet.</div>`;
-  } else {
-    list.innerHTML = r.signups.map(s => `
-      <div class="roster-row">
-        <div class="who">
-          <div>${escapeHtml(s.volunteer_name)} <span class="pill ${s.status === 'confirmed' ? 'open' : 'inact'}">${escapeHtml(s.status)}</span></div>
-          <small>${escapeHtml(s.family_name || '—')}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</small>
-        </div>
-        ${s.status !== 'cancelled' ? `<button class="btn btn-sm btn-danger" onclick="cancelSignup('${s.id}')">Cancel</button>` : ''}
-      </div>`).join('');
+  if (!live.length) { list.innerHTML = `<div class="empty" style="padding:30px;border-radius:10px">Nobody yet.</div>`; }
+  else {
+    const tickCame = o.kind === 'shift' && !o.closed_at && o.can_approve && isOver(o);
+    list.innerHTML = (tickCame ? `<div class="hint" style="margin:0 0 8px">The shift is over. Tick who came: each gets the thank-you, and a thank-you goes on the news.</div>` : '')
+      + live.map(s => {
+        const [label, tone] = STATUS[s.status] || [s.status, 'inact'];
+        const approveBtns = o.can_approve && s.status === 'done'
+          ? `<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-sm" onclick="approve('${s.id}')">Approve</button><button class="btn btn-sm btn-ghost" onclick="sendBack('${s.id}')">Send back</button></div>` : '';
+        return `
+        <div class="roster-row">
+          <div class="who" style="flex:1;min-width:0">
+            <div>${tickCame && s.status === 'confirmed' ? `<input type="checkbox" class="came" value="${s.id}" checked style="margin-right:8px">` : ''}${escapeHtml(s.volunteer_name)} <span class="pill ${tone}">${escapeHtml(label)}</span></div>
+            <small>${escapeHtml(s.family_name || '—')}${s.code ? ' · code ' + escapeHtml(s.code) : ''}${s.sent_back_note ? ' · sent back: ' + escapeHtml(s.sent_back_note) : ''}</small>
+            ${s.done_note ? `<small>"${escapeHtml(s.done_note)}"</small>` : ''}
+            ${s.done_photo_url ? `<img class="done-ph" src="${escapeHtml(s.done_photo_url)}" alt="Their photo">` : ''}
+            ${approveBtns}
+          </div>
+          ${s.status === 'confirmed' && !tickCame ? `<button class="btn btn-sm btn-ghost" onclick="removeSignup('${s.id}')">Remove</button>` : ''}
+        </div>`;
+      }).join('')
+      + (tickCame ? `<div style="margin-top:12px"><button class="btn" onclick="saveCame()">Save who came</button></div>` : '');
   }
   document.getElementById('scrim-roster').classList.add('open');
 }
-function closeRoster() { document.getElementById('scrim-roster').classList.remove('open'); ROSTER_OPP = null; }
-async function cancelSignup(sid) {
-  if (!confirm('Cancel this signup?')) return;
-  const r = await call('cancel_admin', { signup_id: sid });
-  if (!r.ok) { alert(r.error || 'Failed'); return; }
-  await openRoster(ROSTER_OPP.id);
-  await refresh();
+function closeRoster() { document.getElementById('scrim-roster').classList.remove('open'); ROSTER = null; history.replaceState(null, '', location.pathname); }
+async function rosterCall(action, extra, okMsg) {
+  const e = document.getElementById('r-err'); e.classList.remove('show');
+  const r = await call(action, extra);
+  if (!r.ok) { e.textContent = r.error || 'That didn\'t work'; e.classList.add('show'); return; }
+  const id = ROSTER.opportunity.id;
+  await refresh(); await openRoster(id);
+}
+function approve(sid) {
+  const o = ROSTER.opportunity;
+  if (!confirm(`Approve it?${o.reward_text ? ` They get their thank-you (${o.reward_text}),` : ''} and a thank-you goes on the news.`)) return;
+  rosterCall('approve', { signup_ids: [sid] });
+}
+function sendBack(sid) {
+  const note = prompt('What still needs doing? They\'ll see this in their app.');
+  if (!note || !note.trim()) return;
+  rosterCall('send_back', { signup_id: sid, note: note.trim() });
+}
+function saveCame() {
+  const came = [...document.querySelectorAll('#r-list input.came:checked')].map(i => i.value);
+  rosterCall('attendance', { opportunity_id: ROSTER.opportunity.id, came });
+}
+function removeSignup(sid) {
+  if (!confirm('Take them off this sign-up?')) return;
+  rosterCall('cancel_admin', { signup_id: sid });
 }
 
 (async () => {
   if (!token()) { logout(); return; }
   try {
-    const me = await fetch(ME_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` },
-      body: JSON.stringify({ action: 'me' }),
-    }).then(r => r.json());
+    const me = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` }, body: JSON.stringify({ action: 'me' }) }).then(r => r.json());
     if (!me.ok) { logout(); return; }
-    document.title = `Volunteer — ${me.tenant.display_name}`;
+    document.title = `Sign-ups — ${me.tenant.display_name}`;
     document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
     if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
   } catch { logout(); return; }
   await refresh();
+  // A to-do on the dashboard opens the sign-up (#o=<id>).
+  const m = location.hash.match(/^#o=([0-9a-f-]{36})$/);
+  if (m) openRoster(m[1]);
 })();
 </script>
 </body>

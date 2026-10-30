@@ -106,6 +106,81 @@ check('the email "Thank you for helping" is on Settings → Emails, under Sign-u
 check('the club\'s news carries the photo and kind', /select\('id, title, body, pinned, published_at, image_url, kind'\)/.test(read('supabase/functions/tenant_public/index.ts')));
 check('the daily run asks the poster to tick who came after a shift', /askAttendance\(/.test(read('supabase/functions/payment_plans/index.ts')));
 
+// ── BM2 · the board's Sign-ups page, drawn with sample answers ──────────
+console.log('BM2 · the board\'s Sign-ups page (offline, in Chrome)');
+{
+  const { launch, attach, BOARD } = await import('./demo_video/harness.mjs');
+  const { respond } = await import('./demo_video/data.mjs');
+  const ago = h => new Date(Date.now() - h * 3600e3).toISOString();
+  const opps = [
+    { id: '11111111-1111-1111-1111-111111111111', kind: 'job', title: 'Fix the sprinkler', due_on: '2099-07-01', slots_needed: 1, slots_filled: 1, waiting: 1, approved: 0, can_approve: true,
+      photos: ['data:image/png;base64,iVBORw0KGgo='], reward_kind: 'discount', reward_amount_cents: 2500, reward_text: '$25 off next season', created_by_name: 'Erik Larsen', active: true },
+    { id: '22222222-2222-2222-2222-222222222222', kind: 'shift', title: 'Snack Shack at the meet', starts_at: ago(5), ends_at: ago(1), slots_needed: 3, slots_filled: 2, waiting: 0, can_approve: true,
+      photos: [], reward_kind: 'note', reward_note: 'Free lunch', reward_text: 'Free lunch', created_by_name: 'Sam Brooks', active: true },
+    { id: '33333333-3333-3333-3333-333333333333', kind: 'shift', title: 'Timers for the swim meet', starts_at: '2099-06-20T16:00:00Z', ends_at: '2099-06-20T19:00:00Z', slots_needed: 4, slots_filled: 1, waiting: 0, can_approve: false,
+      photos: [], reward_kind: 'none', reward_text: null, created_by_name: 'Mei Chen', active: true },
+  ];
+  const sent = [];
+  const roster = id => id === opps[0].id
+    ? [{ id: 's-job', status: 'done', volunteer_name: 'Jamie Rivera', family_name: 'Rivera Family', done_note: 'New head on.', done_photo_url: 'data:image/png;base64,iVBORw0KGgo=' }]
+    : [{ id: 's-a', status: 'confirmed', volunteer_name: 'Jamie Rivera', family_name: 'Rivera Family' }, { id: 's-b', status: 'confirmed', volunteer_name: 'Lin Chen', family_name: 'Chen Family' }];
+  const browser = await launch();
+  const page = await browser.newPage();
+  await page.setViewport({ width: 390, height: 844 });
+  const log = await attach(page, { answer: (f, body, ctx) => {
+    if (f === 'volunteer') {
+      sent.push(body);
+      if (body.action === 'list') return { ok: true, opportunities: opps };
+      if (body.action === 'roster') return { ok: true, opportunity: opps.find(o => o.id === body.opportunity_id), signups: roster(body.opportunity_id) };
+      return { ok: true, opportunity: opps[0] };
+    }
+    return respond(f, body, ctx);
+  } });
+  await page.goto(BOARD + '/club/admin/volunteer.html', { waitUntil: 'networkidle0', timeout: 45000 });
+  await new Promise(r => setTimeout(r, 600));
+  const view = await page.evaluate(() => ({
+    title: document.querySelector('h1')?.textContent, buttons: [...document.querySelectorAll('.toolbar .btn')].map(b => b.textContent.trim()),
+    sections: [...document.querySelectorAll('.section-h')].map(h => h.textContent), text: document.getElementById('list').innerText.replace(/\s+/g, ' '),
+    wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  check('the page is "Sign-ups", with + Shift and + Job', view.title === 'Sign-ups' && view.buttons.join('|') === '+ Shift|+ Job', JSON.stringify(view).slice(0, 160));
+  check('what\'s waiting for you first: the job to approve and the shift that\'s over', /^waiting for you$/i.test(view.sections[0]) && /Fix the sprinkler.*1 to approve/i.test(view.text) && /Snack Shack at the meet.*who came\?/i.test(view.text), view.text.slice(0, 220));
+  check('  then the open ones, with the thank-you and who posted it', view.sections.some(h => /^open$/i.test(h)) && /Timers for the swim meet/.test(view.text) && /🎁 \$25 off next season/.test(view.text) && /posted by Erik Larsen/.test(view.text));
+  check('  fits a phone', view.wide <= 1, String(view.wide));
+  const form = await page.evaluate(() => {
+    openCreate('job');
+    const job = { title: document.getElementById('m-title').textContent, jobWhen: getComputedStyle(document.getElementById('m-job-when')).display, shiftWhen: getComputedStyle(document.getElementById('m-shift-when')).display };
+    setReward('discount');
+    document.getElementById('m-name').value = 'Paint the bathrooms';
+    document.getElementById('m-reward-amount').value = '25';
+    return { ...job, money: getComputedStyle(document.getElementById('m-reward-money')).display };
+  });
+  await page.evaluate(() => save());
+  await new Promise(r => setTimeout(r, 400));
+  const made = sent.find(b => b.action === 'create');
+  check('+ Job: a do-by date instead of a time, and money off', form.title === 'New job' && form.jobWhen !== 'none' && form.shiftWhen === 'none' && form.money !== 'none', JSON.stringify(form));
+  check('  saved as a job with $25 off', made?.kind === 'job' && made?.title === 'Paint the bathrooms' && made?.reward_kind === 'discount' && made?.reward_amount_cents === 2500 && made?.starts_at === null, JSON.stringify(made).slice(0, 200));
+  await page.evaluate(id => openRoster(id), opps[0].id);
+  await new Promise(r => setTimeout(r, 400));
+  const jr = await page.evaluate(() => ({ text: document.getElementById('r-list').innerText.replace(/\s+/g, ' '), photo: !!document.querySelector('#r-list img.done-ph'),
+    btns: [...document.querySelectorAll('#r-list button')].map(b => b.textContent.trim()) }));
+  check('a job marked done: their note and photo, Approve and Send back', /Marked done/i.test(jr.text) && /New head on/.test(jr.text) && jr.photo && jr.btns.includes('Approve') && jr.btns.includes('Send back'), JSON.stringify(jr));
+  page.on('dialog', d => d.accept());
+  await page.evaluate(() => approve('s-job'));
+  await new Promise(r => setTimeout(r, 400));
+  check('  Approve sends that sign-up', sent.some(b => b.action === 'approve' && b.signup_ids?.[0] === 's-job'));
+  await page.evaluate(id => openRoster(id), opps[1].id);
+  await new Promise(r => setTimeout(r, 400));
+  const sr = await page.evaluate(() => { const boxes = [...document.querySelectorAll('#r-list input.came')]; if (boxes[1]) boxes[1].checked = false;
+    return { boxes: boxes.length, save: !!document.querySelector('#r-list button[onclick="saveCame()"]') }; });
+  await page.evaluate(() => saveCame());
+  await new Promise(r => setTimeout(r, 400));
+  const att = sent.find(b => b.action === 'attendance');
+  check('a shift that\'s over: tick who came, then Save who came', sr.boxes === 2 && sr.save && att?.came?.join() === 's-a', JSON.stringify({ sr, att }));
+  check('no script errors', !log.errors.length, log.errors.join(' | '));
+  await browser.close();
+}
+
 // ── BM1 · live, on a throwaway club ─────────────────────────────────────
 if (process.argv.includes('--live')) {
   console.log('BM1 · live (a throwaway club, deleted afterwards; about 25 calls)');

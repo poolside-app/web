@@ -50,7 +50,8 @@
       { key: 'events',     label: 'Events',     href: '/club/admin/events.html',     scope: 'events'    },
       { key: 'programs',   label: 'Programs',   href: '/club/admin/programs.html',   scope: 'programs'  },
       { key: 'parties',    label: 'Parties',    href: '/club/admin/parties.html',    scope: 'parties'   },
-      { key: 'volunteer',  label: 'Volunteer',  href: '/club/admin/volunteer.html',  scope: 'volunteer' },
+      // Any board member posts a sign-up (PLAN.md BM), so no scope.
+      { key: 'volunteer',  label: 'Sign-ups',   href: '/club/admin/volunteer.html',  scope: '' },
       { key: 'lifeguards', label: 'Lifeguards', href: '/club/admin/lifeguards.html', scope: 'volunteer' },
     ],
     // Publishing + listening. No longer a junk drawer holding three money

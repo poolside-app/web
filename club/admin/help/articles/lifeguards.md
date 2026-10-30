@@ -14,9 +14,4 @@ Lifeguards sign in and pick open shifts under **My shifts**. They can **Release*
 
 ### Volunteers
 
-For one-off jobs like snack-bar shifts or swim-meet timers:
-
-1. Go to **Calendar → Volunteer**.
-2. Tap **+ New opportunity**, fill in the title, when it starts, the **Slots needed** and the **Location**, and tap **Save**.
-
-Members sign up in the app. Tap **Roster** to see who's coming.
+Snack Shack shifts, swim-meet timers and jobs like fixing a sprinkler are sign-ups: go to **Calendar → Sign-ups** and tap **+ Shift** or **+ Job**. Families sign up on the Sign-ups tab in their app.
