@@ -834,6 +834,7 @@ function renderTenant(t, ps, posts, events, photos, documents, programs, sponsor
           <article class="post ${p.pinned ? 'pinned' : ''}">
             <h3 class="post-title">${escapeHtml(p.title)}${p.pinned ? '<span class="pin-pill">📌 Pinned</span>' : ''}</h3>
             <div class="post-meta">${escapeHtml(fmtPostDate(p.published_at))}</div>
+            ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" alt="" loading="lazy" style="width:100%;max-height:320px;object-fit:cover;border-radius:12px;margin:8px 0 4px;display:block">` : ''}
             <div class="post-body">${escapeHtml(p.body)}</div>
           </article>
         `).join('')}

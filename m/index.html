@@ -71,6 +71,18 @@
   .mtabs button { flex: 1; max-width: 200px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; background: none; border: 0; font: 600 11px 'Inter', sans-serif; color: var(--muted); cursor: pointer; border-radius: 10px; }
   .mtabs button .ti { font-size: 21px; line-height: 1.1; }
   .mtabs button.on { color: var(--blue); background: var(--blue-l, #e6eef5); }
+  /* The number of open sign-ups on the tab (PLAN.md BM): a bubble, never a pop-up. */
+  .mtabs button { position: relative; }
+  .mtabs button .tb-n { position: absolute; top: 1px; left: 50%; margin-left: 8px; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--sun, #f59e0b); color: #fff; font: 700 10.5px/18px 'Inter', sans-serif; text-align: center; }
+  .su-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .su-row:last-child { border-bottom: 0; }
+  .su-thumb { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex-shrink: 0; cursor: zoom-in; background: var(--bg-2, #f7f3eb); }
+  .su-kind { font: 700 10.5px 'Inter', sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .su-reward { font-size: 13px; color: #14532d; font-weight: 600; margin-top: 4px; }
+  .su-code { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: #f0fdf4; color: #14532d; font-size: 13.5px; line-height: 1.5; }
+  .su-code b.c { font-size: 16px; letter-spacing: .06em; }
+  .su-note { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: #fef3c7; color: #78350f; font-size: 13px; }
+  .post-img { width: 100%; max-height: 260px; object-fit: cover; border-radius: 12px; margin: 8px 0 4px; display: block; }
   body.has-tabs main { padding-bottom: 100px; }
   body.has-tabs #pool-pass-fab { bottom: calc(84px + env(safe-area-inset-bottom)) !important; }
 
@@ -1403,89 +1415,127 @@ async function cancelProgramBooking(bid) {
   await refreshPrograms();
 }
 
-// ── Volunteer signups ───────────────────────────────────────────────────
+// ── Sign-ups (PLAN.md BM) ───────────────────────────────────────────────
+// Shifts and jobs the board posts, on their own tab with a number on it (no
+// pop-ups). Sign someone in the family up; on a job, tap "I'm done" with a
+// photo; once the board approves, their thank-you (and code) shows here.
 async function callVolunteer(action, extra = {}) {
   const t = token();
-  const slug = getSlug();
   const headers = { 'content-type': 'application/json' };
   if (t) headers.authorization = `Bearer ${t}`;
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/volunteer`, {
-    method: 'POST', headers,
-    body: JSON.stringify({ action, slug, ...extra }),
-  });
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/volunteer`, { method: 'POST', headers, body: JSON.stringify({ action, slug: getSlug(), ...extra }) });
   return res.json();
 }
-async function refreshVolunteer() {
-  const card = document.getElementById('volunteer-card');
-  const body = document.getElementById('volunteer-body');
-  if (!card || !body) return;
+let SIGNUPS = null;
+function signupWhen(o) {
+  if (o.kind === 'job') return o.due_on ? `Do by ${PoolTime.fmtDay(o.due_on, { weekday: 'short', month: 'short', day: 'numeric' })}` : 'Anytime';
+  if (!o.starts_at) return '';
+  const day = new Date(o.starts_at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return o.ends_at ? `${day}–${new Date(o.ends_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : day;
+}
+function paintSignupBadge(n) {
+  const b = document.querySelector('#mtabs [data-tab="signups"]');
+  if (!b) return;
+  let el = b.querySelector('.tb-n');
+  if (!el) { el = document.createElement('span'); el.className = 'tb-n'; b.appendChild(el); }
+  el.textContent = String(n);
+  el.hidden = !n;
+}
+async function refreshSignups() {
+  const host = document.getElementById('signups-open');
   try {
-    const [pubRes, mineRes] = await Promise.all([
-      callVolunteer('list_public'),
-      callVolunteer('my_signups'),
-    ]);
-    const opps = (pubRes.opportunities || []);
-    const mine = (mineRes.signups || []).filter(s => s.status !== 'cancelled');
-    if (!opps.length && !mine.length) { card.style.display = 'none'; return; }
-    card.style.display = 'block';
-
-    const myOppIds = new Set(mine.map(s => (s.opportunity?.id) || s.opportunity_id));
-    const offerHtml = opps.map(o => {
-      const filled = o.slots_filled ?? 0;
-      const need   = o.slots_needed ?? 0;
-      const isFull = filled >= need;
-      const already = myOppIds.has(o.id);
-      const btn = already
-        ? '<span class="pill party-approved">Signed up</span>'
-        : (isFull
-            ? '<span class="pill party-cancelled">Filled</span>'
-            : `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="volunteerSignup('${o.id}', '${escapeAttr(o.title)}')">Sign up</button>`);
-      const when = new Date(o.starts_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    const r = await callVolunteer('list');
+    if (!r.ok) throw new Error(r.error || 'Could not load the sign-ups');
+    SIGNUPS = r;
+    paintSignupBadge(r.open_count || 0);
+    if (!host) return;
+    const opps = r.opportunities || [];
+    host.innerHTML = opps.length ? opps.map(o => {
+      const mine = (o.mine || []).length;
+      const btn = mine ? '<span class="pill party-approved">You\'re on it</span>'
+        : !r.member ? ''
+        : o.spots_left > 0 ? `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="signupFor('${o.id}')">Sign up</button>`
+        : '<span class="pill party-cancelled">Full</span>';
+      const pic = (o.photos || [])[0];
       return `
-        <div class="party-row">
+        <div class="su-row">
+          ${pic ? `<img class="su-thumb" src="${escapeAttr(pic)}" alt="" onclick="window.open(this.src, '_blank')">` : ''}
           <div style="flex:1;min-width:0">
-            <div class="ptitle">${escapeHtml(o.title)} <span style="font-size:11px;color:var(--muted);font-weight:400">(${filled}/${need})</span></div>
-            <div class="pmeta">${escapeHtml(when)}${o.location ? ' · ' + escapeHtml(o.location) : ''}</div>
+            <div class="su-kind">${o.kind === 'job' ? '🔧 Job' : '🕐 Shift'}</div>
+            <div class="ptitle">${escapeHtml(o.title)}</div>
+            <div class="pmeta">${escapeHtml(signupWhen(o))}${o.location ? ' · ' + escapeHtml(o.location) : ''} · ${o.spots_left} of ${o.spots} spot${o.spots === 1 ? '' : 's'} left</div>
             ${o.description ? `<div class="pnote" style="font-style:normal;color:var(--text)">${escapeHtml(o.description)}</div>` : ''}
+            ${o.reward_text ? `<div class="su-reward">🎁 ${escapeHtml(o.reward_text)}</div>` : ''}
           </div>
           <div style="flex-shrink:0">${btn}</div>
         </div>`;
+    }).join('') + (r.member ? '' : `<div class="su-note">Sign-ups are for this season's members. Renew to sign up.</div>`)
+      : '<div class="empty">Nothing to sign up for right now. Check back soon.</div>';
+    const mine = (r.mine || []);
+    const mineCard = document.getElementById('signups-mine-card');
+    if (mineCard) mineCard.style.display = mine.length ? '' : 'none';
+    const mh = document.getElementById('signups-mine');
+    if (mh) mh.innerHTML = mine.map(s => {
+      const state = s.status === 'approved'
+        ? `<div class="su-reward">✓ Approved. Thank you!</div>${s.code ? `<div class="su-code">Your thank-you: ${escapeHtml(s.reward_text || 'money off')}. Use code <b class="c">${escapeHtml(s.code)}</b> when you renew for next season.</div>` : (s.reward_text ? `<div class="su-reward">🎁 ${escapeHtml(s.reward_text)}</div>` : '')}`
+        : s.status === 'done' ? '<div class="pmeta">Marked done. The board will check it.</div>'
+        : s.status === 'no_show' ? '<div class="pmeta">The board marked this one as missed.</div>'
+        : (s.sent_back_note ? `<div class="su-note">The board says: ${escapeHtml(s.sent_back_note)}</div>` : '');
+      const btns = s.status === 'confirmed'
+        ? `${s.kind === 'job' ? `<button class="btn" style="font-size:12px;padding:6px 12px;background:var(--blue);color:#fff" onclick="signupDone('${s.id}')">I'm done</button>` : ''}
+           ${s.can_cancel ? `<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="signupCancel('${s.id}')">Cancel</button>` : ''}` : '';
+      return `
+        <div class="su-row">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle">${escapeHtml(s.title || 'Sign-up')}</div>
+            <div class="pmeta">${escapeHtml(s.volunteer_name)}${s.kind ? ' · ' + escapeHtml(signupWhen(s)) : ''}</div>
+            ${state}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${btns}</div>
+        </div>`;
     }).join('');
-
-    const mineHtml = mine.length ? `
-      <h3 style="margin:14px 0 4px;font-family:'Fraunces',serif;font-weight:600;font-size:14px;color:var(--blue)">You're signed up for</h3>
-      ${mine.map(s => {
-        const o = s.opportunity || {};
-        const when = o.starts_at ? new Date(o.starts_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
-        return `
-          <div class="party-row">
-            <div style="flex:1;min-width:0">
-              <div class="ptitle">${escapeHtml(o.title || 'Opportunity')}</div>
-              <div class="pmeta">${escapeHtml(s.volunteer_name)} · ${escapeHtml(when)}</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-              <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer" onclick="volunteerCancel('${s.id}')">Cancel</button>
-            </div>
-          </div>`;
-      }).join('')}` : '';
-
-    body.className = '';
-    body.innerHTML = (offerHtml || '<div class="empty">No openings right now.</div>') + mineHtml;
-  } catch { /* ignore */ }
+  } catch (e) {
+    if (host) host.innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+  }
 }
-async function volunteerSignup(oppId, oppTitle) {
-  const volunteer_name = await pickFamilyMember(`Who's volunteering for ${oppTitle}?`);
-  if (!volunteer_name) return;
-  const r = await callVolunteer('signup', { opportunity_id: oppId, volunteer_name });
-  if (!r.ok) { notify(r.error || 'Sign-up failed', 'err'); return; }
-  notify(`✓ Thanks! ${volunteer_name} is signed up.`);
-  await refreshVolunteer();
+async function signupFor(oppId) {
+  const o = (SIGNUPS?.opportunities || []).find(x => x.id === oppId);
+  const name = await pickFamilyMember(`Who's doing "${o ? o.title : 'this'}"?`);
+  if (!name) return;
+  const m = ((ME_HOUSEHOLD && ME_HOUSEHOLD.members) || []).find(x => x.name === name && x.active !== false);
+  const r = await callVolunteer('signup', { opportunity_id: oppId, volunteer_name: name, member_id: m ? m.id : null });
+  if (!r.ok) { notify(r.error || 'Could not sign up', 'err'); return; }
+  notify(`✓ Thanks! ${name} is signed up.`);
+  await refreshSignups();
 }
-async function volunteerCancel(sid) {
-  if (!(await askConfirm('Cancel this volunteer slot?', 'Cancel slot', 'Keep it'))) return;
+async function signupCancel(sid) {
+  if (!(await askConfirm('Take your name off this one?', 'Cancel it', 'Keep it'))) return;
   const r = await callVolunteer('cancel_signup', { signup_id: sid });
-  if (!r.ok) { notify(r.error || 'Cancel failed', 'err'); return; }
-  await refreshVolunteer();
+  if (!r.ok) { notify(r.error || 'Could not cancel', 'err'); return; }
+  await refreshSignups();
+}
+async function signupDone(sid) {
+  const extra = `<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+    <label class="btn btn-ghost" style="cursor:pointer;text-align:center">📷 Add a photo of the finished job<input type="file" id="done-photo" accept="image/*" hidden onchange="document.getElementById('done-photo-name').textContent = this.files[0] ? '✓ ' + this.files[0].name : ''"></label>
+    <div id="done-photo-name" style="font-size:12.5px;color:var(--muted)"></div>
+    <textarea id="done-note" maxlength="300" rows="2" placeholder="Anything the board should know? (optional)" style="padding:10px;border:1.5px solid var(--border);border-radius:10px;font:inherit"></textarea>
+    <div style="font-size:12.5px;color:var(--muted)">The board checks it, then your thank-you comes, and the photo goes on the club news with a thank-you to your family.</div></div>`;
+  if (!(await ask({ text: 'Mark it done?', yes: "I'm done", no: 'Not yet', extra }))) return;
+  const file = document.getElementById('done-photo')?.files?.[0];
+  const note = document.getElementById('done-note')?.value.trim() || '';
+  let photo_url = null;
+  try {
+    if (file) {
+      const p = await PoolsideShrink.photo(file);
+      const up = await callVolunteer('upload_photo', { content_type: p.content_type, base64: p.base64 });
+      if (!up.ok) throw new Error(up.error || 'The photo could not be saved');
+      photo_url = up.url;
+    }
+    const r = await callVolunteer('done', { signup_id: sid, photo_url, note });
+    if (!r.ok) throw new Error(r.error || 'Could not mark it done');
+    notify('✓ Thanks! The board will check it.');
+    await refreshSignups();
+  } catch (e) { notify(e.message, 'err'); }
 }
 
 // (Member directory removed 2026-05-05 — even an opt-in roster exposes
@@ -2046,7 +2096,7 @@ function modalOpen() {
 // ── The app tabs (PLAN.md U4) ────────────────────────────────────────────
 // Old links still land in the right place: #parties on Calendar, #plan and
 // #keyfobs on My family, #help=<id> on Ask the board.
-const TAB_FOR = { home: 'home', calendar: 'home', parties: 'home', photos: 'home', help: 'help', family: 'family', plan: 'family', keyfobs: 'family' };
+const TAB_FOR = { home: 'home', calendar: 'home', parties: 'home', photos: 'home', help: 'help', family: 'family', plan: 'family', keyfobs: 'family', signups: 'signups', volunteer: 'signups' };
 const SCROLL_TO = { calendar: 'calendar-card', parties: 'parties-card', photos: 'photos-card' };
 function tabForHash(h) {
   const key = String(h || '').replace(/^#/, '').split('=')[0];
@@ -2939,6 +2989,7 @@ async function submitProfile() {
       <div class="post-row">
         <div class="post-title">${escapeHtml(p.title)}${p.pinned ? ' 📌' : ''}</div>
         <div class="post-meta">${escapeHtml(fmtPostDate(p.published_at))}</div>
+        ${p.image_url ? `<img class="post-img" src="${escapeAttr(p.image_url)}" alt="" loading="lazy">` : ''}
         <div class="post-body">${escapeHtml(p.body)}</div>
       </div>`;
   const newsHtml = posts.length
@@ -2946,10 +2997,12 @@ async function submitProfile() {
     : '<div class="empty">No announcements yet.</div>';
   const referReward = Number(publicData.public_settings?.referrals?.reward_cents ?? 10000);
   const tab = (id, icon, label) => `<button type="button" data-tab="${id}" onclick="showTab('${id}')"><span class="ti">${icon}</span><span>${label}</span></button>`;
+  // Sign-ups (PLAN.md BM): its own tab when the club has them on.
+  const SIGNUPS_ON = (publicData.public_settings?.features || {}).volunteer !== false;
   document.getElementById('mtabs')?.remove();
   document.body.insertAdjacentHTML('beforeend', `
     <nav class="mtabs" id="mtabs" aria-label="Sections">
-      ${tab('home', '🏠', 'Home')}${tab('help', '🙋', 'Ask the board')}${tab('family', '👨‍👩‍👧', 'My family')}
+      ${tab('home', '🏠', 'Home')}${SIGNUPS_ON ? tab('signups', '📋', 'Sign-ups') : ''}${tab('help', '🙋', 'Ask the board')}${tab('family', '👨‍👩‍👧', 'My family')}
     </nav>`);
 
   const calendarHtml = `
@@ -3005,11 +3058,19 @@ async function submitProfile() {
         <h2>Programs &amp; sign-ups</h2>
         <div class="empty">Loading…</div>
       </div>
-      <div class="card" id="volunteer-card" style="display:none">
-        <h2>Volunteer</h2>
-        <div id="volunteer-body" class="empty">Loading…</div>
-      </div>
       <div id="today-block" style="display:none"></div>` : calendarHtml}
+    </section>
+
+    <section data-pane="signups" style="display:none">
+      <div class="card" id="signups-card">
+        <h2>📋 Sign-ups</h2>
+        <p style="margin:0 0 6px;font-size:13.5px;color:var(--muted)">Help the club out. Pick something, and the board will thank you.</p>
+        <div id="signups-open"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="card" id="signups-mine-card" style="display:none">
+        <h2>Mine</h2>
+        <div id="signups-mine"></div>
+      </div>
     </section>
 
     <section data-pane="help" style="display:none">
@@ -3207,9 +3268,9 @@ async function submitProfile() {
     // Only for a club offering programs: two calls a visit otherwise, for
     // "No programs offered right now" (PLAN.md BG6).
     if (HAS_PROGRAMS) refreshPrograms();
-    refreshVolunteer();
     loadGateCard();
   }
+  if (SIGNUPS_ON) refreshSignups();
   loadDonationsLeaderboard();
   // Populate the "Add to Home Screen" instruction card now that its host
   // div exists in the DOM (it lives inside the main innerHTML block above).

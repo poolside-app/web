@@ -79,8 +79,9 @@ export function isOpen(o: Opp, nowIso: string): boolean {
 export function signUpProblem(o: Opp, signups: Signup[], a: { householdId: string; memberId?: string | null; nowIso: string }): string | null {
   if (o.active === false || o.closed_at) return 'This sign-up is closed.';
   if ((o.kind ?? 'shift') === 'shift' && o.starts_at && o.starts_at <= a.nowIso) return 'This shift has already started.';
+  // The same person can't take two spots; two people from one family can.
   const mine = signups.filter(s => s.opportunity_id === o.id && HOLDS_A_SPOT.has(s.status) && s.household_id === a.householdId);
-  if (mine.some(s => (s.member_id ?? null) === (a.memberId ?? null))) return 'They\'re already signed up for this.';
+  if (a.memberId && mine.some(s => s.member_id === a.memberId)) return 'They\'re already signed up for this.';
   if (spotsTaken(o.id, signups) >= Math.max(1, Number(o.slots_needed ?? 1))) return 'All the spots are taken.';
   return null;
 }

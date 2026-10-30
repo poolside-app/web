@@ -309,7 +309,12 @@ function respond(fn, body, { side, state }) {
     case 'help_requests': if (a === 'mine') return { ok: true, requests: [] }; break;
     case 'external_calendar': if (a === 'list_public') return { ok: true, events: [] }; break;
     case 'programs': if (a === 'list_public') return { ok: true, programs: [] }; if (a === 'my_bookings') return { ok: true, bookings: [] }; break;
-    case 'volunteer': if (a === 'list_public') return { ok: true, shifts: [] }; if (a === 'my_signups') return { ok: true, signups: [] }; break;
+    case 'volunteer':
+      if (a === 'list_public') return { ok: true, shifts: [] };
+      if (a === 'my_signups') return { ok: true, signups: [] };
+      // The Sign-ups tab (PLAN.md BM); the demo club's own are in site_data.mjs.
+      if (a === 'list') return { ok: true, enabled: true, member: true, open_count: 0, opportunities: [], mine: [] };
+      break;
     case 'donations': if (a === 'list_public') return { ok: true, donations: [] }; break;
     case 'unlock_gate':
       // A family with a paid party today also gets the party door (PLAN.md AR4).

@@ -59,7 +59,7 @@ console.log('\nD4 · no browser pop-ups in the member app');
   const pops = (code.match(/(^|[^.\w])(alert|confirm|prompt)\(/g) || []).length;
   check('no alert(), confirm() or prompt() left', pops === 0, `${pops} left`);
   check('sign-ups pick from your family', /function pickFamilyMember/.test(member) && /pickFamilyMember\(/.test(between(member, 'async function bookProgram', '\n}'))
-    && /pickFamilyMember\(/.test(between(member, 'async function volunteerSignup', '\n}')));
+    && /pickFamilyMember\(/.test(between(member, 'async function signupFor', '\n}')));
   check('messages and confirmations are in-page', /function notify\(/.test(member) && /askConfirm\s*=|function askConfirm\(/.test(member));
 }
 

@@ -181,6 +181,51 @@ console.log('BM2 · the board\'s Sign-ups page (offline, in Chrome)');
   await browser.close();
 }
 
+// ── BM3 · the members' Sign-ups tab, drawn with sample answers ──────────
+console.log('BM3 · the members\' Sign-ups tab (offline, in Chrome)');
+{
+  const { launch, attach, FAMILY } = await import('./demo_video/harness.mjs');
+  const { respond } = await import('./demo_video/data.mjs');
+  const sent = [];
+  const list = {
+    ok: true, enabled: true, member: true, open_count: 2,
+    opportunities: [
+      { id: 'o-job', kind: 'job', title: 'Fix the sprinkler', due_on: '2099-07-01', location: 'Kiddie pool', photos: ['data:image/png;base64,iVBORw0KGgo='], reward_text: '$25 off next season', spots: 1, spots_left: 1, mine: [] },
+      { id: 'o-shift', kind: 'shift', title: 'Snack Shack at the meet', starts_at: '2099-06-20T17:00:00Z', ends_at: '2099-06-20T21:00:00Z', photos: [], reward_text: 'Free lunch', spots: 3, spots_left: 2, mine: [] },
+    ],
+    mine: [
+      { id: 's1', status: 'approved', title: 'Paint the bathrooms', kind: 'job', volunteer_name: 'Jamie Rivera', reward_text: '$25 off next season', code: 'THANKSK7Q2M' },
+      { id: 's2', status: 'confirmed', title: 'Rake the lawn', kind: 'job', volunteer_name: 'Jamie Rivera', can_cancel: true, sent_back_note: 'The left corner still needs it.' },
+    ],
+  };
+  const browser = await launch();
+  const page = await browser.newPage();
+  await page.setViewport({ width: 390, height: 844 });
+  const log = await attach(page, { state: { riveraPaid: true }, answer: (f, body, ctx) => {
+    if (f === 'volunteer') { sent.push(body); return body.action === 'list' ? list : { ok: true }; }
+    return respond(f, body, ctx);
+  } });
+  await page.goto(FAMILY + '/m/', { waitUntil: 'networkidle0', timeout: 45000 });
+  await new Promise(r => setTimeout(r, 900));
+  const tab = await page.evaluate(() => { const b = document.querySelector('#mtabs [data-tab="signups"]');
+    return { labels: [...document.querySelectorAll('#mtabs [data-tab]')].map(x => x.dataset.tab).join(','), n: b?.querySelector('.tb-n')?.textContent, hidden: b?.querySelector('.tb-n')?.hidden }; });
+  check('a Sign-ups tab after Home, with a 2 on it', tab.labels === 'home,signups,help,family' && tab.n === '2' && tab.hidden === false, JSON.stringify(tab));
+  check('  no pop-up for it', !(await page.evaluate(() => [...document.querySelectorAll('.scrim.open, [id$="-scrim"]')].some(e => e.offsetParent && /sign/i.test(e.innerText)))));
+  await page.evaluate(() => showTab('signups'));
+  await new Promise(r => setTimeout(r, 300));
+  const pane = await page.evaluate(() => ({ open: document.getElementById('signups-open').innerText.replace(/\s+/g, ' '), mine: document.getElementById('signups-mine').innerText.replace(/\s+/g, ' '),
+    thumb: !!document.querySelector('#signups-open img.su-thumb'), signBtns: [...document.querySelectorAll('#signups-open button')].map(b => b.textContent.trim()),
+    mineBtns: [...document.querySelectorAll('#signups-mine button')].map(b => b.textContent.trim()), wide: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
+  check('the tab lists the job (photo, do-by, $25 off) and the shift (free lunch)', pane.thumb && /Fix the sprinkler/.test(pane.open) && /Do by/.test(pane.open) && /🎁 \$25 off next season/.test(pane.open)
+    && /Snack Shack at the meet/.test(pane.open) && /2 of 3 spots left/.test(pane.open) && pane.signBtns.filter(b => b === 'Sign up').length === 2, pane.open.slice(0, 240));
+  check('Mine: approved with their code; a job sent back says why, with I\'m done and Cancel', /THANKSK7Q2M/.test(pane.mine) && /The board says: The left corner/.test(pane.mine)
+    && pane.mineBtns.includes("I'm done") && pane.mineBtns.includes('Cancel'), JSON.stringify(pane).slice(0, 240));
+  check('  fits a phone', pane.wide <= 1, String(pane.wide));
+  check('/m/#signups opens the tab (the email\'s button)', await page.evaluate(() => { showTab(tabForHash('#signups')); return getComputedStyle(document.querySelector('[data-pane="signups"]')).display !== 'none'; }));
+  check('no script errors', !log.errors.length, log.errors.join(' | '));
+  await browser.close();
+}
+
 // ── BM1 · live, on a throwaway club ─────────────────────────────────────
 if (process.argv.includes('--live')) {
   console.log('BM1 · live (a throwaway club, deleted afterwards; about 25 calls)');
