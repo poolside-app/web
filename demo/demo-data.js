@@ -551,6 +551,8 @@ const WOULD = {
   'stripe_checkout:party_booking': 'In a real club, this opens Stripe\'s secure card page. In the demo, the party is paid and booked.',
   'board_meetings:submit_minutes': 'In a real club, each board member who was there gets a pop-up and approves on their phone. In the demo, the others approve in a few seconds: open the meeting again to see.',
   'board_meetings:send_agenda': 'In a real club, every board member gets the agenda as a pop-up.',
+  'volunteer:approve': 'In a real club, the family gets their thank-you code by email too. The thank-you is on the news now.',
+  'volunteer:attendance': 'In a real club, each family that came gets their thank-you code by email too. The thank-you is on the news now.',
 };
 
 function siteRespond(fn, body, ctx) {
@@ -935,7 +937,9 @@ function demoKept(fn, body, ctx) {
     case 'tenant_public': {
       const base = respond(fn, body, ctx);
       const ps = merge(merge({ ...base.public_settings }, { parties: state.partySettings || {} }), { sponsors_config: state.settings?.sponsors_config || {} });
-      return { ...base, public_settings: ps, sponsors: SPONSORS, events: [...(base.events || []), ...partyEvents(state, false)] };
+      // Thank-yous from sign-ups the board approved (PLAN.md BM), newest first.
+      const thanks = [...(state.su?.posts || [])].reverse();
+      return { ...base, public_settings: ps, sponsors: SPONSORS, events: [...(base.events || []), ...partyEvents(state, false)], posts: [...thanks, ...(base.posts || [])] };
     }
     case 'tenant_settings':
       if (a === 'save') { state.settings = merge(state.settings || {}, body.value || {}); return { ok: true, settings: merge(SETTINGS_FULL(), state.settings) }; }
@@ -976,8 +980,136 @@ function demoKept(fn, body, ctx) {
       }
       break;
     case 'board_meetings': return minutes(a, body, state, now, ctx.pre);
+    case 'volunteer': return signups(a, body, state, now, ctx.side);
   }
   return undefined;
+}
+
+// ── Sign-ups (PLAN.md BM), in the demo ──────────────────────────────────
+// Three posts: a Snack Shack shift (the Chens have one spot), a sprinkler to
+// fix ($25 off), and the bathroom doors, painted by the Ortizes and waiting
+// for Sam (the demo board login, who posted it) to approve. The Riveras are
+// the signed-in family.
+const tile = (text, hue) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="hsl(${hue},45%,60%)"/><text x="300" y="215" font-family="Georgia" font-size="38" text-anchor="middle" fill="white">${text}</text></svg>`)}`;
+const SU_FAMILY = { 'hh-rivera': 'Rivera Family', 'hh-chen': 'Chen Family', 'hh-ortiz': 'Ortiz Family' };
+function suState(state) {
+  state.su ??= {
+    opps: [
+      { id: 'su-snack', kind: 'shift', title: "Snack Shack at Saturday's meet", description: "Sell snacks and drinks during the meet. We'll show you the register.",
+        starts_at: day(26, '10:00'), ends_at: day(26, '14:00'), due_on: null, slots_needed: 3, location: 'Snack Shack', photos: [],
+        reward_kind: 'note', reward_note: 'Free lunch at the meet', created_by: 'adm-chen', created_by_name: 'Mei Chen', active: true, closed_at: null },
+      { id: 'su-sprinkler', kind: 'job', title: 'Fix the sprinkler by the kiddie pool', description: 'The head nearest the gate sprays the path. A new head is in the pump room.',
+        starts_at: null, ends_at: null, due_on: '2027-06-30', slots_needed: 1, location: 'Kiddie pool', photos: [tile('Broken sprinkler', 200)],
+        reward_kind: 'discount', reward_amount_cents: 2500, created_by: 'adm-larsen', created_by_name: 'Erik Larsen', active: true, closed_at: null },
+      { id: 'su-paint', kind: 'job', title: 'Paint the bathroom doors', description: 'Two coats on both doors. Paint and brushes are in the storage room.',
+        starts_at: null, ends_at: null, due_on: '2027-06-25', slots_needed: 1, location: 'Bathrooms', photos: [tile('Bathroom doors', 30)],
+        reward_kind: 'discount', reward_amount_cents: 2500, created_by: 'demo-board', created_by_name: 'Sam Brooks', active: true, closed_at: null },
+    ],
+    signups: [
+      { id: 'sg-chen', opportunity_id: 'su-snack', household_id: 'hh-chen', member_id: 'm-Chen-1', volunteer_name: 'Lin Chen', status: 'confirmed' },
+      { id: 'sg-ortiz', opportunity_id: 'su-paint', household_id: 'hh-ortiz', member_id: 'm-Ortiz-1', volunteer_name: 'Ana Ortiz', status: 'done',
+        done_photo_url: tile('Fresh paint', 140), done_note: 'Two coats on both.' },
+    ],
+    posts: [], seq: 0,
+  };
+  return state.su;
+}
+const suReward = o => o.reward_kind === 'note' ? o.reward_note
+  : o.reward_kind === 'discount' ? (o.reward_amount_cents ? `$${o.reward_amount_cents / 100} off next season` : `${o.reward_percent}% off next season`) : null;
+const HOLDS = new Set(['confirmed', 'done', 'approved']);
+const suTaken = (su, id) => su.signups.filter(s => s.opportunity_id === id && HOLDS.has(s.status)).length;
+const suOpen = (o, nowIso) => o.active && !o.closed_at && !(o.kind === 'shift' && o.starts_at <= nowIso);
+function signups(a, body, state, now, side) {
+  const su = suState(state);
+  const nowIso = new Date(demoNow(state, now)).toISOString();
+  const opp = id => su.opps.find(o => o.id === id);
+  const forFamily = o => ({ ...o, reward_text: suReward(o), posted_by: o.created_by_name, spots: o.slots_needed, spots_left: Math.max(0, o.slots_needed - suTaken(su, o.id)),
+    slots_filled: suTaken(su, o.id), mine: su.signups.filter(s => s.opportunity_id === o.id && s.household_id === 'hh-rivera' && s.status !== 'cancelled').map(s => ({ id: s.id, status: s.status })) });
+  const forBoard = o => ({ ...o, reward_text: suReward(o), slots_filled: suTaken(su, o.id), can_approve: true,
+    waiting: su.signups.filter(s => s.opportunity_id === o.id && s.status === 'done').length, approved: su.signups.filter(s => s.opportunity_id === o.id && s.status === 'approved').length });
+  if (a === 'upload_photo') return { ok: true, url: `data:${body.content_type || 'image/jpeg'};base64,${body.base64 || ''}` };
+  if (side !== 'board') {
+    if (a === 'list' || a === 'my_signups') {
+      const open = su.opps.filter(o => suOpen(o, nowIso));
+      const mine = su.signups.filter(s => s.household_id === 'hh-rivera' && s.status !== 'cancelled').map(s => {
+        const o = opp(s.opportunity_id) || {};
+        return { ...s, title: o.title, kind: o.kind, starts_at: o.starts_at, ends_at: o.ends_at, due_on: o.due_on, reward_text: suReward(o),
+          can_cancel: s.status === 'confirmed' && !(o.kind === 'shift' && o.starts_at <= nowIso), opportunity: { id: o.id, title: o.title, starts_at: o.starts_at } };
+      });
+      if (a === 'my_signups') return { ok: true, signups: mine };
+      const count = open.filter(o => suTaken(su, o.id) < o.slots_needed && !su.signups.some(s => s.opportunity_id === o.id && s.household_id === 'hh-rivera' && HOLDS.has(s.status))).length;
+      return { ok: true, enabled: true, member: true, open_count: count, opportunities: open.map(forFamily), mine };
+    }
+    if (a === 'signup') {
+      const o = opp(body.opportunity_id);
+      if (!o || !suOpen(o, nowIso)) return { ok: false, error: 'This sign-up is closed.' };
+      if (suTaken(su, o.id) >= o.slots_needed) return { ok: false, error: 'All the spots are taken.' };
+      if (body.member_id && su.signups.some(s => s.opportunity_id === o.id && s.member_id === body.member_id && HOLDS.has(s.status))) return { ok: false, error: "They're already signed up for this." };
+      const s = { id: `sg-demo-${++su.seq}`, opportunity_id: o.id, household_id: 'hh-rivera', member_id: body.member_id || null, volunteer_name: body.volunteer_name, status: 'confirmed' };
+      su.signups.push(s);
+      return { ok: true, signup: s };
+    }
+    const mineS = su.signups.find(s => s.id === body.signup_id && s.household_id === 'hh-rivera');
+    if (a === 'cancel_signup') { if (mineS) mineS.status = 'cancelled'; return { ok: true }; }
+    if (a === 'done') {
+      if (!mineS || mineS.status !== 'confirmed') return { ok: false, error: 'This one is closed.' };
+      Object.assign(mineS, { status: 'done', done_photo_url: body.photo_url || null, done_note: body.note || null, sent_back_note: null });
+      return { ok: true, signup: mineS };
+    }
+    return { ok: true };
+  }
+  // The board.
+  const thank = rows => {
+    const o = opp(rows[0].opportunity_id);
+    for (const s of rows) {
+      Object.assign(s, { status: 'approved', approved_at: nowIso });
+      if (o.reward_kind === 'discount') s.code = `THANKS${String.fromCharCode(65 + (su.seq % 20))}${(1000 + ++su.seq * 7).toString(36).toUpperCase().slice(-4)}`;
+    }
+    const fams = [...new Set(rows.map(s => (SU_FAMILY[s.household_id] || 'A Family').replace(/ Family$/, '')))];
+    const who = fams.length === 1 ? `${fams[0]} family` : `${fams.slice(0, -1).join(', ')} and ${fams[fams.length - 1]} families`;
+    su.posts.push({ id: `post-thanks-${su.seq}`, title: `Thank you, ${who}! 🙌`, body: `Thanks for helping with: ${o.title}.`, kind: 'thanks',
+      image_url: rows.map(s => s.done_photo_url).find(Boolean) || o.photos?.[0] || null, pinned: false, published_at: nowIso });
+  };
+  switch (a) {
+    case 'list': return { ok: true, opportunities: su.opps.filter(o => o.active).map(forBoard) };
+    case 'roster': {
+      const o = opp(body.opportunity_id);
+      return o ? { ok: true, opportunity: forBoard(o), signups: su.signups.filter(s => s.opportunity_id === o.id).map(s => ({ ...s, family_name: SU_FAMILY[s.household_id] || null })) } : { ok: false, error: 'Not found' };
+    }
+    case 'create': case 'update': {
+      const fields = ['kind', 'title', 'description', 'starts_at', 'ends_at', 'due_on', 'slots_needed', 'location', 'photos', 'reward_kind', 'reward_note', 'reward_amount_cents', 'reward_percent'];
+      const patch = Object.fromEntries(fields.filter(k => body[k] !== undefined).map(k => [k, body[k]]));
+      if (a === 'create') {
+        const o = { id: `su-demo-${++su.seq}`, active: true, closed_at: null, photos: [], created_by: 'demo-board', created_by_name: 'Sam Brooks', ...patch };
+        su.opps.unshift(o);
+        return { ok: true, opportunity: forBoard(o) };
+      }
+      const o = opp(body.id); if (o) Object.assign(o, patch);
+      return o ? { ok: true, opportunity: forBoard(o) } : { ok: false, error: 'Not found' };
+    }
+    case 'delete': { const o = opp(body.id); if (o) o.active = false; return { ok: true }; }
+    case 'approve': {
+      const rows = su.signups.filter(s => (body.signup_ids || []).includes(s.id) && (s.status === 'done' || s.status === 'confirmed'));
+      if (!rows.length) return { ok: false, error: 'Nothing here to approve.' };
+      thank(rows);
+      const o = opp(rows[0].opportunity_id);
+      if (o.kind === 'job' && su.signups.filter(s => s.opportunity_id === o.id && s.status === 'approved').length >= o.slots_needed) o.closed_at = nowIso;
+      return { ok: true, approved: rows.length };
+    }
+    case 'send_back': { const s = su.signups.find(x => x.id === body.signup_id); if (s) Object.assign(s, { status: 'confirmed', sent_back_note: body.note }); return { ok: true }; }
+    case 'attendance': {
+      const o = opp(body.opportunity_id);
+      const live = su.signups.filter(s => s.opportunity_id === body.opportunity_id && s.status === 'confirmed');
+      const came = live.filter(s => (body.came || []).includes(s.id));
+      live.filter(s => !came.includes(s)).forEach(s => { s.status = 'no_show'; });
+      if (came.length) thank(came);
+      if (o) o.closed_at = nowIso;
+      return { ok: true, approved: came.length };
+    }
+    case 'cancel_admin': { const s = su.signups.find(x => x.id === body.signup_id); if (s) s.status = 'cancelled'; return { ok: true }; }
+    case 'from_help': return { ok: true, title: 'The sprinkler by the kiddie pool is broken', description: 'The sprinkler by the kiddie pool is broken and sprays the path.', photos: [tile('Broken sprinkler', 200)] };
+  }
+  return { ok: true };
 }
 
 self.DemoSite = { siteRespond, weather, WOULD, DEMO_NOW, CLUB };

@@ -201,6 +201,31 @@ check('Start over clears it (the page waits for that before starting again)', /c
   check('member app on screen: the Snack Shack button on party day', home.snack, JSON.stringify(home));
   await p.close();
 }
+// PLAN.md BM5: the demo club has sample sign-ups, and they work.
+console.log('BM5 · the demo club\'s sign-ups');
+{
+  const S = {};
+  const R = (fn, body, side = 'family') => siteRespond(fn, body, { side, state: S, pre });
+  const fam = R('volunteer', { action: 'list' });
+  check('the Riveras see two to sign up for (the Snack Shack shift, the sprinkler job), and a 2 on the tab', fam?.ok && fam.open_count === 2
+    && fam.opportunities?.some(o => /Snack Shack/.test(o.title) && o.reward_text === 'Free lunch at the meet') && fam.opportunities?.some(o => /sprinkler/i.test(o.title) && o.reward_text === '$25 off next season' && o.photos?.length), String(JSON.stringify(fam ?? null)).slice(0, 160));
+  const su = R('volunteer', { action: 'signup', opportunity_id: fam.opportunities?.find(o => /sprinkler/i.test(o.title))?.id, volunteer_name: 'Jamie Rivera', member_id: 'm-Rivera-1' });
+  const after = R('volunteer', { action: 'list' });
+  check('  they sign up: it\'s in Mine, and the tab says 1', su?.ok && after.open_count === 1 && after.mine?.some(m => /sprinkler/i.test(m.title) && m.status === 'confirmed'), JSON.stringify({ su, n: after.open_count }));
+  const done = R('volunteer', { action: 'done', signup_id: su.signup?.id, note: 'New head on.' });
+  check('  they tap I\'m done', done?.ok && R('volunteer', { action: 'list' }).mine?.some(m => /sprinkler/i.test(m.title) && m.status === 'done'));
+  const board = R('volunteer', { action: 'list' }, 'board');
+  const paint = board.opportunities?.find(o => /Paint/.test(o.title));
+  check('the board sees the painted doors waiting for Sam to approve', paint?.waiting === 1 && paint?.can_approve === true, String(JSON.stringify(paint ?? null)).slice(0, 160));
+  const ro = R('volunteer', { action: 'roster', opportunity_id: paint?.id }, 'board');
+  const ap = R('volunteer', { action: 'approve', signup_ids: [ro.signups?.find(x => x.status === 'done')?.id] }, 'board');
+  const ro2 = R('volunteer', { action: 'roster', opportunity_id: paint?.id }, 'board');
+  check('  approving gives the family a THANKS code', ap?.ok && /^THANKS/.test(ro2.signups?.find(x => x.status === 'approved')?.code || ''), String(JSON.stringify(ro2.signups ?? null)).slice(0, 160));
+  const news = R('tenant_public', { slug: 'demo' }).posts || [];
+  check('  and a thank-you on the news, with the photo', news[0]?.kind === 'thanks' && /^Thank you, Ortiz family/.test(news[0]?.title || '') && !!news[0]?.image_url, String(JSON.stringify(news[0] ?? null)).slice(0, 160));
+  check('approving says what a real club would do', /code by email/.test(WOULD['volunteer:approve'] || ''));
+}
+
 await b.close();
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

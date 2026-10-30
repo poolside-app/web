@@ -900,7 +900,7 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
-### BM. Sign-ups: shifts and jobs, with a thank-you (Doug, 10/23) — planned, ready to build on Doug's go
+### BM. Sign-ups: shifts and jobs, with a thank-you (Doug, 10/23) — ✅ built 10/29; Doug ticks it on for Bishop
 Doug: "some type of sign up genius feature... there is an event coming up and we need a person for the snack shack… or we have a broken sprinkler, here is a photo come fix it… bathrooms need painting. Someone do this." With a thank-you each time: "sometimes it's nothing, sometimes it might be free food at the event, sometimes it might be a discounted membership". On the member side: "I don't want a pop up of it, but maybe a bubble and a number saying that there are sign ups available... its own section."
 
 Already there (April, off at Bishop: Settings → Features → Volunteer): the board's Calendar → Volunteer page posts an opportunity (title, what to do, start and end, spots, place) and sees who signed up; members see a Volunteer card on Home and sign someone in the family up, or cancel. This builds on it.
@@ -924,6 +924,7 @@ Steps, one at a time, each with tests first (offline; live checks on a throwaway
 - **BM4.** Ask the board: "Post as a job" on a member's question, bringing its photo.
   - ✅ Done 10/29. Member help → a question → 📋 Post as a job (when sign-ups are on) opens the job form filled in with the member's words and their photos, copied out of the private help folder (`volunteer` `from_help`; who it went to or the President only). `test_signups` 3 offline checks and 2 live (failed first live). The throwaway club's cleanup now removes its help photos too.
 - **BM5.** Turn it on at Bishop, the help article, and the demo club's sample sign-ups.
+  - ✅ Done 10/29, except the switch: Bishop's Settings → Features → Sign-ups is Doug's to tick (the change to Bishop's live settings wasn't mine to make). Help article "How do sign-ups work?" (Calendar & Parties). The demo club has three sample sign-ups (the Snack Shack shift, the sprinkler, the bathroom doors waiting for Sam to approve) that work end to end and remember what a visitor does until Start over: signing up, I'm done, approving (a THANKS code and a thank-you on the news), ticking who came. `test_demo_site` 7 more checks (failed first).
 
 ### BL. Pre-flight before the payment tests (Doug, 10/22) — BL1 done 10/22; BL2, BL3 next
 Doug: "is there anything we can go through to ensure the app works well? ... i want to 100% make sure we are good to go". He starts BK next week.
