@@ -306,6 +306,10 @@ function paintRequest() {
     ? `<button class="btn btn-ghost btn-sm" onclick="setStatus('open')">Reopen</button>`
     : `${q.status === 'open' ? `<button class="btn btn-ghost btn-sm" onclick="setStatus('in_progress')">I'm on it</button>` : ''}
        <button class="btn btn-success btn-sm" onclick="setStatus('solved')">✓ Mark solved</button>`;
+  // A job someone could do (a broken sprinkler, with its photo): post it as a
+  // sign-up, when the club has sign-ups on (PLAN.md BM4).
+  const signupsOn = (() => { try { return JSON.parse(document.body.dataset.featureFlags || '{}').volunteer !== false; } catch (_) { return true; } })();
+  const jobBtn = signupsOn ? `<a class="btn btn-ghost btn-sm" href="/club/admin/volunteer.html#from_help=${escapeAttr(q.id)}">📋 Post as a job</a>` : '';
   const handOpts = `<option value="">The president</option>` + board.filter(b => !b.is_owner || b.id === q.assigned_admin_id).map(b =>
     `<option value="${escapeAttr(b.id)}" ${b.id === q.assigned_admin_id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('');
   document.getElementById('r-controls').innerHTML = `
@@ -313,7 +317,7 @@ function paintRequest() {
     <span style="font-size:12.5px;color:var(--muted)">Handled by</span>
     <select id="r-assign" onchange="handOff(this.value)" aria-label="Handled by">${handOpts}</select>
     <span style="flex:1"></span>
-    ${statusBtns}`;
+    ${jobBtn}${statusBtns}`;
   if (!q.assigned_admin_id) document.getElementById('r-assign').value = '';
 
   const when = iso => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });

@@ -226,6 +226,15 @@ console.log('BM3 · the members\' Sign-ups tab (offline, in Chrome)');
   await browser.close();
 }
 
+// ── BM4 · from Ask the board ────────────────────────────────────────────
+console.log('BM4 · "Post as a job" from a member\'s question (offline)');
+{
+  const help = read('club/admin/member-help.html'), page = read('club/admin/volunteer.html');
+  check('a question has "Post as a job" when the club has sign-ups on', /Post as a job/.test(help) && /volunteer\.html#from_help=/.test(help) && /featureFlags/.test(help));
+  check('it opens the job form filled in with their words and photos', /#from_help=/.test(page) && /call\('from_help'/.test(page) && /openCreate\('job'\)/.test(page));
+  check('the server copies the photos out of the private help folder', /action === 'from_help'/.test(vol) && /storage\.from\('help-photos'\)\.download/.test(vol) && /canSeeHelpRequest/.test(vol));
+}
+
 // ── BM1 · live, on a throwaway club ─────────────────────────────────────
 if (process.argv.includes('--live')) {
   console.log('BM1 · live (a throwaway club, deleted afterwards; about 25 calls)');
@@ -319,6 +328,14 @@ if (process.argv.includes('--live')) {
     check('the President ticks the Riveras: approved; the Chens didn\'t come', at.ok && st.find(x => x.household_id === rivera.hid)?.status === 'approved' && st.find(x => x.household_id === chen.hid)?.status === 'no_show', short({ at: at.error, st }));
     const [p2] = await sql(`select title from posts where tenant_id = ${q(T)} and kind = 'thanks' order by created_at desc limit 1`);
     check('  one thank-you on the news for the shift', p2?.title === 'Thank you, Rivera family! 🙌', short(p2));
+
+    // Ask the board → Post as a job: the member's words and photo come along.
+    const ask = await fn('help_requests', { action: 'submit', topic: 'facility', body: 'The sprinkler by the kiddie pool is broken and sprays the path.', photo_content_type: 'image/png', photo_base64: PNG }, rivera.tok);
+    const fh = await fn('volunteer', { action: 'from_help', request_id: ask.request?.id }, tok(pres));
+    check('Post as a job: their words, and their photo copied for the job', ask.ok && fh.ok && /sprinkler by the kiddie pool/.test(fh.title || '') && fh.photos?.length === 1
+      && fh.photos[0].includes(`/club-assets/${T}/signups/`), short({ ask: ask.error, fh }));
+    const fo = await fn('volunteer', { action: 'from_help', request_id: ask.request?.id }, tok(other));
+    check('  only who it went to, or the President', !fo.ok && fo.status === 403, short(fo));
   } catch (e) {
     check('live run', false, e.stack || e.message);
   } finally {

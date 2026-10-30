@@ -102,12 +102,15 @@ export async function makeTempClub(sql, name, settings = {}) {
 export async function dropTempClub(sql, club, { accessToken, projectRef, supabaseUrl } = {}) {
   if (accessToken && projectRef && supabaseUrl) {
     // SQL can't remove storage files: the storage API with the service key, held only for this call.
-    const files = await sql(`select name from storage.objects where bucket_id = 'club-assets' and name like ${q(club.id + '/%')}`);
+    const files = await sql(`select bucket_id, name from storage.objects where bucket_id in ('club-assets', 'help-photos', 'club-docs') and name like ${q(club.id + '/%')}`);
     if (files.length) {
       const keys = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/api-keys?reveal=true`, { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json());
       const service = (Array.isArray(keys) ? keys : []).find(k => k.name === 'service_role')?.api_key;
-      if (service) await fetch(`${supabaseUrl}/storage/v1/object/club-assets`, { method: 'DELETE',
-        headers: { 'content-type': 'application/json', Authorization: `Bearer ${service}`, apikey: service }, body: JSON.stringify({ prefixes: files.map(f => f.name) }) });
+      for (const bucket of [...new Set(files.map(f => f.bucket_id))]) {
+        if (service) await fetch(`${supabaseUrl}/storage/v1/object/${bucket}`, { method: 'DELETE',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${service}`, apikey: service },
+          body: JSON.stringify({ prefixes: files.filter(f => f.bucket_id === bucket).map(f => f.name) }) });
+      }
     }
   }
   await sql(`delete from tenants where id = ${q(club.id)}`);

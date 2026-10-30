@@ -922,6 +922,7 @@ Steps, one at a time, each with tests first (offline; live checks on a throwaway
 - **BM3.** The member Sign-ups tab with its number.
   - ✅ Done 10/29. A Sign-ups tab after Home (only when the club has sign-ups on), with a bubble: open ones the family could still take; no pop-up. It lists jobs (photo, do-by date) and shifts (time, spots left) with the thank-you and Sign up (picks someone in the family; two people from one family can take spots, the same person can't take two). Mine: Cancel, "I'm done" with an optional photo and note, what the board said if it was sent back, and once approved "Thank you!" with their code. The old Volunteer card left Home. News posts show their photo (the member app and the club page). `test_signups` 7 more checks, drawn in Chrome with sample answers (written with the tab, so they passed first time); the live check passes again (68 in all).
 - **BM4.** Ask the board: "Post as a job" on a member's question, bringing its photo.
+  - ✅ Done 10/29. Member help → a question → 📋 Post as a job (when sign-ups are on) opens the job form filled in with the member's words and their photos, copied out of the private help folder (`volunteer` `from_help`; who it went to or the President only). `test_signups` 3 offline checks and 2 live (failed first live). The throwaway club's cleanup now removes its help photos too.
 - **BM5.** Turn it on at Bishop, the help article, and the demo club's sample sign-ups.
 
 ### BL. Pre-flight before the payment tests (Doug, 10/22) — BL1 done 10/22; BL2, BL3 next

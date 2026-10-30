@@ -30,6 +30,8 @@
 //   { action: 'send_back', signup_id, note }
 //   { action: 'attendance', opportunity_id, came: [signup ids] }   shifts
 //   { action: 'upload_photo', content_type, base64 }
+//   { action: 'from_help', request_id }   a member's question (Ask the board)
+//                                         as a job: its words and photos (BM4)
 // Cron (x-cron-secret): { action: 'cron_attendance', tenant_id? }
 // =============================================================================
 
@@ -341,6 +343,31 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await closeTasks(sb, TID, s.opportunity_id, ['signup.taken', 'signup.done'], sid);
     return jsonResponse({ ok: true });
+  }
+
+  // Ask the board → "Post as a job" (PLAN.md BM4): the member's words, and
+  // their photos copied out of the private help folder for the job.
+  if (action === 'from_help') {
+    const { data: req } = await sb.from('help_requests').select('id, tenant_id, assigned_admin_id, topic')
+      .eq('id', String(body.request_id ?? '')).eq('tenant_id', TID).maybeSingle();
+    if (!req) return jsonResponse({ ok: false, error: 'That question isn\'t there any more.' }, 404);
+    const { canSeeHelpRequest } = await import('../_shared/help.ts');
+    if (!caller.isOwner && !canSeeHelpRequest(req, { id: caller.id ?? '', isOwner: false })) return jsonResponse({ ok: false, error: 'Only who it went to, or the President, can post it.' }, 403);
+    const { data: msgs } = await sb.from('help_messages').select('body, photo_path, author_kind, created_at')
+      .eq('request_id', req.id).eq('author_kind', 'member').order('created_at', { ascending: true });
+    const first = (msgs ?? [])[0];
+    const words = String(first?.body ?? '').replace(/\s+/g, ' ').trim();
+    const photos: string[] = [];
+    for (const m of (msgs ?? []).filter(x => x.photo_path).slice(0, MAX_PHOTOS)) {
+      const { data: file } = await sb.storage.from('help-photos').download(m.photo_path);
+      if (!file) continue;
+      const ext = String(m.photo_path).split('.').pop()?.toLowerCase() || 'jpg';
+      const ct = Object.entries(PHOTO_TYPES).find(([, e]) => e === ext)?.[0] || 'image/jpeg';
+      const path = `${TID}/signups/${crypto.randomUUID()}.${PHOTO_TYPES[ct]}`;
+      const { error } = await sb.storage.from(BUCKET).upload(path, file, { contentType: ct, upsert: false });
+      if (!error) photos.push(sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl);
+    }
+    return jsonResponse({ ok: true, title: words.length > 60 ? words.slice(0, 59).trimEnd() + '…' : words, description: words, photos, help_request_id: req.id });
   }
 
   if (action === 'approve' || action === 'send_back' || action === 'attendance') {

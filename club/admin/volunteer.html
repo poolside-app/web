@@ -450,6 +450,20 @@ function removeSignup(sid) {
   // A to-do on the dashboard opens the sign-up (#o=<id>).
   const m = location.hash.match(/^#o=([0-9a-f-]{36})$/);
   if (m) openRoster(m[1]);
+  // Ask the board → "Post as a job" (#from_help=<id>): the job form, filled in
+  // with the member's words and photos (PLAN.md BM4).
+  const h = location.hash.match(/^#from_help=([0-9a-f-]{36})$/);
+  if (h) {
+    history.replaceState(null, '', location.pathname);
+    const r = await call('from_help', { request_id: h[1] });
+    openCreate('job');
+    if (r.ok) {
+      document.getElementById('m-name').value = r.title || '';
+      document.getElementById('m-description').value = r.description || '';
+      document.getElementById('m-slots').value = 1;
+      PHOTOS = r.photos || []; paintPhotos();
+    } else { const e = document.getElementById('m-err'); e.textContent = r.error || 'Could not bring the question over'; e.classList.add('show'); }
+  }
 })();
 </script>
 </body>
