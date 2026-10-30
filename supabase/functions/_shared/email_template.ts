@@ -28,7 +28,7 @@ import { clubReplyTo } from './reply_to.ts';
 type Vars = Record<string, string | number | null | undefined>;
 type Variant = Record<string, unknown>;
 
-export type EmailSection = 'signup' | 'welcome' | 'payments' | 'renewals' | 'parties' | 'family';
+export type EmailSection = 'signup' | 'welcome' | 'payments' | 'renewals' | 'parties' | 'family' | 'signups';
 export const EMAIL_SECTIONS: Array<{ id: EmailSection; label: string }> = [
   { id: 'signup', label: 'Signing up' },
   { id: 'welcome', label: 'Welcome' },
@@ -36,6 +36,7 @@ export const EMAIL_SECTIONS: Array<{ id: EmailSection; label: string }> = [
   { id: 'renewals', label: 'Renewals' },
   { id: 'parties', label: 'Parties' },
   { id: 'family', label: 'Family changes' },
+  { id: 'signups', label: 'Sign-ups' },
 ];
 
 export type EmailDef = {
@@ -368,6 +369,20 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     heading: () => '✓ Your family is updated',
     details: (v, x) => (x.attached ? small(`📎 A signed copy is attached, with the policies ${e(v.member_name)} accepted and the signature on file. Please keep it for your records.`) : '')
       + button('Open my member page', memberHome(v)),
+  },
+
+  // ─── Sign-ups (PLAN.md BM) ─────────────────────────────────────────────
+  {
+    key: 'signup_thanks', section: 'signups',
+    label: 'Thank you for helping',
+    when: 'When the board approves a job or shift a family did, and its thank-you is money off.',
+    default_subject: 'Thank you from {{tenant_name}}',
+    default_message: '<p>Hi {{primary_name}},</p><p>Thank you for helping with {{signup_title}}. The board really appreciates it.</p>',
+    placeholders: ['primary_name', 'signup_title', 'family_name', 'tenant_name'],
+    adds: 'their thank-you code, what it takes off, and how to use it',
+    heading: () => '🙌 Thank you!',
+    details: v => box(`<b>Your thank-you: ${e(v.reward_text)}</b><br>Use code <b style="font-size:17px;letter-spacing:.06em">${e(v.code)}</b> when you renew for next season. It's for your family, one time.`)
+      + button('See my sign-ups', `${String(v.club_url ?? '')}/m/#signups`),
   },
 ];
 

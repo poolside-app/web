@@ -916,6 +916,7 @@ How it works:
 
 Steps, one at a time, each with tests first (offline; live checks on a throwaway club, never Bishop's families, PLAN.md BL3):
 - **BM1.** The server: shifts and jobs, photos, the thank-you, Done and approve, any board member posts, the to-dos, the code at approval and its email, the thank-you news post.
+  - ✅ Done 10/29. `_shared/signups.ts` (the rules), `_shared/signups_db.ts` (after a shift, the poster's to-do), the `volunteer` function rewritten, migration `20261029000100_signups_shifts_jobs.sql` (also news posts get `image_url` and `kind`), the email "Thank you for helping" (Settings → Emails → Sign-ups; 20 emails now), thank-you posts kept apart from the 15 announcements (newest 10). `test_signups` 35 offline checks (all failed first) and 16 live on a throwaway club that is deleted afterwards; the thank-you email arrived. Edge Functions now deploy with `scripts/deploy_functions.py <slug>…`.
 - **BM2.** The board's Sign-ups page.
 - **BM3.** The member Sign-ups tab with its number.
 - **BM4.** Ask the board: "Post as a job" on a member's question, bringing its photo.

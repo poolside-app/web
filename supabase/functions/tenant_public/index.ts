@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
 
   // Latest 5 active posts (pinned first), public — surfaces on the landing page.
   const { data: postsData } = await sb.from('posts')
-    .select('id, title, body, pinned, published_at')
+    .select('id, title, body, pinned, published_at, image_url, kind')
     .eq('tenant_id', tenant.id)
     .eq('active', true)
     .order('pinned', { ascending: false })

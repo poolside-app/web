@@ -28,12 +28,13 @@ const et = await importTs(new URL('supabase/functions/_shared/email_template.ts'
 {
   const list = et.EMAIL_REGISTRY;
   // 15 after PLAN.md T; 16 with "Renewal confirmed" (PLAN.md BE2); 19 with
-  // the dues reminder, plan payment coming up and party time released (BG5).
-  check('19 emails, down from 29', list.length === 19, String(list.length));
+  // the dues reminder, plan payment coming up and party time released (BG5);
+  // 20 with "Thank you for helping" (sign-ups, BM).
+  check('20 emails, down from 29', list.length === 20, String(list.length));
   check('each has a plain name, when it goes out, and a section',
     list.every(d => d.label && !/—|\(no app\)|TBD|Stripe/.test(d.label) && d.when && et.EMAIL_SECTIONS.some(s => s.id === d.section)), short(list.map(d => d.label)));
-  check('sections in order: Signing up, Welcome, Payments, Renewals, Parties, Family changes',
-    et.EMAIL_SECTIONS.map(s => s.label).join('|') === 'Signing up|Welcome|Payments|Renewals|Parties|Family changes', short(et.EMAIL_SECTIONS));
+  check('sections in order: Signing up, Welcome, Payments, Renewals, Parties, Family changes, Sign-ups',
+    et.EMAIL_SECTIONS.map(s => s.label).join('|') === 'Signing up|Welcome|Payments|Renewals|Parties|Family changes|Sign-ups', short(et.EMAIL_SECTIONS));
   check('the editable part is a message, not a page of HTML', list.every(d => d.default_message && !/style=|<div|<h2/.test(d.default_message)));
 
   // Every key the code sends still resolves (the senders are unchanged).
@@ -128,7 +129,7 @@ if (LIVE) {
     await sql(`update admin_users set email = 'delivered@resend.dev' where id = '${adminId}'`);
     const tok = jwt({ sub: adminId, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const l = await fn('email_templates', { action: 'list' }, tok);
-    check('T2: the list comes in sections, 19 emails', l.ok && l.emails?.length === 19 && l.sections?.length === 6, short({ n: l.emails?.length, s: l.sections?.length }));
+    check('T2: the list comes in sections, 20 emails', l.ok && l.emails?.length === 20 && l.sections?.length === 7, short({ n: l.emails?.length, s: l.sections?.length }));
     const dr = await fn('email_templates', { action: 'preview', key: 'dues_reminder', variant: 'waiting' }, tok);
     check('BG5: the dues reminder previews with the amount and the Venmo button', dr.ok && /venmo\.com/.test(dr.html || '') && !/is approved/.test(dr.html || ''), short({ ok: dr.ok, e: dr.error }));
     const pv = await fn('email_templates', { action: 'preview', key: 'welcome', variant: 'unpaid_venmo' }, tok);

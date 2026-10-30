@@ -18,6 +18,7 @@
 // =============================================================================
 
 import { platformFeeCents, feePolicyFromTenant, type FeePolicy } from '../_shared/fees.ts';
+import { askAttendance } from '../_shared/signups_db.ts';
 import { poolDate, fmtPoolDay, poolToday, tenantTimeZone } from '../_shared/pool_time.ts';
 import { remindDay } from '../_shared/minutes_approval.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -620,6 +621,9 @@ Deno.serve(async (req) => {
     try { approval = await askForApproval(sb, null); } catch (e) { console.error('approval ask:', (e as Error).message); }
     let minutes = { reminded: 0, president: 0 };
     try { minutes = await remindMinutes(sb, null); } catch (e) { console.error('minutes reminders:', (e as Error).message); }
+    // After a shift, its poster ticks who came (sign-ups, PLAN.md BM).
+    let signups = { asked: 0, closed: 0 };
+    try { signups = await askAttendance(sb, null); } catch (e) { console.error('sign-up attendance:', (e as Error).message); }
     // Every club's own "today" (pool time), loaded once per club.
     const clubs = new Map<string, PlanClub | null>();
     const clubFor = async (tid: string) => {
@@ -888,7 +892,7 @@ Deno.serve(async (req) => {
       console.error('text queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, minutes, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, minutes, signups, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';

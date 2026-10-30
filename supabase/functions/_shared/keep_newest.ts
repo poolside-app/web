@@ -15,18 +15,23 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 export const MAX_POSTS = 15;
+/** Thank-you posts for sign-ups (PLAN.md BM) are kept apart: they never push a
+ *  real announcement off, and only the newest 10 stay. */
+export const MAX_THANKS = 10;
 export const MAX_PHOTOS = 30;
 const BUCKET = 'club-assets';
 
-type Post = { id: string; pinned?: boolean | null; published_at?: string | null; created_at?: string | null };
+type Post = { id: string; kind?: string | null; pinned?: boolean | null; published_at?: string | null; created_at?: string | null };
 type Photo = { id: string; status?: string | null; active?: boolean | null; created_at?: string | null; url?: string | null };
 
 const newestFirst = (a?: string | null, b?: string | null) => String(b ?? '').localeCompare(String(a ?? ''));
 
-/** Announcements to delete: beyond the newest `max`, unless pinned. */
+/** Announcements to delete: beyond the newest `max`, unless pinned; and
+ *  thank-you posts beyond the newest MAX_THANKS, counted on their own. */
 export function postsToDrop(posts: Post[], max = MAX_POSTS): string[] {
-  return [...posts].sort((a, b) => newestFirst(a.published_at ?? a.created_at, b.published_at ?? b.created_at))
-    .filter((p, i) => i >= max && !p.pinned).map(p => p.id);
+  const beyond = (list: Post[], n: number) => [...list].sort((a, b) => newestFirst(a.published_at ?? a.created_at, b.published_at ?? b.created_at))
+    .filter((p, i) => i >= n && !p.pinned).map(p => p.id);
+  return [...beyond(posts.filter(p => p.kind !== 'thanks'), max), ...beyond(posts.filter(p => p.kind === 'thanks'), MAX_THANKS)];
 }
 
 /** Photos to delete: everything but the newest `max` approved, shown ones, and those waiting for approval. */
@@ -69,7 +74,7 @@ export async function keepNewestPhotos(sb: SupabaseClient, tenantId: string, act
 }
 
 export async function keepNewestPosts(sb: SupabaseClient, tenantId: string, actorId: string | null): Promise<number> {
-  const { data } = await sb.from('posts').select('id, title, pinned, published_at, created_at').eq('tenant_id', tenantId).limit(2000);
+  const { data } = await sb.from('posts').select('id, title, kind, pinned, published_at, created_at').eq('tenant_id', tenantId).limit(2000);
   const drop = postsToDrop((data ?? []) as Post[]);
   if (!drop.length) return 0;
   const { error } = await sb.from('posts').delete().eq('tenant_id', tenantId).in('id', drop);

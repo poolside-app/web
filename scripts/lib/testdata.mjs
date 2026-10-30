@@ -85,3 +85,32 @@ export async function purgeTempAdmins(sql, tenantId) {
     delete from admin_users where id in (select id from x_admins);
     commit;`);
 }
+
+/** A throwaway club for live checks that must never touch a real club's
+ *  families (PLAN.md BL3). `settings` is its settings value. dropTempClub
+ *  removes its storage files and the club (everything in it cascades), and
+ *  returns how many clubs by that id are left (0). */
+export async function makeTempClub(sql, name, settings = {}) {
+  const stamp = String(Date.now()).slice(-6);
+  const slug = `simtest-${name}-${stamp}`;
+  const [t] = await sql(`insert into tenants (slug, display_name, status, plan, timezone)
+    values (${q(slug)}, ${q('SimTest ' + name)}, 'active', 'starter', 'America/Los_Angeles') returning id`);
+  await sql(`insert into settings (tenant_id, value) values (${q(t.id)}, ${q(JSON.stringify(settings))}::jsonb)
+    on conflict (tenant_id) do update set value = excluded.value`);
+  return { id: t.id, slug, stamp };
+}
+export async function dropTempClub(sql, club, { accessToken, projectRef, supabaseUrl } = {}) {
+  if (accessToken && projectRef && supabaseUrl) {
+    // SQL can't remove storage files: the storage API with the service key, held only for this call.
+    const files = await sql(`select name from storage.objects where bucket_id = 'club-assets' and name like ${q(club.id + '/%')}`);
+    if (files.length) {
+      const keys = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/api-keys?reveal=true`, { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json());
+      const service = (Array.isArray(keys) ? keys : []).find(k => k.name === 'service_role')?.api_key;
+      if (service) await fetch(`${supabaseUrl}/storage/v1/object/club-assets`, { method: 'DELETE',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${service}`, apikey: service }, body: JSON.stringify({ prefixes: files.map(f => f.name) }) });
+    }
+  }
+  await sql(`delete from tenants where id = ${q(club.id)}`);
+  const [{ n }] = await sql(`select count(*)::int as n from tenants where id = ${q(club.id)}`);
+  return n;
+}
