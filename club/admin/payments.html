@@ -187,6 +187,7 @@
         <button class="btn btn-primary" id="stripe-connect-btn" type="button" onclick="connectStripe()" style="display:none;background:var(--blue)">Connect Stripe</button>
         <button class="btn btn-ghost" id="stripe-resume-btn" type="button" onclick="connectStripe()" style="display:none">Resume onboarding</button>
         <button class="btn btn-ghost" id="stripe-sync-btn" type="button" onclick="syncStripe()" style="display:none">Refresh status</button>
+        <button class="btn btn-ghost" id="stripe-switch-btn" type="button" onclick="switchStripe()" style="display:none">Connect a different Stripe account</button>
       </div>
 
       <!-- PLAN.md U1 (Doug, 10/8): the card fee belongs with Stripe, not
@@ -619,6 +620,7 @@ async function loadStripeStatus() {
   const connectBtn = document.getElementById('stripe-connect-btn');
   const resumeBtn  = document.getElementById('stripe-resume-btn');
   const syncBtn    = document.getElementById('stripe-sync-btn');
+  const switchBtn  = document.getElementById('stripe-switch-btn');
   // Force a sync if redirected back from Stripe onboarding so charges_enabled
   // refreshes immediately rather than showing stale 'not finished'.
   if (window.location.hash.includes('stripe=connected')) {
@@ -645,6 +647,8 @@ async function loadStripeStatus() {
       connectBtn.style.display = 'inline-block';
       return;
     }
+    // A board member's account handed to the club, or a fresh start (PLAN.md BN1).
+    switchBtn.style.display = 'inline-block';
     if (!r.charges_enabled) {
       box.innerHTML = `<b>Stripe account created</b> but onboarding isn't finished. Click <b>Resume onboarding</b> to finish entering your business info — once that's done, you can start accepting card payments.`;
       resumeBtn.style.display = 'inline-block';
@@ -659,6 +663,12 @@ async function loadStripeStatus() {
 }
 async function connectStripe() {
   const r = await api(STRIPE_URL, 'onboard');
+  if (!r.ok) { alert(r.error || 'Failed'); return; }
+  window.location.href = r.url;
+}
+async function switchStripe() {
+  if (!confirm('Disconnect this Stripe account and connect a different one?\n\nCard payments stop until the new account is set up. Money already paid stays in the old account.')) return;
+  const r = await api(STRIPE_URL, 'switch_account');
   if (!r.ok) { alert(r.error || 'Failed'); return; }
   window.location.href = r.url;
 }

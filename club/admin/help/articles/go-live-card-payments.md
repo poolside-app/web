@@ -17,6 +17,10 @@ Poolside uses Stripe to take card payments. The money goes straight to your club
 2. Tap **Connect Stripe** and fill in Stripe's forms. It takes a few minutes; Stripe sometimes needs a day to review.
 3. Back in Poolside, tap **Refresh status**. If you stopped partway, tap **Resume onboarding**.
 
+### Switching to a different Stripe account
+
+If the club's money should go to a different Stripe account (say a board member set it up and the club is taking it over), the owner taps **Connect a different Stripe account** in the same place and fills in Stripe's forms for the new one. Card payments stop until the new account is set up, and money already paid stays in the old one. Poolside won't switch while families have a card saved for a payment plan or auto-renew, since saved cards can't move between accounts by themselves; email support@poolsideapp.com first.
+
 ### Card fees
 
 Stripe charges about 2.9% + 30¢ per card payment. Tick **Pass the Stripe processing fee to members who pay by card** to add it to what card payers are charged. Venmo, check and cash stay the regular price.

@@ -8,10 +8,14 @@
 //        a fixed Stripe product per plan, and a club already on a plan
 //        switches that subscription instead of starting a second one.
 //   BL1c Every checkout Poolside makes is card only.
+//   BN1b Connect a different Stripe account (PLAN.md BN1), and a saved account
+//        Stripe doesn't know (a test-mode one once the live key is in) is set
+//        aside for a fresh one.
 // Offline. `--stripe` also runs the plan switch against Stripe's TEST mode
 // with throwaway objects it removes (no Supabase calls; refuses a live key).
+// `--live` runs BN1b on a throwaway club in Stripe's test mode (about 6 calls).
 //
-// Usage: node scripts/test_stripe_preflight.mjs [--stripe]
+// Usage: node scripts/test_stripe_preflight.mjs [--stripe] [--live]
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { importTs } from './lib/importts.mjs';
@@ -199,6 +203,105 @@ for (const f of files) {
   });
 }
 check(`every email and text Poolside sends skips test addresses first (${sendPoints} found)`, sendPoints >= 10 && sendsUnguarded.length === 0, sendsUnguarded.join(', '));
+
+// ── BN1b ─────────────────────────────────────────────────────────────────
+console.log('BN1b · connect a different Stripe account');
+{
+  let SA = null;
+  try { SA = await importTs(shared('stripe_account.ts')); } catch { SA = null; }
+  check('_shared/stripe_account.ts exists', !!SA);
+  check('Stripe\'s "no such account" (and the other mode\'s) is recognized',
+    !!SA && SA.isMissingAccount("No such account: 'acct_1'; a similar object exists in test mode, but a live mode key was used to make this request.")
+    && SA.isMissingAccount('No such account: acct_x') && !SA.isMissingAccount('Your card was declined.') && !SA.isMissingAccount(''));
+  check('  and the wording Stripe uses when looking an account up (found live)', !!SA
+    && SA.isMissingAccount("The provided key 'sk_test_***abcd' does not have access to account 'acct_1NotARealOne000' (or that account does not exist). Application access may have been revoked."));
+  check('the refusal counts the families and points to support@',
+    !!SA && /2 families have cards saved/.test(SA.switchBlocked(2)) && /1 family has a card saved/.test(SA.switchBlocked(1)) && /support@poolsideapp\.com/.test(SA.switchBlocked(1)), SA && SA.switchBlocked(2));
+  const sa = has('supabase/functions/_shared/stripe_account.ts') ? read('supabase/functions/_shared/stripe_account.ts') : '';
+  check('saved cards counted: active plans and auto-renew, never test cards',
+    /from\('payment_plans'\)[\s\S]{0,200}eq\('status', 'active'\)[\s\S]{0,200}not\('stripe_payment_method_id', 'like', 'sim_%'\)/.test(sa)
+    && /from\('households'\)[\s\S]{0,200}eq\('auto_renew', true\)[\s\S]{0,200}not\('auto_renew_pm_id', 'like', 'sim_%'\)/.test(sa));
+  const c = read('supabase/functions/stripe_connect/index.ts');
+  const sw = c.slice(c.indexOf("action === 'switch_account'"));
+  check('stripe_connect has switch_account', /action === 'switch_account'/.test(c));
+  check('  owner only', /requireOwner/.test(sw.slice(0, 600)));
+  check('  refuses while families have saved cards', /savedCards\(/.test(sw) && /switchBlocked\(/.test(sw) && /409/.test(sw.slice(0, 1500)));
+  check('  forgets the account, in the Activity log, then a fresh sign-up', /forgetAccount\(/.test(sw) && /startOnboarding\(/.test(sw)
+    && /stripe\.account_switched/.test(c));
+  const forget = c.slice(c.indexOf('async function forgetAccount'), c.indexOf('async function forgetAccount') + 900);
+  check('  forgetting clears the account and both switches', /stripe_account_id: null/.test(forget) && /stripe_charges_enabled: false/.test(forget) && /stripe_payouts_enabled: false/.test(forget) && /audit_log/.test(forget));
+  const onb = c.slice(c.indexOf("action === 'onboard'"), c.indexOf("action === 'sync'"));
+  check('Connect Stripe: an account Stripe doesn\'t know is set aside, and a fresh one made', /isMissingAccount\(/.test(c) && /startOnboarding\(/.test(onb));
+  const syn = c.slice(c.indexOf("action === 'sync'"));
+  check('Refresh status: the same', /isMissingAccount\(/.test(syn) && /forgetAccount\(/.test(syn) && /connected: false/.test(syn));
+  check('Money → Payments: the button, owner only, shown once connected', /id="stripe-switch-btn"/.test(pay) && /function switchStripe/.test(pay)
+    && /switchBtn\.style\.display = 'inline-block'/.test(pay) && /data-owner-only data-focus="stripe"[\s\S]{0,1400}id="stripe-switch-btn"/.test(pay));
+  check('  it asks first, then goes to Stripe', /switchStripe[\s\S]{0,400}confirm\(/.test(pay) && /'switch_account'/.test(pay));
+  const art = read('club/admin/help/articles/go-live-card-payments.md');
+  check('the help article says how to switch', /\*\*Connect a different Stripe account\*\*/.test(art));
+}
+
+// ── BN1b on a throwaway club, Stripe test mode ──────────────────────────
+if (process.argv.includes('--live')) {
+  console.log('BN1b · live: a throwaway club, Stripe\'s test mode (removed after)');
+  const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => l.includes('=') && !l.startsWith('#')).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
+  if (!String(env.STRIPE_SECRET_KEY).startsWith('sk_test_')) { console.log('  refusing: not a test key'); process.exit(1); }
+  const { makeTempClub, dropTempClub } = await import('./lib/testdata.mjs');
+  const sql = async query => {
+    const r = await fetch(`https://api.supabase.com/v1/projects/${env.SUPABASE_PROJECT_REF}/database/query`, { method: 'POST',
+      headers: { Authorization: `Bearer ${env.SUPABASE_ACCESS_TOKEN}`, 'content-type': 'application/json', 'user-agent': 'poolside-preflight/1.0' }, body: JSON.stringify({ query }) });
+    if (!r.ok) throw new Error(`SQL ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    return r.json();
+  };
+  const q = v => v === null || v === undefined ? 'null' : `'${String(v).replace(/'/g, "''")}'`;
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = p => { const h = b64({ alg: 'HS256', typ: 'JWT' }), b = b64({ ...p, exp: Math.floor(Date.now() / 1000) + 3600 });
+    return `${h}.${b}.${createHmac('sha256', env.ADMIN_JWT_SECRET).update(`${h}.${b}`).digest('base64url')}`; };
+  const stripeGet = async (path, method = 'GET') => (await fetch(`https://api.stripe.com/v1${path}`, { method, headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } })).json();
+  const made = new Set();
+  let club = null;
+  try {
+    club = await makeTempClub(sql, 'stripe');
+    const [admin] = await sql(`insert into admin_users (tenant_id, username, email, password_hash, display_name, role_template, scopes, is_default_pw, active)
+      values (${q(club.id)}, ${q(`simtest-stripe-${club.stamp}`)}, 'delivered@resend.dev', 'x', 'Owner Tester', 'owner', array[]::text[], false, true) returning id`);
+    const tok = jwt({ sub: admin.id, kind: 'tenant_admin', tid: club.id, slug: club.slug, role_template: 'owner' });
+    const call = async body => (await fetch(`${env.SUPABASE_URL}/functions/v1/stripe_connect`, { method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${tok}` }, body: JSON.stringify(body) })).json().then(j => j, () => ({}));
+    const acctOf = async () => (await sql(`select stripe_account_id, stripe_charges_enabled from tenants where id = ${q(club.id)}`))[0];
+
+    // An account Stripe doesn't have (as a test account looks to the live key).
+    await sql(`update tenants set stripe_account_id = 'acct_1NotARealOne000', stripe_charges_enabled = true where id = ${q(club.id)}`);
+    const syncR = await call({ action: 'sync' });
+    const afterSync = await acctOf();
+    check('Refresh status: an account Stripe doesn\'t know is set aside', syncR.ok && syncR.connected === false && !afterSync.stripe_account_id && afterSync.stripe_charges_enabled === false, JSON.stringify({ syncR, afterSync }));
+    await sql(`update tenants set stripe_account_id = 'acct_1NotARealOne000', stripe_charges_enabled = true where id = ${q(club.id)}`);
+    const onb = await call({ action: 'onboard' });
+    const afterOnb = await acctOf();
+    if (afterOnb.stripe_account_id) made.add(afterOnb.stripe_account_id);
+    check('Connect Stripe: a fresh account and Stripe\'s sign-up page instead of an error', onb.ok && /^https:\/\/connect\.stripe\.com\//.test(onb.url || '')
+      && /^acct_/.test(afterOnb.stripe_account_id || '') && afterOnb.stripe_account_id !== 'acct_1NotARealOne000' && afterOnb.stripe_charges_enabled === false, JSON.stringify({ onb, afterOnb }));
+    const logged = await sql(`select count(*)::int n from audit_log where tenant_id = ${q(club.id)} and kind = 'stripe.account_switched'`);
+    check('  written in the Activity log', logged[0].n >= 1, JSON.stringify(logged));
+
+    // A family with a real card saved on it: the switch is refused.
+    const [hh] = await sql(`insert into households (tenant_id, family_name, active) values (${q(club.id)}, 'SimTest Card', true) returning id`);
+    await sql(`insert into payment_plans (tenant_id, household_id, plan_type, total_cents, status, stripe_customer_id, stripe_payment_method_id, family_name)
+      values (${q(club.id)}, ${q(hh.id)}, 'flex', 60000, 'active', 'cus_x', 'pm_realcard', 'SimTest Card')`);
+    const blocked = await call({ action: 'switch_account' });
+    check('Switch: refused while a family has a card saved with this account', blocked.ok === false && /1 family has a card saved/.test(blocked.error || '') && (await acctOf()).stripe_account_id === afterOnb.stripe_account_id, JSON.stringify(blocked));
+    await sql(`update payment_plans set stripe_payment_method_id = 'sim_pm_test' where tenant_id = ${q(club.id)}`);
+    const sw = await call({ action: 'switch_account' });
+    const afterSw = await acctOf();
+    if (afterSw.stripe_account_id) made.add(afterSw.stripe_account_id);
+    check('Switch: with only a test card, a new account and its sign-up page', sw.ok && /^https:\/\/connect\.stripe\.com\//.test(sw.url || '')
+      && /^acct_/.test(afterSw.stripe_account_id || '') && afterSw.stripe_account_id !== afterOnb.stripe_account_id, JSON.stringify({ sw, afterSw }));
+  } catch (e) {
+    check('live run', false, e.stack || e.message);
+  } finally {
+    for (const id of made) { const d = await stripeGet(`/accounts/${id}`, 'DELETE'); check(`cleanup: Stripe test account ${id.slice(0, 9)}… deleted`, d.deleted === true, JSON.stringify(d)); }
+    if (club) check('cleanup: the throwaway club is gone', (await dropTempClub(sql, club)) === 0);
+  }
+}
 
 // ── BL1b against Stripe's test mode ─────────────────────────────────────
 if (process.argv.includes('--stripe')) {

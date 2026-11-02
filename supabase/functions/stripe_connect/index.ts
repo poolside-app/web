@@ -14,10 +14,19 @@
 //
 //   { action: 'refresh_link' }
 //     → { ok, url }  (re-issues a fresh onboarding URL if they bailed earlier)
+//
+//   { action: 'switch_account' }   owner only (PLAN.md BN1)
+//     → { ok, url }  forgets the connected account and starts a new one;
+//                    refused while families have cards saved on it
+//
+// An account Stripe doesn't know for the current key (a test-mode account
+// once the live key is in) is set aside and a fresh one started, by onboard
+// and sync alike (_shared/stripe_account.ts).
 // =============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+import { isMissingAccount, savedCards, switchBlocked } from '../_shared/stripe_account.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -68,6 +77,59 @@ async function stripe(path: string, params: Record<string, string | string[]>): 
   } catch (e) { return { ok: false, error: String(e) }; }
 }
 
+type Tenant = { id: string; slug: string; display_name: string; stripe_account_id: string | null };
+
+/** Forget the club's Stripe account (it stays the owner's in Stripe), and say so in the Activity log. */
+async function forgetAccount(sb: SupabaseClient, tenant: Tenant, actor: string, why: string): Promise<void> {
+  await sb.from('tenants').update({ stripe_account_id: null, stripe_charges_enabled: false, stripe_payouts_enabled: false }).eq('id', tenant.id);
+  await sb.from('audit_log').insert({
+    tenant_id: tenant.id, kind: 'stripe.account_switched', entity_type: 'tenant', entity_id: tenant.id,
+    summary: `Stripe account ${tenant.stripe_account_id} set aside: ${why}`,
+    actor_id: actor, actor_kind: 'tenant_admin',
+  });
+  tenant.stripe_account_id = null;
+}
+
+/** Stripe's sign-up link for the club's account, making the account first if there isn't one. */
+async function startOnboarding(sb: SupabaseClient, tenant: Tenant, adminId: string, returnUrl: string, refreshUrl: string):
+  Promise<{ ok: true; url: string; account_id: string } | { ok: false; error: string; missing?: boolean }> {
+  let accountId = tenant.stripe_account_id;
+  if (!accountId) {
+    // Look up the calling admin's email so Stripe can pre-fill the
+    // owner email during onboarding. If we can't resolve it for any
+    // reason, omit the email field entirely — Stripe will collect it
+    // during the hosted onboarding flow. (Passing empty string fails
+    // Stripe's stricter 2026 validation.)
+    const { data: admin } = await sb.from('admin_users')
+      .select('email').eq('id', adminId).maybeSingle();
+    const adminEmail = admin?.email && /@/.test(String(admin.email)) ? String(admin.email) : null;
+
+    const params: Record<string, string> = {
+      type: 'standard',
+      'metadata[tenant_id]': tenant.id,
+      'metadata[tenant_slug]': tenant.slug,
+      'business_profile[name]': tenant.display_name,
+    };
+    if (adminEmail) params.email = adminEmail;
+
+    const acctRes = await stripe('/accounts', params);
+    if (!acctRes.ok) return { ok: false, error: acctRes.error ?? 'Stripe account failed' };
+    accountId = (acctRes.data as { id: string }).id;
+    await sb.from('tenants').update({ stripe_account_id: accountId }).eq('id', tenant.id);
+    tenant.stripe_account_id = accountId;
+  }
+
+  // Get an onboarding link the admin can follow in their browser
+  const linkRes = await stripe('/account_links', {
+    account: accountId!,
+    return_url: returnUrl,
+    refresh_url: refreshUrl,
+    type: 'account_onboarding',
+  });
+  if (!linkRes.ok) return { ok: false, error: linkRes.error ?? 'Stripe link failed', missing: isMissingAccount(linkRes.error) };
+  return { ok: true, url: (linkRes.data as { url: string }).url, account_id: accountId! };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
@@ -113,40 +175,34 @@ Deno.serve(async (req) => {
     const returnUrl  = String(body.return_url || `${clubUrl}/club/admin/payments.html#stripe=connected`);
     const refreshUrl = `${clubUrl}/club/admin/payments.html#stripe=retry`;
 
-    let accountId = tenant.stripe_account_id;
-    if (!accountId) {
-      // Look up the calling admin's email so Stripe can pre-fill the
-      // owner email during onboarding. If we can't resolve it for any
-      // reason, omit the email field entirely — Stripe will collect it
-      // during the hosted onboarding flow. (Passing empty string fails
-      // Stripe's stricter 2026 validation.)
-      const { data: admin } = await sb.from('admin_users')
-        .select('email').eq('id', payload.sub).maybeSingle();
-      const adminEmail = admin?.email && /@/.test(String(admin.email)) ? String(admin.email) : null;
-
-      const params: Record<string, string> = {
-        type: 'standard',
-        'metadata[tenant_id]': tenant.id,
-        'metadata[tenant_slug]': tenant.slug,
-        'business_profile[name]': tenant.display_name,
-      };
-      if (adminEmail) params.email = adminEmail;
-
-      const acctRes = await stripe('/accounts', params);
-      if (!acctRes.ok) return jsonResponse({ ok: false, error: acctRes.error }, 500);
-      accountId = (acctRes.data as { id: string }).id;
-      await sb.from('tenants').update({ stripe_account_id: accountId }).eq('id', tenant.id);
+    let r = await startOnboarding(sb, tenant as Tenant, payload.sub, returnUrl, refreshUrl);
+    // The saved account isn't there for this key (a test-mode account once
+    // the live key is in): set it aside and start a fresh one.
+    if (!r.ok && r.missing && tenant.stripe_account_id) {
+      await forgetAccount(sb, tenant as Tenant, payload.sub, 'Stripe doesn\'t know it with the current key');
+      r = await startOnboarding(sb, tenant as Tenant, payload.sub, returnUrl, refreshUrl);
     }
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, 500);
+    return jsonResponse({ ok: true, url: r.url, account_id: r.account_id });
+  }
 
-    // Get an onboarding link the admin can follow in their browser
-    const linkRes = await stripe('/account_links', {
-      account: accountId!,
-      return_url: returnUrl,
-      refresh_url: refreshUrl,
-      type: 'account_onboarding',
-    });
-    if (!linkRes.ok) return jsonResponse({ ok: false, error: linkRes.error }, 500);
-    return jsonResponse({ ok: true, url: (linkRes.data as { url: string }).url, account_id: accountId });
+  // Connect a different Stripe account (PLAN.md BN1): the club taking over
+  // from a board member's account, or a fresh start.
+  if (action === 'switch_account') {
+    const { requireOwner } = await import('../_shared/auth.ts');
+    if (!(await requireOwner(sb, payload as never))) {
+      return jsonResponse({ ok: false, error: 'Only owners can connect or change Stripe accounts' }, 403);
+    }
+    if (!STRIPE_KEY) return jsonResponse({ ok: false, error: 'Stripe not configured on the platform yet (STRIPE_SECRET_KEY missing)' }, 503);
+    if (!tenant.stripe_account_id) return jsonResponse({ ok: false, error: 'No Stripe account is connected yet. Use Connect Stripe.' }, 400);
+    const kept = await savedCards(sb, tenant.id);
+    if (kept > 0) return jsonResponse({ ok: false, error: switchBlocked(kept), saved_cards: kept }, 409);
+    await forgetAccount(sb, tenant as Tenant, payload.sub, 'the club connected a different account');
+    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+    const r = await startOnboarding(sb, tenant as Tenant, payload.sub,
+      `${clubUrl}/club/admin/payments.html#stripe=connected`, `${clubUrl}/club/admin/payments.html#stripe=retry`);
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, 500);
+    return jsonResponse({ ok: true, url: r.url, account_id: r.account_id });
   }
 
   if (action === 'sync') {
@@ -157,6 +213,10 @@ Deno.serve(async (req) => {
       headers: { 'Authorization': `Bearer ${STRIPE_KEY}` },
     });
     const data = await res.json();
+    if (!res.ok && isMissingAccount(data?.error?.message)) {
+      await forgetAccount(sb, tenant as Tenant, payload.sub, 'Stripe doesn\'t know it with the current key');
+      return jsonResponse({ ok: true, connected: false, charges_enabled: false, payouts_enabled: false, reset: true });
+    }
     if (!res.ok) return jsonResponse({ ok: false, error: data?.error?.message || 'Stripe sync failed' }, 500);
     await sb.from('tenants').update({
       stripe_charges_enabled: !!data.charges_enabled,

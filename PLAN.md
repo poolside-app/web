@@ -900,7 +900,7 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
-### BN. Test and turn on the member side: sign-ups and payments (Doug, 11/1) — planned, BN1 waits for Doug's go
+### BN. Test and turn on the member side: sign-ups and payments (Doug, 11/1) — BN1 done 11/1; BN2 and BN3 are Doug's
 Doug: "lets stop building random shit.... when i get time this week, we need to fully test/deploy the member side... sign ups and payments... create a plan.. step by step on what i/we need to do to get this completed".
 
 Nothing new gets built except the two small pieces the payment tests already need (BK5's test level, BK6's account switch). This puts BK, BL4 and BM's switch-on into one order. Test mode first, so nothing costs money until it all works.
@@ -921,6 +921,12 @@ Where it stands (read 11/1, read-only):
     - `test_test_level` offline; then live on the throwaway club in `flex_plan_live` (`ONLY=W`): the quote, the board-email rule, the weekly dates, and a real $1.34 Stripe test charge to a saved card.
     - ✅ Done 11/1. `test_test_level` 65 checks (51 failed first), including the join form drawn in Chrome from the link and without it. Live on a throwaway club (`ONLY=W`, 9 calls): families don't see it, its link does; someone off the board is refused; a board email with +w2 joins; checkout takes $1.34 and says "4 weekly payments"; the plan saves as weekly on the right dates; Upcoming says weekly; the daily run charged the approved second payment, a real $1.34 Stripe test charge, to the saved card; the rest wait. Every offline suite passes (one check's window widened for the new line). Deployed `applications`, `stripe_checkout`, `stripe_webhook`, `payment_plans`, `member_auth`, `tenant_admin_auth`, `tenant_public`, `tenant_share`, `admin_tasks`.
   - BK6's prep: Money → Payments gets "Connect a different Stripe account"; once the key is live, a test-mode connection is set aside and Connect starts fresh; the fake-card plan is closed quietly (the family stays paid).
+    - Doug 11/1, on the test families: "Delete them first". So nothing closes test-card plans in code: the test families and their plans are deleted right before going live (BN6).
+    - **BN1b.** Money → Payments → Money setup → Card payments (Stripe) gets **Connect a different Stripe account** (owner only), shown once an account is connected. It asks first, then forgets the saved account (written in the Activity log) and opens Stripe's sign-up for a new one. It refuses while any family has a real card saved with the current account (a payment plan or auto-renew), because saved cards can't move to another Stripe account by themselves; the message points to support@.
+    - The safety net: if Stripe says the saved account doesn't exist for the current key (a test-mode account once the live key is in), Connect Stripe and Refresh status set it aside and start fresh instead of showing Stripe's error (`_shared/stripe_account.ts`).
+    - The help article "How do I turn on card payments?" says how to switch.
+    - Offline checks in `test_stripe_preflight` (BN1b), failing first; `--live` on a throwaway club in Stripe's test mode: a saved account Stripe doesn't know is replaced with a fresh one, the switch is refused with a saved card and works without; the Stripe test accounts it makes are deleted.
+    - ✅ Done 11/1. `test_stripe_preflight` BN1b: 15 offline checks (14 failed first). Live (`--live`, a throwaway club, Stripe test mode): Refresh status sets an account Stripe doesn't know aside; Connect Stripe makes a fresh account and opens Stripe's sign-up instead of an error, written in the Activity log; the switch is refused while a family has a card saved and works without one; the Stripe test accounts and the club were deleted after. The live run found Stripe words a lookup differently ("does not have access to account"), now covered (failing check first). Deployed `stripe_connect`. Every offline suite passes.
 - **BN2. Doug: start Stripe's live activation** (~15 minutes, laptop). It can take a day or more, so start it first. Poolside's Stripe account → Activate payments (business, bank, ID), then Connect's platform profile. Nothing in the app changes until BN6.
 - **BN3. Doug: Bishop ready, still in test mode** (~15 minutes).
   1. Settings → Features → tick Sign-ups.
@@ -946,9 +952,10 @@ Where it stands (read 11/1, read-only):
   8. A disputed charge (4000 0000 0000 0259): the Treasurer's to-do.
   - Then BK4: whatever breaks gets fixed, failing test first, and that test is run again.
 - **BN6. Doug: going live (BK6)** (~20 minutes, once Stripe has activated).
+  0. Me, first: delete the test families, their plans and the test party (Doug 11/1: "Delete them first"). His board login stays.
   1. Stripe, live mode → Webhooks: two endpoints at the same address as test. Connected accounts get the 7 events; "Your account" gets checkout.session.completed and customer.subscription.updated/deleted. I send the exact list then.
   2. Supabase → Edge Functions → Secrets: the live `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET_PLATFORM`.
-  3. Money → Payments → Connect Stripe: Bishop's own Stripe account, in Doug's name for now, with his bank. It's a second Stripe account, not Poolside's.
+  3. Money → Payments → **Connect a different Stripe account**: Bishop's own Stripe account, in Doug's name for now, with his bank. It's a second Stripe account, not Poolside's.
   - Me: charges are on, each webhook arrives, and Plan & billing and the payment pages still open. Bishop's card buttons don't work between steps 2 and 3; nobody real is paying yet.
 - **BN7. Doug: real $1 tests (BK7)** (a minute a payment, about $5 of real money). Doug signs up on the $1 level with his real card and approves each payment on Money → Upcoming. I check each charge, receipt and payout in Stripe. The first $1 is refunded from Stripe to check that a live refund reaches the Treasurer. Bishop then stays live.
 - **BN8. Doug: decisions before the CSV import (BL4).**
@@ -956,7 +963,7 @@ Where it stands (read 11/1, read-only):
   - Cap the card fee at 3%, or not.
   - Whose Stripe takes dues for good. The club's own account before the import is the clean way.
   - Vercel Hobby.
-  - Delete the test families, the test party, the test sign-ups and the fake-card plan, or not.
+  - The test sign-ups and their thank-you on the news (the test families go at BN6).
   - Then the CSV import and the renewal message get their own plan.
 
 Doug's time: about 2 hours this week, plus a minute per $1 payment. Supabase calls: about 200. Texts: only welcome texts, to Doug's own number.
