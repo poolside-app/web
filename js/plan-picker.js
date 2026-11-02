@@ -28,7 +28,17 @@
     return `Your gate access and key fob start once half your dues are paid${half ? ` (due by ${day(half.date)})` : ''}.`;
   }
 
+  // The board's $1 test level (PLAN.md BN1): a fixed weekly plan, nothing to pick.
+  function weekly(q) {
+    const r = (q.choice && q.choice.rows) || [];
+    const each = r[0] ? money(r[0].charge_cents) : '';
+    return `
+      <div style="font-size:13.5px;line-height:1.5;margin-top:12px">${esc(each)} today, then ${esc(each)} every week for ${Math.max(0, r.length - 1)} weeks. Each one waits for a board member to approve it on Money → Upcoming.</div>
+      <div id="pp-result" style="margin-top:12px">${result(q)}</div>`;
+  }
+
   function controls(q) {
+    if (q.weekly) return weekly(q);
     const c = q.choice || {};
     const today = c.today_cents ? (c.today_cents / 100).toFixed(c.today_cents % 100 ? 2 : 0) : '';
     return `
@@ -125,9 +135,10 @@
       wire();
     },
     update(q) {
+      const wasWeekly = !!(quote && quote.weekly);
       quote = q; busy = false;
       if (!root || !document.body.contains(root)) return;
-      if (!q || !q.available) { this.mount(root, q, onChange); return; }
+      if (!q || !q.available || !!q.weekly !== wasWeekly) { this.mount(root, q, onChange); return; }
       const box = document.getElementById('pp-result');
       if (!box) { this.mount(root, q, onChange); return; }
       // The family may still be typing: leave the inputs alone, except to

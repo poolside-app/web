@@ -20,6 +20,7 @@ import { poolDayBounds, validTimeZone, DEFAULT_TZ } from '../_shared/pool_time.t
 import { sellingYear, opensMonthOf } from '../_shared/membership_year.ts';
 import { twoPaymentTerms } from '../_shared/payment_schedule.ts';
 import { referralSettings } from '../_shared/pricing.ts';
+import { publicTiers } from '../_shared/test_level.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -250,8 +251,9 @@ Deno.serve(async (req) => {
   // Membership tiers (Family / Single / Senior etc.) — admin defines the
   // list via Settings → Tiers. Applicants pick one on Step 4 of the apply
   // form. Empty array = no tier picker shown (graceful fallback).
+  // The board's $1 test level only from its own link (PLAN.md BN1).
   const rawTiers = (settings?.value as Record<string, unknown> | undefined)?.membership_tiers;
-  const tiers = Array.isArray(rawTiers) ? rawTiers : [];
+  const tiers = publicTiers(rawTiers, body.level);
 
   // Active sponsors — sorted by sort_order, name. Drives the home strip +
   // the rotating popup on app load. Trims the field list so leaked rows

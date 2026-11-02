@@ -6,6 +6,7 @@
 //   start to finish, a declined card, the card updated after a failure, a lapse
 //   and reinstating, paying off early, canceling, a late joiner, the rounding,
 //   the paid-in-full deadline, and real Stripe checkout pages being made.
+//   W: the board's $1 test level, paid weekly (PLAN.md BN1).
 //
 // Payments made on Stripe's own page are stood in for by the club's test
 // payments (the same webhook path); every monthly charge is a real Stripe test
@@ -377,6 +378,71 @@ export async function runLive({ check, short }) {
         const gate = await sql(`select bool_or(can_unlock_gate) any_on from household_members where household_id = ${q(e.household_id)} and role in ('primary','adult','teen')`);
         const fob = await sql(`select count(*)::int n from admin_tasks where source_id = ${q(e.id)} and kind = 'plan.fob_off'`);
         check('S9: gate unlock off right away, and the fobs flagged to turn off', !!e.enforced_at && hh.dues_paid_for_year === false && gate[0].any_on === false && fob[0].n === 1, short({ e, hh, gate, fob }));
+      }
+    }
+
+    // ── W: the board's $1 test level, paid weekly (PLAN.md BN1) ────────────
+    if (run('W')) {
+      console.log('BN1 · W the $1 test level, weekly');
+      const LEVEL = { slug: 'board_test', label: 'Test: $1 a week (board only)', price_cents: 500, description: 'Checks real card payments.', test: true };
+      // Like Bishop: no Poolside fees, card fee passed on.
+      await setSettings(planCfg);
+      await sql(`update settings set value = jsonb_set(value, '{membership_tiers}', (value->'membership_tiers') || ${q(JSON.stringify([LEVEL]))}::jsonb)
+        where tenant_id = ${q(tenantId)}; update tenants set platform_fees_waived = true, platform_fees_waived_reason = 'Test club, like Bishop' where id = ${q(tenantId)}`);
+      const wBase = String((Number(phoneBase) + 500000) % 1000000).padStart(6, '0');
+      const boardEmail = `plan-board-${STAMP}@example.com`;
+      await sql(`insert into admin_users (tenant_id, username, email, password_hash, display_name, role_template, scopes, is_default_pw, active)
+        values (${q(tenantId)}, ${q(`simtest-board-${STAMP}`)}, ${q(boardEmail)}, 'x', 'Board Tester', 'owner', array[]::text[], false, true)`);
+
+      const pub = await fn('tenant_public', { slug: SLUG });
+      const pubL = await fn('tenant_public', { slug: SLUG, level: 'board_test' });
+      check('W: families don\'t see it; its link does', pub.ok && !(pub.tiers || []).some(t => t.slug === 'board_test')
+        && (pubL.tiers || []).some(t => t.slug === 'board_test' && t.test === true), short({ pub: (pub.tiers || []).map(t => t.slug), link: (pubL.tiers || []).map(t => t.slug) }));
+
+      const quote = await fn('applications', { action: 'quote', slug: SLUG, tier_slug: 'board_test' });
+      const ch = quote.plan?.choice;
+      const want = [0, 7, 14, 21, 28].map(n => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); });
+      check('W: the quote is weekly: $1 today and every 7 days, $1.34 each with the card fee',
+        quote.plan?.weekly === true && ch?.ok && ch.rows.map(r => r.due_date).join() === want.join() && ch.rows.every(r => r.amount_cents === 100 && r.charge_cents === grossUp(100)),
+        short({ weekly: quote.plan?.weekly, rows: ch?.rows?.map(r => [r.due_date, r.charge_cents]) }));
+
+      const body = (email, n) => ({
+        action: 'submit', slug: SLUG, family_name: `SimTest Weekly ${n}`, primary_name: `Weekly Tester ${n}`,
+        primary_email: email, primary_phone: `555${wBase}${n}`,
+        address: '1 Test Lane', city: 'Testville', zip: '00000', emergency_contact: 'Emergency Tester — (555) 000-0000',
+        adults: [{ name: `Weekly Tester ${n}`, email, phone: `555${wBase}${n}` }], children: [],
+        waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
+        tier_slug: 'board_test', payment_method: 'stripe_plan',
+      });
+      const no = await fn('applications', body(`someone-${STAMP}@example.com`, 1));
+      check('W: someone who isn\'t on the board can\'t join on it', no.status === 403 && /only for the club's board/.test(no.error || ''), short(no));
+      const yes = await fn('applications', body(`plan-board-${STAMP}+w2@example.com`, 2));
+      const appId = yes.application_id;
+      check('W: a board email with +w2 can', yes.ok && !!appId, short(yes));
+      if (appId) {
+        const r = await fn('stripe_checkout', { action: 'application_plan', application_id: appId, today_cents: ch?.today_cents, payoff_month: ch?.payoff_month });
+        const c = r.ok ? claims(r.url) : null;
+        check('W: checkout takes $1.34 today and says weekly', r.ok && c?.amt === grossUp(100) && /4 weekly payments/.test(c?.desc || ''), short({ r, amt: c?.amt, desc: c?.desc }));
+        if (c) await fn('stripe_checkout', { action: 'simulate_complete', token: c.token });
+        const plan = await planOf(appId);
+        const rows = plan ? await rowsOf(plan.id) : [];
+        check('W: saved as a weekly plan, five payments on the weekly dates', plan?.plan_type === 'weekly'
+          && rows.map(x => x.due_date).join() === want.join() && rows[0].status === 'paid' && rows.slice(1).every(x => x.status === 'pending'),
+          short({ type: plan?.plan_type, rows: rows.map(x => [x.due_date, x.status]) }));
+        const up = await fn('payment_plans', { action: 'upcoming', all: true }, { token: admin });
+        const mine = (up.upcoming || []).filter(u => u.plan_id === plan?.id);
+        check('W: Upcoming lists the next ones as weekly', up.ok && mine.length === 4 && mine.every(u => u.weekly === true), short(mine.map(u => [u.due_date, u.weekly])));
+        if (plan) {
+          await realCard(plan, 'tok_visa');
+          await sql(`update payment_plan_installments set due_date = ${q(today)} where plan_id = ${q(plan.id)} and sequence = 2`);
+          const cr = await cron();
+          const after = await rowsOf(plan.id);
+          const two = after.find(x => x.sequence === 2);
+          const pi = two?.stripe_payment_intent_id ? await stripe('GET', `/payment_intents/${two.stripe_payment_intent_id}`, {}, acct) : null;
+          check('W: the daily run charges the approved weekly payment, $1.34, to the saved card',
+            cr.ok && two?.status === 'paid' && pi?.status === 'succeeded' && pi?.amount === grossUp(100), short({ st: two?.status, pi: pi && { s: pi.status, a: pi.amount } }));
+          check('W: the rest wait for their own dates', after.filter(x => x.sequence > 2).every(x => x.status === 'pending'), short(after.map(x => x.status)));
+        }
       }
     }
     return true;

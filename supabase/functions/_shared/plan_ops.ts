@@ -425,6 +425,8 @@ export function planView(club: PlanClub, plan: Record<string, unknown>, rows: In
     payoff_charge_cents: grossUp(club, total - paid),
     today_cents: plan.today_cents ?? 0, payoff_month: plan.payoff_month ?? null,
     payments: rows.length,
+    // The board's $1 test level is paid weekly (PLAN.md BN1); the rest monthly.
+    weekly: plan.plan_type === 'weekly',
     next: next ? { date: next.due_date, dues_cents: next.amount_cents, charge_cents: chargeFor(next, club.feesWaived) } : null,
     fob, access_when: club.cfg.access_when,
     reinstate: back ? { dues_cents: back.dues_cents, fee_cents: back.fee_cents, plan_fee_cents: back.plan_fee_cents, total_cents: back.total_cents, charge_cents: grossUp(club, back.total_cents) } : null,

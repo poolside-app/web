@@ -341,6 +341,14 @@
         </label>
         <div class="err" id="tm-err"></div>
       </div>
+
+      <!-- PLAN.md BN1 (Doug 11/1): real card payments checked with real money. -->
+      <div class="card" data-owner-only data-focus="test-level" id="test-level-card">
+        <h2>🧪 $1 test level</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">A hidden membership level for checking real card payments with your own card: $1 today, then $1 a week for 4 weeks on a payment plan. Each payment waits for a tick on Money → Upcoming. Families never see it, and only someone using a board member's email (or phone) can join on it. Remove it when you're done.</p>
+        <div id="tl-body" style="font-size:13.5px"></div>
+        <div class="err" id="tl-err"></div>
+      </div>
     </div>
   </details>
 
@@ -678,6 +686,7 @@ async function loadPaymentMethods() {
     renderMilestones();
     paintSeason();
     Tiers.paint(Array.isArray(r.settings?.membership_tiers) ? r.settings.membership_tiers : null);
+    paintTestLevel(r.settings?.membership_tiers);
     const refs = r.settings?.referrals || {};
     document.getElementById('ref-reward').value = ((refs.reward_cents ?? 10000) / 100);
     document.getElementById('ref-newfam').value = ((refs.new_family_cents ?? 2500) / 100);
@@ -709,6 +718,40 @@ async function saveTestMode(cb) {
     cb.disabled = false;
   }
 }
+
+// ── The $1 test level (PLAN.md BN1) ─────────────────────────────────────
+// The same level as _shared/test_level.ts (scripts/test_test_level.mjs checks).
+// Saved with the club's levels, last, so it's never the one a family without
+// a level falls back to.
+const TEST_LEVEL = { slug: 'board_test', label: 'Test: $1 a week (board only)', price_cents: 500, description: 'Checks real card payments: $1 today, then $1 a week for 4 weeks.', test: true };
+function paintTestLevel(tiers) {
+  const on = (Array.isArray(tiers) ? tiers : []).some(t => t && t.test);
+  const link = `${location.origin}/apply.html?level=${TEST_LEVEL.slug}`;
+  document.getElementById('tl-body').innerHTML = on
+    ? `<div style="margin-bottom:10px">✓ On. Sign up from this link: <a href="${escapeHtml(link)}" target="_blank" rel="noopener" style="word-break:break-all">${escapeHtml(link)}</a></div>
+       <button class="btn btn-ghost" type="button" onclick="removeTestLevel()">Remove the test level</button>`
+    : `<button class="btn btn-ghost" type="button" onclick="addTestLevel()">Add the $1 test level</button>`;
+}
+async function saveTestLevel(on) {
+  const errEl = document.getElementById('tl-err');
+  errEl.classList.remove('show');
+  try {
+    // Fresh, so a price saved a moment ago isn't undone.
+    const g = await api(SETTINGS_URL, 'get');
+    if (!g.ok) throw new Error(g.error || 'Settings load failed');
+    const real = (Array.isArray(g.settings?.membership_tiers) ? g.settings.membership_tiers : []).filter(t => t && !t.test);
+    if (on && !real.length) throw new Error('Save your membership prices first (Membership prices, above).');
+    const tiers = on ? [...real, TEST_LEVEL] : real;
+    const r = await api(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
+    if (!r.ok) throw new Error(r.error || 'Save failed');
+    Tiers.paint(tiers);
+    paintTestLevel(tiers);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  }
+}
+function addTestLevel() { return saveTestLevel(true); }
+function removeTestLevel() { return saveTestLevel(false); }
 
 // ── Discount codes (H7) ────────────────────────────────────────────────
 // Made and switched off here; checked by the server wherever a family types
@@ -835,6 +878,7 @@ const Tiers = (() => {
         <div style="grid-column:1/-1"><label style="${lab}">Description <span class="opt">(optional)</span></label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="Who this level covers" style="${box}"></div>
         <div style="grid-column:1/-1"><label style="${lab}">Covers up to (people) <span class="opt">(blank for any size; Single is 1)</span></label><input data-field="max_people" type="number" min="1" max="8" step="1" value="${Number(t.max_people) > 0 ? Number(t.max_people) : ''}" placeholder="Any" style="${box};max-width:140px"></div>
         <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
+        ${t.test ? '<div style="grid-column:1/-1;font-size:12px;color:#92400e">🧪 Hidden from families: the board\'s $1 test level (below, under $1 test level).</div>' : ''}
       </div>`).join('');
   }
   function collect() {
@@ -879,6 +923,7 @@ const Tiers = (() => {
       const r = await api(SETTINGS_URL, 'save', { value: { membership_tiers: tiers } });
       if (!r.ok) throw new Error(r.error || 'Save failed');
       paint(tiers);
+      paintTestLevel(tiers);
       btn.textContent = '✓ Saved';
       setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
     } catch (e) {
@@ -1095,7 +1140,7 @@ async function loadPlansList() {
     const pill = s => { const [t, bg, fg] = STATUS[s] || STATUS.cancelled; return `<span class="pill" style="background:${bg};color:${fg}">${t}</span>`; };
     const rows = plans.map(p => {
       const bad = p.status === 'past_due' || p.status === 'lapsed';
-      const shape = `${p.today_cents ? m(p.today_cents) + ' + ' : ''}${p.payments - (p.today_cents ? 1 : 0)} monthly`;
+      const shape = `${p.today_cents ? m(p.today_cents) + ' + ' : ''}${p.payments - (p.today_cents ? 1 : 0)} ${p.weekly ? 'weekly' : 'monthly'}`;
       const detail = (p.schedule || []).map(i => {
         const paid = i.status === 'paid' || i.status === 'manual';
         return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--border)">

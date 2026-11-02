@@ -7,9 +7,10 @@
 // waived) and the card fee when the club passes card fees on.
 // =============================================================================
 
-import { flexSchedule, payoffMonths, withFees, type FlexCheck } from './flex_plan.ts';
+import { flexSchedule, payoffMonths, weeklySchedule, withFees, type FlexCheck, type FlexResult } from './flex_plan.ts';
 import { planFeeSchedule, type FeePolicy } from './fees.ts';
 import { rulesFor, tierAllowed, type PlanClub } from './plan_ops.ts';
+import { isTestSlug } from './test_level.ts';
 
 export type PlanRow = {
   sequence: number; due_date: string; today: boolean;
@@ -24,6 +25,8 @@ export type PlanQuote = {
   months: Array<{ value: string; label: string }>;
   deadlines: Array<{ date: string; label: string; pct: number }>;
   access_when: string;
+  /** The board's test level: $1 today, then $1 a week (PLAN.md BN1). Nothing to pick. */
+  weekly?: boolean;
   choice: null | {
     today_cents: number;
     payoff_month: string;
@@ -61,6 +64,16 @@ export function quotePlan(club: PlanClub, args: {
     choice: null,
   };
   if (!cfg.enabled) return { ...base, reason: 'This club does not offer payment plans.' };
+  if (isTestSlug(club.sv.membership_tiers, args.tierSlug)) {
+    if (!(args.totalCents > 0)) return { ...base, reason: 'There is nothing to pay.' };
+    const w = weeklySchedule({ totalCents: args.totalCents, startDate: club.today, rules });
+    if (!w.ok) return { ...base, weekly: true, reason: w.error };
+    const month = w.payoff_date.slice(0, 7);
+    return priced({
+      ...base, available: true, weekly: true, min_payment_cents: 0,
+      months: [{ value: month, label: `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}` }],
+    }, w, { today: w.today_cents, payoffMonth: month, adjusted: false, policy: args.policy, club });
+  }
   if (!tierAllowed(cfg, args.tierSlug)) return { ...base, reason: 'Payment plans are not offered for this membership type.' };
   if (cfg.plan_signup_cutoff_date && club.today > cfg.plan_signup_cutoff_date) {
     return { ...base, reason: 'Sign-up for payment plans has closed for this season. Please pay in full.' };
@@ -93,12 +106,18 @@ export function quotePlan(club: PlanClub, args: {
     out.choice = { today_cents: today, payoff_month: payoffMonth, ok: false, code: r.code, error: r.error, min_today_cents: r.min_today_cents };
     return out;
   }
+  return priced(out, r, { today, payoffMonth, adjusted, policy: args.policy, club });
+}
 
-  const fees = planFeeSchedule(r.schedule.length, args.policy);
-  const rows = withFees(r.schedule, { planFees: fees, passFee: club.passFee, pct: club.pct, fixed: club.fixed })
-    .map(x => ({ ...x, today: today > 0 && x.sequence === 1 }));
+/** Every charge with its plan fee and card fee, and the totals. */
+function priced(out: PlanQuote, r: Extract<FlexResult, { ok: true }>, a: {
+  today: number; payoffMonth: string; adjusted: boolean; policy: FeePolicy; club: PlanClub;
+}): PlanQuote {
+  const fees = planFeeSchedule(r.schedule.length, a.policy);
+  const rows = withFees(r.schedule, { planFees: fees, passFee: a.club.passFee, pct: a.club.pct, fixed: a.club.fixed })
+    .map(x => ({ ...x, today: a.today > 0 && x.sequence === 1 }));
   out.choice = {
-    today_cents: today, payoff_month: payoffMonth, ok: true, adjusted, rows, checks: r.checks,
+    today_cents: a.today, payoff_month: a.payoffMonth, ok: true, adjusted: a.adjusted, rows, checks: r.checks,
     totals: {
       dues_cents: rows.reduce((n, x) => n + x.amount_cents, 0),
       plan_fee_cents: rows.reduce((n, x) => n + x.plan_fee_cents, 0),

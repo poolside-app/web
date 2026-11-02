@@ -793,6 +793,15 @@ Deno.serve(async (req) => {
         strOrNull(body.tier_slug), adults_json.length + children_json.length);
       if (fitErr) return jsonResponse({ ok: false, error: fitErr }, 400);
     }
+    // The board's $1 test level (PLAN.md BN1): only a board login's email
+    // (any +word) or phone joins on it.
+    {
+      const { isTestSlug, boardMatch, NOT_BOARD } = await import('../_shared/test_level.ts');
+      if (isTestSlug((yearSettings?.value as Record<string, unknown> | undefined)?.membership_tiers, strOrNull(body.tier_slug))) {
+        const { data: admins } = await sb.from('admin_users').select('email, phone_e164').eq('tenant_id', tenant.id).eq('active', true);
+        if (!boardMatch(admins ?? [], { email, phone })) return jsonResponse({ ok: false, error: NOT_BOARD }, 403);
+      }
+    }
 
     const appData: Record<string, unknown> = {
       tenant_id: tenant.id,

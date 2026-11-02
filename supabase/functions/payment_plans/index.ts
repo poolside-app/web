@@ -939,7 +939,7 @@ Deno.serve(async (req) => {
     if (!club) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
     const horizon = body.all === true ? '9999-12-31' : addDays(club.today, 30);
     const { data: plans } = await sb.from('payment_plans')
-      .select('id, family_name, status, total_cents, today_cents, stripe_payment_method_id')
+      .select('id, family_name, status, total_cents, today_cents, stripe_payment_method_id, plan_type')
       .eq('tenant_id', payload.tid).limit(1000);
     const planBy = new Map<string, Record<string, unknown>>((plans ?? []).map(p => [p.id as string, p as Record<string, unknown>]));
     const ids = [...planBy.keys()];
@@ -966,6 +966,7 @@ Deno.serve(async (req) => {
         status: r.status, last_error: r.last_error ?? null,
         approved_at: r.approved_at ?? null, approved_by: r.approved_by ? who.get(r.approved_by as string) ?? 'Board' : null,
         test_card: String(p.stripe_payment_method_id ?? '').startsWith('sim_'),
+        weekly: p.plan_type === 'weekly',   // the board's $1 test level (PLAN.md BN1)
       };
     });
     // The last 30 days: charges the daily run made (not ones a family paid

@@ -25,6 +25,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { testPaidHouseholds } from './test_payments.ts';
 import { sellingYear } from './membership_year.ts';
+import { isTestSlug } from './test_level.ts';
 
 export type DuesTotals = { season: number; paid: number; collected_cents: number; test_paid: number };
 
@@ -42,7 +43,8 @@ export async function duesTotals(sb: SupabaseClient, tenantId: string, settingsV
     return Number(t?.price_cents ?? 0) || 0;
   };
   const all = hh ?? [];
-  const rows = all.filter(r => !testIds.has(r.id as string));
+  // A family on the board's $1 test level (PLAN.md BN1) is a test too.
+  const rows = all.filter(r => !testIds.has(r.id as string) && !isTestSlug(tiers, r.tier));
   return {
     season,
     paid: rows.length,

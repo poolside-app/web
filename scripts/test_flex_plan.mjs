@@ -290,7 +290,7 @@ console.log('AU1 · payment plans are card only (offline)');
   check('Households: the board can\'t tick dues paid for a family on a plan', /if \(body\.dues_paid_for_year !== undefined && !\(await onActivePlan\(sb, TID, id\)\)\)/.test(read('supabase/functions/households_admin/index.ts'))
     && /e-dues_paid_for_year'\)\.disabled = !!h\.on_plan/.test(read('club/admin/members.html')));
   const apply = read('apply.html');
-  check('signup: the plan is its own choice, charged to a card', /value="stripe_plan"[\s\S]{0,200}charged to your card/.test(apply));
+  check('signup: the plan is its own choice, charged to a card', /value="stripe_plan"[\s\S]{0,300}charged to your card/.test(apply));
   check('signup: "pay today" and the schedule show only with the plan picked', /const on = show && radio\.checked;\s*box\.style\.display = on \? '' : 'none';/.test(apply));
   check('signup: Venmo details show only for Venmo', /if \(method !== 'venmo' \|\| !handle\) \{ block\.style\.display = 'none'; return; \}/.test(apply));
   for (const page of ['renew.html', 'm/renew.html']) check(`${page}: renewing has no Venmo at all`, !/venmo/i.test(read(page)));

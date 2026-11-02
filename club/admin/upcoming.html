@@ -164,7 +164,7 @@ function paint() {
   document.getElementById('upcoming').innerHTML = rows.length ? rows.map(u => {
     // Doug's short line: "Smith family · $600 total · $150 down · $55 a month".
     const line = [`<b>${escapeHtml(u.family_name || 'Family')}</b>`, `${money(u.plan_total_cents)} total`,
-      u.down_cents ? `${money(u.down_cents)} down` : '', u.monthly_cents ? `${money(u.monthly_cents)} a month` : ''].filter(Boolean).join(' · ');
+      u.down_cents ? `${money(u.down_cents)} down` : '', u.monthly_cents ? `${money(u.monthly_cents)} ${u.weekly ? 'a week' : 'a month'}` : ''].filter(Boolean).join(' · ');
     const fees = u.charge_cents - u.amount_cents;
     const what = `Payment ${u.sequence} of ${u.of} · ${escapeHtml(day(u.due_date))}${u.due_date < DATA.today ? ' <span class="chip">overdue</span>' : ''}${u.test_card ? ' <span class="chip">test card</span>' : ''}`;
     const retry = u.status === 'retrying' ? `<div class="warn">Declined${u.last_error ? ': ' + escapeHtml(u.last_error.slice(0, 120)) : ''}. It's tried again on its usual days.</div>` : '';

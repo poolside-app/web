@@ -318,7 +318,7 @@
       <label class="pay-opt" id="pay-opt-stripe-plan" style="display:none">
         <input type="radio" name="payment_method" value="stripe_plan" onchange="paintVenmoQR()">
         🗓️ <b>Payment plan</b>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Pay part today (or nothing) and the rest monthly, charged to your card.</div>
+        <div id="plan-opt-sub" style="font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:400">Pay part today (or nothing) and the rest monthly, charged to your card.</div>
       </label>
       <!-- "Pay today" and "Paid off by", and the whole schedule before they
            commit. The server prices it (js/plan-picker.js, PLAN.md M). -->
@@ -381,6 +381,8 @@
 const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
 const APPLY_URL = `${SUPABASE_URL}/functions/v1/applications`;
 let TENANT_PUBLIC = null;  // populated on boot from tenant_public
+// The board's $1 test level shows only from its own link (PLAN.md BN1).
+const LEVEL = (new URLSearchParams(window.location.search)).get('level') || '';
 
 // The payment plan option (PLAN.md M). Shown when the club takes cards, has
 // plans on, and the server says a plan works at this price and today's date.
@@ -393,6 +395,11 @@ function paintPlanLabel() {
   if (!opt || !box) return;
   const show = PLAN_ALLOWED && !isFree() && !!(PLAN_QUOTE && PLAN_QUOTE.available);
   opt.style.display = show ? '' : 'none';
+  const sub = document.getElementById('plan-opt-sub');
+  const wk = PLAN_QUOTE && PLAN_QUOTE.weekly && PLAN_QUOTE.choice && PLAN_QUOTE.choice.rows;
+  if (sub) sub.textContent = wk
+    ? `${'$' + (wk[0].charge_cents / 100).toFixed(2)} today, then ${'$' + (wk[1 % wk.length].charge_cents / 100).toFixed(2)} a week for ${wk.length - 1} weeks, charged to your card.`
+    : 'Pay part today (or nothing) and the rest monthly, charged to your card.';
   const radio = opt.querySelector('input');
   if (!show && radio.checked) {
     const card = document.querySelector('input[name="payment_method"][value="stripe"]');
@@ -565,12 +572,18 @@ function paintPaymentChoices() {
 function paintTiers() {
   const box = document.getElementById('tiers-box');
   if (!box) return;
-  const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
-  if (!tiers.length) {
+  const all = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
+  if (!all.length) {
     box.innerHTML = '<div style="font-size:13px;color:var(--muted)">No membership levels configured — admin will set yours on approval.</div>';
     return;
   }
-  box.innerHTML = tiers.map((t, i) => {
+  // From the test level's link, it's the only one (PLAN.md BN1).
+  const TEST_ONLY = all.filter(t => t.test);
+  const tiers = TEST_ONLY.length ? TEST_ONLY : all;
+  const note = TEST_ONLY.length
+    ? '<div style="font-size:12.5px;color:#92400e;background:#fef3c7;border-radius:10px;padding:10px 12px;margin-bottom:10px">🧪 Board only. Use your board email (you can add +test1 before the @) and a phone that isn\'t on a family yet, like a made-up 555 number. Pick Payment plan to test the weekly charges.</div>'
+    : '';
+  box.innerHTML = note + tiers.map((t, i) => {
     const slug = t.slug || ('tier_' + i);
     const label = t.label || slug;
     const price = (typeof t.price_cents === 'number' && t.price_cents > 0) ? '$' + (t.price_cents / 100).toFixed(2) + '/yr' : 'Contact for pricing';
@@ -1726,7 +1739,7 @@ async function prefillFromClaim(token) {
   try {
     const r = await fetch(`${SUPABASE_URL}/functions/v1/tenant_public`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug }),
+      body: JSON.stringify({ slug, ...(LEVEL ? { level: LEVEL } : {}) }),
     });
     if (r.ok) {
       const d = await r.json();

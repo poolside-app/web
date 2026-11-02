@@ -23,6 +23,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { renderSharePage } from '../_shared/share_page.ts';
+import { publicTiers } from '../_shared/test_level.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -72,7 +73,7 @@ Deno.serve(async (req) => {
   const sv = (settingsRow?.value ?? {}) as Record<string, unknown>;
   const branding = (sv.branding ?? {}) as Record<string, unknown>;
 
-  const tiers = (sv.membership_tiers as Array<Record<string, unknown>> | undefined) ?? [];
+  const tiers = publicTiers(sv.membership_tiers);   // never the board's test level (PLAN.md BN1)
   const prices = tiers.map(t => Number(t.price_cents ?? 0)).filter(n => n > 0);
 
   return page(renderSharePage({

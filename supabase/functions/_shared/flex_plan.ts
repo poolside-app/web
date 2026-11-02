@@ -141,6 +141,31 @@ export function flexSchedule(args: {
   };
 }
 
+/** The board's test level (PLAN.md BN1, test_level.ts): the price in five
+ *  equal payments, today and then every 7 days. Nothing to choose, and the
+ *  club's minimum payment doesn't apply; its deadlines are still checked. */
+export const WEEKLY_PAYMENTS = 5;
+export function weeklySchedule(args: { totalCents: number; startDate: string; rules: ScheduleRules }): FlexResult {
+  const { totalCents, startDate, rules } = args;
+  if (!(totalCents >= WEEKLY_PAYMENTS)) return { ok: false, code: 'payment_too_small', error: 'There is too little to split into weekly payments. Pay in full.' };
+  const dates = Array.from({ length: WEEKLY_PAYMENTS }, (_, i) => addDays(startDate, 7 * i));
+  const schedule = evenSplit(totalCents, dates);
+  return {
+    ok: true,
+    today_cents: schedule[0].amount_cents,
+    payments: number(schedule.slice(1)),
+    schedule,
+    checks: checkDeadlines(rules, startDate, totalCents, schedule),
+    payoff_date: dates[dates.length - 1],
+  };
+}
+
+function addDays(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 /** What each charge comes to with the plan fee (to Poolside) and, when the
  *  club passes card fees on, the card fee grossed up on top. The dues part
  *  (amount_cents) is untouched, so it still adds up to the price. */

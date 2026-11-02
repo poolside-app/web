@@ -461,7 +461,7 @@ Deno.serve(async (req) => {
     }
     const { data: plan, error: planErr } = await sb.from('payment_plans').insert({
       tenant_id: app.tenant_id, application_id: id, household_id: app.household_id ?? null,
-      plan_type: 'flex', total_cents: totalCents, status: 'active',
+      plan_type: q.weekly ? 'weekly' : 'flex', total_cents: totalCents, status: 'active',
       today_cents: q.choice.today_cents, payoff_month: q.choice.payoff_month,
       primary_email: app.primary_email, primary_phone: app.primary_phone, family_name: app.family_name,
     }).select('id').single();
@@ -484,7 +484,7 @@ Deno.serve(async (req) => {
     const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
     const day = (d: string) => fmtPoolDate(`${d}T12:00:00Z`, 'UTC', { month: 'short', day: 'numeric' });
     const laterText = later.length
-      ? `${later.length} monthly payment${later.length === 1 ? '' : 's'} of about ${usd(later[0].charge_cents)}, ${day(later[0].due_date)} through ${day(later[later.length - 1].due_date)}`
+      ? `${later.length} ${q.weekly ? 'weekly' : 'monthly'} payment${later.length === 1 ? '' : 's'} of about ${usd(later[0].charge_cents)}, ${day(later[0].due_date)} through ${day(later[later.length - 1].due_date)}`
       : '';
     const productName = first
       ? `${tenant.display_name} dues: payment 1 of ${rows.length}`
