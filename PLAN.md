@@ -900,6 +900,60 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BN. Test and turn on the member side: sign-ups and payments (Doug, 11/1) — planned, BN1 waits for Doug's go
+Doug: "lets stop building random shit.... when i get time this week, we need to fully test/deploy the member side... sign ups and payments... create a plan.. step by step on what i/we need to do to get this completed".
+
+Nothing new gets built except the two small pieces the payment tests already need (BK5's test level, BK6's account switch). This puts BK, BL4 and BM's switch-on into one order. Test mode first, so nothing costs money until it all works.
+
+Where it stands (read 11/1, read-only):
+- Bishop has 4 households, all tests (3 paid by test payment), and one plan on a fake card whose Nov 1 payment is ticked and waiting; the daily run never sends a fake card to Stripe.
+- Test payments are on. Bishop's Stripe connection is unfinished (charges off). Sign-ups are off. No calendar feed. The season is closed, so the gate stays off for members until it opens.
+- Stripe is on the test key. Only the clubs' webhook secret is in Supabase; Poolside's own (`STRIPE_WEBHOOK_SECRET_PLATFORM`) isn't yet. That one is for Poolside's own sales, not families' payments.
+- Every daily job ran cleanly.
+
+- **BN1. Me: the two pieces the tests need** (no time from Doug). Offline tests first, deployed, one check on a throwaway club.
+  - BK5: a hidden $1 test level, offered only by a link and only to someone whose email or phone matches a board login, on a short plan; each payment still ticked on Money → Upcoming. (Weekly, or $1 now and $1 on the billing day: Doug picks.)
+  - BK6's prep: Money → Payments gets "Connect a different Stripe account"; once the key is live, a test-mode connection is set aside and Connect starts fresh; the fake-card plan is closed quietly (the family stays paid).
+- **BN2. Doug: start Stripe's live activation** (~15 minutes, laptop). It can take a day or more, so start it first. Poolside's Stripe account → Activate payments (business, bank, ID), then Connect's platform profile. Nothing in the app changes until BN6.
+- **BN3. Doug: Bishop ready, still in test mode** (~15 minutes).
+  1. Settings → Features → tick Sign-ups.
+  2. Calendar → Events → + Add a calendar feed, with the Google calendar's secret iCal address.
+  3. Money → Payments → Resume onboarding. Stripe's test form takes made-up answers (or its "use test data" buttons): code 000000, birth date 01/01/1901, ID number 000000000, address line `address_full_match`, routing 110000000, account 000123456789.
+  4. Money → Payments → 🧪 Test payments off.
+  - Me: Stripe says charges are on and Poolside saw it (`account.updated`); the calendar syncs and shows on the member Home; the app's card buttons open Stripe.
+- **BN4. Doug on his iPhone, me checking: sign-ups for real** (~20 minutes; any time after BN3 step 1).
+  1. Board side, Calendar → Sign-ups: + Shift ("Snack Shack test", tomorrow, 2 spots, free lunch) and + Job (a photo, $5 off).
+  2. Member view (the Home Screen app): the Sign-ups tab shows 2. Sign up for both; two to-dos arrive.
+  3. The job: I'm done, with a photo. Approve it from the to-do. The code shows on the Sign-ups tab and arrives by email; the thank-you with the photo is on the news.
+  4. The next morning: the to-do asks who came to the shift. Tick yourself.
+  5. Ask the board with a photo, then "Post as a job" on the board side.
+  - Me: every row, the email delivered, and the code taking $5 off a checkout (on a throwaway club). Then Doug decides whether to delete the test posts and the thank-you; Bishop's news is public.
+- **BN5. Doug on his phone, me at the laptop: the 8 test-card tests (BK3)** (~45 minutes, no real money). I fill each in my browser up to Stripe's page and send the link; Doug types the test card. Each new family uses Doug's email with +1, +2… so each is new and the emails reach him.
+  1. A new family by card (4242 4242 4242 4242): approved on its own, welcome, paid.
+  2. A payment plan signup: the first payment and the saved card go through Stripe. Bishop's next billing day (Dec 1) comes after the switch to live, so the later charge is checked on a throwaway club's Stripe test account now, and for real in BN7.
+  3. A declined card (4000 0000 0000 0002): nothing approved, a clear message.
+  4. A card the bank asks to confirm (4000 0025 0000 3155).
+  5. A party by card: booked, the Snack Shack pass, the party person's to-do.
+  6. Keyfobs by card.
+  7. A refund in Stripe: the Treasurer's to-do.
+  8. A disputed charge (4000 0000 0000 0259): the Treasurer's to-do.
+  - Then BK4: whatever breaks gets fixed, failing test first, and that test is run again.
+- **BN6. Doug: going live (BK6)** (~20 minutes, once Stripe has activated).
+  1. Stripe, live mode → Webhooks: two endpoints at the same address as test. Connected accounts get the 7 events; "Your account" gets checkout.session.completed and customer.subscription.updated/deleted. I send the exact list then.
+  2. Supabase → Edge Functions → Secrets: the live `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET_PLATFORM`.
+  3. Money → Payments → Connect Stripe: Bishop's own Stripe account, in Doug's name for now, with his bank. It's a second Stripe account, not Poolside's.
+  - Me: charges are on, each webhook arrives, and Plan & billing and the payment pages still open. Bishop's card buttons don't work between steps 2 and 3; nobody real is paying yet.
+- **BN7. Doug: real $1 tests (BK7)** (a minute a payment, about $5 of real money). Doug signs up on the $1 level with his real card and approves each payment on Money → Upcoming. I check each charge, receipt and payout in Stripe. The first $1 is refunded from Stripe to check that a live refund reaches the Treasurer. Bishop then stays live.
+- **BN8. Doug: decisions before the CSV import (BL4).**
+  - Supabase Pro ($25 a month, for backups) before real families' details go in.
+  - Cap the card fee at 3%, or not.
+  - Whose Stripe takes dues for good. The club's own account before the import is the clean way.
+  - Vercel Hobby.
+  - Delete the test families, the test party, the test sign-ups and the fake-card plan, or not.
+  - Then the CSV import and the renewal message get their own plan.
+
+Doug's time: about 2 hours this week, plus a minute per $1 payment. Supabase calls: about 200. Texts: only welcome texts, to Doug's own number.
+
 ### BM. Sign-ups: shifts and jobs, with a thank-you (Doug, 10/23) — ✅ built 10/29; Doug ticks it on for Bishop
 Doug: "some type of sign up genius feature... there is an event coming up and we need a person for the snack shack… or we have a broken sprinkler, here is a photo come fix it… bathrooms need painting. Someone do this." With a thank-you each time: "sometimes it's nothing, sometimes it might be free food at the event, sometimes it might be a discounted membership". On the member side: "I don't want a pop up of it, but maybe a bubble and a number saying that there are sign ups available... its own section."
 
