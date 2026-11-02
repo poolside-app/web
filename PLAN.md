@@ -953,6 +953,7 @@ Where it stands (read 11/1, read-only):
   - Then BK4: whatever breaks gets fixed, failing test first, and that test is run again.
 - **BN6. Doug: going live (BK6)** (~20 minutes, once Stripe has activated).
   0. Me, first: delete the test families, their plans and the test party (Doug 11/1: "Delete them first"). His board login stays.
+  0b. Doug, the same day: trash the "Poolside Archive" folder in the club's Google Drive. The next signup makes a fresh one (folders and the sheet are found again by name, and made again if gone), so real families start in a clean folder. Not before: the test-card signups in BN5 would fill it again. Drive has been connected since 10/11, last backup 10/22, no errors (checked 11/1); don't press Disconnect.
   1. Stripe, live mode → Webhooks: two endpoints at the same address as test. Connected accounts get the 7 events; "Your account" gets checkout.session.completed and customer.subscription.updated/deleted. I send the exact list then.
   2. Supabase → Edge Functions → Secrets: the live `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET_PLATFORM`.
   3. Money → Payments → **Connect a different Stripe account**: Bishop's own Stripe account, in Doug's name for now, with his bank. It's a second Stripe account, not Poolside's.
