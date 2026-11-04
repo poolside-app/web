@@ -35,7 +35,7 @@ jobs:
           failed=""
           for t in \
             test_access test_agenda test_board_home test_board_meetings test_board_notes \
-            test_demo_video test_drive_queue test_emails test_flex_plan test_gate_doors \
+            test_demo_video test_drive_backup test_drive_queue test_emails test_flex_plan test_gate_doors \
             test_gate_poll test_handoff test_help_articles test_help_requests test_keyfob_sync \
             test_keyfobs test_long_lists test_money test_one_app test_party_booked \
             test_plan_approval test_positions test_posts_delete test_screens test_season_home \

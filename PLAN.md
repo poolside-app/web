@@ -900,6 +900,17 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BO. The Drive backup, checked before Bishop's own Google account goes in (Doug, 11/3)
+Doug: make sure it backs up everything, names, addresses and phone numbers as xxx-xxx-xxxx, and the proper documents; he is switching the connection from his personal Google to the Bishop Estates one. Checked 11/3: connected as his personal Gmail since 10/11, last backup 10/22, nothing waiting, and the Google app is published (the connection outlived Testing's 7 days). New signups and claimed imports are backed up (a PDF and a sheet row). Found:
+- **BO1. Picking the account.** Google's screen now always asks which account (it could quietly reuse the one the browser is signed into), and afterwards it comes back to Settings → Backups & archive, not Money → Payments.
+- **BO2. Phone numbers as 408-555-1234** in the sheet and the PDF: the primary, every adult, and the emergency contact. The sheet showed 14085551234 (Sheets read "+1408…" as a number) and the PDF +14085551234. Zip is kept as text so a leading zero stays.
+- **BO3. Everyone in the sheet.** Two new columns: other adults (name, phone, email) and children (name, birthday), plus New or Renewal. The PDF already had them. Rows are written by the tab's own header names, so an older tab still lines up and "Verified" still finds its column. A family name that starts with = can't become a formula.
+- **BO4. Filed by season.** A signup for the 2027 season goes in "2027 Sign-ups" and the "2027" tab even when it's sent in November 2026. It used to go by the date sent, which split one season across two tabs.
+- **BO5. Trashing the folder.** The next backup made a new sheet but then wrote to a tab it remembered from the old one, and failed every time. The tab is now looked up in the sheet it writes to. (BN6 0b depends on this.)
+- **BO6. Renewals are backed up.** A signed renewal was never sent to Drive. Now it is, when it's signed, with its signature on the PDF (it printed "no signature on file"), titled Membership Renewal with its season.
+- Then Doug: Settings → Backups & archive → Disconnect, then Connect Google Drive, and pick the Bishop account. The next signup makes the folders there. The 4 test signups already backed up stay in his personal Drive. BN6 0b still applies: the test-card signups in BN5 land in the Bishop Drive, so its folder is trashed on go-live day.
+`node scripts/test_drive_backup.mjs`.
+
 ### BN. Test and turn on the member side: sign-ups and payments (Doug, 11/1) — BN1 done 11/1; BN2 and BN3 are Doug's
 Doug: "lets stop building random shit.... when i get time this week, we need to fully test/deploy the member side... sign ups and payments... create a plan.. step by step on what i/we need to do to get this completed".
 
@@ -953,7 +964,7 @@ Where it stands (read 11/1, read-only):
   - Then BK4: whatever breaks gets fixed, failing test first, and that test is run again.
 - **BN6. Doug: going live (BK6)** (~20 minutes, once Stripe has activated).
   0. Me, first: delete the test families, their plans and the test party (Doug 11/1: "Delete them first"). His board login stays.
-  0b. Doug, the same day: trash the "Poolside Archive" folder in the club's Google Drive. The next signup makes a fresh one (folders and the sheet are found again by name, and made again if gone), so real families start in a clean folder. Not before: the test-card signups in BN5 would fill it again. Drive has been connected since 10/11, last backup 10/22, no errors (checked 11/1); don't press Disconnect.
+  0b. Doug, the same day: trash the "Poolside Archive" folder in the club's Google Drive. The next signup makes a fresh one (folders and the sheet are found again by name, and made again if gone), so real families start in a clean folder. Not before: the test-card signups in BN5 would fill it again. Trash only the folder; don't press Disconnect (switching to the Bishop Google account is BO's last step).
   1. Stripe, live mode → Webhooks: two endpoints at the same address as test. Connected accounts get the 7 events; "Your account" gets checkout.session.completed and customer.subscription.updated/deleted. I send the exact list then.
   2. Supabase → Edge Functions → Secrets: the live `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET_PLATFORM`.
   3. Money → Payments → **Connect a different Stripe account**: Bishop's own Stripe account, in Doug's name for now, with his bank. It's a second Stripe account, not Poolside's.

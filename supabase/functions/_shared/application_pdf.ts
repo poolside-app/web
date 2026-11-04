@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
+import { prettyPhone, prettyPhonesIn } from './drive_row.ts';
 
 const PAGE_W = 612;   // letter width in pts (8.5 in)
 const PAGE_H = 792;   // letter height in pts (11 in)
@@ -63,6 +64,8 @@ export type ApplicationForPdf = {
   policies?: PolicyForPdf[];                 // full policy bodies for legal-evidence rendering
   signature_primary?: string | null;          // legacy fallback
   signature_guardian?: string | null;
+  is_renewal?: boolean;                       // PLAN.md BO6: titled Membership Renewal
+  membership_year?: number | null;
 };
 
 // Decode a data URL ("data:image/png;base64,...") into a Uint8Array. Returns
@@ -156,8 +159,12 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
   // ── Header ────────────────────────────────────────────────────────────
   text(app.tenant_display_name, { size: 16, bold: true, color: COLOR_BLUE });
   moveDown(20);
-  text('Membership Application', { size: 13, bold: true });
+  text(app.is_renewal ? 'Membership Renewal' : 'Membership Application', { size: 13, bold: true });
   moveDown(14);
+  if (app.membership_year) {
+    text(`For the ${app.membership_year} season`, { size: 9, color: COLOR_MUTED });
+    moveDown(11);
+  }
   text(`Submitted: ${app.submitted_at}`, { size: 9, color: COLOR_MUTED });
   moveDown(11);
   text(`Application ID: ${app.id}`, { size: 9, color: COLOR_MUTED });
@@ -168,11 +175,11 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
   kv('Family name', app.family_name);
   kv('Primary contact', app.primary_name);
   kv('Primary email', app.primary_email);
-  kv('Primary phone', app.primary_phone);
+  kv('Primary phone', app.primary_phone ? prettyPhone(app.primary_phone) : null);
   kv('Address', app.address);
   kv('City', app.city);
   kv('ZIP', app.zip);
-  kv('Emergency contact', app.emergency_contact);
+  kv('Emergency contact', app.emergency_contact ? prettyPhonesIn(app.emergency_contact) : null);
 
   // ── Tier + payment ────────────────────────────────────────────────────
   sectionHeading('Tier & payment');
@@ -190,7 +197,7 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
       moveDown(13);
       const meta = [
         a.dob ? `DOB ${a.dob}` : null,
-        a.phone ? `Phone ${a.phone}` : null,
+        a.phone ? `Phone ${prettyPhone(a.phone)}` : null,
         a.email ? `Email ${a.email}` : null,
       ].filter(Boolean).join(' · ');
       if (meta) {
@@ -293,9 +300,15 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
 
   // ── Signatures ────────────────────────────────────────────────────────
   sectionHeading('Signatures');
-  for (let i = 0; i < (app.adults_json ?? []).length; i++) {
-    const a = app.adults_json[i];
-    const sig = decodeDataUrl(a.signature_url);
+  // A renewal (and an older signup) has one signature, the primary's, on the
+  // application itself; it goes under that person (PLAN.md BO6).
+  const adultsList = app.adults_json ?? [];
+  const primaryAt = Math.max(0, adultsList.findIndex(a =>
+    String(a.name ?? '').trim().toLowerCase() === String(app.primary_name ?? '').trim().toLowerCase()));
+  const anyAdultSig = adultsList.some(a => decodeDataUrl(a.signature_url));
+  for (let i = 0; i < adultsList.length; i++) {
+    const a = adultsList[i];
+    const sig = decodeDataUrl(a.signature_url) ?? (!anyAdultSig && i === primaryAt ? decodeDataUrl(app.signature_primary) : null);
     ensureSpace(80);
     text(`Adult #${i + 1}: ${a.name || '(unnamed)'}`, { size: 10, bold: true });
     moveDown(14);

@@ -8,6 +8,7 @@
 //
 // Stored on the renewal application the same way signup stores it:
 // waivers_accepted, accepted_at and signature_primary (a PNG data URL).
+// Once signed, it's backed up to the club's Drive (PLAN.md BO6).
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -51,5 +52,11 @@ export async function signRenewal(
     waivers_accepted: waivers, accepted_at: now, signature_primary: input.signature, updated_at: now,
   }).eq('id', app.id);
   if (error) return { ok: false, error: error.message };
+  // The signed renewal goes to the club's Drive like a signup does (PLAN.md
+  // BO6); a failure waits in the retry queue and never blocks the signing.
+  try {
+    const { backupToDrive } = await import('./sync_application.ts');
+    await backupToDrive(sb, app.tenant_id, app.id);
+  } catch (e) { console.error('renewal Drive backup (non-fatal):', (e as Error).message); }
   return { ok: true, signed_at: now };
 }

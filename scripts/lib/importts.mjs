@@ -11,11 +11,15 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 const OUT = join(tmpdir(), `poolside-ts-${process.pid}`);
 const built = new Map();
 
+// Remote imports to swap for a local stand-in (e.g. pdf-lib from esm.sh), by exact specifier.
+let REMAP = {};
+
 function build(abs) {
   if (built.has(abs)) return built.get(abs);
   const target = join(OUT, abs.replace(/[\\/:]/g, '_') + '.mjs');
   built.set(abs, target);
   let js = stripTypeScriptTypes(readFileSync(abs, 'utf8'), { mode: 'strip' });
+  for (const [from, to] of Object.entries(REMAP)) js = js.split(`'${from}'`).join(`'${to}'`);
   js = js.replace(/(from\s+|import\s*\(\s*)(['"])(\.{1,2}\/[^'"]+\.ts)\2/g,
     (_m, pre, q, rel) => `${pre}${q}${pathToFileURL(build(resolve(dirname(abs), rel))).href}${q}`);
   mkdirSync(OUT, { recursive: true });
@@ -23,7 +27,9 @@ function build(abs) {
   return target;
 }
 
-/** importTs(new URL('../supabase/functions/_shared/x.ts', import.meta.url)) */
-export function importTs(url) {
+/** importTs(new URL('../supabase/functions/_shared/x.ts', import.meta.url))
+ *  importTs(url, { remap: { 'https://esm.sh/pdf-lib@1.17.1': fakeUrl } }) — set before the first build. */
+export function importTs(url, { remap } = {}) {
+  if (remap) REMAP = { ...REMAP, ...remap };
   return import(pathToFileURL(build(fileURLToPath(url))).href);
 }

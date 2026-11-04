@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
+import { prettyPhone } from './drive_row.ts';
 
 const PAGE_W = 612;
 const PAGE_H = 792;
@@ -162,7 +163,7 @@ export async function renderAddedMemberPdf(d: AddedMemberForPdf): Promise<Uint8A
   kv('Role', d.member_role);
   kv('Date of birth', d.member_dob || null);
   kv('Email', d.member_email || null);
-  kv('Phone', d.member_phone || null);
+  kv('Phone', d.member_phone ? prettyPhone(d.member_phone) : null);
 
   // ── Policies ────────────────────────────────────────────────────────
   if (d.policies && d.policies.length) {

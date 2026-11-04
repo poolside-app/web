@@ -12,10 +12,11 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   ensureFolder, ensureSpreadsheet, ensureYearTab, appendRow, uploadPdf,
   getAccessToken, loadGrant, updateGrantCache, driveFileLink,
-  updateRowCellByAppId,
+  updateRowCellByAppId, readHeaders, SHEET_HEADERS,
 } from './google_drive.ts';
 import { renderApplicationPdf, type ApplicationForPdf, type PolicyForPdf } from './application_pdf.ts';
 import { fmtPoolStamp, poolDate, tenantTimeZone, wallParts, zoneOrDefault } from './pool_time.ts';
+import { adultsCell, driveSeason, kidsCell, prettyPhone, prettyPhonesIn, rowByHeaders, sheetSafe } from './drive_row.ts';
 
 export type SyncResult =
   | { ok: true; pdf_id: string; spreadsheet_id: string; tab_name: string; row_index: number; skipped?: never }
@@ -96,6 +97,8 @@ export async function loadApplicationForPdf(
     policies:          policiesFull,
     signature_primary: (app.signature_primary as string | null) ?? null,
     signature_guardian:(app.signature_guardian as string | null) ?? null,
+    is_renewal:        app.is_renewal === true,
+    membership_year:   (app.membership_year as number | null) ?? null,
   };
 }
 
@@ -139,7 +142,8 @@ export async function syncApplicationToDrive(
   const tz = zoneOrDefault(tenant.timezone);
   const submittedAt = new Date(app.created_at as string);
   const submitted = wallParts(submittedAt, tz);
-  const year = String(submitted.year);
+  // Filed by the season it's for (PLAN.md BO4): a November signup for 2027 goes in 2027.
+  const year = driveSeason(app, tz);
 
   let pdfData: ApplicationForPdf;
   let pdfBytes: Uint8Array;
@@ -166,7 +170,9 @@ export async function syncApplicationToDrive(
   const cachedYearFolder = (grant.year_folder_ids ?? {})[year] ?? null;
   const yearFolderId = await ensureFolder(accessToken, yearFolderName, clubId, cachedYearFolder);
 
-  const cachedYearTab = (grant.year_tab_ids ?? {})[year] ?? null;
+  // A new sheet (the old one was trashed) has none of the old sheet's tabs (PLAN.md BO5).
+  const sameSheet = spreadsheetId === grant.spreadsheet_id;
+  const cachedYearTab = sameSheet ? ((grant.year_tab_ids ?? {})[year] ?? null) : null;
   const yearTabId = await ensureYearTab(accessToken, spreadsheetId, year, cachedYearTab);
 
   // 6) Upload PDF first (so the link can be embedded in the sheet row).
@@ -200,30 +206,38 @@ export async function syncApplicationToDrive(
     verifiedCell = paidByRaw === 'stripe' ? `Stripe ✓ ${dShort}` : `Manual ✓ ${dShort}`;
   }
 
-  const rowValues = [
-    dateSerial,                                              // Submitted (DATE+TIME formula)
-    (app.family_name       as string) ?? '',                 // Family
-    (app.primary_name      as string | null) ?? '',          // Primary Contact
-    (app.primary_email     as string | null) ?? '',          // Email
-    (app.primary_phone     as string | null) ?? '',          // Phone
-    tierLabel || (app.tier_slug as string | null) || '',     // Tier
-    (app.num_adults        as number | null) ?? 0,           // Adults
-    (app.num_kids          as number | null) ?? 0,           // Kids
-    policiesCell,                                            // Policies (e.g. "3/3 ✓")
-    (app.address           as string | null) ?? '',          // Address
-    (app.city              as string | null) ?? '',          // City
-    (app.zip               as string | null) ?? '',          // Zip
-    (app.emergency_contact as string | null) ?? '',          // Emergency Contact
-    paidByLabel,                                             // Paid By (Stripe/Venmo/PayPal)
-    verifiedCell,                                            // Verified (blank or "✓ method date")
-    pdfHyperlink,                                            // Application PDF (=HYPERLINK)
-    app.id as string,                                        // App ID (rightmost, narrow)
-  ];
+  // By column name, laid out by the tab's own header row (an older tab has
+  // fewer columns). What a family typed can't become a formula.
+  const typed = (v: unknown) => sheetSafe(String(v ?? ''));
+  const record: Record<string, unknown> = {
+    'Submitted':         dateSerial,                                   // DATE+TIME formula
+    'Family':            typed(app.family_name),
+    'Type':              app.is_renewal === true ? 'Renewal' : 'New',
+    'Primary Contact':   typed(app.primary_name),
+    'Email':             typed(app.primary_email),
+    'Phone':             typed(prettyPhone(app.primary_phone)),        // 408-555-1234 (PLAN.md BO2)
+    'Other Adults':      typed(adultsCell(pdfData.adults_json, app.primary_name)),
+    'Children':          typed(kidsCell(pdfData.children_json)),
+    'Tier':              typed(tierLabel || (app.tier_slug as string | null) || ''),
+    'Adults':            (app.num_adults as number | null) ?? 0,
+    'Kids':              (app.num_kids   as number | null) ?? 0,
+    'Policies':          policiesCell,                                 // e.g. "3/3 ✓"
+    'Address':           typed(app.address),
+    'City':              typed(app.city),
+    'Zip':               typed(app.zip),
+    'Emergency Contact': typed(prettyPhonesIn(app.emergency_contact)),
+    'Paid By':           paidByLabel,                                  // Stripe/Venmo/PayPal
+    'Verified':          verifiedCell,                                 // blank or "✓ method date"
+    'Application PDF':   pdfHyperlink,                                 // =HYPERLINK
+    'App ID':            app.id as string,
+  };
+  const headers = await readHeaders(accessToken, spreadsheetId, year);
+  const rowValues = rowByHeaders(headers.length ? headers : SHEET_HEADERS, record) as (string | number | null)[];
   const rowIndex = await appendRow(accessToken, spreadsheetId, year, rowValues);
 
   // 8) Persist updated cache + sync log.
   const newYearFolderIds = { ...(grant.year_folder_ids ?? {}), [year]: yearFolderId };
-  const newYearTabIds    = { ...(grant.year_tab_ids ?? {}),    [year]: yearTabId };
+  const newYearTabIds    = { ...(sameSheet ? (grant.year_tab_ids ?? {}) : {}), [year]: yearTabId };
   await updateGrantCache(sb, args.tenantId, {
     root_folder_id: rootId,
     club_folder_id: clubId,
@@ -296,6 +310,20 @@ export async function markVerifiedInDrive(
   } catch (e) {
     // Best-effort: log but never bubble. App's verification still succeeded.
     console.error('markVerifiedInDrive failed (non-fatal):', (e as Error).message);
+  }
+}
+
+// Back up one application now, or queue it for a retry. Never throws: the
+// caller's own step (a signed renewal, PLAN.md BO6) has already succeeded.
+export async function backupToDrive(sb: SupabaseClient, tenantId: string, applicationId: string): Promise<void> {
+  const env = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env;
+  const googleClientId = env?.get('GOOGLE_CLIENT_ID'), googleClientSecret = env?.get('GOOGLE_CLIENT_SECRET');
+  if (!googleClientId || !googleClientSecret) return;
+  try {
+    const r = await syncApplicationToDrive(sb, { tenantId, applicationId, googleClientId, googleClientSecret });
+    if (!r.ok) await enqueueDriveSync(sb, tenantId, applicationId, r.error);
+  } catch (e) {
+    try { await enqueueDriveSync(sb, tenantId, applicationId, (e as Error).message); } catch { /* best-effort */ }
   }
 }
 

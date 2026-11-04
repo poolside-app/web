@@ -33,10 +33,11 @@ export type DriveGrant = {
   year_tab_ids: Record<string, number>;
 };
 
-// Header row written when a year-tab is first created. Order locked so older
-// tabs stay readable even after we add a column to newer ones. Each entry has
-// a label + pixel width + alignment + numberFormat so a single source of
-// truth governs both content and visual styling.
+// Header row written when a season's tab is first created. Rows are written
+// by these labels against the tab's own header row (drive_row.ts
+// rowByHeaders), so a tab made before a column was added still lines up.
+// Each entry has a label + pixel width + alignment + numberFormat so a single
+// source of truth governs both content and visual styling.
 type ColSpec = {
   label: string;
   width: number;
@@ -47,9 +48,14 @@ export const SHEET_COLUMNS: ColSpec[] = [
   { label: 'Submitted',         width: 150, align: 'LEFT',
     numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
   { label: 'Family',            width: 170, align: 'LEFT' },
+  { label: 'Type',              width:  90, align: 'CENTER' },   // New or Renewal (PLAN.md BO6)
   { label: 'Primary Contact',   width: 170, align: 'LEFT' },
   { label: 'Email',             width: 200, align: 'LEFT' },
-  { label: 'Phone',             width: 130, align: 'LEFT' },
+  // Text, so 408-555-1234 and a zip's leading zero stay as typed (PLAN.md BO2).
+  { label: 'Phone',             width: 130, align: 'LEFT',
+    numberFormat: { type: 'TEXT' } },
+  { label: 'Other Adults',      width: 320, align: 'LEFT' },   // name · phone · email (PLAN.md BO3)
+  { label: 'Children',          width: 220, align: 'LEFT' },   // name (born …)
   { label: 'Tier',              width: 120, align: 'LEFT' },
   { label: 'Adults',            width:  70, align: 'CENTER',
     numberFormat: { type: 'NUMBER', pattern: '0' } },
@@ -58,7 +64,8 @@ export const SHEET_COLUMNS: ColSpec[] = [
   { label: 'Policies',          width:  90, align: 'CENTER' },
   { label: 'Address',           width: 200, align: 'LEFT' },
   { label: 'City',              width: 110, align: 'LEFT' },
-  { label: 'Zip',               width:  70, align: 'LEFT' },
+  { label: 'Zip',               width:  70, align: 'LEFT',
+    numberFormat: { type: 'TEXT' } },
   { label: 'Emergency Contact', width: 200, align: 'LEFT' },
   { label: 'Paid By',           width: 110, align: 'CENTER' },
   { label: 'Verified',          width: 150, align: 'CENTER' },
@@ -244,19 +251,20 @@ function colA1(idx: number): string {
   return s;
 }
 
-// Idempotent year-tab creation. First signup of each calendar year auto-
-// creates a new tab next to last year's, with the canonical header row AND
+// Idempotent season-tab creation. First signup of each season auto-
+// creates a new tab next to last season's, with the canonical header row AND
 // professional styling: dark-blue header, frozen header row, banded data
 // rows, basic filter, sensible column widths, date column number format.
+//
+// The tab is always looked up in this spreadsheet, never taken from the
+// cache: after the board trashed the folder, the cached id was the old
+// sheet's tab and every backup failed (PLAN.md BO5).
 export async function ensureYearTab(
   accessToken: string,
   spreadsheetId: string,
   year: string,
-  cachedSheetId: number | null,
+  _cachedSheetId: number | null,
 ): Promise<number> {
-  if (cachedSheetId !== null) {
-    return cachedSheetId;
-  }
   const existing = await findTab(accessToken, spreadsheetId, year);
   if (existing !== null) return existing;
 
@@ -473,6 +481,24 @@ export async function formatYearTab(
   }
 }
 
+// A tab's header row, as written (empty if it has none yet).
+export async function readHeaders(
+  accessToken: string,
+  spreadsheetId: string,
+  tabName: string,
+): Promise<string[]> {
+  const res = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(`${tabName}!1:1`)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Header read failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return ((data.values?.[0] ?? []) as unknown[]).map(v => String(v));
+}
+
 // Append a row to a year-tab. Uses USER_ENTERED so dates / numbers parse
 // nicely in the spreadsheet (rather than appearing as raw strings).
 export async function appendRow(
@@ -523,9 +549,13 @@ export async function updateRowCellByAppId(
 ): Promise<{ updated: boolean; row?: number; value?: string; reason?: string }> {
   if (!value || !value.trim()) return { updated: false, reason: 'blank input' };
 
-  const targetColIdx = SHEET_COLUMNS.findIndex(c => c.label === columnLabel);
+  // Columns by this tab's own header row: an older tab has fewer of them.
+  let headers: string[] = [];
+  try { headers = await readHeaders(accessToken, spreadsheetId, tabName); } catch { /* use the current layout */ }
+  if (!headers.length) headers = SHEET_HEADERS;
+  const targetColIdx = headers.indexOf(columnLabel);
   if (targetColIdx < 0) return { updated: false, reason: `unknown column: ${columnLabel}` };
-  const appIdColIdx = SHEET_COLUMNS.findIndex(c => c.label === 'App ID');
+  const appIdColIdx = headers.indexOf('App ID');
   if (appIdColIdx < 0) return { updated: false, reason: 'App ID column missing' };
 
   // Read App ID column to find the row index

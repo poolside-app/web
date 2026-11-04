@@ -15,7 +15,7 @@
 //     → { ok, url }   admin redirects browser there; Google bounces back to
 //                     this same function with action=callback&code=…&state=…
 //   { action: 'callback', code, state }    (called by browser via redirect)
-//     → 302 redirect to admin /club/admin/payments.html#drive=connected
+//     → 302 redirect to admin /club/admin/settings.html#drive=connected
 //   { action: 'disconnect' }
 //     → { ok }        clears refresh_token; Drive content untouched
 //   { action: 'test_sync', application_id }
@@ -130,7 +130,9 @@ function buildAuthUrl(state: string, redirect: string): string {
   u.searchParams.set('redirect_uri', redirect);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('access_type', 'offline');
-  u.searchParams.set('prompt', 'consent');
+  // select_account: always ask which Google account, so a board member signed
+  // in as themselves can pick the club's (PLAN.md BO1).
+  u.searchParams.set('prompt', 'consent select_account');
   u.searchParams.set('include_granted_scopes', 'true');
   u.searchParams.set('scope', [
     'https://www.googleapis.com/auth/drive.file',
@@ -211,9 +213,10 @@ Deno.serve(async (req) => {
         year_tab_ids: {},
       });
       const { data: tenant } = await sb.from('tenants').select('slug').eq('id', stateData.tid).maybeSingle();
+      // Back to Settings → Backups & archive, where the Drive card is (PLAN.md BO1).
       const adminUrl = tenant?.slug
-        ? `https://${tenant.slug}.poolsideapp.com/club/admin/payments.html#drive=connected`
-        : '/club/admin/payments.html#drive=connected';
+        ? `https://${tenant.slug}.poolsideapp.com/club/admin/settings.html#drive=connected`
+        : '/club/admin/settings.html#drive=connected';
       return Response.redirect(adminUrl, 302);
     } catch (e) {
       return new Response(`OAuth exchange failed: ${(e as Error).message}`, { status: 500, headers: cors });
