@@ -165,7 +165,9 @@ if (LIVE) {
       const c3b = await fn('keyfobs', { action: 'cancel', id: r3.fob?.id }, admTok);
       check('X2: once they say they sent the Venmo, neither side can cancel', !c3m.ok && !c3b.ok && !(await gone(r3.fob?.id)), short({ c3m, c3b }));
       // That claimed request stays in their list; clear it so the later steps start from one fob.
-      if (r3.fob?.id) await sql(`delete from keyfobs where id = '${r3.fob.id}'`);
+      // Its "check the Venmo" task too: the cleanup below finds tasks by the fobs still there.
+      if (r3.fob?.id) await sql(`delete from admin_tasks where source_kind = 'keyfob' and source_id = '${r3.fob.id}';
+        delete from keyfobs where id = '${r3.fob.id}'`);
       // The checkout was still open when they canceled, then they paid.
       const r4 = await fn('keyfobs', { action: 'request' }, memTok);
       const p4 = await fn('stripe_checkout', { action: 'keyfob', keyfob_id: r4.fob?.id }, memTok);
@@ -285,7 +287,11 @@ if (LIVE) {
   } finally {
     await sql(`delete from admin_tasks where source_kind = 'keyfob' and source_id in (select id from keyfobs where household_id in (select id from households where tenant_id = '${club.id}' and family_name like '${FAMILY}%'));
       delete from stripe_processed_events where id in (select 'evt_' || stripe_session_id from keyfobs where household_id in (select id from households where tenant_id = '${club.id}' and family_name like '${FAMILY}%') and stripe_session_id is not null)`);
+    // Any task left behind by a fob deleted along the way still names the family (10/22 left one on Bishop's Keyfobs tab).
+    await sql(`delete from admin_tasks where tenant_id = '${club.id}' and summary like '%${FAMILY}%'`);
     await purgeTestFamilies(sql, club.id, `${FAMILY}%`);
+    const [{ tasks }] = await sql(`select count(*)::int as tasks from admin_tasks where tenant_id = '${club.id}' and summary like '%${FAMILY}%'`);
+    check('cleanup: no to-do for the temporary families is left on the board\'s tabs', tasks === 0, String(tasks));
     const [{ left }] = await sql(`select (select count(*) from households where tenant_id = '${club.id}' and family_name like '${FAMILY}%') + (select count(*) from applications where tenant_id = '${club.id}' and family_name like '${FAMILY}%') as left`);
     check('cleanup: the temporary families are gone', Number(left) === 0, String(left));
   }
