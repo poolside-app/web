@@ -25,8 +25,9 @@ const sync = await load('supabase/functions/_shared/sync_application.ts');
 const TZ = 'America/Los_Angeles', TID = 't1';
 const SIG = 'data:image/png;base64,' + 'iVBORw0KGgo'.padEnd(120, 'A');
 const KEYS = { googleClientId: 'cid', googleClientSecret: 'cs' };
-const ROSTER = ['Family', 'Status', 'Type', 'Primary Contact', 'Phone', 'Email', 'Address', 'City', 'Zip', 'Other Adults', 'Children',
-  'Adults', 'Kids', 'Keyfobs', 'Tier', 'Paid By', 'Verified', 'Policies', 'Emergency Contact', 'Submitted', 'Application PDF', 'App ID'];
+// Doug, 11/3: Submitted right after the family.
+const ROSTER = ['Family', 'Submitted', 'Status', 'Type', 'Primary Contact', 'Phone', 'Email', 'Address', 'City', 'Zip', 'Other Adults', 'Children',
+  'Adults', 'Kids', 'Keyfobs', 'Tier', 'Paid By', 'Verified', 'Policies', 'Emergency Contact', 'Application PDF', 'App ID'];
 
 // ── What goes in a cell ─────────────────────────────────────────────────
 console.log('BR3, BR4, BR5 · what the cells say (offline)');

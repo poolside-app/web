@@ -34,14 +34,17 @@ export type DriveGrant = {
   year_tab_ids: Record<string, number>;
 };
 
-// A season's roster tab (PLAN.md BR). The family first (frozen), then where
-// it stands, how to reach it, who's in it and its fobs; the record-keeping
+// A season's roster tab (PLAN.md BR). The family first (frozen) and when it
+// signed up, then where it stands, how to reach it, who's in it and its fobs; the record-keeping
 // columns last. Rows are written by these labels against the tab's own header
 // row (drive_row.ts rowByHeaders), so a tab in an earlier layout still lines
 // up, and the nightly run rewrites it in this one.
 export type { ColSpec } from './sheet_look.ts';
 export const SHEET_COLUMNS: ColSpec[] = [
   { label: 'Family',            width: 170, align: 'LEFT' },
+  // Right after the family (Doug, 11/3).
+  { label: 'Submitted',         width: 170, align: 'LEFT', formula: true,
+    numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
   { label: 'Status',            width: 200, align: 'LEFT', chips: [
     { startsWith: 'Approved', color: 'green' }, { startsWith: 'Paid', color: 'amber' }, { startsWith: 'Venmo', color: 'amber' },
     { startsWith: 'Not paid', color: 'amber' }, { startsWith: 'Turned down', color: 'red' }, { startsWith: 'Deleted', color: 'red' },
@@ -67,8 +70,6 @@ export const SHEET_COLUMNS: ColSpec[] = [
   { label: 'Verified',          width: 130, align: 'CENTER', chips: [{ contains: '✓', color: 'green' }] },
   { label: 'Policies',          width:  90, align: 'CENTER' },
   { label: 'Emergency Contact', width: 200, align: 'LEFT', wrap: true },
-  { label: 'Submitted',         width: 170, align: 'LEFT', formula: true,
-    numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
   { label: 'Application PDF',   width: 120, align: 'CENTER', formula: true },
   { label: 'App ID',            width: 100, align: 'LEFT' },
 ];
