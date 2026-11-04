@@ -900,6 +900,14 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BQ. Drive works the moment it's connected, with no buttons (Doug, 11/3)
+Doug connected the Bishop Google account and no folder showed up: Poolside made it only at the next signup or nightly run. He asked whether a club should need to sync even once ("keep in mind when we scale this out").
+- **BQ1. Connecting runs the catch-up right away,** in the background after Google sends the board back: the folder, the sheet, the Parties tab, and every signup so far. Settings shows the time it ran.
+- **BQ2. A signup copied into a different sheet is copied again** into the one in use. That covers a club switching Google accounts (its records no longer split between two Drives) and a folder that was trashed. Reconnecting the same account finds the same sheet, so nothing is copied twice.
+- **BQ3. The three buttons go:** Retry failed syncs, Copy anything missing now, and Reapply spreadsheet styling. The nightly run and BQ1 do their jobs. Settings keeps the account, the last backup time, any error, the folder and sheet links, and Disconnect.
+- Later, past about 30 clubs: the nightly run calls the function once per club instead of all clubs in one call, so it can't run out of time.
+`node scripts/test_drive_parties.mjs`.
+
 ### BP. Parties in the Drive backup, and a nightly catch-up (Doug, 11/3)
 Doug: a Parties tab in the same sheet with the history of every party, "even if they are scheduled and cancelled to track what actually happened". He also asked if all of it backs up nightly. It didn't: a signup copies the moment it's sent, and a failed one waited for someone to press "Retry failed syncs". Parties weren't backed up at all, and Poolside kept only each party's latest state, not its steps.
 - **BP1. Every step of a party is recorded as it happens.** A database trigger on `party_bookings` writes `party_history`, so all six places that change a party are covered. Steps: requested, approved, turned down, Venmo sent, paid (card or Venmo), canceled (by the family, by the board, released for not paying in time, or automatically because the time was taken), moved, and price changed. Stripe refunds and chargebacks come from the audit log. Each step keeps the family name and the party's details, so a deleted family's parties still show. Bishop's one party starts from what's on it now.

@@ -218,6 +218,15 @@ Deno.serve(async (req) => {
         year_folder_ids: {},
         year_tab_ids: {},
       });
+      // The catch-up now, in the background (PLAN.md BQ1): the folder, the
+      // sheet, the Parties tab and every signup so far, instead of at the next
+      // signup or tonight. The page doesn't wait for it.
+      const catchUp = nightlyDrive(sb, stateData.tid, { googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET })
+        .catch(async e => {
+          await sb.from('google_drive_grants').update({ last_error: `First backup: ${(e as Error).message}`.slice(0, 500) }).eq('tenant_id', stateData.tid);
+        });
+      const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+      if (rt?.waitUntil) rt.waitUntil(catchUp); else await catchUp;
       const { data: tenant } = await sb.from('tenants').select('slug').eq('id', stateData.tid).maybeSingle();
       // Back to Settings → Backups & archive, where the Drive card is (PLAN.md BO1).
       const adminUrl = tenant?.slug

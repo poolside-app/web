@@ -141,6 +141,24 @@ if (dp && ph) {
   check('a club without Drive is skipped', (await dp.nightlyDrive(gone, TID, { googleClientId: 'cid', googleClientSecret: 'cs' })).skipped === true);
 }
 
+if (dp && ph) {
+  console.log('\nBQ · connecting, and a new Google account (pretend Google)');
+  const g5 = fakeGoogle(); globalThis.fetch = g5.fetch;
+  const db5 = club();
+  // Copied before into a sheet this account can't see (the old account, or a trashed folder).
+  db5.tables.applications.push(app('old-copy'), app('never'));
+  db5.tables.drive_sync_log.push({ id: 'l1', tenant_id: TID, application_id: 'old-copy', spreadsheet_id: 'someone-elses-sheet', tab_name: '2027', row_index: 2 });
+  const r5 = await dp.nightlyDrive(db5, TID, { googleClientId: 'cid', googleClientSecret: 'cs' });
+  const sid5 = db5.tables.google_drive_grants[0].spreadsheet_id;
+  const inSheet = rowsOf(tab(g5, sid5, '2027')).map(r => r['App ID']).sort();
+  check('BQ2: a signup copied into another sheet is copied again into this one', inSheet.join(',') === 'never,old-copy', short({ inSheet, r5 }));
+  check('BQ2: and its record now points at this sheet', db5.tables.drive_sync_log.filter(l => l.application_id === 'old-copy').length === 1
+    && db5.tables.drive_sync_log.find(l => l.application_id === 'old-copy')?.spreadsheet_id === sid5, short(db5.tables.drive_sync_log));
+  await dp.nightlyDrive(db5, TID, { googleClientId: 'cid', googleClientSecret: 'cs' });
+  check('BQ2: the same account again copies nothing twice', rowsOf(tab(g5, sid5, '2027')).length === 2, String(rowsOf(tab(g5, sid5, '2027')).length));
+  check('BQ1: the run sets the last backup time, even with nothing to copy', !!db5.tables.google_drive_grants[0].last_sync_at && db5.tables.google_drive_grants[0].last_error === null, short(db5.tables.google_drive_grants[0]));
+}
+
 // ── Wiring ──────────────────────────────────────────────────────────────
 console.log('\nBP1, BP3 · wiring (offline)');
 const migs = readdirSync(new URL('supabase/migrations/', root));
@@ -157,8 +175,11 @@ check('BP3: a nightly job, about 2 AM Pacific, not callable from outside', /cron
 const gds = read('supabase/functions/google_drive_sync/index.ts');
 const cronPart = gds.slice(gds.indexOf("action === 'cron_nightly'"), gds.indexOf("action === 'cron_nightly'") + 1500);
 check('BP3: cron_nightly needs the cron secret and runs every connected club', /x-cron-secret/.test(cronPart) && /CRON_SECRET/.test(cronPart) && /google_drive_grants/.test(cronPart) && /nightlyDrive\(/.test(cronPart));
-check('BP3: "Copy anything missing now" runs the same catch-up', /nightlyDrive\(/.test(gds.slice(gds.indexOf("action === 'backfill_unsynced'"), gds.indexOf("action === 'backfill_unsynced'") + 800)));
+const cb = gds.slice(gds.indexOf("if (req.method === 'GET')"), gds.indexOf("if (req.method !== 'POST')"));
+check('BQ1: connecting starts the catch-up, without holding up the page', /nightlyDrive\(/.test(cb) && /waitUntil/.test(cb) && cb.indexOf('nightlyDrive(') > cb.indexOf("from('google_drive_grants').upsert"));
 const st = read('club/admin/settings.html');
+check('BQ3: no Retry, Copy or Reapply buttons on Settings', !/drive-retry-btn|drive-backfill-btn|drive-reformat-btn|retryDriveQueue|backfillDrive|reformatDriveTabs/.test(st));
+check('BQ3: and the help article doesn\'t send anyone to them', !/Retry failed syncs|Copy anything missing|Reapply/.test(read('club/admin/help/articles/drive-backup.md')));
 check('the Settings card says parties and nightly', /parties/i.test(st.slice(st.indexOf('id="drive-card"'), st.indexOf('id="drive-status"'))) && /night/i.test(st.slice(st.indexOf('id="drive-card"'), st.indexOf('id="drive-status"'))));
 
 // ── Live: the trigger, on a throwaway club ──────────────────────────────

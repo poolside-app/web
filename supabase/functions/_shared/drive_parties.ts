@@ -8,7 +8,7 @@
 //   1. retry every waiting backup,
 //   2. copy any signup or signed renewal that never got copied,
 //   3. bring the Parties tab up to date from party_history.
-// The board's "Copy anything missing now" button runs the same thing.
+// Connecting Drive runs the same thing right away (PLAN.md BQ1).
 // Like the rest of the Drive code, it only adds and updates; a row in Drive is
 // never removed.
 // =============================================================================
@@ -74,15 +74,19 @@ export async function retryDriveQueue(sb: SupabaseClient, tenantId: string, keys
   return { attempted, succeeded, failed, dropped, tried };
 }
 
-/** Signups and signed renewals not in Drive yet. An imported family that
- *  hasn't signed, and a renewal not signed yet, have nothing to keep. */
-export async function copyMissing(sb: SupabaseClient, tenantId: string, keys: Keys, skip: string[] = []) {
+/** Signups and signed renewals not in the sheet in use. An imported family
+ *  that hasn't signed, and a renewal not signed yet, have nothing to keep.
+ *  One copied into another sheet (a Google account the club left, or a
+ *  trashed folder) is copied again into this one (PLAN.md BQ2). */
+export async function copyMissing(sb: SupabaseClient, tenantId: string, keys: Keys, skip: string[] = [], currentSheet: string | null = null) {
   const { data: apps } = await sb.from('applications')
     .select('id, family_name, status, is_renewal, signature_primary, created_at')
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: true });
-  const { data: synced } = await sb.from('drive_sync_log').select('application_id').eq('tenant_id', tenantId);
-  const done = new Set([...(synced ?? []).map(s => s.application_id as string), ...skip]);
+  const { data: synced } = await sb.from('drive_sync_log').select('application_id, spreadsheet_id').eq('tenant_id', tenantId);
+  const here = (synced ?? []).filter(s => !currentSheet || s.spreadsheet_id === currentSheet);
+  const elsewhere = new Set((synced ?? []).filter(s => currentSheet && s.spreadsheet_id !== currentSheet).map(s => s.application_id as string));
+  const done = new Set([...here.map(s => s.application_id as string), ...skip]);
   const missing = (apps ?? []).filter(a => !done.has(a.id as string)
     && a.status !== 'prefilled'
     && !(a.is_renewal === true && !a.signature_primary));
@@ -90,6 +94,10 @@ export async function copyMissing(sb: SupabaseClient, tenantId: string, keys: Ke
   const errors: Array<{ family: string; error: string }> = [];
   for (const app of missing) {
     try {
+      if (elsewhere.has(app.id as string)) {
+        // The old record says "already copied" and would stop the copy.
+        await sb.from('drive_sync_log').delete().eq('tenant_id', tenantId).eq('application_id', app.id as string);
+      }
       const r = await syncApplicationToDrive(sb, { tenantId, applicationId: app.id as string, ...keys });
       if (r.ok && !r.skipped) copied++;
       else if (!r.ok) {
@@ -150,18 +158,16 @@ export async function syncPartiesToDrive(
   return byParty.size;
 }
 
-/** The whole nightly run for one club. */
+/** The whole run for one club: nightly, and right after Drive is connected (PLAN.md BQ1). */
 export async function nightlyDrive(sb: SupabaseClient, tenantId: string, keys: Keys): Promise<NightlyResult> {
   const empty: NightlyResult = { ok: true, retried: 0, copied: 0, failed: 0, dropped: 0, parties: 0, errors: [] };
-  if (!(await loadGrant(sb, tenantId))) return { ...empty, skipped: true };
-
-  const q = await retryDriveQueue(sb, tenantId, keys);
-  const c = await copyMissing(sb, tenantId, keys, q.tried);
-
-  // Read again: a backup above may have just made the folder and sheet.
   const grant = await loadGrant(sb, tenantId);
+  if (!grant) return { ...empty, skipped: true };
   const { data: tenant } = await sb.from('tenants').select('slug, display_name, timezone').eq('id', tenantId).maybeSingle();
-  if (!grant || !tenant) return { ...empty, retried: q.succeeded, copied: c.copied, failed: q.failed + c.failed, dropped: q.dropped, errors: c.errors };
+  if (!tenant) return { ...empty, skipped: true };
+
+  // The folder and sheet first, so a club just connected has them even with
+  // nothing to copy, and so a copy in some other sheet can be told apart.
   const accessToken = await getAccessToken(grant.refresh_token, keys.googleClientId, keys.googleClientSecret);
   const roster = await ensureRoster(accessToken, tenant as { slug: string; display_name: string }, grant);
   if (roster.spreadsheetId !== grant.spreadsheet_id || roster.rootId !== grant.root_folder_id || roster.clubId !== grant.club_folder_id) {
@@ -170,6 +176,13 @@ export async function nightlyDrive(sb: SupabaseClient, tenantId: string, keys: K
       ...(roster.spreadsheetId !== grant.spreadsheet_id ? { year_tab_ids: {} } : {}),
     });
   }
+
+  const q = await retryDriveQueue(sb, tenantId, keys);
+  const c = await copyMissing(sb, tenantId, keys, q.tried, roster.spreadsheetId);
   const parties = await syncPartiesToDrive(sb, tenantId, accessToken, roster.spreadsheetId, zoneOrDefault(tenant.timezone));
+  await sb.from('google_drive_grants').update({
+    last_sync_at: new Date().toISOString(),
+    last_error: q.failed + c.failed ? (c.errors[0]?.error ?? 'A backup failed; it is tried again tonight.').slice(0, 500) : null,
+  }).eq('tenant_id', tenantId);
   return { ok: true, retried: q.succeeded, copied: c.copied, failed: q.failed + c.failed, dropped: q.dropped, parties, errors: c.errors };
 }

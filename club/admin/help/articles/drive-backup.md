@@ -14,14 +14,14 @@ Each night Poolside copies anything that was missed and brings the Parties tab u
 1. Go to **Settings → Backups & archive**.
 2. Tap **Connect Google Drive**. Google asks which account: pick your club's, not your own.
 
-From then on, each new signup is copied over on its own.
+Within a minute, a "Poolside Archive" folder appears in that Drive with the roster sheet and every signup so far. From then on, each new signup is copied over on its own.
 
 ### Switch to a different Google account
 
-Tap **Disconnect**, then **Connect Google Drive**, and pick the other account. New signups go to a fresh "Poolside Archive" folder there. What was already copied stays in the old account.
+Tap **Disconnect**, then **Connect Google Drive**, and pick the other account. Everything is copied into a fresh "Poolside Archive" folder there. The old account keeps its copy.
 
 ### If something didn't copy
 
-Tap **Retry failed syncs**, or **🔄 Copy anything missing now** to do the nightly catch-up right away.
+Settings → Backups & archive shows the last error. Anything that didn't copy is tried again that night, with nothing to press.
 
 > Tip: This is a record of who signed up and what they signed. It isn't a backup of everything in Poolside.
