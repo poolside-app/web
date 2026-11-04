@@ -9,7 +9,7 @@
 // ("Nov 4: approved") and one row for the sheet.
 // =============================================================================
 
-import type { ColSpec } from './google_drive.ts';
+import type { ColSpec } from './sheet_look.ts';
 import { fmtPoolDate, fmtPoolTime, wallParts } from './pool_time.ts';
 import { sheetSafe } from './drive_row.ts';
 
@@ -34,18 +34,22 @@ export type PartyStep = {
 export type PartyMoney = { entity_id: string; kind: string; created_at: string; summary: string | null };
 
 export const PARTY_COLUMNS: ColSpec[] = [
-  { label: 'Party Date',    width: 140, align: 'LEFT',
+  { label: 'Party Date',    width: 140, align: 'LEFT', formula: true,
     numberFormat: { type: 'DATE_TIME', pattern: 'ddd, mmm d, yyyy' } },
   { label: 'Time',          width: 130, align: 'LEFT' },
   { label: 'Family',        width: 170, align: 'LEFT' },
   { label: 'Party',         width: 170, align: 'LEFT' },
   { label: 'Guests',        width:  70, align: 'CENTER',
     numberFormat: { type: 'NUMBER', pattern: '0' } },
+  { label: 'Status',        width: 190, align: 'LEFT', chips: [
+    { startsWith: 'Booked, paid', color: 'green' }, { startsWith: 'Booked', color: 'gray' },
+    { startsWith: 'Approved', color: 'amber' }, { startsWith: 'Requested', color: 'blue' },
+    { startsWith: 'Canceled', color: 'red' }, { startsWith: 'Turned down', color: 'red' },
+  ] },
   { label: 'Amount',        width:  90, align: 'RIGHT' },
   { label: 'Paid By',       width:  90, align: 'CENTER' },
-  { label: 'Status',        width: 190, align: 'LEFT' },
-  { label: 'What happened', width: 560, align: 'LEFT' },
-  { label: 'Requested',     width: 150, align: 'LEFT',
+  { label: 'What happened', width: 360, align: 'LEFT', wrap: true },   // one step per line
+  { label: 'Requested',     width: 150, align: 'LEFT', formula: true,
     numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
   { label: 'Party ID',      width: 100, align: 'LEFT' },
 ];
@@ -162,7 +166,7 @@ export function partyRecord(entries: PartyStep[], refunds: PartyMoney[], tz: str
     'Paid By':       last.payment_status === 'paid' || last.payment_status === 'pending_verify'
                        ? (last.payment_method === 'stripe' ? 'Card' : last.payment_method === 'venmo' ? 'Venmo' : String(last.payment_method ?? '')) : '',
     'Status':        partyStatus(last, refunds),
-    'What happened': partySteps(entries, refunds, tz).join(' · '),
+    'What happened': partySteps(entries, refunds, tz).join('\n'),           // one step per line (PLAN.md BR1)
     'Requested':     `=DATE(${r.year},${r.month},${r.day})+TIME(${r.hour},${r.minute},${r.second})`,
     'Party ID':      last.booking_id,
   };

@@ -68,7 +68,7 @@ if (ph) {
   const rec = ph.partyRecord(life, [], TZ);
   check('a row: date, time, family, party, guests, amount, paid by, status, what happened, requested, ID',
     rec['Party Date'] === '=DATE(2027,7,19)' && /2:00.5:00 PM/.test(rec['Time']) && rec.Family === 'Smith' && rec.Party === 'Birthday' && rec.Guests === 20
-    && rec.Amount === '$150.00' && rec['Paid By'] === 'Venmo' && /^Canceled/.test(rec.Status) && /requested.*canceled by the family/.test(rec['What happened'])
+    && rec.Amount === '$150.00' && rec['Paid By'] === 'Venmo' && /^Canceled/.test(rec.Status) && /^Nov 3: requested\n[\s\S]*\nNov 20: canceled by the family$/.test(rec['What happened'])
     && /^=DATE\(2026,11,3\)\+TIME\(10,0,0\)$/.test(rec.Requested) && rec['Party ID'] === 'b1', short(rec));
   check('a family name starting with = stays text', ph.partyRecord([step('b7', '2026-11-03T18:00:00Z', 'insert', { status: 'pending', payment_status: 'unpaid', family_name: '=1+1' })], [], TZ).Family === "'=1+1");
 }

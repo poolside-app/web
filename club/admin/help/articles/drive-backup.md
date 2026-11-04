@@ -3,7 +3,7 @@ title: "How do I back up signups to Google Drive?"
 category: "Board & Settings"
 ---
 
-Poolside can save a copy of every signup and signed renewal to your club's Google Drive: a PDF of the signed form, and a row in a Google Sheet with every adult's and child's name, the address, phone numbers (like 408-555-1234) and how they paid. Each season gets its own folder and tab, for example "2027 Sign-ups", even for families who sign up the fall before.
+Poolside can save a copy of every signup and signed renewal to your club's Google Drive: a PDF of the signed form, and a row in a Google Sheet with every adult's and child's name, the address, phone numbers (like 408-555-1234), keyfob numbers, how they paid, and a Status such as Approved or Not paid yet. Families brought in from your old list are on it too, before they sign. Children's birthdays are only in the PDF. Each season gets its own folder and tab, for example "2027 Sign-ups", even for families who sign up the fall before.
 
 The same sheet has a Parties tab at the bottom: one row per party, with its date, family, guests, amount and status, and every step that happened to it, like "Nov 4: approved · Nov 5: paid by card $150.00 · Nov 20: canceled by the family". Canceled and turned-down parties stay on it, and so does a party whose family was deleted from Poolside.
 

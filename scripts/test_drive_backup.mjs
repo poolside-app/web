@@ -37,7 +37,7 @@ if (row) {
   check('BO4: no season on it: the year it was sent, in pool time', row.driveSeason({ membership_year: null, created_at: '2027-01-01T05:00:00Z' }, 'America/Los_Angeles') === '2026');
   const adults = [{ name: 'Sam Smith', phone: '+14085550001', email: 'sam@example.com' }, { name: 'Jo Smith', phone: '+14085550002', email: 'jo@example.com' }];
   check('BO3: other adults: name, phone, email (not the primary again)', row.adultsCell(adults, 'Sam Smith') === 'Jo Smith · 408-555-0002 · jo@example.com', row.adultsCell(adults, 'Sam Smith'));
-  check('BO3: children: name and birthday', row.kidsCell([{ name: 'Tim', dob: '2015-04-02' }, { name: 'Sue' }]) === 'Tim (born 2015-04-02); Sue', row.kidsCell([{ name: 'Tim', dob: '2015-04-02' }, { name: 'Sue' }]));
+  check('BR3: children by name only (birthdays are in the PDF)', row.kidsCell([{ name: 'Tim', dob: '2015-04-02' }, { name: 'Sue' }]) === 'Tim, Sue', row.kidsCell([{ name: 'Tim', dob: '2015-04-02' }, { name: 'Sue' }]));
   check('BO3: a row follows the tab\'s own headers', JSON.stringify(row.rowByHeaders(['Family', 'Phone', 'Gone'], { Phone: '408-555-1234', Family: 'Smith', Extra: 'x' })) === '["Smith","408-555-1234",""]');
 }
 
@@ -82,7 +82,7 @@ if (sync) {
   check('BO2: the phone reads 408-555-0001', c.Phone === '408-555-0001', short(c.Phone));
   check('BO2: the emergency contact\'s phone too', c['Emergency Contact'] === 'Pat Lee — 408-555-0003', short(c['Emergency Contact']));
   check('BO3: the other adult, with phone and email', c['Other Adults'] === 'Jo Smith · 408-555-0002 · jo@example.com', short(c['Other Adults']));
-  check('BO3: the child, with birthday', c.Children === 'Tim (born 2015-04-02)', short(c.Children));
+  check('BR3: the child, by name', c.Children === 'Tim', short(c.Children));
   check('BO3: name, email, address, city and zip are all there', c['Primary Contact'] === 'Sam Smith' && c.Email === 'sam@example.com' && c.Address === '1 Pool Way' && c.City === 'San Jose' && String(c.Zip) === '05123', short(c));
   check('BO3: marked New', c.Type === 'New', short(c.Type));
   check('BO3: a family name starting with = stays text', c.Family === '=HYPERLINK("http://x","Smith")' && !String(c.Family).startsWith("'"), short(c.Family));

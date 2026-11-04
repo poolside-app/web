@@ -16,7 +16,7 @@ import {
 } from './google_drive.ts';
 import { renderApplicationPdf, type ApplicationForPdf, type PolicyForPdf } from './application_pdf.ts';
 import { fmtPoolStamp, poolDate, tenantTimeZone, wallParts, zoneOrDefault } from './pool_time.ts';
-import { adultsCell, driveSeason, kidsCell, prettyPhone, prettyPhonesIn, rowByHeaders, sheetSafe } from './drive_row.ts';
+import { driveSeason, rosterRecord, rowByHeaders } from './drive_row.ts';
 
 export type SyncResult =
   | { ok: true; pdf_id: string; spreadsheet_id: string; tab_name: string; row_index: number; skipped?: never }
@@ -155,7 +155,6 @@ export async function syncApplicationToDrive(
   // The board reads the Drive sheet in pool time, so it's written in pool time.
   const tz = zoneOrDefault(tenant.timezone);
   const submittedAt = new Date(app.created_at as string);
-  const submitted = wallParts(submittedAt, tz);
   // Filed by the season it's for (PLAN.md BO4): a November signup for 2027 goes in 2027.
   const year = driveSeason(app, tz);
 
@@ -192,56 +191,10 @@ export async function syncApplicationToDrive(
   const pdfFilename = `${safeFamily}-${dateStr}-${(app.id as string).slice(0, 8)}.pdf`;
   const pdfId = await uploadPdf(accessToken, yearFolderId, pdfFilename, pdfBytes);
 
-  // 7) Append row to year tab. Order MUST match SHEET_COLUMNS in google_drive.ts.
-  // Date as Sheets serial via DATE formula gives clean numberFormat rendering.
-  const dateSerial = `=DATE(${submitted.year},${submitted.month},${submitted.day})+TIME(${submitted.hour},${submitted.minute},${submitted.second})`;
-  const waiversAccepted = (app.waivers_accepted as Record<string, boolean> | null) ?? {};
-  const accCount = Object.values(waiversAccepted).filter(Boolean).length;
-  const totCount = Object.keys(waiversAccepted).length;
-  const policiesCell = totCount > 0 ? `${accCount}/${totCount} ✓` : '—';
-  const pdfHyperlink = `=HYPERLINK("${driveFileLink(pdfId)}","📄 Open")`;
-
-  // Paid By: human label (Stripe / Venmo / PayPal). Verified: blank at submit
-  // time — Stripe webhook fills it on checkout.session.completed, Venmo verify
-  // action fills it on admin click. Pre-filling from app.payment_status='paid'
-  // covers the unusual case where verification happened before this sync ran.
-  const paidByRaw = (app.payment_method as string | null) ?? '';
-  const paidByLabel = paidByRaw === 'stripe' ? 'Stripe'
-                    : paidByRaw === 'venmo'  ? 'Venmo'
-                    : paidByRaw === 'paypal' ? 'PayPal'
-                    : paidByRaw;
-  let verifiedCell = '';
-  if (app.payment_status === 'paid' && app.verified_at) {
-    const v = new Date(app.verified_at as string);
-    const dShort = v.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
-    verifiedCell = paidByRaw === 'stripe' ? `Stripe ✓ ${dShort}` : `Manual ✓ ${dShort}`;
-  }
-
-  // By column name, laid out by the tab's own header row (an older tab has
-  // fewer columns). What a family typed can't become a formula.
-  const typed = (v: unknown) => sheetSafe(String(v ?? ''));
-  const record: Record<string, unknown> = {
-    'Submitted':         dateSerial,                                   // DATE+TIME formula
-    'Family':            typed(app.family_name),
-    'Type':              app.is_renewal === true ? 'Renewal' : 'New',
-    'Primary Contact':   typed(app.primary_name),
-    'Email':             typed(app.primary_email),
-    'Phone':             typed(prettyPhone(app.primary_phone)),        // 408-555-1234 (PLAN.md BO2)
-    'Other Adults':      typed(adultsCell(pdfData.adults_json, app.primary_name)),
-    'Children':          typed(kidsCell(pdfData.children_json)),
-    'Tier':              typed(tierLabel || (app.tier_slug as string | null) || ''),
-    'Adults':            (app.num_adults as number | null) ?? 0,
-    'Kids':              (app.num_kids   as number | null) ?? 0,
-    'Policies':          policiesCell,                                 // e.g. "3/3 ✓"
-    'Address':           typed(app.address),
-    'City':              typed(app.city),
-    'Zip':               typed(app.zip),
-    'Emergency Contact': typed(prettyPhonesIn(app.emergency_contact)),
-    'Paid By':           paidByLabel,                                  // Stripe/Venmo/PayPal
-    'Verified':          verifiedCell,                                 // blank or "✓ method date"
-    'Application PDF':   pdfHyperlink,                                 // =HYPERLINK
-    'App ID':            app.id as string,
-  };
+  // 7) Append its row to the season tab: the same row the nightly run writes (drive_row.ts rosterRecord), by
+  // column name against the tab's own header row.
+  const fobs = app.household_id ? ((await loadFobs(sb, args.tenantId)).get(app.household_id as string) ?? { active: [], waiting: 0 }) : { active: [], waiting: 0 };
+  const record = rosterRecord(app, { tz, tierLabel, pdfId, fobs });
   const headers = await readHeaders(accessToken, spreadsheetId, year);
   const rowValues = rowByHeaders(headers.length ? headers : SHEET_HEADERS, record) as (string | number | null)[];
   const rowIndex = await appendRow(accessToken, spreadsheetId, year, rowValues);
@@ -322,6 +275,27 @@ export async function markVerifiedInDrive(
     // Best-effort: log but never bubble. App's verification still succeeded.
     console.error('markVerifiedInDrive failed (non-fatal):', (e as Error).message);
   }
+}
+
+/** Each level's name, by slug. */
+export async function tierLabels(sb: SupabaseClient, tenantId: string): Promise<Record<string, string>> {
+  const { data } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+  const tiers = (data?.value as { membership_tiers?: Array<{ slug: string; label?: string }> } | undefined)?.membership_tiers ?? [];
+  return Object.fromEntries(tiers.map(t => [t.slug, t.label ?? t.slug]));
+}
+
+/** Each family's working fob numbers (oldest first) and how many wait to be issued (PLAN.md BR4). */
+export async function loadFobs(sb: SupabaseClient, tenantId: string): Promise<Map<string, { active: string[]; waiting: number }>> {
+  const { data } = await sb.from('keyfobs').select('household_id, card_number, status, issued_at')
+    .eq('tenant_id', tenantId).in('status', ['active', 'requested']).order('issued_at', { ascending: true });
+  const out = new Map<string, { active: string[]; waiting: number }>();
+  for (const f of (data ?? []) as Array<{ household_id: string; card_number: number | null; status: string }>) {
+    if (!out.has(f.household_id)) out.set(f.household_id, { active: [], waiting: 0 });
+    const e = out.get(f.household_id)!;
+    if (f.status === 'active' && f.card_number != null) e.active.push(String(f.card_number));
+    else if (f.status === 'requested') e.waiting++;
+  }
+  return out;
 }
 
 // Back up one application now, or queue it for a retry. Never throws: the

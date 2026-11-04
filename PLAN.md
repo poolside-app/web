@@ -900,6 +900,15 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BR. A better-looking roster, with keyfob numbers (Doug, 11/3)
+Doug, looking at the Bishop sheet: "the format looks kinda lame.. spice it up a little.. auto expand the width… we dont need the DOB of the kids in there… ensure we have the keyfob numbers in there as well once we import/sign people up."
+- **BR1. Every column fits what's in it.** Each night the widths are set from the longest line in each column (and its header), so nothing is cut off. Lists put one person or one step per line, and the row grows to fit: Other Adults, Keyfobs, and a party's What happened.
+- **BR2. The look.** The family's name comes first and stays put when scrolling right, with the header row. Status, Type and Verified on the roster, and Status on Parties, get colored chips: green approved or paid, amber waiting, red turned down or canceled, blue new or requested, purple renewal. The header gets a sun-colored underline, and the Parties tab is sun-colored. It's set again on every run, so a tab made before keeps up, without piling up repeated rules.
+- **BR3. Children by name only.** Birthdays stay in the PDF.
+- **BR4. Keyfobs:** the family's working fob numbers, one per line, plus how many are waiting to be issued. For an imported family not approved yet, the numbers from the club's list.
+- **BR5. The roster is rewritten from Poolside each night,** like Parties: a row per signup, renewal and imported family for the season, kept up to date (a fob issued, a payment confirmed, an approval) by its App ID. A signup still shows up the moment it's sent. A row whose signup was deleted keeps its details, marked "Deleted from Poolside". A column the board adds of its own is kept. New: a Status column (Approved, Not paid yet, Paid, waiting for approval, Venmo to check, Turned down, Imported, not signed yet, Renewal not signed yet), so a family that isn't a member can't be mistaken for one, and imported families are listed before they sign.
+`node scripts/test_drive_look.mjs`.
+
 ### BQ. Drive works the moment it's connected, with no buttons (Doug, 11/3)
 Doug connected the Bishop Google account and no folder showed up: Poolside made it only at the next signup or nightly run. He asked whether a club should need to sync even once ("keep in mind when we scale this out").
 - **BQ1. Connecting runs the catch-up right away,** in the background after Google sends the board back: the folder, the sheet, the Parties tab, and every signup so far. Settings shows the time it ran.

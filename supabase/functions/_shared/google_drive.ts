@@ -14,6 +14,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { BRAND_BLUE, fitWidths, lookRequests, type ColSpec } from './sheet_look.ts';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DRIVE_API        = 'https://www.googleapis.com/drive/v3';
@@ -33,53 +34,45 @@ export type DriveGrant = {
   year_tab_ids: Record<string, number>;
 };
 
-// Header row written when a season's tab is first created. Rows are written
-// by these labels against the tab's own header row (drive_row.ts
-// rowByHeaders), so a tab made before a column was added still lines up.
-// Each entry has a label + pixel width + alignment + numberFormat so a single
-// source of truth governs both content and visual styling.
-export type ColSpec = {
-  label: string;
-  width: number;
-  align?: 'LEFT' | 'CENTER' | 'RIGHT';
-  numberFormat?: { type: 'DATE_TIME' | 'NUMBER' | 'TEXT'; pattern?: string };
-};
+// A season's roster tab (PLAN.md BR). The family first (frozen), then where
+// it stands, how to reach it, who's in it and its fobs; the record-keeping
+// columns last. Rows are written by these labels against the tab's own header
+// row (drive_row.ts rowByHeaders), so a tab in an earlier layout still lines
+// up, and the nightly run rewrites it in this one.
+export type { ColSpec } from './sheet_look.ts';
 export const SHEET_COLUMNS: ColSpec[] = [
-  { label: 'Submitted',         width: 150, align: 'LEFT',
-    numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
   { label: 'Family',            width: 170, align: 'LEFT' },
-  { label: 'Type',              width:  90, align: 'CENTER' },   // New or Renewal (PLAN.md BO6)
+  { label: 'Status',            width: 200, align: 'LEFT', chips: [
+    { startsWith: 'Approved', color: 'green' }, { startsWith: 'Paid', color: 'amber' }, { startsWith: 'Venmo', color: 'amber' },
+    { startsWith: 'Not paid', color: 'amber' }, { startsWith: 'Turned down', color: 'red' }, { startsWith: 'Deleted', color: 'red' },
+    { startsWith: 'Imported', color: 'gray' }, { startsWith: 'Renewal not', color: 'gray' },
+  ] },
+  { label: 'Type',              width:  90, align: 'CENTER', chips: [
+    { startsWith: 'New', color: 'blue' }, { startsWith: 'Renewal', color: 'purple' },
+  ] },
   { label: 'Primary Contact',   width: 170, align: 'LEFT' },
-  { label: 'Email',             width: 200, align: 'LEFT' },
   // Text, so 408-555-1234 and a zip's leading zero stay as typed (PLAN.md BO2).
-  { label: 'Phone',             width: 130, align: 'LEFT',
-    numberFormat: { type: 'TEXT' } },
-  { label: 'Other Adults',      width: 320, align: 'LEFT' },   // name · phone · email (PLAN.md BO3)
-  { label: 'Children',          width: 220, align: 'LEFT' },   // name (born …)
-  { label: 'Tier',              width: 120, align: 'LEFT' },
-  { label: 'Adults',            width:  70, align: 'CENTER',
-    numberFormat: { type: 'NUMBER', pattern: '0' } },
-  { label: 'Kids',              width:  70, align: 'CENTER',
-    numberFormat: { type: 'NUMBER', pattern: '0' } },
-  { label: 'Policies',          width:  90, align: 'CENTER' },
+  { label: 'Phone',             width: 130, align: 'LEFT', numberFormat: { type: 'TEXT' } },
+  { label: 'Email',             width: 200, align: 'LEFT' },
   { label: 'Address',           width: 200, align: 'LEFT' },
   { label: 'City',              width: 110, align: 'LEFT' },
-  { label: 'Zip',               width:  70, align: 'LEFT',
-    numberFormat: { type: 'TEXT' } },
-  { label: 'Emergency Contact', width: 200, align: 'LEFT' },
+  { label: 'Zip',               width:  70, align: 'LEFT', numberFormat: { type: 'TEXT' } },
+  { label: 'Other Adults',      width: 320, align: 'LEFT', wrap: true },   // one per line: name · phone · email
+  { label: 'Children',          width: 160, align: 'LEFT', wrap: true },   // names; birthdays are in the PDF
+  { label: 'Adults',            width:  70, align: 'CENTER', numberFormat: { type: 'NUMBER', pattern: '0' } },
+  { label: 'Kids',              width:  70, align: 'CENTER', numberFormat: { type: 'NUMBER', pattern: '0' } },
+  { label: 'Keyfobs',           width: 120, align: 'LEFT', wrap: true },   // one per line (PLAN.md BR4)
+  { label: 'Tier',              width: 120, align: 'LEFT' },
   { label: 'Paid By',           width: 110, align: 'CENTER' },
-  { label: 'Verified',          width: 150, align: 'CENTER' },
-  { label: 'Application PDF',   width: 110, align: 'CENTER' },
+  { label: 'Verified',          width: 130, align: 'CENTER', chips: [{ contains: '✓', color: 'green' }] },
+  { label: 'Policies',          width:  90, align: 'CENTER' },
+  { label: 'Emergency Contact', width: 200, align: 'LEFT', wrap: true },
+  { label: 'Submitted',         width: 170, align: 'LEFT', formula: true,
+    numberFormat: { type: 'DATE_TIME', pattern: 'mmm d, yyyy h:mm am/pm' } },
+  { label: 'Application PDF',   width: 120, align: 'CENTER', formula: true },
   { label: 'App ID',            width: 100, align: 'LEFT' },
 ];
 export const SHEET_HEADERS = SHEET_COLUMNS.map(c => c.label);
-
-// Brand colors (Poolside) — referenced by formatYearTab when styling a new tab.
-const BRAND_BLUE  = { red: 0.039, green: 0.231, blue: 0.361 }; // #0a3b5c — header bg
-const BAND_LIGHT  = { red: 0.969, green: 0.976, blue: 0.984 }; // #f7f9fb — alternating row
-const TEXT_DARK   = { red: 0.059, green: 0.090, blue: 0.165 }; // #0f172a — body text (slate-900)
-const BORDER_GRAY = { red: 0.898, green: 0.910, blue: 0.922 }; // #e5e7eb — subtle row borders
-const WHITE       = { red: 1, green: 1, blue: 1 };
 
 // Refresh access token using the stored refresh_token. Cached only in
 // memory of the calling request — never persisted, never shared cross-request.
@@ -276,7 +269,7 @@ export async function ensureTab(
   spreadsheetId: string,
   title: string,
   columns: ColSpec[],
-  opts: { beforeTitle?: string } = {},
+  opts: { beforeTitle?: string; tabColor?: { red: number; green: number; blue: number } } = {},
 ): Promise<number> {
   const existing = await findTab(accessToken, spreadsheetId, title);
   if (existing !== null) return existing;
@@ -303,7 +296,7 @@ export async function ensureTab(
             title,
             ...(index !== undefined ? { index } : {}),
             gridProperties: { frozenRowCount: 1 },
-            tabColorStyle: { rgbColor: BRAND_BLUE },
+            tabColorStyle: { rgbColor: opts.tabColor ?? BRAND_BLUE },
           },
         },
       }],
@@ -332,8 +325,8 @@ export async function ensureTab(
     throw new Error(`Header write failed: ${headRes.status} ${txt.slice(0, 200)}`);
   }
 
-  // 3. One batchUpdate that applies ALL the styling at once.
-  await formatYearTab(accessToken, spreadsheetId, newId, columns);
+  // 3. The look, at once (PLAN.md BR2): a signup sent tonight shows it before the nightly run.
+  await formatTab(accessToken, spreadsheetId, newId, labels, columns, [], { tabColor: opts.tabColor });
 
   // 4. Delete the default "Sheet1" tab if it exists and is empty —
   // otherwise users land on it and think the spreadsheet is empty.
@@ -384,128 +377,54 @@ async function deleteDefaultSheet1IfEmpty(
   }
 }
 
-// Apply professional styling to a tab. Idempotent — safe to call multiple
-// times (Sheets API silently no-ops most of these on repeated calls).
+// Set a tab's whole look (sheet_look.ts): the widths fit `rows`, what an
+// earlier run added is removed first. Best-effort: a look that fails never
+// stops the backup itself.
+export async function formatTab(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  headers: string[],
+  columns: ColSpec[],
+  rows: unknown[][],
+  opts: { tabColor?: { red: number; green: number; blue: number }; freezeCols?: number } = {},
+): Promise<void> {
+  try {
+    const metaRes = await fetch(
+      `${SHEETS_API}/${spreadsheetId}?fields=sheets(properties(sheetId),bandedRanges(bandedRangeId),conditionalFormats(ranges))`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!metaRes.ok) throw new Error(`Spreadsheet fetch failed: ${metaRes.status} ${(await metaRes.text()).slice(0, 200)}`);
+    const meta = await metaRes.json();
+    const tab = (meta.sheets ?? []).find((x: { properties?: { sheetId?: number } }) => x.properties?.sheetId === sheetId) ?? {};
+    const byLabel = new Map(columns.map(c => [c.label, c]));
+    const requests = lookRequests({
+      sheetId, headers, specs: headers.map(h => byLabel.get(h)), widths: fitWidths(headers, rows),
+      existing: {
+        bandingIds: ((tab.bandedRanges ?? []) as Array<{ bandedRangeId: number }>).map(b => b.bandedRangeId),
+        ruleCount: (tab.conditionalFormats ?? []).length,
+      },
+      tabColor: opts.tabColor ?? BRAND_BLUE, freezeCols: opts.freezeCols ?? 1,
+    });
+    const res = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+  } catch (e) {
+    console.error(`Tab formatting failed (non-fatal): ${(e as Error).message}`);
+  }
+}
+
+// The roster look on a season tab (Settings' old "Reapply spreadsheet styling").
 export async function formatYearTab(
   accessToken: string,
   spreadsheetId: string,
   sheetId: number,
   columns: ColSpec[] = SHEET_COLUMNS,
 ): Promise<void> {
-  const numCols = columns.length;
-  const requests: Record<string, unknown>[] = [];
-
-  // — Column widths (one request per width-distinct column for clarity)
-  columns.forEach((col, i) => {
-    requests.push({
-      updateDimensionProperties: {
-        range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
-        properties: { pixelSize: col.width },
-        fields: 'pixelSize',
-      },
-    });
-  });
-
-  // — Row heights: tall header (32), comfy data rows (24)
-  requests.push({
-    updateDimensionProperties: {
-      range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
-      properties: { pixelSize: 34 },
-      fields: 'pixelSize',
-    },
-  });
-  // (Default row height for body rows; Sheets sets ~21px which is fine)
-
-  // — Header row: brand-blue background, white bold text, centered
-  requests.push({
-    repeatCell: {
-      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: numCols },
-      cell: {
-        userEnteredFormat: {
-          backgroundColorStyle: { rgbColor: BRAND_BLUE },
-          horizontalAlignment: 'CENTER',
-          verticalAlignment: 'MIDDLE',
-          textFormat: {
-            bold: true,
-            fontSize: 11,
-            foregroundColorStyle: { rgbColor: WHITE },
-          },
-          padding: { top: 6, bottom: 6, left: 8, right: 8 },
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColorStyle,horizontalAlignment,verticalAlignment,textFormat,padding)',
-    },
-  });
-
-  // — Per-column data alignment + number format + EXPLICIT dark text
-  // (rows 2…∞). The foregroundColorStyle is critical — without it, the
-  // text inherits an unresolved default that renders white-on-white over
-  // the banded backgrounds in some Sheets clients.
-  columns.forEach((col, i) => {
-    const fmt: Record<string, unknown> = {
-      horizontalAlignment: col.align ?? 'LEFT',
-      verticalAlignment: 'MIDDLE',
-      textFormat: {
-        fontSize: 10,
-        foregroundColorStyle: { rgbColor: TEXT_DARK },
-        bold: false,
-      },
-      padding: { top: 6, bottom: 6, left: 10, right: 10 },
-    };
-    if (col.numberFormat) {
-      fmt.numberFormat = { type: col.numberFormat.type, pattern: col.numberFormat.pattern };
-    }
-    requests.push({
-      repeatCell: {
-        range: { sheetId, startRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 },
-        cell: { userEnteredFormat: fmt },
-        fields: col.numberFormat
-          ? 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat,padding,numberFormat)'
-          : 'userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat,padding)',
-      },
-    });
-  });
-
-  // — Banded rows (alternating white / very-light-gray-blue). The header
-  // band is intentionally NOT set here because the explicit repeatCell
-  // above already styles row 1 and we don't want banding to fight it.
-  requests.push({
-    addBanding: {
-      bandedRange: {
-        range: {
-          sheetId,
-          startRowIndex: 1,            // start AT data, not header
-          startColumnIndex: 0,
-          endColumnIndex: numCols,
-        },
-        rowProperties: {
-          firstBandColorStyle:  { rgbColor: WHITE },
-          secondBandColorStyle: { rgbColor: BAND_LIGHT },
-        },
-      },
-    },
-  });
-
-
-  // — Basic filter on the full range so admin gets sortable column headers
-  requests.push({
-    setBasicFilter: {
-      filter: {
-        range: { sheetId, startRowIndex: 0, startColumnIndex: 0, endColumnIndex: numCols },
-      },
-    },
-  });
-
-  const res = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requests }),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    // Don't throw — formatting failure is recoverable, sync still works
-    console.error(`Tab formatting failed (non-fatal): ${res.status} ${txt.slice(0, 300)}`);
-  }
+  await formatTab(accessToken, spreadsheetId, sheetId, columns.map(c => c.label), columns, []);
 }
 
 // A whole range's values: 'FORMULA' gives back =DATE(...) as written, so a

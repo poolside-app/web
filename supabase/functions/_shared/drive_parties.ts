@@ -7,17 +7,19 @@
 // cron_nightly), for each club with Drive connected:
 //   1. retry every waiting backup,
 //   2. copy any signup or signed renewal that never got copied,
-//   3. bring the Parties tab up to date from party_history.
+//   3. rewrite each season's roster tab from Poolside (PLAN.md BR5),
+//   4. bring the Parties tab up to date from party_history.
 // Connecting Drive runs the same thing right away (PLAN.md BQ1).
 // Like the rest of the Drive code, it only adds and updates; a row in Drive is
 // never removed.
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { ensureTab, getAccessToken, loadGrant, readValues, updateGrantCache, writeValues } from './google_drive.ts';
-import { enqueueDriveSync, ensureRoster, syncApplicationToDrive } from './sync_application.ts';
+import { ensureTab, formatTab, getAccessToken, loadGrant, readValues, SHEET_COLUMNS, updateGrantCache, writeValues } from './google_drive.ts';
+import { enqueueDriveSync, ensureRoster, loadFobs, syncApplicationToDrive, tierLabels } from './sync_application.ts';
 import { PARTY_COLUMNS, partyRecord, type PartyMoney, type PartyStep } from './party_history.ts';
-import { rowByHeaders, sheetSafe } from './drive_row.ts';
+import { driveSeason, rosterRecord, rowByHeaders, sheetSafe } from './drive_row.ts';
+import { SUN, type ColSpec } from './sheet_look.ts';
 import { zoneOrDefault } from './pool_time.ts';
 
 type Keys = { googleClientId: string; googleClientSecret: string };
@@ -112,13 +114,93 @@ export async function copyMissing(sb: SupabaseClient, tenantId: string, keys: Ke
   return { total: missing.length, copied, failed, errors };
 }
 
-// The sort key of a row: its =DATE(y,m,d) party date.
+// The sort key of a row: its =DATE(y,m,d) (and +TIME(h,m,s)) date.
 function dateKey(v: unknown): number {
-  const m = String(v ?? '').match(/DATE\((\d+),(\d+),(\d+)\)/);
-  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : Number.MAX_SAFE_INTEGER;
+  const m = String(v ?? '').match(/DATE\((\d+),(\d+),(\d+)\)(?:\+TIME\((\d+),(\d+),(\d+)\))?/);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)) : Number.MAX_SAFE_INTEGER;
 }
 
-/** Rewrite the Parties tab: every party's row brought up to date, by party date.
+/**
+ * Rewrite one tab from Poolside's records, keyed by an ID column:
+ * - Poolside's columns in Poolside's order, then any column the board added
+ *   (kept, with its values on the same rows).
+ * - A row Poolside no longer has keeps what it said, plus `gone` (e.g. a
+ *   Status of "Deleted from Poolside"). No row is ever removed.
+ * - The look is set first, then the values: a date formula written into a
+ *   column still formatted as text would stay text.
+ */
+export async function writeTab(accessToken: string, spreadsheetId: string, title: string, args: {
+  columns: ColSpec[]; records: Map<string, Record<string, unknown>>; idLabel: string; sortLabel: string;
+  gone?: Record<string, unknown>; tabColor?: { red: number; green: number; blue: number }; beforeTitle?: string;
+}): Promise<number> {
+  const sheetId = await ensureTab(accessToken, spreadsheetId, title, args.columns, { beforeTitle: args.beforeTitle, tabColor: args.tabColor });
+  const existing = await readValues(accessToken, spreadsheetId, title, 'FORMULA');
+  const oldHeaders = (existing[0] ?? []).map(h => String(h ?? ''));
+  const ours = args.columns.map(c => c.label);
+  const formulas = new Set(args.columns.filter(c => c.formula).map(c => c.label));
+  const headers = [...ours, ...oldHeaders.filter(h => h && !ours.includes(h))];
+
+  // What the sheet has now, by ID and column name. Typed text can't turn
+  // into a formula when it's written back.
+  const idAt = oldHeaders.indexOf(args.idLabel);
+  const kept = new Map<string, Record<string, unknown>>();
+  const loose: Record<string, unknown>[] = [];
+  for (const r of existing.slice(1)) {
+    if (!r.some(v => v !== '' && v != null)) continue;
+    const obj: Record<string, unknown> = {};
+    oldHeaders.forEach((h, i) => { if (h) obj[h] = ours.includes(h) && !formulas.has(h) ? sheetSafe(r[i] ?? '') : (r[i] ?? ''); });
+    const id = idAt >= 0 ? String(r[idAt] ?? '') : '';
+    if (id) kept.set(id, obj); else loose.push(obj);
+  }
+  const out = new Map<string, Record<string, unknown>>();
+  for (const [id, before] of kept) out.set(id, args.records.has(id) ? { ...before, ...args.records.get(id) } : { ...before, ...(args.gone ?? {}) });
+  for (const [id, rec] of args.records) if (!out.has(id)) out.set(id, rec);
+
+  const rows = [...out.values(), ...loose].map((o, i) => ({ o, i }))
+    .sort((a, b) => (dateKey(a.o[args.sortLabel]) - dateKey(b.o[args.sortLabel])) || (a.i - b.i))
+    .map(x => rowByHeaders(headers, x.o));
+  await formatTab(accessToken, spreadsheetId, sheetId, headers, args.columns, rows, { tabColor: args.tabColor });
+  // Pad to the old size, so nothing from before is left showing past the end.
+  const width = Math.max(headers.length, oldHeaders.length);
+  const pad = (r: unknown[]) => [...r, ...Array(Math.max(0, width - r.length)).fill('')];
+  const blank = Array(Math.max(0, existing.length - 1 - rows.length)).fill([]);
+  await writeValues(accessToken, spreadsheetId, `${title}!A1`, [headers, ...rows, ...blank].map(pad));
+  return out.size;
+}
+
+/** Each season's roster tab, from Poolside: every signup, renewal and imported
+ *  family, with where it stands and its fob numbers (PLAN.md BR4, BR5). */
+export async function syncRosterToDrive(
+  sb: SupabaseClient, tenantId: string, accessToken: string, spreadsheetId: string, tz: string,
+): Promise<number> {
+  const { data: apps } = await sb.from('applications').select('*').eq('tenant_id', tenantId);
+  const { data: logs } = await sb.from('drive_sync_log').select('application_id, drive_file_id, spreadsheet_id, tab_name').eq('tenant_id', tenantId);
+  const filed = new Map(((logs ?? []) as Array<Record<string, string>>)
+    .filter(l => l.spreadsheet_id === spreadsheetId).map(l => [l.application_id, l]));
+  const tiers = await tierLabels(sb, tenantId);
+  const fobs = await loadFobs(sb, tenantId);
+  const seasons = new Map<string, Map<string, Record<string, unknown>>>();
+  for (const app of (apps ?? []) as Array<Record<string, unknown>>) {
+    const log = filed.get(app.id as string);
+    // A row stays in the tab its PDF was filed under.
+    const season = log?.tab_name || driveSeason(app, tz);
+    if (!seasons.has(season)) seasons.set(season, new Map());
+    seasons.get(season)!.set(app.id as string, rosterRecord(app, {
+      tz, tierLabel: tiers[app.tier_slug as string] ?? null, pdfId: log?.drive_file_id ?? null,
+      fobs: fobs.get(app.household_id as string) ?? { active: [], waiting: 0 },
+    }));
+  }
+  let n = 0;
+  for (const season of [...seasons.keys()].sort()) {
+    n += await writeTab(accessToken, spreadsheetId, season, {
+      columns: SHEET_COLUMNS, records: seasons.get(season)!, idLabel: 'App ID', sortLabel: 'Submitted',
+      gone: { 'Status': 'Deleted from Poolside' }, beforeTitle: 'Parties',
+    });
+  }
+  return n;
+}
+
+/** The Parties tab: every party's row brought up to date, by party date.
  *  A row whose party is gone from Poolside is kept as it was. */
 export async function syncPartiesToDrive(
   sb: SupabaseClient, tenantId: string, accessToken: string, spreadsheetId: string, tz: string,
@@ -134,27 +216,13 @@ export async function syncPartiesToDrive(
     if (!byParty.has(h.booking_id)) byParty.set(h.booking_id, []);
     byParty.get(h.booking_id)!.push(h);
   }
-
-  await ensureTab(accessToken, spreadsheetId, 'Parties', PARTY_COLUMNS);
-  const existing = await readValues(accessToken, spreadsheetId, 'Parties', 'FORMULA');
-  const headers = existing[0]?.length ? existing[0].map(String) : PARTY_COLUMNS.map(c => c.label);
-  const idAt = headers.indexOf('Party ID'), dateAt = headers.indexOf('Party Date');
-  const formulaCols = new Set(['Party Date', 'Requested'].map(h => headers.indexOf(h)));
-  // Kept rows are written back as they read, but typed text can't turn into a formula.
-  const kept = new Map<string, unknown[]>();
-  for (const row of existing.slice(1)) {
-    const id = String(row[idAt] ?? '');
-    if (!id) continue;
-    kept.set(id, headers.map((_, i) => (formulaCols.has(i) ? row[i] ?? '' : sheetSafe(row[i] ?? ''))));
-  }
+  const records = new Map<string, Record<string, unknown>>();
   for (const [id, steps] of byParty) {
-    const refunds = ((money ?? []) as PartyMoney[]).filter(m => m.entity_id === id);
-    kept.set(id, rowByHeaders(headers, partyRecord(steps, refunds, tz)));
+    records.set(id, partyRecord(steps, ((money ?? []) as PartyMoney[]).filter(m => m.entity_id === id), tz));
   }
-  const rows = [...kept.values()].map((r, i) => ({ r, i }))
-    .sort((a, b) => (dateKey(a.r[dateAt]) - dateKey(b.r[dateAt])) || (a.i - b.i))
-    .map(x => x.r);
-  await writeValues(accessToken, spreadsheetId, 'Parties!A1', [headers, ...rows]);
+  await writeTab(accessToken, spreadsheetId, 'Parties', {
+    columns: PARTY_COLUMNS, records, idLabel: 'Party ID', sortLabel: 'Party Date', tabColor: SUN,
+  });
   return byParty.size;
 }
 
@@ -179,7 +247,9 @@ export async function nightlyDrive(sb: SupabaseClient, tenantId: string, keys: K
 
   const q = await retryDriveQueue(sb, tenantId, keys);
   const c = await copyMissing(sb, tenantId, keys, q.tried, roster.spreadsheetId);
-  const parties = await syncPartiesToDrive(sb, tenantId, accessToken, roster.spreadsheetId, zoneOrDefault(tenant.timezone));
+  const tz = zoneOrDefault(tenant.timezone);
+  await syncRosterToDrive(sb, tenantId, accessToken, roster.spreadsheetId, tz);
+  const parties = await syncPartiesToDrive(sb, tenantId, accessToken, roster.spreadsheetId, tz);
   await sb.from('google_drive_grants').update({
     last_sync_at: new Date().toISOString(),
     last_error: q.failed + c.failed ? (c.errors[0]?.error ?? 'A backup failed; it is tried again tonight.').slice(0, 500) : null,
