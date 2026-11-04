@@ -457,7 +457,7 @@
       <span class="chev">▶</span> 📁 Backups &amp; archive <span class="sub">— Google Drive auto-archive of every application</span>
     </summary>
     <div class="card">
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application and signed renewal is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for its season (e.g. "2027 Sign-ups"), and a new row, with every adult's and child's name, the address and phone numbers, is added to your master roster spreadsheet. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application and signed renewal is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for its season (e.g. "2027 Sign-ups"), and a new row, with every adult's and child's name, the address and phone numbers, is added to your master roster spreadsheet. Its Parties tab lists every party and what happened to it, canceled ones too. Each night Poolside copies anything that was missed and brings the Parties tab up to date. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
       <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
@@ -465,7 +465,7 @@
         <a class="btn btn-ghost" id="drive-folder-link" type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📁 Open Drive folder ↗</a>
         <a class="btn btn-ghost" id="drive-sheet-link"  type="button" target="_blank" rel="noopener" style="display:none;text-decoration:none">📊 Open roster sheet ↗</a>
         <button class="btn btn-ghost" id="drive-retry-btn" type="button" onclick="retryDriveQueue()" style="display:none">Retry failed syncs</button>
-        <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Sync missing applications</button>
+        <button class="btn btn-ghost" id="drive-backfill-btn" type="button" onclick="backfillDrive()" style="display:none">🔄 Copy anything missing now</button>
         <button class="btn btn-ghost" id="drive-reformat-btn" type="button" onclick="reformatDriveTabs()" style="display:none">🎨 Reapply spreadsheet styling</button>
         <button class="btn btn-ghost" id="drive-disconnect-btn" type="button" onclick="disconnectDrive()" style="display:none;color:var(--red)">Disconnect</button>
       </div>
@@ -2024,14 +2024,15 @@ async function disconnectDrive() {
 }
 async function backfillDrive() {
   const btn = document.getElementById('drive-backfill-btn');
-  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Syncing missing…';
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Copying…';
   try {
     const r = await call(DRIVE_URL, 'backfill_unsynced');
     if (!r.ok) throw new Error(r.error || 'backfill failed');
+    const partiesLine = `The Parties tab is up to date (${r.parties} ${r.parties === 1 ? 'party' : 'parties'}).`;
     if (r.total_unsynced === 0) {
-      alert('Nothing missing — all applications are already synced to Drive.');
+      alert(`Nothing was missing: every signup is already in Drive. ${partiesLine}`);
     } else {
-      let msg = `Found ${r.total_unsynced} unsynced. Synced ${r.succeeded}, ${r.failed} failed.`;
+      let msg = `Copied ${r.succeeded} to Drive, ${r.failed} failed. ${partiesLine}`;
       if (r.errors && r.errors.length) {
         msg += '\n\nFailures:\n' + r.errors.map(e => `  ${e.family}: ${e.error}`).join('\n');
       }

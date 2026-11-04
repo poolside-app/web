@@ -15,8 +15,11 @@ function check(label, ok, detail = '') {
 const between = (s, a, b) => { const i = s.indexOf(a); return i < 0 ? '' : s.slice(i, s.indexOf(b, i + a.length)); };
 
 console.log('Z1 · backups for deleted signups (offline)');
+// The retry moved into _shared/drive_parties.ts (PLAN.md BP3), shared by the button and the nightly run.
 const gd = read('supabase/functions/google_drive_sync/index.ts');
-const retry = between(gd, "action === 'retry_queue'", "return jsonResponse({ ok: true, attempted");
+const dp = read('supabase/functions/_shared/drive_parties.ts');
+const retry = between(dp, 'export async function retryDriveQueue', 'return { attempted');
+check('"Retry failed syncs" uses it', /retryDriveQueue\(/.test(between(gd, "action === 'retry_queue'", 'return jsonResponse({ ok: true, attempted')));
 check('a retry drops a backup whose signup was deleted, instead of retrying it forever',
   /application not found/.test(retry) && /drive_sync_queue'\)\.delete\(\)/.test(retry), retry.slice(0, 120));
 check('"Retry failed syncs" tries every waiting backup now, not only ones past their wait', !/lte\('next_retry_at'/.test(retry));

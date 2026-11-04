@@ -22,6 +22,10 @@
 //     → { ok, ...syncResult }   admin can manually re-trigger sync of one app
 //   { action: 'retry_queue' }
 //     → { ok, attempted, succeeded, failed }
+//   { action: 'backfill_unsynced' }   the board's "Copy anything missing now"
+//     → { ok, total_unsynced, succeeded, failed, errors, parties }
+//   { action: 'cron_nightly' }        pg_cron drive_nightly, x-cron-secret (PLAN.md BP3)
+//     → { ok, clubs: [{ tenant_id, ...nightly result }] }
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -29,6 +33,7 @@ import { verify, create as jwtCreate, getNumericDate } from 'https://deno.land/x
 import { syncApplicationToDrive, enqueueDriveSync } from '../_shared/sync_application.ts';
 import { getAccessToken, formatYearTab, loadGrant } from '../_shared/google_drive.ts';
 import { verifyTenantAdminOrProvider, requireSuper } from '../_shared/auth.ts';
+import { nightlyDrive, retryDriveQueue } from '../_shared/drive_parties.ts';
 import { sendEmail, escHtml } from '../_shared/send_email.ts';
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
@@ -36,6 +41,7 @@ const SERVICE_ROLE  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET    = Deno.env.get('ADMIN_JWT_SECRET');
 const GOOGLE_ID     = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+const CRON_SECRET   = Deno.env.get('CRON_SECRET');
 // Public-facing redirect URI Google sees on the consent screen. We proxy it
 // back to this function via Vercel rewrite (/oauth/google/drive/callback) so
 // users see "to continue to poolsideapp.com" instead of a Supabase URL.
@@ -318,6 +324,28 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);
   }
 
+  // ── Nightly catch-up (pg_cron drive_nightly, PLAN.md BP3) ───────────────
+  // Every club with Drive connected: retry waiting backups, copy anything
+  // missing, bring the Parties tab up to date. One club's failure doesn't
+  // stop the others.
+  if (action === 'cron_nightly') {
+    const got = req.headers.get('x-cron-secret');
+    if (!CRON_SECRET || got !== CRON_SECRET) return jsonResponse({ ok: false, error: 'Bad cron secret' }, 401);
+    if (!GOOGLE_ID || !GOOGLE_SECRET) return jsonResponse({ ok: false, error: 'Platform Google OAuth not configured' }, 503);
+    const { data: grants } = await sb.from('google_drive_grants').select('tenant_id');
+    const clubs: Array<Record<string, unknown>> = [];
+    for (const g of grants ?? []) {
+      try {
+        clubs.push({ tenant_id: g.tenant_id, ...(await nightlyDrive(sb, g.tenant_id as string, { googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET })) });
+      } catch (e) {
+        const msg = (e as Error).message;
+        clubs.push({ tenant_id: g.tenant_id, ok: false, error: msg });
+        await sb.from('google_drive_grants').update({ last_error: `Nightly backup: ${msg}`.slice(0, 500) }).eq('tenant_id', g.tenant_id as string);
+      }
+    }
+    return jsonResponse({ ok: true, clubs });
+  }
+
   // ── Tenant-side actions ─────────────────────────────────────────────────
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
@@ -467,34 +495,15 @@ Deno.serve(async (req) => {
 
   if (action === 'backfill_unsynced') {
     if (!GOOGLE_ID || !GOOGLE_SECRET) return jsonResponse({ ok: false, error: 'Platform Google OAuth not configured' }, 503);
-    // Find applications that have NO drive_sync_log entry yet — these are
-    // either pre-Drive-connect applications or ones that errored without
-    // queueing. Re-run sync for each.
-    const { data: apps } = await sb.from('applications')
-      .select('id, family_name, created_at')
-      .eq('tenant_id', payload.tid)
-      .order('created_at', { ascending: true });
-    const { data: synced } = await sb.from('drive_sync_log')
-      .select('application_id').eq('tenant_id', payload.tid);
-    const syncedSet = new Set((synced ?? []).map(s => s.application_id as string));
-    const missing = (apps ?? []).filter(a => !syncedSet.has(a.id as string));
-    let attempted = 0, succeeded = 0, failed = 0;
-    const errors: Array<{ family: string; error: string }> = [];
-    for (const app of missing) {
-      attempted++;
-      try {
-        const r = await syncApplicationToDrive(sb, {
-          tenantId: payload.tid, applicationId: app.id as string,
-          googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET,
-        });
-        if (r.ok) succeeded++;
-        else { failed++; errors.push({ family: app.family_name as string, error: r.error }); }
-      } catch (e) {
-        failed++;
-        errors.push({ family: app.family_name as string, error: (e as Error).message });
-      }
+    // The nightly catch-up, for this club, now (PLAN.md BP3): waiting backups,
+    // signups and signed renewals never copied, and the Parties tab.
+    try {
+      const r = await nightlyDrive(sb, payload.tid, { googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET });
+      return jsonResponse({ ok: true, total_unsynced: r.copied + r.failed + r.retried, succeeded: r.copied + r.retried,
+        failed: r.failed, errors: r.errors, parties: r.parties, skipped: r.skipped ?? false });
+    } catch (e) {
+      return jsonResponse({ ok: false, error: (e as Error).message }, 500);
     }
-    return jsonResponse({ ok: true, total_unsynced: missing.length, attempted, succeeded, failed, errors });
   }
 
   // reformat_tabs — re-applies styling to all year tabs in this tenant's
@@ -525,52 +534,10 @@ Deno.serve(async (req) => {
 
   if (action === 'retry_queue') {
     if (!GOOGLE_ID || !GOOGLE_SECRET) return jsonResponse({ ok: false, error: 'Platform Google OAuth not configured' }, 503);
-    const { data: rows } = await sb.from('drive_sync_queue')
-      .select('id, application_id, attempts')
-      .eq('tenant_id', payload.tid).eq('status', 'pending')
-      // Only the board's "Retry failed syncs" button calls this, so it tries
-      // everything waiting now; next_retry_at's wait doesn't apply to a
-      // press (PLAN.md Z1: pressing it inside the wait did nothing).
-      .order('created_at')
-      .limit(25);
-    let attempted = 0, succeeded = 0, failed = 0, dropped = 0;
-    for (const row of rows ?? []) {
-      attempted++;
-      try {
-        const r = await syncApplicationToDrive(sb, {
-          tenantId: payload.tid, applicationId: row.application_id as string,
-          googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET,
-        });
-        if (r.ok) {
-          await sb.from('drive_sync_queue').update({ status: 'done' }).eq('id', row.id as string);
-          succeeded++;
-        } else if (r.error === 'application not found') {
-          // The signup was deleted (PLAN.md Z1): nothing left to back up, so
-          // drop it rather than retrying it forever.
-          await sb.from('drive_sync_queue').delete().eq('id', row.id as string);
-          dropped++;
-        } else {
-          failed++;
-          const attempts = (row.attempts as number ?? 0) + 1;
-          const nextAt = new Date(Date.now() + Math.min(60 * 60 * 1000, 60_000 * 2 ** attempts)).toISOString();
-          await sb.from('drive_sync_queue').update({
-            attempts,
-            last_error: r.error,
-            next_retry_at: nextAt,
-            status: attempts >= 6 ? 'failed' : 'pending',
-          }).eq('id', row.id as string);
-        }
-      } catch (e) {
-        failed++;
-        const attempts = (row.attempts as number ?? 0) + 1;
-        await sb.from('drive_sync_queue').update({
-          attempts,
-          last_error: (e as Error).message,
-          next_retry_at: new Date(Date.now() + 60_000 * 2 ** attempts).toISOString(),
-          status: attempts >= 6 ? 'failed' : 'pending',
-        }).eq('id', row.id as string);
-      }
-    }
+    // Only the board's "Retry failed syncs" button calls this, so it tries
+    // everything waiting now; next_retry_at's wait doesn't apply to a
+    // press (PLAN.md Z1: pressing it inside the wait did nothing).
+    const { attempted, succeeded, failed, dropped } = await retryDriveQueue(sb, payload.tid, { googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET });
     return jsonResponse({ ok: true, attempted, succeeded, failed, dropped });
   }
 

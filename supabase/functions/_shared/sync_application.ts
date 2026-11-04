@@ -12,7 +12,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   ensureFolder, ensureSpreadsheet, ensureYearTab, appendRow, uploadPdf,
   getAccessToken, loadGrant, updateGrantCache, driveFileLink,
-  updateRowCellByAppId, readHeaders, SHEET_HEADERS,
+  updateRowCellByAppId, readHeaders, SHEET_HEADERS, type DriveGrant,
 } from './google_drive.ts';
 import { renderApplicationPdf, type ApplicationForPdf, type PolicyForPdf } from './application_pdf.ts';
 import { fmtPoolStamp, poolDate, tenantTimeZone, wallParts, zoneOrDefault } from './pool_time.ts';
@@ -102,6 +102,20 @@ export async function loadApplicationForPdf(
   };
 }
 
+// The club's "Poolside Archive" folder, its own folder and the roster sheet,
+// found or made again (also used for the Parties tab, PLAN.md BP2).
+export async function ensureRoster(
+  accessToken: string,
+  tenant: { slug: string; display_name: string },
+  grant: Pick<DriveGrant, 'root_folder_id' | 'club_folder_id' | 'spreadsheet_id'>,
+): Promise<{ rootId: string; clubId: string; spreadsheetId: string }> {
+  const rootId = await ensureFolder(accessToken, 'Poolside Archive', 'root', grant.root_folder_id);
+  const clubId = await ensureFolder(accessToken, tenant.display_name || tenant.slug, rootId, grant.club_folder_id);
+  const spreadsheetTitle = `${tenant.display_name || tenant.slug} — Membership Roster`;
+  const spreadsheetId = await ensureSpreadsheet(accessToken, spreadsheetTitle, clubId, grant.spreadsheet_id);
+  return { rootId, clubId, spreadsheetId };
+}
+
 export async function syncApplicationToDrive(
   sb: SupabaseClient,
   args: {
@@ -161,10 +175,7 @@ export async function syncApplicationToDrive(
   // 5) Get access token, ensure folders + spreadsheet + year tab.
   const accessToken = await getAccessToken(grant.refresh_token, args.googleClientId, args.googleClientSecret);
 
-  const rootId = await ensureFolder(accessToken, 'Poolside Archive', 'root', grant.root_folder_id);
-  const clubId = await ensureFolder(accessToken, tenant.display_name || tenant.slug, rootId, grant.club_folder_id);
-  const spreadsheetTitle = `${tenant.display_name || tenant.slug} — Membership Roster`;
-  const spreadsheetId = await ensureSpreadsheet(accessToken, spreadsheetTitle, clubId, grant.spreadsheet_id);
+  const { rootId, clubId, spreadsheetId } = await ensureRoster(accessToken, tenant, grant);
 
   const yearFolderName = `${year} Sign-ups`;
   const cachedYearFolder = (grant.year_folder_ids ?? {})[year] ?? null;

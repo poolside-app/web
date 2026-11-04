@@ -38,7 +38,7 @@ export type DriveGrant = {
 // rowByHeaders), so a tab made before a column was added still lines up.
 // Each entry has a label + pixel width + alignment + numberFormat so a single
 // source of truth governs both content and visual styling.
-type ColSpec = {
+export type ColSpec = {
   label: string;
   width: number;
   align?: 'LEFT' | 'CENTER' | 'RIGHT';
@@ -265,8 +265,32 @@ export async function ensureYearTab(
   year: string,
   _cachedSheetId: number | null,
 ): Promise<number> {
-  const existing = await findTab(accessToken, spreadsheetId, year);
+  // A new season's tab goes before the Parties tab, which stays last (PLAN.md BP2).
+  return await ensureTab(accessToken, spreadsheetId, year, SHEET_COLUMNS, { beforeTitle: 'Parties' });
+}
+
+// Any styled tab with a header row: a season's signups, or Parties (PLAN.md
+// BP2). Made only if the sheet doesn't have one by that title.
+export async function ensureTab(
+  accessToken: string,
+  spreadsheetId: string,
+  title: string,
+  columns: ColSpec[],
+  opts: { beforeTitle?: string } = {},
+): Promise<number> {
+  const existing = await findTab(accessToken, spreadsheetId, title);
   if (existing !== null) return existing;
+
+  let index: number | undefined;
+  if (opts.beforeTitle) {
+    const metaRes = await fetch(`${SHEETS_API}/${spreadsheetId}?fields=sheets(properties(title,index))`,
+      { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      const hit = (meta.sheets ?? []).find((sh: { properties: { title: string } }) => sh.properties?.title === opts.beforeTitle);
+      if (hit && typeof hit.properties.index === 'number') index = hit.properties.index;
+    }
+  }
 
   // 1. Create the tab — frozen first row + brand-blue tab color from creation
   const addRes = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
@@ -276,7 +300,8 @@ export async function ensureYearTab(
       requests: [{
         addSheet: {
           properties: {
-            title: year,
+            title,
+            ...(index !== undefined ? { index } : {}),
             gridProperties: { frozenRowCount: 1 },
             tabColorStyle: { rgbColor: BRAND_BLUE },
           },
@@ -292,13 +317,14 @@ export async function ensureYearTab(
   const newId = addData.replies?.[0]?.addSheet?.properties?.sheetId as number;
 
   // 2. Write the header row text (so styling has labels to render)
-  const headerRange = `${year}!A1:${colA1(SHEET_HEADERS.length - 1)}1`;
+  const labels = columns.map(c => c.label);
+  const headerRange = `${title}!A1:${colA1(labels.length - 1)}1`;
   const headRes = await fetch(
     `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(headerRange)}?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [SHEET_HEADERS] }),
+      body: JSON.stringify({ values: [labels] }),
     },
   );
   if (!headRes.ok) {
@@ -307,7 +333,7 @@ export async function ensureYearTab(
   }
 
   // 3. One batchUpdate that applies ALL the styling at once.
-  await formatYearTab(accessToken, spreadsheetId, newId);
+  await formatYearTab(accessToken, spreadsheetId, newId, columns);
 
   // 4. Delete the default "Sheet1" tab if it exists and is empty —
   // otherwise users land on it and think the spreadsheet is empty.
@@ -364,12 +390,13 @@ export async function formatYearTab(
   accessToken: string,
   spreadsheetId: string,
   sheetId: number,
+  columns: ColSpec[] = SHEET_COLUMNS,
 ): Promise<void> {
-  const numCols = SHEET_COLUMNS.length;
+  const numCols = columns.length;
   const requests: Record<string, unknown>[] = [];
 
   // — Column widths (one request per width-distinct column for clarity)
-  SHEET_COLUMNS.forEach((col, i) => {
+  columns.forEach((col, i) => {
     requests.push({
       updateDimensionProperties: {
         range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
@@ -414,7 +441,7 @@ export async function formatYearTab(
   // (rows 2…∞). The foregroundColorStyle is critical — without it, the
   // text inherits an unresolved default that renders white-on-white over
   // the banded backgrounds in some Sheets clients.
-  SHEET_COLUMNS.forEach((col, i) => {
+  columns.forEach((col, i) => {
     const fmt: Record<string, unknown> = {
       horizontalAlignment: col.align ?? 'LEFT',
       verticalAlignment: 'MIDDLE',
@@ -478,6 +505,47 @@ export async function formatYearTab(
     const txt = await res.text();
     // Don't throw — formatting failure is recoverable, sync still works
     console.error(`Tab formatting failed (non-fatal): ${res.status} ${txt.slice(0, 300)}`);
+  }
+}
+
+// A whole range's values: 'FORMULA' gives back =DATE(...) as written, so a
+// row can be written again unchanged (the Parties tab, PLAN.md BP2).
+export async function readValues(
+  accessToken: string,
+  spreadsheetId: string,
+  range: string,
+  render: 'FORMATTED_VALUE' | 'FORMULA' = 'FORMATTED_VALUE',
+): Promise<unknown[][]> {
+  const res = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=${render}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Read failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return (data.values ?? []) as unknown[][];
+}
+
+// Write a block of rows starting at a cell ("Parties!A1"), as if typed.
+export async function writeValues(
+  accessToken: string,
+  spreadsheetId: string,
+  range: string,
+  values: unknown[][],
+): Promise<void> {
+  const res = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    },
+  );
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Write failed: ${res.status} ${txt.slice(0, 200)}`);
   }
 }
 
