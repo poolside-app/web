@@ -539,8 +539,8 @@ def app_submit_full_detail():
         'need_new_fob':  True,
         'alt_email':     f'full-alt-{STAMP}@example.com',
         'adults': [
-            { 'name': f'Pat Full {STAMP}',     'email': f'full-primary-{STAMP}@example.com', 'phone': f'+1555{STAMP}1001' },
-            { 'name': f'Sam Spouse {STAMP}',   'email': f'full-spouse-{STAMP}@example.com',  'phone': f'+1555{STAMP}1002' },
+            { 'name': f'Pat Full {STAMP}',     'dob': '1980-01-01', 'email': f'full-primary-{STAMP}@example.com', 'phone': f'+1555{STAMP}1001' },
+            { 'name': f'Sam Spouse {STAMP}',   'dob': '1981-01-01', 'email': f'full-spouse-{STAMP}@example.com',  'phone': f'+1555{STAMP}1002' },
         ],
         'children': [
             { 'name': f'Tween Kid {STAMP}', 'dob': '2012-06-15' },  # ≥13 → role=teen

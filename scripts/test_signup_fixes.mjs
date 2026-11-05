@@ -14,6 +14,7 @@ import { importTs } from './lib/importts.mjs';
 const root = new URL('../', import.meta.url);
 const read = rel => readFileSync(new URL(rel, root), 'utf8');
 const migs = pat => readdirSync(new URL('supabase/migrations/', root)).filter(f => pat.test(f)).map(f => read(`supabase/migrations/${f}`)).join('\n');
+const short = o => String(JSON.stringify(o)).slice(0, 300);
 let passed = 0, failed = 0;
 function check(label, ok, detail = '') {
   if (ok) { passed++; console.log(`  ✓ ${label}`); }
@@ -56,6 +57,92 @@ check('signup refuses a level that doesn\'t fit', /tierFitError\(/.test(submit))
 check('the form greys out levels that don\'t fit', /max_people/.test(apply) && /\.disabled = /.test(apply.split('function applyTierDefault')[1] || ''));
 check('Money setup has "Covers up to" per level', /Covers up to/.test(read('club/admin/payments.html')) && /max_people/.test(read('club/admin/payments.html')));
 check('Bishop\'s Single covers one person', /max_people/.test(migs(/tier_max_people/)));
+
+console.log('BS3 · a level can say the fewest people it covers (Doug 11/4: "family needs 2 or more")');
+if (fit) {
+  const tiers = [{ slug: 'family', label: 'Family', min_people: 2 }, { slug: 'single', label: 'Single', max_people: 1 }];
+  const one = fit.tierFitError(tiers, 'family', 1);
+  check('Family doesn\'t fit one person when Single does, and says so', /Family is for 2 or more people/.test(one || '') && /Single covers just you/.test(one || ''), one);
+  check('Family fits two', fit.tierFitError(tiers, 'family', 2) === null);
+  check('Single still fits one and not two', fit.tierFitError(tiers, 'single', 1) === null && !!fit.tierFitError(tiers, 'single', 2));
+  check('with no level for one person, one person can still pick Family', fit.tierFitError([{ slug: 'family', label: 'Family', min_people: 2 }], 'family', 1) === null);
+  check('…or when the only smaller level is also too small for them', fit.tierFitError([{ slug: 'family', label: 'Family', min_people: 3 }, { slug: 'single', label: 'Single', max_people: 1 }], 'family', 2) === null);
+  const big = fit.tierFitError([{ slug: 'big', label: 'Big', min_people: 4 }, { slug: 'couple', label: 'Couple', min_people: 2, max_people: 3 }], 'big', 2);
+  check('the note names the level that fits', /Big is for 4 or more people/.test(big || '') && /Couple covers your family/.test(big || ''), big);
+  check('the form asks the same rule', typeof fit.pickableTiers === 'function'
+    && JSON.stringify(fit.pickableTiers(tiers, 1).map(t => t.slug)) === '["single"]'
+    && JSON.stringify(fit.pickableTiers(tiers, 3).map(t => t.slug)) === '["family"]');
+}
+const tierFn = apply.split('function applyTierDefault')[1] || '';
+check('the form greys out a level that\'s too big for the family', /min_people/.test(tierFn) && /or more people/.test(apply));
+check('each level says "For 2 or more people" on the form', /For \$\{min\} or more people/.test(apply));
+const pay = read('club/admin/payments.html');
+check('Money setup has "At least (people)" per level, saved as min_people', /At least \(people\)/.test(pay) && /min_people: parseInt\(get\('min_people'\)/.test(pay));
+check('…and keeps it out of the level\'s extra fields', /\{ slug, label, price_cents, description, max_people, min_people, \.\.\.rest \}/.test(pay));
+check('Bishop\'s Family is for 2 or more', /min_people/.test(migs(/tier_min_people/)) && /'family'/.test(migs(/tier_min_people/)));
+const starter = read('supabase/functions/tenant_signup/index.ts');
+check('new clubs start with Family at least 2 and Single up to 1', /slug: 'family'[^}]*min_people: 2/.test(starter) && /slug: 'single'[^}]*max_people: 1/.test(starter));
+
+console.log('BS2 · every birthday is required on the signup form');
+const step2 = (apply.split('CURRENT_STEP === 2')[1] || '').split('CURRENT_STEP === 3')[0];
+check('the form stops on a missing birthday, under that field', /Date of birth is required/.test(step2) && /showField\(/.test(step2));
+check('…for adults and children', /\['adult', 'child'\]/.test(step2) && /data-\$\{kind\}/.test(step2));
+check('the server refuses a person with no birthday', /date of birth/i.test(submit) && /\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(submit));
+for (const f of ['scripts/test_payments.mjs', 'scripts/lib/flex_plan_live.mjs']) {
+  check(`${f} sends a birthday with each adult`, /adults: \[\{ name: [^\]]*dob: '/.test(read(f)));
+}
+check('scripts/e2e.py sends a birthday with each adult', !/'adults': \[\s*\{ 'name': f'Pat Full \{STAMP\}',\s+'email'/.test(read('scripts/e2e.py')));
+
+console.log('BS2, BS3 · the signup form itself (offline, in Chrome)');
+{
+  const { launch, attach, FAMILY } = await import('./demo_video/harness.mjs');
+  const { respond } = await import('./demo_video/data.mjs');
+  const LEVELS = [{ slug: 'family', label: 'Family', price_cents: 60000, min_people: 2 }, { slug: 'single', label: 'Single', price_cents: 30000, max_people: 1 }];
+  const answer = (f, body, ctx) => f === 'tenant_public' ? { ...respond(f, body, ctx), tiers: LEVELS } : respond(f, body, ctx);
+  const browser = await launch();
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 390, height: 844 });
+    await attach(page, { answer });
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(FAMILY + '/apply.html', { waitUntil: 'networkidle0', timeout: 45000 });
+    await new Promise(r => setTimeout(r, 500));
+    const levels = async (adults, kids) => page.evaluate(async (a, k) => {
+      document.getElementById('acount').value = String(a); document.getElementById('ccount').value = String(k);
+      rebuildPeople(); applyTierDefault();
+      return { radios: [...document.querySelectorAll('input[name="tier_slug"]')].map(r => ({ v: r.value, off: r.disabled, on: r.checked })),
+        note: document.getElementById('tier-note')?.textContent || '', box: document.getElementById('tiers-box').innerText };
+    }, adults, kids);
+    const one = await levels(1, 0);
+    const fam1 = one.radios.find(r => r.v === 'family'), single1 = one.radios.find(r => r.v === 'single');
+    check('one person: Family is greyed out and Single is picked', fam1?.off && !single1?.off && single1?.on, short(one.radios));
+    check('…with the note "Family is for 2 or more people. Single covers just you."', one.note === 'Family is for 2 or more people. Single covers just you.', one.note);
+    check('Family says "For 2 or more people"', /For 2 or more people/.test(one.box), one.box.slice(0, 200));
+    const two = await levels(1, 1);
+    check('a parent and a child: Family can be picked, Single can\'t', !two.radios.find(r => r.v === 'family')?.off && two.radios.find(r => r.v === 'single')?.off, short(two.radios));
+    // Step 2 with a name and no birthday.
+    const stop = await page.evaluate(async () => {
+      document.getElementById('acount').value = '1'; document.getElementById('ccount').value = '1'; rebuildPeople();
+      showStep(2);
+      document.querySelector('[data-adult="0"][data-field="name"]').value = 'Pat Test';
+      document.querySelector('[data-adult="0"][data-field="dob"]').value = '1980-01-01';
+      document.querySelector('[data-child="0"][data-field="name"]').value = 'Kid Test';
+      document.querySelector('[data-child="0"][data-field="dob"]').value = '';
+      _goNext();
+      const err = document.querySelector('.field-err');
+      const kidMissing = { step: CURRENT_STEP, err: err?.textContent || '', under: err?.previousElementSibling?.dataset?.child ?? null };
+      document.querySelector('[data-adult="0"][data-field="dob"]').value = '';
+      document.querySelector('[data-child="0"][data-field="dob"]').value = '2015-01-01';
+      _goNext();
+      const err2 = document.querySelector('.field-err');
+      return { kidMissing, adultMissing: { step: CURRENT_STEP, err: err2?.textContent || '', under: err2?.previousElementSibling?.dataset?.adult ?? null } };
+    });
+    check('a child with no birthday stops the form, under that field', stop.kidMissing.step === 2 && stop.kidMissing.err === 'Date of birth is required' && stop.kidMissing.under === '0', short(stop.kidMissing));
+    check('so does an adult with no birthday', stop.adultMissing.step === 2 && stop.adultMissing.err === 'Date of birth is required' && stop.adultMissing.under === '0', short(stop.adultMissing));
+    check('no page errors', !errors.length, errors.join(' | '));
+  } finally { await browser.close(); }
+}
 
 console.log('BG4 · unpaid card signups (item 19)');
 const cleanup = (apps.split("if (action === 'cron_cleanup_abandoned')")[1] || '').split("if (action === '")[0];

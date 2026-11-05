@@ -273,8 +273,9 @@ Deno.serve(async (req) => {
     tenant_id: tenant.id,
     value: {
       membership_tiers: [
-        { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members' },
-        { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult' },
+        // Family is for 2 or more, Single for one (PLAN.md BS3).
+        { slug: 'family', label: 'Family',  price_cents: 60000, description: 'All household members', min_people: 2 },
+        { slug: 'single', label: 'Single',  price_cents: 35000, description: 'One adult', max_people: 1 },
         { slug: 'senior', label: 'Senior',  price_cents: 25000, description: '65+' },
       ],
       board: { spending_rule: SPENDING_RULE },

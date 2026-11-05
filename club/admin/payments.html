@@ -870,8 +870,8 @@ const Codes = (() => {
 // and fields this screen doesn't edit ride along untouched.
 const Tiers = (() => {
   const TIER_DEFAULTS = [
-    { slug: 'family', label: 'Family', price_cents: 60000, description: 'All household members' },
-    { slug: 'single', label: 'Single', price_cents: 35000, description: 'One adult' },
+    { slug: 'family', label: 'Family', price_cents: 60000, description: 'All household members', min_people: 2 },
+    { slug: 'single', label: 'Single', price_cents: 35000, description: 'One adult', max_people: 1 },
     { slug: 'senior', label: 'Senior', price_cents: 25000, description: '65+' },
   ];
   const box = 'width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font:14px \'Inter\'';
@@ -879,14 +879,17 @@ const Tiers = (() => {
   let EXTRA = [];   // per row: the fields this screen doesn't show
   function paint(tiers) {
     const rows = (tiers && tiers.length) ? tiers : TIER_DEFAULTS;
-    EXTRA = rows.map(t => { const { slug, label, price_cents, description, max_people, ...rest } = t || {}; return rest; });
+    EXTRA = rows.map(t => { const { slug, label, price_cents, description, max_people, min_people, ...rest } = t || {}; return rest; });
     document.getElementById('tiers-list').innerHTML = rows.map((t, i) => `
       <div class="tier-row" data-i="${i}" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;margin-bottom:12px;align-items:end;padding-bottom:12px;border-bottom:1px solid var(--border)">
         <div><label style="${lab}">Name families see</label><input data-field="label" value="${escapeHtml(t.label || '')}" placeholder="Family" style="${box}"></div>
         <div><label style="${lab}">Price per season ($)</label><input data-field="price" type="number" min="0" step="0.01" value="${typeof t.price_cents === 'number' ? (t.price_cents / 100).toFixed(2) : ''}" style="${box}"></div>
         <button type="button" onclick="this.parentElement.remove()" title="Remove this level" style="padding:9px 12px;background:transparent;color:var(--red);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">×</button>
         <div style="grid-column:1/-1"><label style="${lab}">Description <span class="opt">(optional)</span></label><input data-field="description" value="${escapeHtml(t.description || '')}" placeholder="Who this level covers" style="${box}"></div>
-        <div style="grid-column:1/-1"><label style="${lab}">Covers up to (people) <span class="opt">(blank for any size; Single is 1)</span></label><input data-field="max_people" type="number" min="1" max="8" step="1" value="${Number(t.max_people) > 0 ? Number(t.max_people) : ''}" placeholder="Any" style="${box};max-width:140px"></div>
+        <div style="grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap">
+          <div><label style="${lab}">At least (people) <span class="opt">(blank for any; Family is 2)</span></label><input data-field="min_people" type="number" min="1" max="8" step="1" value="${Number(t.min_people) > 0 ? Number(t.min_people) : ''}" placeholder="Any" style="${box};max-width:140px"></div>
+          <div><label style="${lab}">Covers up to (people) <span class="opt">(blank for any size; Single is 1)</span></label><input data-field="max_people" type="number" min="1" max="8" step="1" value="${Number(t.max_people) > 0 ? Number(t.max_people) : ''}" placeholder="Any" style="${box};max-width:140px"></div>
+        </div>
         <input type="hidden" data-field="slug" value="${escapeHtml(t.slug || '')}">
         ${t.test ? '<div style="grid-column:1/-1;font-size:12px;color:#92400e">🧪 Hidden from families: the board\'s $1 test level (below, under $1 test level).</div>' : ''}
       </div>`).join('');
@@ -904,7 +907,9 @@ const Tiers = (() => {
         slug, label,
         price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0,
         description: get('description').trim() || null,
-        // Signup only offers a level that covers the family (PLAN.md BG4).
+        // Signup only offers a level that covers the family (PLAN.md BG4),
+        // and not one meant for more people when another level fits (BS3).
+        min_people: parseInt(get('min_people'), 10) > 0 ? parseInt(get('min_people'), 10) : null,
         max_people: parseInt(get('max_people'), 10) > 0 ? parseInt(get('max_people'), 10) : null,
       });
     });

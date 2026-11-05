@@ -587,8 +587,11 @@ function paintTiers() {
     const slug = t.slug || ('tier_' + i);
     const label = t.label || slug;
     const price = (typeof t.price_cents === 'number' && t.price_cents > 0) ? '$' + (t.price_cents / 100).toFixed(2) + '/yr' : 'Contact for pricing';
-    const max = Number(t.max_people);
-    const descText = [t.description, max > 0 ? `Covers up to ${max} ${max === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ');
+    const max = Number(t.max_people), min = Number(t.min_people);
+    const size = max > 0 && min > 0 ? `For ${min} to ${max} people`
+      : max > 0 ? `Covers up to ${max} ${max === 1 ? 'person' : 'people'}`
+      : min > 0 ? `For ${min} or more people` : '';
+    const descText = [t.description, size].filter(Boolean).join(' · ');
     const desc = descText ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(descText)}</div>` : '';
     const checked = i === 0 ? 'checked' : '';
     return `
@@ -742,12 +745,19 @@ function applyTierDefault() {
     + (parseInt(document.getElementById('ccount').value, 10) || 0);
   const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
   // A level that covers fewer people than the family can't be picked
-  // (PLAN.md BG4): a card signup is approved with nobody looking. The
-  // server checks it too.
+  // (PLAN.md BG4): a card signup is approved with nobody looking. Nor can
+  // one that's for more people than the family, when another level covers
+  // them (BS3: "Family is for 2 or more"). The same rule as pickableTiers in
+  // _shared/tier_fit.ts; the server checks it too.
+  const lim = v => { const n = Number(v); return n > 0 ? n : null; };
+  const under = t => lim(t.max_people) == null || people <= lim(t.max_people);
+  const exact = t => under(t) && (lim(t.min_people) == null || people >= lim(t.min_people));
+  const pickable = t => under(t) && (exact(t) || !tiers.some(o => o !== t && exact(o)));
+  let tooBig = null;
   radios.forEach(r => {
     const t = tiers.find(x => x.slug === r.value);
-    const max = Number(t && t.max_people);
-    const fits = !(max > 0) || people <= max;
+    const fits = !t || pickable(t);
+    if (t && !fits && under(t) && !tooBig) tooBig = t;
     r.disabled = !fits;
     const lab = r.closest('label');
     if (lab) { lab.style.opacity = fits ? '' : '.5'; lab.style.cursor = fits ? 'pointer' : 'not-allowed'; }
@@ -761,7 +771,7 @@ function applyTierDefault() {
   const want = people >= 2 ? find(/family|household/i) : find(/single|individual|one adult/i);
   if (!TIER_TOUCHED && want) {
     const r = radios.find(x => x.value === want.slug);
-    if (r) { r.checked = true; paintPlanLabel(); paintPaymentChoices(); }
+    if (r && !r.disabled) { r.checked = true; paintPlanLabel(); paintPaymentChoices(); }
   }
   // A gentle nudge if they chose a one-person level for a bigger family.
   const chosen = tiers.find(t => t.slug === (document.querySelector('input[name="tier_slug"]:checked') || {}).value);
@@ -772,9 +782,12 @@ function applyTierDefault() {
     note.style.cssText = 'font-size:12.5px;color:#92400e;margin-top:8px';
     document.getElementById('tiers-box').insertAdjacentElement('afterend', note);
   }
+  const fitsThem = tooBig && tiers.find(o => o !== tooBig && exact(o));
   note.textContent = people >= 2 && chosen && /single|individual|one adult/i.test(`${chosen.slug} ${chosen.label}`)
     ? `${chosen.label || 'This level'} covers one person. You listed ${people} people.`
-    : '';
+    : fitsThem
+      ? `${tooBig.label || tooBig.slug} is for ${lim(tooBig.min_people)} or more people. ${fitsThem.label || fitsThem.slug} covers ${people === 1 ? 'just you' : 'your family'}.`
+      : '';
 }
 document.addEventListener('change', e => { if (e.target && e.target.name === 'tier_slug') applyTierDefault(); });
 
@@ -1150,6 +1163,15 @@ function _goNext() {
     const kids = collectChildren();
     const kidCount = parseInt(document.getElementById('ccount').value, 10) || 0;
     if (kids.length !== kidCount) return show('Fill in every child\'s name (or set Children to a smaller number)');
+    // Every named adult and child needs a birthday, as the label's * says
+    // (PLAN.md BS2, Doug 11/4). The server checks it too.
+    for (const kind of ['adult', 'child']) {
+      for (const nameEl of document.querySelectorAll(`[data-${kind}][data-field="name"]`)) {
+        if (!nameEl.value.trim()) continue;
+        const dobEl = document.querySelector(`[data-${kind}="${nameEl.dataset[kind]}"][data-field="dob"]`);
+        if (dobEl && !dobEl.value) return showField(dobEl, 'Date of birth is required');
+      }
+    }
 
     // Final DOB sweep — re-run validateDob on every dob input so typed-in
     // out-of-range years are caught before allowing advance.

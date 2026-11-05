@@ -167,7 +167,7 @@ def member_journey():
             'primary_email': f'audit-{STAMP}@example.com', 'primary_phone': f'+1555{STAMP}01',
             'address': '1 Pool Lane', 'city': 'Concord', 'zip': '94521',
             'tier_slug': 'family', 'payment_method': 'venmo',
-            'adults_json': [{'name': 'Casey Audit'}], 'children_json': [{'name': 'Kid Audit'}],
+            'adults': [{'name': 'Casey Audit', 'dob': '1980-01-01'}], 'children': [{'name': 'Kid Audit', 'dob': '2015-01-01'}],
             'waivers_accepted': True,
         })
         assert d.get('ok'), f'they cannot submit the form: {d}'

@@ -760,6 +760,12 @@ Deno.serve(async (req) => {
         invite: c?.invite === true,   // PLAN.md AZ: teens 13+ only, decided at approval
       });
     }
+    // Every person listed needs a birthday, as the form's * says (PLAN.md BS2).
+    for (const p of [...adults_json, ...children_json]) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(p.dob ?? ''))) {
+        return jsonResponse({ ok: false, error: `Add a date of birth for ${p.name}.` }, 400);
+      }
+    }
 
     // Accepted policies, by the club's own list (PLAN.md BG4). Before, only
     // five fixed names were recorded, so a policy the board added was never
@@ -790,7 +796,7 @@ Deno.serve(async (req) => {
     {
       const { tierFitError } = await import('../_shared/tier_fit.ts');
       const fitErr = tierFitError((yearSettings?.value as Record<string, unknown> | undefined)?.membership_tiers,
-        strOrNull(body.tier_slug), adults_json.length + children_json.length);
+        strOrNull(body.tier_slug), Math.max(1, adults_json.length) + children_json.length);   // the primary counts even when no adults are listed
       if (fitErr) return jsonResponse({ ok: false, error: fitErr }, 400);
     }
     // The board's $1 test level (PLAN.md BN1): only a board login's email

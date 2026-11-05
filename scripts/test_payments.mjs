@@ -68,7 +68,8 @@ function application(kind, method) {
     primary_email: email, primary_phone: phone,
     address: '1 Test Lane', city: 'Testville', zip: '00000',
     emergency_contact: `Emergency Tester ${n} — (555) 000-00${n}${n}`,
-    adults: [{ name: `Sim ${kind === 'card' ? 'Card' : 'Venmo'} Tester`, email, phone }],
+    // Family is for 2 or more, and every person has a birthday (PLAN.md BS2, BS3).
+    adults: [{ name: `Sim ${kind === 'card' ? 'Card' : 'Venmo'} Tester`, dob: '1980-01-01', email, phone }, { name: 'Sim Spouse', dob: '1981-01-01' }],
     children: [],
     waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
     tier_slug: 'family', payment_method: method,

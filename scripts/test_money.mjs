@@ -300,7 +300,8 @@ if (live('H5')) {
     slug: 'bishopestates',
     family_name: `SimMoney ${n} ${STAMP}`, primary_name: `Sim Money ${n}`,
     primary_email: `doug.frevele+simtest-money${n}-${STAMP}@gmail.com`, primary_phone: `555${STAMP}${n}`,
-    adults: [{ name: `Sim Money ${n}`, email: `doug.frevele+simtest-money${n}-${STAMP}@gmail.com`, phone: `555${STAMP}${n}` }],
+    // Family is for 2 or more, and every person has a birthday (PLAN.md BS2, BS3).
+    adults: [{ name: `Sim Money ${n}`, dob: '1980-01-01', email: `doug.frevele+simtest-money${n}-${STAMP}@gmail.com`, phone: `555${STAMP}${n}` }, { name: `Sim Spouse ${n}`, dob: '1981-01-01' }],
     children: [], waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
     tier_slug: 'family', ...extra,
   });
@@ -441,7 +442,7 @@ if (live('H6')) {
       const email = `doug.frevele+simtest-ref${n}-${STAMP}@gmail.com`, phone = `555${STAMP}${n}`;
       const sub = await fn('applications', 'submit', null, {
         slug: 'bishopestates', family_name: `SimRef Johnson${n} ${STAMP}`, primary_name: `Sim Ref ${n}`,
-        primary_email: email, primary_phone: phone, adults: [{ name: `Sim Ref ${n}`, email, phone }], children: [],
+        primary_email: email, primary_phone: phone, adults: [{ name: `Sim Ref ${n}`, dob: '1980-01-01', email, phone }, { name: `Sim Ref Spouse ${n}`, dob: '1981-01-01' }], children: [],
         waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
         tier_slug: 'family', payment_method: 'stripe', referral_code: mine.code,
       });

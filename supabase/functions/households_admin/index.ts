@@ -329,10 +329,9 @@ Deno.serve(async (req) => {
   }
 
   // ── purge_household ──────────────────────────────────────────────────
-  // HARD delete: nukes the household + members + linked applications +
-  // open admin_tasks. Doug 2026-05-23: soft-delete left rows visible in
-  // queries + duplicate-signup guards (phone/email collisions stuck
-  // around). Owner-only because this is unrecoverable.
+  // HARD delete of the household and everything tied to it
+  // (_shared/purge_household.ts, PLAN.md BS1). Owner-only because this is
+  // unrecoverable.
   if (action === 'purge_household') {
     if (!(await requireOwner(sb, payload))) {
       return jsonResponse({ ok: false, error: 'Only owners can permanently delete a household' }, 403);
@@ -340,38 +339,13 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
 
-    const { data: hh } = await sb.from('households')
-      .select('id, family_name').eq('id', id).eq('tenant_id', TID).maybeSingle();
-    if (!hh) return jsonResponse({ ok: false, error: 'Household not found' }, 404);
-
-    // Order matters: tasks → applications → member sessions → members → household.
-    // Each step scoped by tenant_id + household linkage so we can't accidentally
-    // touch another tenant's data.
-    const { data: linkedApps } = await sb.from('applications')
-      .select('id').eq('tenant_id', TID).eq('household_id', id);
-    const appIds = (linkedApps ?? []).map((r: { id: string }) => r.id);
-    if (appIds.length) {
-      await sb.from('admin_tasks').delete()
-        .eq('tenant_id', TID).eq('source_kind', 'application').in('source_id', appIds);
-      // Their waiting Drive backups too (PLAN.md Z1), or they retry forever.
-      await sb.from('drive_sync_queue').delete().eq('tenant_id', TID).in('application_id', appIds);
-      await sb.from('applications').delete().eq('tenant_id', TID).in('id', appIds);
-    }
-
-    const { data: hmIds } = await sb.from('household_members')
-      .select('id').eq('household_id', id).eq('tenant_id', TID);
-    const memberIds = (hmIds ?? []).map((r: { id: string }) => r.id);
-    if (memberIds.length) {
-      await sb.from('member_sessions').delete().in('member_id', memberIds);
-      await sb.from('member_magic_links').delete().in('member_id', memberIds);
-    }
-    await sb.from('household_members').delete().eq('household_id', id).eq('tenant_id', TID);
-    const { error: hhErr } = await sb.from('households').delete().eq('id', id).eq('tenant_id', TID);
-    if (hhErr) return jsonResponse({ ok: false, error: hhErr.message }, 500);
+    const { purgeHousehold } = await import('../_shared/purge_household.ts');
+    const r = await purgeHousehold(sb, TID, id);
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, r.status);
 
     await audit(sb, TID, payload, 'household.purge', 'household', id,
-      `Permanently deleted household "${hh.family_name}" (${memberIds.length} members, ${appIds.length} applications)`);
-    return jsonResponse({ ok: true, family_name: hh.family_name, members_removed: memberIds.length, applications_removed: appIds.length });
+      `Permanently deleted household "${r.family_name}" (${r.members_removed} members, ${r.applications_removed} applications, ${r.plans_removed} payment plans, ${r.tasks_removed} to-dos)`);
+    return jsonResponse(r);
   }
 
   // ── add_member ───────────────────────────────────────────────────────

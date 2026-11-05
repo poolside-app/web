@@ -900,6 +900,18 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BS. Fixes from the first Stripe test-card signups (Doug, 11/4)
+Doug, signing up on Bishop with Stripe's test cards (BN5): "it allowed me to do a family membership even with 1 person... also it let me add myself with no birthday even though it says required." And, after I deleted his first test family by hand: "ok fix the left overs."
+- **BS1. Delete for good removes everything tied to the family.** It left the family's keyfob to-do (the empty Keyfobs badge Doug saw on 11/3) and their payment plan. Now it also deletes the family's payment plans with their payments, the auto-renew card consents, and every to-do about the family, its signups, keyfobs, parties, plans or help requests.
+- **BS2. Every birthday is required on the signup form**, as its label says: each adult's and each child's. The form stops on the first one missing, under that field. The server refuses a signup with a person and no birthday too. Renewals aren't changed.
+- **BS3. A level can say the fewest people it covers.** Doug: "family needs 2 or more.. but keep in mind we want to scale this.. allow for single membership?"
+  - Money setup → Membership prices gets "At least (people)" beside "Covers up to (people)", for every club.
+  - Bishop's Family is set to at least 2. New clubs start with Family at least 2 and Single up to 1.
+  - The form greys out a level that's too big for the family, with a note: "Family is for 2 or more people. Single covers just you." The server checks it too.
+  - A club with no level for one person (no Single) still lets one person pick Family: the minimum applies only when another level covers the family.
+  - The setup checklist already sends a new club to Membership prices ("Set your membership prices"), so there's no new setup step.
+- Failing tests first: `test_signup_fixes` (BS2, BS3) and `test_drive_queue` (BS1, with the purge's other checks), offline.
+
 ### BR. A better-looking roster, with keyfob numbers (Doug, 11/3)
 Doug, looking at the Bishop sheet: "the format looks kinda lame.. spice it up a little.. auto expand the width… we dont need the DOB of the kids in there… ensure we have the keyfob numbers in there as well once we import/sign people up."
 - **BR1. Every column fits what's in it.** Each night the widths are set from the longest line in each column (and its header), so nothing is cut off. Lists put one person or one step per line, and the row grows to fit: Other Adults, Keyfobs, and a party's What happened.
@@ -987,7 +999,7 @@ Where it stands (read 11/1, read-only):
   8. A disputed charge (4000 0000 0000 0259): the Treasurer's to-do.
   - Then BK4: whatever breaks gets fixed, failing test first, and that test is run again.
 - **BN6. Doug: going live (BK6)** (~20 minutes, once Stripe has activated).
-  0. Me, first: delete the test families, their plans and the test party (Doug 11/1: "Delete them first"). His board login stays. ✅ Done early, 11/3 (Doug: "remove all the members as they were just test people"): the Frevele, Wood, Mathieu and Beaubien families deleted for good through Delete for good (their 10 people, 4 signups, 4 fobs, the party), then the fake-card plan and its 10 payments, 2 auto-renew consents, the party's history and 28 stale backup records; the 2 past test-party calendar events hidden. Kept: Doug's board login and an expired board-made door pass from 10/13. BN5's test signups come after this, so they go again here.
+  0. Me, first: delete the test families, their plans and the test party (Doug 11/1: "Delete them first"). His board login stays. ✅ Done early, 11/3 (Doug: "remove all the members as they were just test people"): the four test families deleted for good through Delete for good (their 10 people, 4 signups, 4 fobs, the party), then the fake-card plan and its 10 payments, 2 auto-renew consents, the party's history and 28 stale backup records; the 2 past test-party calendar events hidden. Kept: Doug's board login and an expired board-made door pass from 10/13. BN5's test signups come after this, so they go again here.
   0b. Doug, the same day: trash the "Poolside Archive" folder in the club's Google Drive. The next signup makes a fresh one (folders and the sheet are found again by name, and made again if gone), so real families start in a clean folder. Not before: the test-card signups in BN5 would fill it again. Trash only the folder; don't press Disconnect (switching to the Bishop Google account is BO's last step).
   1. Stripe, live mode → Webhooks: two endpoints at the same address as test. Connected accounts get the 7 events; "Your account" gets checkout.session.completed and customer.subscription.updated/deleted. I send the exact list then.
   2. Supabase → Edge Functions → Secrets: the live `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET_PLATFORM`.

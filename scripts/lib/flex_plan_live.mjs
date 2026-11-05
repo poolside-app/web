@@ -410,7 +410,7 @@ export async function runLive({ check, short }) {
         action: 'submit', slug: SLUG, family_name: `SimTest Weekly ${n}`, primary_name: `Weekly Tester ${n}`,
         primary_email: email, primary_phone: `555${wBase}${n}`,
         address: '1 Test Lane', city: 'Testville', zip: '00000', emergency_contact: 'Emergency Tester — (555) 000-0000',
-        adults: [{ name: `Weekly Tester ${n}`, email, phone: `555${wBase}${n}` }], children: [],
+        adults: [{ name: `Weekly Tester ${n}`, dob: '1980-01-01', email, phone: `555${wBase}${n}` }], children: [],
         waivers_accepted: { rules: true, guest: true, party: true, sitter: true, waiver: true },
         tier_slug: 'board_test', payment_method: 'stripe_plan',
       });
