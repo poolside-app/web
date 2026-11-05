@@ -921,7 +921,7 @@ Doug, signing up on Bishop with Stripe's test cards (BN5): "it allowed me to do 
 - **BS5. A chargeback on a paid-off plan names the family.** Doug paid off his test family's plan with the dispute card ($566.74, payments 2 and 3 at once). The Treasurer's to-do said "a card payment Poolside couldn't match": one card payment on two plan payments, and the matcher asked for exactly one. Now it says "Chargeback on payments 2 and 3 of a payment plan (the family's name)", and the same for a refund. Nothing else changes: still a to-do only (Doug 10/20).
   - The tests' pretend database now answers "exactly one" like the real one: nothing, when two rows match.
   - Failing test first: `test_money_fixes` (the matcher against the pretend database).
-  - Built 11/4: 4 checks failed first; every offline suite passes. Deploying `stripe_webhook` waits for Doug's OK (the permission check stopped it).
+  - ✅ Done 11/4. 4 checks failed first; every offline suite passes. Deployed `stripe_webhook` (Doug: "deploy it").
 
 ### BR. A better-looking roster, with keyfob numbers (Doug, 11/3)
 Doug, looking at the Bishop sheet: "the format looks kinda lame.. spice it up a little.. auto expand the width… we dont need the DOB of the kids in there… ensure we have the keyfob numbers in there as well once we import/sign people up."
