@@ -65,7 +65,7 @@ export async function renderMinutesPdf(d: MinutesForPdf): Promise<Uint8Array> {
 
   // Helvetica covers Latin-1 only (see application_pdf.ts): swap the usual
   // offenders and drop the rest, emoji included, rather than crash.
-  const SUBS: Record<string, string> = { '–': '-', '—': '-', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...', '•': '*', '→': '->', '✓': 'done', ' ': ' ', ' ': ' ' };
+  const SUBS: Record<string, string> = { '–': '-', '—': '-', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...', '•': '*', '→': '->', '✓': '[x]', '✔': '[x]', ' ': ' ', ' ': ' ' };
   const clean = (s: unknown) => {
     let out = String(s ?? '');
     for (const [a, b] of Object.entries(SUBS)) out = out.split(a).join(b);
@@ -136,6 +136,7 @@ export async function renderMinutesPdf(d: MinutesForPdf): Promise<Uint8Array> {
   if (votes.length) {
     heading('Motions & votes');
     votes.forEach((v, i) => {
+      ensureSpace(30);   // a motion and its vote on the same page
       para(`${i + 1}. ${v.motion || '(no motion written)'}`, { bold: true });
       const count = (v.yes || v.no || v.abstain) ? `${v.yes || 0}-${v.no || 0}${v.abstain ? ` (${v.abstain} abstain)` : ''}` : null;
       const meta = [
