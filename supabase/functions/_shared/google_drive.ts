@@ -30,6 +30,7 @@ export type DriveGrant = {
   root_folder_id: string | null;
   club_folder_id: string | null;
   spreadsheet_id: string | null;
+  minutes_folder_id?: string | null;   // "Board minutes" (PLAN.md BV1)
   year_folder_ids: Record<string, string>;
   year_tab_ids: Record<string, number>;
 };
@@ -639,19 +640,64 @@ export async function uploadPdf(
   return data.id as string;
 }
 
+// Rewrites a PDF already in Drive, same file, maybe a new name (PLAN.md BV3:
+// one draft file per meeting). Returns false if the file is gone or in the
+// trash, so the caller uploads a new one instead.
+export async function rewritePdf(
+  accessToken: string,
+  fileId: string,
+  filename: string,
+  pdfBytes: Uint8Array,
+): Promise<boolean> {
+  const look = await fetch(`${DRIVE_API}/files/${fileId}?fields=id,trashed`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!look.ok) return false;
+  if ((await look.json()).trashed) return false;
+  const boundary = 'poolside_drive_boundary_' + Math.random().toString(36).slice(2);
+  const enc = new TextEncoder();
+  const head = enc.encode(
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    JSON.stringify({ name: filename }) + `\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: application/pdf\r\n\r\n`,
+  );
+  const tail = enc.encode(`\r\n--${boundary}--`);
+  const body = new Uint8Array(head.length + pdfBytes.length + tail.length);
+  body.set(head, 0);
+  body.set(pdfBytes, head.length);
+  body.set(tail, head.length + pdfBytes.length);
+  const res = await fetch(`${DRIVE_UPLOAD}/${fileId}?uploadType=multipart&fields=id`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+      'Content-Length': String(body.length),
+    },
+    body,
+  });
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`PDF update failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+  return true;
+}
+
 // Persist updated cache (folder/sheet IDs) back to google_drive_grants so
 // next signup skips the lookup round-trips. Only writes fields that changed.
 export async function updateGrantCache(
   sb: SupabaseClient,
   tenantId: string,
-  patch: Partial<Pick<DriveGrant, 'root_folder_id' | 'club_folder_id' | 'spreadsheet_id' | 'year_folder_ids' | 'year_tab_ids'>>,
+  patch: Partial<Pick<DriveGrant, 'root_folder_id' | 'club_folder_id' | 'spreadsheet_id' | 'minutes_folder_id' | 'year_folder_ids' | 'year_tab_ids'>>,
 ): Promise<void> {
   await sb.from('google_drive_grants').update(patch).eq('tenant_id', tenantId);
 }
 
 export async function loadGrant(sb: SupabaseClient, tenantId: string): Promise<DriveGrant | null> {
   const { data } = await sb.from('google_drive_grants')
-    .select('tenant_id, refresh_token, connected_email, root_folder_id, club_folder_id, spreadsheet_id, year_folder_ids, year_tab_ids')
+    .select('tenant_id, refresh_token, connected_email, root_folder_id, club_folder_id, spreadsheet_id, minutes_folder_id, year_folder_ids, year_tab_ids')
     .eq('tenant_id', tenantId).maybeSingle();
   return data as DriveGrant | null;
 }

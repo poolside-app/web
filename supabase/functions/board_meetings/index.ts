@@ -107,6 +107,7 @@ import { readerFromClaims } from '../_shared/governance.ts';
 import { moveToPrivate, withLinks, type DocRow } from '../_shared/club_docs.ts';
 import { approversFor, progress, mayApproveFor, editMode, snapshot, ON_BEHALF_DAYS, type Attendee } from '../_shared/minutes_approval.ts';
 import { enqueueAdminTask, pushBoard } from '../_shared/enqueue_task.ts';
+import { backupBylaws, backupMinutes } from '../_shared/drive_minutes.ts';
 
 // The bylaws (PLAN.md K6): every upload is kept; the newest is current. The
 // files are private (BJ1): readers get links that work for an hour.
@@ -121,6 +122,26 @@ async function bylawsFor(sb: ReturnType<typeof createClient>, tenantId: string) 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET   = Deno.env.get('ADMIN_JWT_SECRET');
+
+// Minutes and bylaws to the club's Drive (PLAN.md BV), after the page has its
+// answer. A copy that fails is caught by tonight's Drive run.
+function later(work: () => Promise<unknown>) {
+  const p = work().catch(e => console.error('[board_meetings] drive backup (tried again tonight):', (e as Error).message));
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(p);
+}
+function driveKeys() {
+  const googleClientId = Deno.env.get('GOOGLE_CLIENT_ID'), googleClientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+  return googleClientId && googleClientSecret ? { googleClientId, googleClientSecret } : null;
+}
+function driveLater(sb: ReturnType<typeof createClient>, tenantId: string, meetingId: string) {
+  const keys = driveKeys();
+  if (keys) later(() => backupMinutes(sb, tenantId, meetingId, keys));
+}
+function bylawsLater(sb: ReturnType<typeof createClient>, tenantId: string) {
+  const keys = driveKeys();
+  if (keys) later(() => backupBylaws(sb, tenantId, keys));
+}
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -444,6 +465,7 @@ Deno.serve(async (req) => {
       .select(FIELDS).maybeSingle();
     if (!data) return m;   // another approval posted it a moment ago
     await closeMinutesTasks(m.id as string, ['minutes.approve']);
+    driveLater(sb, TID, m.id as string);   // the approved file (PLAN.md BV4)
     const where = m.visibility === 'private' ? 'They\'re board only, so members won\'t see them.' : 'Members can read them now.';
     await audit('board_meeting.approved', m, `Minutes approved${Number(m.posted_count ?? 0) > 0 ? ' (an amendment)' : ''}: "${m.title}" (${m.meeting_date})`);
     if (m.created_by) {
@@ -713,6 +735,7 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     // Out of the public folder at once (BJ1): the bylaws are for members only.
     const moved = await moveToPrivate(sb, SUPABASE_URL, TID, row as DocRow);
+    if (moved) bylawsLater(sb, TID);   // a copy in the club's Drive (PLAN.md BV5)
     try {
       await sb.from('audit_log').insert({
         tenant_id: TID, kind: 'bylaws.uploaded', entity_type: 'club_document', entity_id: row.id,
@@ -857,6 +880,7 @@ Deno.serve(async (req) => {
     await audit(mode === 'amend' ? 'board_meeting.amendment_started' : 'board_meeting.edited', existing!,
       `${mode === 'amend' ? 'Started an amendment to approved minutes' : 'Edited minutes'}: "${existing!.title}" (${existing!.meeting_date})`);
     await syncFollowUpTasks(sb, data as MeetingForTasks, payload.synthetic ? null : me.id);
+    driveLater(sb, TID, id);   // the draft file, rewritten (PLAN.md BV3)
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 
@@ -882,6 +906,7 @@ Deno.serve(async (req) => {
     // marked where they came from (PLAN.md L4).
     await sb.from('agenda_items').update({ meeting_id: null, carried_from: id, updated_at: now })
       .eq('tenant_id', TID).eq('meeting_id', id).eq('covered', false);
+    driveLater(sb, TID, id);   // the draft file in the club's Drive (PLAN.md BV3)
     return jsonResponse({ ok: true, meeting: await one(data) });
   }
 

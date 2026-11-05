@@ -32,7 +32,16 @@ export function fakeGoogle() {
     if (u.pathname.startsWith('/upload/drive/v3/files')) {
       const body = new TextDecoder().decode(init.body);
       const meta = JSON.parse(body.slice(body.indexOf('{'), body.indexOf('}\r\n') + 1));
-      const fid = id('pdf'); g.files[fid] = { id: fid, name: meta.name, mimeType: meta.mimeType, parents: meta.parents, trashed: false };
+      // A file rewritten in place (PLAN.md BV3): same id, maybe a new name.
+      const pm = u.pathname.match(/^\/upload\/drive\/v3\/files\/([^/]+)$/);
+      if (pm && m === 'PATCH') {
+        const f = g.files[pm[1]];
+        if (!f) return json({ error: 'notFound' }, 404);
+        if (meta.name) f.name = meta.name;
+        f.writes = (f.writes || 1) + 1;
+        return json({ id: f.id });
+      }
+      const fid = id('pdf'); g.files[fid] = { id: fid, name: meta.name, mimeType: meta.mimeType, parents: meta.parents, trashed: false, writes: 1 };
       return json({ id: fid });
     }
     if (u.pathname === '/drive/v3/files' && m === 'GET') {

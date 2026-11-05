@@ -215,6 +215,7 @@ Deno.serve(async (req) => {
         root_folder_id: null,
         club_folder_id: null,
         spreadsheet_id: null,
+        minutes_folder_id: null,
         year_folder_ids: {},
         year_tab_ids: {},
       });
@@ -509,7 +510,7 @@ Deno.serve(async (req) => {
     try {
       const r = await nightlyDrive(sb, payload.tid, { googleClientId: GOOGLE_ID, googleClientSecret: GOOGLE_SECRET });
       return jsonResponse({ ok: true, total_unsynced: r.copied + r.failed + r.retried, succeeded: r.copied + r.retried,
-        failed: r.failed, errors: r.errors, parties: r.parties, skipped: r.skipped ?? false });
+        failed: r.failed, errors: r.errors, parties: r.parties, minutes: r.minutes ?? 0, bylaws: r.bylaws ?? 0, skipped: r.skipped ?? false });
     } catch (e) {
       return jsonResponse({ ok: false, error: (e as Error).message }, 500);
     }

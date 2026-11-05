@@ -8,7 +8,8 @@
 //   1. retry every waiting backup,
 //   2. copy any signup or signed renewal that never got copied,
 //   3. rewrite each season's roster tab from Poolside (PLAN.md BR5),
-//   4. bring the Parties tab up to date from party_history.
+//   4. bring the Parties tab up to date from party_history,
+//   5. copy board minutes and bylaws still missing (PLAN.md BV6, drive_minutes.ts).
 // Connecting Drive runs the same thing right away (PLAN.md BQ1).
 // Like the rest of the Drive code, it only adds and updates; a row in Drive is
 // never removed.
@@ -21,11 +22,13 @@ import { PARTY_COLUMNS, partyRecord, type PartyMoney, type PartyStep } from './p
 import { driveSeason, rosterRecord, rowByHeaders, sheetSafe } from './drive_row.ts';
 import { SUN, type ColSpec } from './sheet_look.ts';
 import { zoneOrDefault } from './pool_time.ts';
+import { catchUpMinutes } from './drive_minutes.ts';
 
 type Keys = { googleClientId: string; googleClientSecret: string };
 export type NightlyResult = {
   ok: true; skipped?: boolean;
   retried: number; copied: number; failed: number; dropped: number; parties: number;
+  minutes?: number; bylaws?: number;
   errors: Array<{ family: string; error: string }>;
 };
 
@@ -250,9 +253,15 @@ export async function nightlyDrive(sb: SupabaseClient, tenantId: string, keys: K
   const tz = zoneOrDefault(tenant.timezone);
   await syncRosterToDrive(sb, tenantId, accessToken, roster.spreadsheetId, tz);
   const parties = await syncPartiesToDrive(sb, tenantId, accessToken, roster.spreadsheetId, tz);
+  // Board minutes and bylaws (PLAN.md BV6); a failure here doesn't stop the rest.
+  let mn: Awaited<ReturnType<typeof catchUpMinutes>> = { minutes: 0, bylaws: 0, errors: [] };
+  try { mn = await catchUpMinutes(sb, tenantId, keys); }
+  catch (e) { mn.errors.push({ family: 'Board minutes', error: (e as Error).message }); }
+  const firstError = c.errors[0]?.error ?? mn.errors[0]?.error;
   await sb.from('google_drive_grants').update({
     last_sync_at: new Date().toISOString(),
-    last_error: q.failed + c.failed ? (c.errors[0]?.error ?? 'A backup failed; it is tried again tonight.').slice(0, 500) : null,
+    last_error: q.failed + c.failed + mn.errors.length ? (firstError ?? 'A backup failed; it is tried again tonight.').slice(0, 500) : null,
   }).eq('tenant_id', tenantId);
-  return { ok: true, retried: q.succeeded, copied: c.copied, failed: q.failed + c.failed, dropped: q.dropped, parties, errors: c.errors };
+  return { ok: true, retried: q.succeeded, copied: c.copied, failed: q.failed + c.failed, dropped: q.dropped, parties,
+    minutes: mn.minutes, bylaws: mn.bylaws, errors: [...c.errors, ...mn.errors] };
 }

@@ -30,4 +30,8 @@ If someone hasn't approved after 7 days, the President can tap **Approve for** t
 
 **👥 Members** (the default) puts the approved minutes on your club's **Bylaws & board minutes** page. Only signed-in members and the board can open that page. **🔒 Board only** keeps them for the board, for things like legal matters; they're approved the same way but never shown to members.
 
-> Tip: Your bylaws live on the same page, under **📜 Bylaws**.
+### A copy in Google Drive
+
+If your club's Google Drive is connected (Settings → Backups & archive), the minutes are saved there as PDFs, in a "Board minutes" folder. The draft is saved when the meeting closes and kept up to date as you fix it. When the last board member approves, the approved copy is saved as its own file. Board-only minutes are saved too. Deleting a meeting here leaves its copies in Drive.
+
+> Tip: Your bylaws live on the same page, under **📜 Bylaws**. Each new version is copied to the same Drive folder.

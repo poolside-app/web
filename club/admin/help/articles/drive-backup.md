@@ -7,6 +7,8 @@ Poolside can save a copy of every signup and signed renewal to your club's Googl
 
 The same sheet has a Parties tab at the bottom: one row per party, with its date, family, guests, amount and status, and every step that happened to it, like "Nov 4: approved · Nov 5: paid by card $150.00 · Nov 20: canceled by the family". Canceled and turned-down parties stay on it, and so does a party whose family was deleted from Poolside.
 
+The board minutes and bylaws go to Drive too, as PDFs in a "Board minutes" folder next to the sheet. Each meeting's draft is saved when the meeting closes, and that one file is updated whenever the draft changes. Each approved copy is its own file, like "2026-11-05 November board meeting - approved 2026-11-12.pdf", and an approved amendment adds another. Board-only minutes are included. Each new version of the bylaws is copied when it's posted.
+
 Each night Poolside copies anything that was missed and brings the Parties tab up to date. A new signup is copied the moment it's sent.
 
 ### Connect it

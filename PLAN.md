@@ -900,6 +900,19 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BV. Board minutes and bylaws backed up to Google Drive (Doug, 11/5)
+Doug: "we should probably backup the meeting minutes as well in the google drive". His picks: drafts too, Board-only minutes too, PDF, the bylaws too, one draft file kept up to date. Today Drive gets only signups, signed renewals, the roster and the Parties tab; minutes and bylaws live only in Poolside. Bishop's Drive is connected (last nightly run 11/5, no errors).
+- **BV1. A "Board minutes" folder** in the club's Drive folder (Poolside Archive → the club), made again if trashed, like the others.
+- **BV2. The minutes as a PDF** (`_shared/minutes_pdf.ts`): the club, title, date, place and times in pool time; attendance; notes; each motion with Proposed by · Seconded by, the count and the outcome; follow-ups. A draft says "Draft, not approved yet" at the top; an approved copy says when and who approved it (and who approved for someone).
+- **BV3. One draft file per meeting.** Saved when the meeting closes ("2026-11-05 November board meeting - draft.pdf") and rewritten whenever the draft changes (Save changes, an amendment), never a second draft file.
+- **BV4. An approved file** the moment the last approval lands ("… - approved 2026-11-12.pdf"), from the same copy members see. An approved amendment adds "… - amended, approved 2026-11-20.pdf"; earlier files stay. Board-only minutes too.
+- **BV5. The bylaws:** each new version posted is copied to the same folder ("Bylaws - posted 2026-11-05.pdf").
+- **BV6. Nothing waits on Drive.** The copy runs after the page has its answer; one that fails, or a club that connects Drive later, is caught by the nightly run (a new step 5 in `nightlyDrive`: drafts that changed, approvals and bylaws not yet copied). Deleting a meeting in Poolside leaves its Drive files, like signups.
+- Tracking: `board_meetings` gets `drive_draft_file_id`, `drive_draft_hash` (so an unchanged draft isn't rewritten) and `drive_posted_count`; `club_documents` gets `drive_file_id`; the Drive grant caches `minutes_folder_id` (cleared on reconnect). One migration.
+- Settings → Backups & archive and the Drive help article say minutes and bylaws are copied; the board-minutes article too.
+- Failing test first: `test_minutes_drive` (new, offline, the pretend Google and database; the pretend Google learns to rewrite a file). Deploy `board_meetings` and `google_drive_sync`.
+- ✅ Done 11/5. 15 checks failed first; now 54 pass, and every offline suite (55). Migration applied, `board_meetings` and `google_drive_sync` deployed, pages pushed.
+
 ### BU. Motions: tap who made it and who seconded (Doug, 11/4, for the 11/5 meeting)
 Doug: "it would be nice to simply click new motion, you check the persons name who started the motion, then vote from there if needed… someone can second the motion as well". His picks: "Do count plus all In favor" and "Needs a second to vote." Today "+ Add motion" has typed "Proposed by" and "Seconded by" boxes.
 - **BU1. Made by and Seconded by are names to tap:** everyone marked present (board members ticked and people added by hand), plus "Other…" to type a name. Tap again to take it back. Whoever made the motion isn't offered as its second. Marking someone present adds them to every motion's names.
