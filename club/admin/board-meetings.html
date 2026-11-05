@@ -76,6 +76,21 @@
   .badge-completed { background: var(--green-l); color: #14532d; }
   .badge-members { background: #dbeafe; color: #1e3a8a; }
   .badge-private { background: var(--bg-2); color: var(--muted); }
+  /* Minutes uploaded for a meeting not taken here (PLAN.md BW): the row opens the file. */
+  .upload-row { cursor: default; }
+  .upload-row .upload-open { display:flex; align-items:center; gap:14px; flex:1; min-width:0; color:inherit; text-decoration:none; }
+  .upload-row .up-del { background:none; border:1px solid var(--border); border-radius:8px; padding:5px 8px; cursor:pointer; font-size:14px; }
+  /* Phones: the date and title on one line, the badges under them (the
+     title was squeezed to a word a line). */
+  @media (max-width: 560px) {
+    .list-row { flex-wrap: wrap; gap: 8px 12px; }
+    .list-row .date { min-width: 64px; font-size: 16px; }
+    .list-row .title { flex: 1 1 0; }
+    .list-row:not(.upload-row) .title { flex-basis: calc(100% - 80px); }
+    .upload-row .upload-open { flex: 1 1 100%; gap: 12px; }
+    .list-row .badge { margin-left: 76px; }
+    .list-row .badge ~ .badge { margin-left: 0; }
+  }
 
   .empty {
     padding: 50px 24px; text-align: center; color: var(--muted);
@@ -279,6 +294,7 @@
   <a href="/club/admin/settings.html">Settings</a>
 </nav>
 <div id="admin-subtabs"></div>
+<script src="/js/photo-shrink.js"></script>
 <script src="/js/admin-subtabs.js"></script>
 <script src="/js/admin-flags.js"></script>
 
@@ -287,9 +303,35 @@
     <h1>Board minutes</h1>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="startNewMeeting()">▶ Start a meeting</button>
+      <button class="btn btn-ghost" type="button" onclick="openUpload()">📎 Upload minutes</button>
     </div>
   </div>
-  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. When the meeting closes, the note-taker submits the minutes, and each board member who was there approves them. Then members see them on the Bylaws &amp; board minutes page, unless you switched them to board only for a closed session.</p>
+  <p class="lede">Any board member can start a meeting and take the notes. Everyone on the board can read them, but only the note-taker and the president can change them. When the meeting closes, the note-taker submits the minutes, and each board member who was there approves them. Then members see them on the Bylaws &amp; board minutes page, unless you switched them to board only for a closed session. For a meeting you didn't take here, tap 📎 Upload minutes.</p>
+
+  <!-- PLAN.md BW (Doug, 11/5): minutes of a meeting not taken in Poolside.
+       A date and the file; posted at once, Members or Board only, and
+       backed up to the club's Drive. -->
+  <div class="card" id="upload-form" style="display:none">
+    <h2 style="margin:0 0 4px">📎 Upload minutes</h2>
+    <p style="font-size:13.5px;color:var(--muted);margin:0 0 12px">For a meeting the board didn't take in Poolside. They're posted as soon as you upload them, and a copy goes to the club's Google Drive.</p>
+    <label for="up-date">Meeting date</label>
+    <input type="date" id="up-date" oninput="uploadPreview()">
+    <label for="up-file" style="margin-top:12px">The minutes</label>
+    <input type="file" id="up-file" onchange="uploadPreview()"
+      accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/*">
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">A PDF, a Word file or a photo, up to 25 MB.</div>
+    <div style="margin-top:12px;font-size:13.5px;font-weight:600">Who sees them</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;font-size:14px">
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:500"><input type="radio" name="up-vis" value="members" checked style="width:auto"> 👥 Members</label>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:500"><input type="radio" name="up-vis" value="private" style="width:auto"> 🔒 Board only</label>
+    </div>
+    <div id="up-preview" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-primary" type="button" id="up-go" onclick="uploadMinutes()">Upload</button>
+      <button class="btn btn-ghost" type="button" onclick="closeUpload()">Cancel</button>
+    </div>
+    <div id="upload-msg" style="font-size:13px;color:var(--red);margin-top:8px"></div>
+  </div>
 
   <!-- PLAN.md K6 (Doug, 2026-10-04): the bylaws, for members since BJ1, at the top
        of the club's "Bylaws & board minutes" page. The President or the
@@ -736,8 +778,9 @@ async function loadList() {
     const r = await call('list');
     if (!r.ok) throw new Error(r.error || 'Failed to load');
     const meetings = r.meetings || [];
+    const uploads = r.uploads || [];   // PLAN.md BW
     LIST = meetings;
-    if (!meetings.length) {
+    if (!meetings.length && !uploads.length) {
       host.innerHTML = `
         <div class="empty">
           <div class="big">🗒️</div>
@@ -747,7 +790,7 @@ async function loadList() {
       `;
       return;
     }
-    host.innerHTML = meetings.map(m => {
+    const meetingRow = m => {
       // meeting_date is a date, not a moment — format it without a zone shift.
       const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
       const year = String(m.meeting_date).slice(0, 4);
@@ -773,11 +816,117 @@ async function loadList() {
           ${visBadge}
         </button>
       `;
-    }).join('');
+    };
+    // Uploaded minutes (PLAN.md BW): tapping opens the file.
+    const uploadRow = u => {
+      const dayMonth = PoolTime.fmtDay(u.meeting_date, { month: 'short', day: 'numeric' });
+      const sub = [u.uploaded_by_name ? `Uploaded by ${u.uploaded_by_name}` : 'Uploaded', fileKind(u.content_type)].filter(Boolean).join(' · ');
+      const visBadge = u.visibility === 'private' ? '<span class="badge badge-private">Board only</span>' : '<span class="badge badge-members">Members</span>';
+      return `
+        <div class="list-row upload-row">
+          <a class="upload-open" href="${escapeHtml(u.url || '#')}" target="_blank" rel="noopener">
+            <div class="date">${escapeHtml(dayMonth)}<small>${escapeHtml(String(u.meeting_date).slice(0, 4))}</small></div>
+            <div class="title">${escapeHtml(u.title)}<small>${escapeHtml(sub)}</small></div>
+          </a>
+          <span class="badge badge-completed">Uploaded</span>
+          ${visBadge}
+          ${u.can_delete ? `<button class="up-del" type="button" data-delete-upload="${escapeHtml(u.id)}" data-title="${escapeHtml(u.title)}" aria-label="Delete">🗑️</button>` : ''}
+        </div>
+      `;
+    };
+    const rows = [
+      ...meetings.map(m => ({ day: String(m.meeting_date), html: meetingRow(m) })),
+      ...uploads.map(u => ({ day: String(u.meeting_date), html: uploadRow(u) })),
+    ];
+    // Newest first; on the same day, a meeting taken here before an upload.
+    rows.sort((x, y) => y.day.localeCompare(x.day));
+    host.innerHTML = rows.map(x => x.html).join('');
   } catch (e) {
     host.innerHTML = `<div class="card" style="color:var(--red)">Couldn't load: ${escapeHtml(e.message)}</div>`;
   }
 }
+
+// ── Upload minutes (PLAN.md BW) ────────────────────────────────────────
+function fileKind(ct) {
+  if (!ct) return '';
+  if (ct === 'application/pdf') return 'PDF';
+  if (/word/.test(ct)) return 'Word file';
+  if (/^image\//.test(ct)) return 'Photo';
+  return '';
+}
+function uploadTitle(day) {
+  const [y, m, d] = String(day).split('-').map(Number);
+  return `Meeting minutes from ${m}/${d}/${y}`;
+}
+function openUpload() {
+  const f = document.getElementById('upload-form');
+  f.style.display = '';
+  document.getElementById('up-date').max = PoolTime.todayKey();
+  document.getElementById('upload-msg').textContent = '';
+  uploadPreview();
+  f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function closeUpload() {
+  document.getElementById('upload-form').style.display = 'none';
+  document.getElementById('up-date').value = '';
+  document.getElementById('up-file').value = '';
+  document.querySelector('input[name="up-vis"][value="members"]').checked = true;
+  document.getElementById('upload-msg').textContent = '';
+}
+function uploadPreview() {
+  const day = document.getElementById('up-date').value;
+  document.getElementById('up-preview').textContent = day ? `Shows as: ${uploadTitle(day)}` : '';
+}
+function readBase64(file) {
+  return new Promise((ok, no) => {
+    const rd = new FileReader();
+    rd.onload = () => ok(String(rd.result).split(',')[1] || '');
+    rd.onerror = () => no(new Error('Could not read the file'));
+    rd.readAsDataURL(file);
+  });
+}
+async function uploadMinutes() {
+  const msg = document.getElementById('upload-msg');
+  const btn = document.getElementById('up-go');
+  const day = document.getElementById('up-date').value;
+  const f = document.getElementById('up-file').files[0];
+  msg.textContent = '';
+  if (!day) { msg.textContent = 'Pick the date of the meeting.'; return; }
+  if (!f) { msg.textContent = 'Pick the file with the minutes.'; return; }
+  if (f.size > 25 * 1024 * 1024 && !/^image\//.test(f.type)) { msg.textContent = 'That file is over 25 MB.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  try {
+    // A photo is shrunk like the others, but kept big enough to read a page.
+    const file = /^image\//.test(f.type) && window.PoolsideShrink
+      ? await PoolsideShrink.photo(f, 2400)
+      : { content_type: f.type, base64: await readBase64(f), name: f.name };
+    const r = await call('upload_minutes', {
+      meeting_date: day,
+      visibility: document.querySelector('input[name="up-vis"]:checked')?.value || 'members',
+      file_name: f.name, content_type: file.content_type || f.type || '', base64: file.base64,
+    });
+    if (!r.ok) throw new Error(r.error || 'Upload failed');
+    closeUpload();
+    loadList();
+  } catch (e) {
+    msg.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Upload';
+  }
+}
+document.getElementById('list-host').addEventListener('click', async e => {
+  const b = e.target.closest('[data-delete-upload]');
+  if (!b) return;
+  if (!confirm(`Delete "${b.dataset.title}"?\n\nMembers won't see them any more. The copy in Google Drive stays.`)) return;
+  b.disabled = true;
+  try {
+    const r = await call('delete_upload', { id: b.dataset.deleteUpload });
+    if (!r.ok) throw new Error(r.error || 'Could not delete them');
+    loadList();
+  } catch (err) { b.disabled = false; alert(err.message); }
+});
 
 // One tap: create the meeting with the clock already running. If one is
 // already going (someone else may have started it), offer that instead.

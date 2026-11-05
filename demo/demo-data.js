@@ -529,6 +529,7 @@ const WOULD = {
   'applications:send_reminder': 'In a real club, this emails the family a reminder with the amount and a Venmo button.',
   'applications:reject': 'In a real club, this emails the family that their signup wasn\'t approved.',
   'email_templates:test': 'In a real club, this emails you a test copy.',
+  'board_meetings:upload_minutes': 'In a real club, the minutes are posted for members and copied to the club\'s Google Drive. The demo keeps the date only and shows a sample page.',
   'posts_admin:create': 'In a real club, members who turned on pop-ups get this one on their phone (if you ticked Notify).',
   'parties_admin:approve': 'In a real club, this emails the family that their party is approved.',
   'parties_admin:verify_payment': 'In a real club, this books the party and emails the family.',
@@ -829,7 +830,20 @@ function minutes(a, body, state, now, pre) {
   const one = m => ({ ok: true, meeting: decorate(m) });
   const m = body.id ? find(String(body.id)) : null;
   switch (a) {
-    case 'list': return { ok: true, meetings: [...all].sort((x, y) => String(y.meeting_date).localeCompare(String(x.meeting_date))).map(decorate) };
+    case 'list': return { ok: true, meetings: [...all].sort((x, y) => String(y.meeting_date).localeCompare(String(x.meeting_date))).map(decorate),
+      uploads: (state.minutesUploads || []).map(u => ({ ...u, can_delete: true })) };
+    // Minutes uploaded for a meeting not taken here (PLAN.md BW): the demo keeps the date only.
+    case 'upload_minutes': {
+      const day = String(body.meeting_date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { ok: false, error: 'Pick the date of the meeting.' };
+      const [y, mo, d] = day.split('-').map(Number);
+      const u = { id: `up-${(state.minutesUploads || []).length + 1}`, title: `Meeting minutes from ${mo}/${d}/${y}`, meeting_date: day,
+        visibility: body.visibility === 'private' ? 'private' : 'members', url: '/demo/bylaws.html', file_name: String(body.file_name || 'Minutes').slice(0, 160),
+        content_type: body.content_type || 'application/pdf', uploaded_by_name: 'Sam Brooks', uploaded_at: iso() };
+      state.minutesUploads = [u, ...(state.minutesUploads || [])].sort((a, b) => String(b.meeting_date).localeCompare(String(a.meeting_date)));
+      return { ok: true, upload: { id: u.id, meeting_date: day, visibility: u.visibility } };
+    }
+    case 'delete_upload': state.minutesUploads = (state.minutesUploads || []).filter(u => u.id !== body.id); return { ok: true };
     case 'get': return m ? one(m) : { ok: false, error: 'Meeting not found' };
     case 'list_active_admins': return { ok: true, admins: BOARD_PEOPLE.map(b => ({ id: b.id, name: b.name, board_title: b.board_title, role_label: b.board_title })) };
     case 'create': {
@@ -924,6 +938,7 @@ function minutes(a, body, state, now, pre) {
       const posted = all.filter(x => x.posted_json && x.posted_json.visibility === 'members')
         .map(x => ({ ...x.posted_json, id: x.id, approved_at: x.posted_at, amended_at: x.posted_count > 1 ? x.posted_at : null }));
       return { ok: true, meetings: posted, bylaws: bylaws(state),
+        uploads: (state.minutesUploads || []).filter(u => u.visibility === 'members').map(({ id, title, meeting_date, url, content_type }) => ({ id, title, meeting_date, url, content_type })),
         board: BOARD_PEOPLE.map(b => ({ name: b.name, titles: [b.board_title] })) };
     }
   }

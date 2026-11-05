@@ -900,6 +900,17 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BW. Upload minutes for a meeting not taken in Poolside (Doug, 11/5)
+Doug: "if we had a meeting and didn't use the meeting feature, i want to be able to say here was a meeting... select a date only... upload the minutes and it backs it up and posts it... saying meeting minutes from 1/1/2026... then you click the link and it shows the minutes." And "dont overwrite anything". His picks: posts right away (no approval), any board member, PDF, photo or Word, Members or Board only each time.
+- **BW1. "📎 Upload minutes"** on Content → Board minutes, next to Start a meeting: a date, the file (PDF, Word, or a photo; a photo is shrunk like the others but kept sharp enough to read), and 👥 Members (the default) or 🔒 Board only. Nothing else to fill in. Typed meetings are untouched.
+- **BW2. Posted at once.** Members see "Meeting minutes from 1/1/2026" on the Bylaws & board minutes page, in date order with the typed ones; tapping it opens the file (a link that works for an hour, like the bylaws). Board only never shows to members. The board's list shows it too.
+- **BW3. Kept private.** The file goes straight to the private club-docs folder (a `board_meetings` `upload_minutes` action, not the public upload), as a `club_documents` row of kind `minutes` with its date and who sees it. One migration.
+- **BW4. Backed up.** Copied to the Drive "Board minutes" folder as "2026-01-01 Meeting minutes - uploaded.pdf" (or .docx, .jpg), right away and caught by the nightly run if that fails (BV).
+- **BW5. Delete:** whoever uploaded it or the President. The Drive copy stays, like everything else in Drive.
+- Word files: an iPhone opens them in the browser; some Android phones download them to open.
+- Failing test first: `test_minutes_upload` (new, offline: the server action against the pretend database and Google, and the members' page and the board's page rendered in Chrome). Deploy `board_meetings` and `google_drive_sync`.
+- ✅ Done 11/5. 52 checks failed first; now 54 pass, and every offline suite (56). The file goes straight to the private club-docs folder (the public one doesn't take Word files). On phones the board's list now puts the badges under the title (typed meetings too; titles were squeezed to a word a line). Migration applied, `board_meetings` and `google_drive_sync` deployed, pages pushed.
+
 ### BV. Board minutes and bylaws backed up to Google Drive (Doug, 11/5)
 Doug: "we should probably backup the meeting minutes as well in the google drive". His picks: drafts too, Board-only minutes too, PDF, the bylaws too, one draft file kept up to date. Today Drive gets only signups, signed renewals, the roster and the Parties tab; minutes and bylaws live only in Poolside. Bishop's Drive is connected (last nightly run 11/5, no errors).
 - **BV1. A "Board minutes" folder** in the club's Drive folder (Poolside Archive → the club), made again if trashed, like the others.

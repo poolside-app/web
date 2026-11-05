@@ -59,6 +59,12 @@
 // Approved minutes are locked; amend on them starts an amendment (a draft
 // again; members keep seeing the approved copy, posted_json).
 //
+// Minutes of a meeting not taken in Poolside (PLAN.md BW, Doug 11/5), any
+// board member, posted at once (_shared/minutes_upload.ts):
+//   { action: 'upload_minutes', meeting_date, visibility, file_name, content_type, base64 }
+//   { action: 'delete_upload', id }        whoever uploaded it or the president
+// 'list' and 'governance' return them as `uploads`.
+//
 // There is no 'reopen': it cleared the real end time and pulled the
 // minutes off the members' page while they were edited. amend replaced it.
 //
@@ -107,7 +113,8 @@ import { readerFromClaims } from '../_shared/governance.ts';
 import { moveToPrivate, withLinks, type DocRow } from '../_shared/club_docs.ts';
 import { approversFor, progress, mayApproveFor, editMode, snapshot, ON_BEHALF_DAYS, type Attendee } from '../_shared/minutes_approval.ts';
 import { enqueueAdminTask, pushBoard } from '../_shared/enqueue_task.ts';
-import { backupBylaws, backupMinutes } from '../_shared/drive_minutes.ts';
+import { backupDocs, backupMinutes } from '../_shared/drive_minutes.ts';
+import { deleteUploadedMinutes, saveUploadedMinutes, uploadedMinutes } from '../_shared/minutes_upload.ts';
 
 // The bylaws (PLAN.md K6): every upload is kept; the newest is current. The
 // files are private (BJ1): readers get links that work for an hour.
@@ -138,9 +145,10 @@ function driveLater(sb: ReturnType<typeof createClient>, tenantId: string, meeti
   const keys = driveKeys();
   if (keys) later(() => backupMinutes(sb, tenantId, meetingId, keys));
 }
-function bylawsLater(sb: ReturnType<typeof createClient>, tenantId: string) {
+// The bylaws and uploaded minutes (PLAN.md BV5, BW4).
+function docsLater(sb: ReturnType<typeof createClient>, tenantId: string) {
   const keys = driveKeys();
-  if (keys) later(() => backupBylaws(sb, tenantId, keys));
+  if (keys) later(() => backupDocs(sb, tenantId, keys));
 }
 
 const cors = {
@@ -350,6 +358,8 @@ Deno.serve(async (req) => {
     const b = await loadBoard(sb as never, tid);
     return jsonResponse({
       ok: true, meetings,
+      // Minutes uploaded for meetings not taken in Poolside (PLAN.md BW2): Members ones only.
+      uploads: await uploadedMinutes(sb, tid, { membersOnly: true }),
       bylaws: await bylawsFor(sb, tid),
       board: boardRoster(b.positions, b.holders, b.logins),
     });
@@ -735,7 +745,7 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     // Out of the public folder at once (BJ1): the bylaws are for members only.
     const moved = await moveToPrivate(sb, SUPABASE_URL, TID, row as DocRow);
-    if (moved) bylawsLater(sb, TID);   // a copy in the club's Drive (PLAN.md BV5)
+    if (moved) docsLater(sb, TID);   // a copy in the club's Drive (PLAN.md BV5)
     try {
       await sb.from('audit_log').insert({
         tenant_id: TID, kind: 'bylaws.uploaded', entity_type: 'club_document', entity_id: row.id,
@@ -754,7 +764,36 @@ Deno.serve(async (req) => {
       .order('meeting_date', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, meetings: await decorate(data ?? []) });
+    return jsonResponse({ ok: true, meetings: await decorate(data ?? []),
+      uploads: await uploadedMinutes(sb, TID, { me }) });   // PLAN.md BW2
+  }
+
+  // ── Minutes uploaded for a meeting not taken in Poolside (PLAN.md BW) ──
+  // Any board member; posted at once, Members or Board only; backed up to Drive.
+  if (action === 'upload_minutes') {
+    const r = await saveUploadedMinutes(sb, TID, body, { ...me, id: payload.synthetic ? null : me.id });
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, r.status);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'board_minutes.uploaded', entity_type: 'club_document', entity_id: r.row.id,
+        summary: `${me.name} uploaded the minutes of the ${r.row.meeting_date} meeting (${r.row.file_name})${r.row.visibility === 'private' ? ', board only' : ''}`,
+        actor_id: payload.synthetic ? null : me.id, actor_kind: 'tenant_admin',
+      });
+    } catch { /* never block on the audit write */ }
+    docsLater(sb, TID);
+    return jsonResponse({ ok: true, upload: { id: r.row.id, meeting_date: r.row.meeting_date, visibility: r.row.visibility } });
+  }
+  if (action === 'delete_upload') {
+    const r = await deleteUploadedMinutes(sb, TID, String(body.id ?? ''), me);
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, r.status);
+    try {
+      await sb.from('audit_log').insert({
+        tenant_id: TID, kind: 'board_minutes.upload_deleted', entity_type: 'club_document', entity_id: r.row.id,
+        summary: `${me.name} deleted the uploaded minutes of the ${r.row.meeting_date} meeting (the Drive copy stays)`,
+        actor_id: payload.synthetic ? null : me.id, actor_kind: 'tenant_admin',
+      });
+    } catch { /* never block on the audit write */ }
+    return jsonResponse({ ok: true });
   }
 
   // ── get ─────────────────────────────────────────────────────────────────

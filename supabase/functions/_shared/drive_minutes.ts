@@ -9,7 +9,8 @@
 //     the draft changes (Save changes, an amendment);
 //   - an approved file each time the last approval lands, from the copy
 //     members see (posted_json); an approved amendment adds its own;
-//   - each bylaws version posted.
+//   - each bylaws version posted, and minutes uploaded for a meeting not
+//     taken in Poolside (PLAN.md BW4).
 // board_meetings runs this after the page has its answer; the nightly Drive
 // run (drive_parties.ts nightlyDrive) catches anything that failed or came
 // before Drive was connected. Like the rest of the Drive code it only adds
@@ -132,34 +133,45 @@ export async function backupMinutes(sb: SupabaseClient, tenantId: string, meetin
   return { ok: true, wrote: await backupOne(sb, s, m as Row) };
 }
 
-async function bylawsWith(sb: SupabaseClient, s: Session) {
-  const { data } = await sb.from('club_documents').select('id, storage_path, file_name, uploaded_at, drive_file_id')
-    .eq('tenant_id', s.tenantId).eq('kind', 'bylaws').is('drive_file_id', null).order('uploaded_at', { ascending: true });
+/** A bylaws version or uploaded minutes (PLAN.md BW4), as it's named in Drive. */
+export function docFileName(d: Row, tz: string): string {
+  if (d.kind === 'minutes') {
+    const ext = (String(d.storage_path ?? '').match(/\.([a-z0-9]+)$/i) ?? [])[1] ?? 'pdf';
+    return `${d.meeting_date} Meeting minutes - uploaded.${ext.toLowerCase()}`;
+  }
+  return `Bylaws - posted ${poolDate(String(d.uploaded_at ?? new Date().toISOString()), tz)}.pdf`;
+}
+
+async function docsWith(sb: SupabaseClient, s: Session) {
+  const { data } = await sb.from('club_documents').select('id, kind, storage_path, file_name, content_type, meeting_date, uploaded_at, drive_file_id')
+    .eq('tenant_id', s.tenantId).in('kind', ['bylaws', 'minutes']).is('drive_file_id', null).order('uploaded_at', { ascending: true });
   let copied = 0;
   const errors: Array<{ family: string; error: string }> = [];
-  // A version not yet moved to the private folder is copied once it is.
+  // A bylaws version not yet moved to the private folder is copied once it is.
   for (const d of ((data ?? []) as Row[]).filter(r => r.storage_path)) {
-    const day = poolDate(String(d.uploaded_at ?? new Date().toISOString()), s.tz);
+    const name = docFileName(d, s.tz);
     try {
       const { data: file, error } = await sb.storage.from(PRIVATE_BUCKET).download(String(d.storage_path));
-      if (error || !file) throw new Error(`Couldn't read the bylaws file: ${error?.message ?? 'missing'}`);
+      if (error || !file) throw new Error(`Couldn't read the file: ${error?.message ?? 'missing'}`);
       const { token, folderId } = await minutesFolder(sb, s);
-      const id = await uploadPdf(token, folderId, `Bylaws - posted ${day}.pdf`, new Uint8Array(await file.arrayBuffer()));
+      const id = await uploadPdf(token, folderId, name, new Uint8Array(await file.arrayBuffer()), String(d.content_type || 'application/pdf'));
       await sb.from('club_documents').update({ drive_file_id: id }).eq('id', d.id as string);
       copied++;
     } catch (e) {
-      errors.push({ family: `Bylaws posted ${day}`, error: (e as Error).message });
+      errors.push({ family: name.replace(/\.[a-z0-9]+$/i, ''), error: (e as Error).message });
     }
   }
   return { copied, errors };
 }
 
-/** Each bylaws version not in Drive yet (board_meetings, after a new one is posted). */
-export async function backupBylaws(sb: SupabaseClient, tenantId: string, keys: Keys) {
+/** Each bylaws version and uploaded minutes not in Drive yet (board_meetings,
+ *  after one is posted or uploaded). */
+export async function backupDocs(sb: SupabaseClient, tenantId: string, keys: Keys) {
   const s = await openSession(sb, tenantId, keys);
   if (!s) return { ok: true, skipped: true, copied: 0, errors: [] };
-  return { ok: true, ...(await bylawsWith(sb, s)) };
+  return { ok: true, ...(await docsWith(sb, s)) };
 }
+export const backupBylaws = backupDocs;
 
 /** The nightly step (PLAN.md BV6): every closed meeting and bylaws version still missing. */
 export async function catchUpMinutes(sb: SupabaseClient, tenantId: string, keys: Keys) {
@@ -174,7 +186,7 @@ export async function catchUpMinutes(sb: SupabaseClient, tenantId: string, keys:
     try { out.minutes += await backupOne(sb, s, m); }
     catch (e) { out.errors.push({ family: `Minutes of ${m.meeting_date} ${m.title}`, error: (e as Error).message }); }
   }
-  const b = await bylawsWith(sb, s);
+  const b = await docsWith(sb, s);
   out.bylaws = b.copied;
   out.errors.push(...b.errors);
   return out;

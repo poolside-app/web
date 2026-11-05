@@ -26,6 +26,14 @@ category: "News, Photos & Texts"
 
 If someone hasn't approved after 7 days, the President can tap **Approve for** them; it's recorded. To change minutes that are already approved, edit them and tap **💾 Save changes**: the change goes through the same approval, and members see the approved version until then.
 
+### A meeting you didn't take here
+
+1. Go to **Content → Board minutes** and tap **📎 Upload minutes**.
+2. Pick the meeting date and the file: a PDF, a Word file or a photo of the minutes.
+3. Pick 👥 Members or 🔒 Board only, and tap **Upload**.
+
+They're posted at once, with no approval, as "Meeting minutes from 1/1/2026", and members tap that to open them. Any board member can upload; whoever uploaded them or the President can delete them with 🗑️. A copy goes to the club's Google Drive.
+
 ### Who can see them
 
 **👥 Members** (the default) puts the approved minutes on your club's **Bylaws & board minutes** page. Only signed-in members and the board can open that page. **🔒 Board only** keeps them for the board, for things like legal matters; they're approved the same way but never shown to members.

@@ -61,6 +61,20 @@
   }
   .meeting-card summary::-webkit-details-marker { display: none; }
   .meeting-card summary:hover { background: #fafcff; }
+  /* Minutes uploaded for a meeting not taken in Poolside (PLAN.md BW): one tap opens the file. */
+  a.upload-card { display: flex; align-items: center; gap: 14px; padding: 16px 22px; text-decoration: none; color: inherit; }
+  a.upload-card:hover { background: #fafcff; }
+  .upload-card .date {
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 17px;
+    color: var(--blue); min-width: 130px; line-height: 1.1;
+  }
+  .upload-card .date small {
+    display:block; font-family: 'Inter'; font-weight: 500; font-size: 11px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 3px;
+  }
+  .upload-card .title { flex: 1; font-weight: 600; font-size: 14.5px; min-width: 0; color: var(--text); }
+  .upload-card .title small { display:block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+  .upload-card .chev { color: var(--muted); }
   .meeting-card summary .date {
     font-family: 'Fraunces', serif; font-weight: 600; font-size: 17px;
     color: var(--blue); min-width: 130px; line-height: 1.1;
@@ -214,7 +228,9 @@ function getSlug() {
   // ── Board meetings ─────────────────────────────────────────────────────
   const meetHost = document.getElementById('meetings-host');
   const meetings = (meetingsRes.ok && Array.isArray(meetingsRes.meetings)) ? meetingsRes.meetings : [];
-  if (!meetings.length) {
+  // Minutes the board uploaded for meetings not taken in Poolside (PLAN.md BW).
+  const uploads = (meetingsRes.ok && Array.isArray(meetingsRes.uploads)) ? meetingsRes.uploads : [];
+  if (!meetings.length && !uploads.length) {
     meetHost.innerHTML = `
       <div class="empty">
         <div class="big">🗒️</div>
@@ -224,7 +240,14 @@ function getSlug() {
     `;
     return;
   }
-  meetHost.innerHTML = meetings.map((m, idx) => {
+  const fileKind = ct => ct === 'application/pdf' ? 'PDF' : /word/.test(ct || '') ? 'Word file' : /^image\//.test(ct || '') ? 'photo' : 'file';
+  const uploadCard = u => `
+    <a class="meeting-card upload-card" href="${escapeHtml(u.url || '#')}" target="_blank" rel="noopener">
+      <div class="date">${escapeHtml(PoolTime.fmtDay(u.meeting_date, { month: 'short', day: 'numeric' }))}<small>${escapeHtml(String(u.meeting_date).slice(0, 4))}</small></div>
+      <div class="title">${escapeHtml(u.title)}<small>Tap to open the minutes (${escapeHtml(fileKind(u.content_type))})</small></div>
+      <span class="chev">›</span>
+    </a>`;
+  const meetingCard = (m, idx) => {
     // meeting_date is a date, not a moment — format it without a zone shift.
     const dayMonth = PoolTime.fmtDay(m.meeting_date, { month: 'short', day: 'numeric' });
     const year = String(m.meeting_date).slice(0, 4);
@@ -310,7 +333,14 @@ function getSlug() {
         </div>
       </details>
     `;
-  }).join('');
+  };
+  // Newest first, typed and uploaded together; the newest typed one opens.
+  const rows = [
+    ...meetings.map(m => ({ day: String(m.meeting_date), m })),
+    ...uploads.map(u => ({ day: String(u.meeting_date), u })),
+  ].sort((x, y) => y.day.localeCompare(x.day));
+  const firstMeeting = rows.findIndex(r => r.m);
+  meetHost.innerHTML = rows.map((r, i) => r.m ? meetingCard(r.m, i === firstMeeting ? 0 : 1) : uploadCard(r.u)).join('');
 })();
 </script>
 </body>

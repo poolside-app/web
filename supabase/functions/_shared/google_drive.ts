@@ -596,17 +596,19 @@ export async function updateRowCellByAppId(
 }
 
 // Multipart PDF upload to a specific folder. Returns the new file's Drive ID.
+// mimeType: another kind of file, as uploaded minutes can be (PLAN.md BW4).
 export async function uploadPdf(
   accessToken: string,
   parentFolderId: string,
   filename: string,
   pdfBytes: Uint8Array,
+  mimeType = 'application/pdf',
 ): Promise<string> {
   const boundary = 'poolside_drive_boundary_' + Math.random().toString(36).slice(2);
   const metadata = JSON.stringify({
     name: filename,
     parents: [parentFolderId],
-    mimeType: 'application/pdf',
+    mimeType,
   });
   // Build multipart body manually so we can mix JSON metadata + binary PDF.
   const enc = new TextEncoder();
@@ -615,7 +617,7 @@ export async function uploadPdf(
     `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
     metadata + `\r\n` +
     `--${boundary}\r\n` +
-    `Content-Type: application/pdf\r\n\r\n`,
+    `Content-Type: ${mimeType}\r\n\r\n`,
   );
   const tail = enc.encode(`\r\n--${boundary}--`);
   const body = new Uint8Array(head.length + pdfBytes.length + tail.length);

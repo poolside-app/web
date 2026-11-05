@@ -223,7 +223,7 @@ check('BV6: in the background, after the page has its answer', /waitUntil/.test(
 check('BV3: Close meeting saves the draft', /driveLater\(/.test(part(bm, "action === 'finalize'", '// ── Minutes approval')));
 check('BV3: Save changes and an amendment rewrite it', /driveLater\(/.test(part(bm, "action === 'amend'", "action === 'finalize'")));
 check('BV4: the last approval adds the approved file (submit and approve)', /driveLater\(/.test(part(bm, 'async function postIfDone', '// ── Agenda items')));
-check('BV5: a new bylaws version is copied', /bylawsLater\(|driveBylawsLater\(/.test(part(bm, "action === 'set_bylaws'", "action === 'list'")));
+check('BV5: a new bylaws version is copied', /bylawsLater\(|docsLater\(/.test(part(bm, "action === 'set_bylaws'", "action === 'list'")));
 const gs = read('supabase/functions/google_drive_sync/index.ts');
 check('reconnecting Drive forgets the Board minutes folder too', /minutes_folder_id: null/.test(gs));
 const dpSrc = read('supabase/functions/_shared/drive_parties.ts');
