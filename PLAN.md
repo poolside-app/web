@@ -1009,6 +1009,16 @@ Where it stands (read 11/1, read-only):
   7. A refund in Stripe: the Treasurer's to-do.
   8. A disputed charge (4000 0000 0000 0259): the Treasurer's to-do.
   - Then BK4: whatever breaks gets fixed, failing test first, and that test is run again.
+  - Results, 11/4 (Doug typed each card, I checked Poolside, Stripe and the emails):
+    1. ✅ $309.27 pay in full, approved on its own, welcome email. Found BS2 (no birthday) and BS3 (one person on Family).
+    2. ✅ $51.81 first plan payment, card saved, approved, Drive, welcome email and text. Found BS1 (Delete for good left the plan and a to-do).
+    3. ✅ Declined: nothing approved, no family made. Found BS4 (Signups offered to approve it).
+    4. ✅ The bank's confirm step (3D Secure "authenticated"), $309.27, approved.
+    5. Waits: parties are closed until the board opens them for the season. Test it then, or in BN7.
+    6. ✅ 2 keyfobs, $31.21 ($30 + $1.21 card fee), paid, a to-do each, the family's pop-up.
+    7. ✅ A full refund in Stripe: the signup reads refunded, the Treasurer's "[REVIEW] Stripe refund" to-do; the family stays a member until the board decides.
+    8. ✅ The dispute card on a plan payoff ($566.74): the Treasurer's "[URGENT] Chargeback" to-do. Found BS5 (it said "couldn't match").
+    - Two welcome emails bounced: made-up addresses typed for test families. Use Doug's email with a + from now on.
 - **BN6. Doug: going live (BK6)** (~20 minutes, once Stripe has activated).
   0. Me, first: delete the test families, their plans and the test party (Doug 11/1: "Delete them first"). His board login stays. ✅ Done early, 11/3 (Doug: "remove all the members as they were just test people"): the four test families deleted for good through Delete for good (their 10 people, 4 signups, 4 fobs, the party), then the fake-card plan and its 10 payments, 2 auto-renew consents, the party's history and 28 stale backup records; the 2 past test-party calendar events hidden. Kept: Doug's board login and an expired board-made door pass from 10/13. BN5's test signups come after this, so they go again here.
   0b. Doug, the same day: trash the "Poolside Archive" folder in the club's Google Drive. The next signup makes a fresh one (folders and the sheet are found again by name, and made again if gone), so real families start in a clean folder. Not before: the test-card signups in BN5 would fill it again. Trash only the folder; don't press Disconnect (switching to the Bishop Google account is BO's last step).
