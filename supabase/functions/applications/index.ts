@@ -1585,7 +1585,13 @@ Deno.serve(async (req) => {
     }
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    return jsonResponse({ ok: true, applications: await attachPlans(sb, data ?? []) });
+    let rows = data ?? [];
+    // A card signup not paid yet is nothing to do (PLAN.md BS4).
+    if (status === 'needs_attention') {
+      const { waitingOnCard } = await import('../_shared/card_signup.ts');
+      rows = rows.filter(a => !waitingOnCard(a as Record<string, unknown>));
+    }
+    return jsonResponse({ ok: true, applications: await attachPlans(sb, rows) });
   }
 
   if (action === 'list_years') {
@@ -1643,6 +1649,10 @@ Deno.serve(async (req) => {
       .eq('id', id).eq('tenant_id', TID).maybeSingle();
     if (!app) return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.status !== 'pending') return jsonResponse({ ok: false, error: `Already ${app.status}` }, 409);
+    const { waitingOnCard } = await import('../_shared/card_signup.ts');
+    if (waitingOnCard(app)) {
+      return jsonResponse({ ok: false, error: 'They haven\'t paid by card yet. Paying approves them on their own.' }, 409);
+    }
 
     // ── Renewal: the household already exists ────────────────────────────
     // A renewal reuses the application row for payment, audit and receipts,

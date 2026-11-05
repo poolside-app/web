@@ -144,6 +144,59 @@ console.log('BS2, BS3 · the signup form itself (offline, in Chrome)');
   } finally { await browser.close(); }
 }
 
+console.log('BS4 · a card signup that hasn\'t paid isn\'t the board\'s to approve');
+let card = null;
+try { card = await importTs(new URL('supabase/functions/_shared/card_signup.ts', root)); } catch (e) { check('the rule lives in _shared/card_signup.ts', false, e.message); }
+if (card) {
+  const w = card.waitingOnCard;
+  const base = { status: 'pending', payment_status: 'unpaid', payment_method: 'stripe', claim_source: null };
+  check('a declined or unfinished card signup is waiting on the card', w(base) === true);
+  check('…so is a payment plan whose first payment didn\'t go through', w({ ...base, payment_method: 'stripe_plan' }) === true);
+  check('a paid card signup isn\'t', w({ ...base, payment_status: 'paid' }) === false);
+  check('a plan that started isn\'t', w({ ...base, payment_method: 'stripe_plan', payment_status: 'pending' }) === false);
+  check('a Venmo, check or decide-later signup isn\'t', ['venmo', 'check', null].every(m => w({ ...base, payment_method: m }) === false));
+  check('an approved one isn\'t', w({ ...base, status: 'approved' }) === false);
+  check('an imported family\'s claimed signup isn\'t (the club is chasing them)', w({ ...base, claim_source: 'csv_import' }) === false);
+}
+const listBranch = (apps.split("if (action === 'list')")[1] || '').split("if (action === '")[0];
+check('Needs attention leaves them out', /waitingOnCard/.test(listBranch) && /needs_attention/.test(listBranch));
+const approveBranch = (apps.split("if (action === 'approve')")[1] || '').split("if (action === '")[0];
+check('the server won\'t approve one', /waitingOnCard\(app\)/.test(approveBranch) && /haven\\?'t paid by card yet/.test(approveBranch));
+
+console.log('BS4 · the Signups list (offline, in Chrome)');
+{
+  const { launch, attach, BOARD } = await import('./demo_video/harness.mjs');
+  const { respond } = await import('./demo_video/data.mjs');
+  const row = (id, extra) => ({ id, tenant_id: 't', family_name: id + ' Family', primary_name: 'Pat ' + id, primary_email: id.toLowerCase() + '@example.com',
+    status: 'pending', payment_status: 'unpaid', payment_method: 'stripe', num_adults: 1, num_kids: 0, reminder_count: 0,
+    created_at: '2027-06-01T17:00:00Z', adults_json: [], children_json: [], ...extra });
+  const ROWS = [row('Declined', {}), row('Venmo', { payment_method: 'venmo' })];
+  const answer = (f, body, ctx) => f === 'applications' && body.action === 'list' ? { ok: true, applications: ROWS } : respond(f, body, ctx);
+  const browser = await launch();
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1200, height: 900 });
+    await attach(page, { answer });
+    await page.goto(BOARD + '/club/admin/members.html#applications', { waitUntil: 'networkidle0', timeout: 45000 });
+    await page.waitForSelector('#app-list .app', { timeout: 10000 }).catch(() => {});
+    const rows = await page.evaluate(() => [...document.querySelectorAll('#app-list .app')].map(el => ({ id: el.dataset.id, text: el.innerText,
+      approve: !!el.querySelector('[data-act="approve"]'), reject: !!el.querySelector('[data-act="reject"]') })));
+    const declined = rows.find(r => r.id === 'Declined'), venmo = rows.find(r => r.id === 'Venmo');
+    check('an unpaid card signup says "Card not paid"', /card not paid/i.test(declined?.text || ''), short(declined));
+    check('…with no Approve or Reject', declined && !declined.approve && !declined.reject, short(declined));
+    check('a Venmo signup still has its Approve', !!venmo?.approve, short(venmo));
+    await page.click('#app-list .app[data-id="Declined"]').catch(() => {});
+    await new Promise(r => setTimeout(r, 300));
+    const modal = await page.evaluate(() => {
+      const shown = id => { const el = document.getElementById(id); return !!el && getComputedStyle(el).display !== 'none'; };
+      return { explain: document.getElementById('am-state-explainer')?.innerText || '', approve: shown('am-approve') || shown('am-approve-venmo'),
+        reject: shown('am-reject'), purge: shown('am-purge') };
+    });
+    check('its details say they didn\'t finish paying and it goes after 24 hours', /didn.t finish paying/.test(modal.explain) && /24 hours/.test(modal.explain), modal.explain);
+    check('…with no Approve or Reject, and Delete for good still there', !modal.approve && !modal.reject && modal.purge, short(modal));
+  } finally { await browser.close(); }
+}
+
 console.log('BG4 · unpaid card signups (item 19)');
 const cleanup = (apps.split("if (action === 'cron_cleanup_abandoned')")[1] || '').split("if (action === '")[0];
 check('waits 24 hours, not 60 minutes', /24 \* 60 \* 60 \* 1000/.test(cleanup) && !/60 \* 60 \* 1000\)\.toISOString/.test(cleanup.replace('24 * 60 * 60 * 1000', '')));

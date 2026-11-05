@@ -266,7 +266,7 @@ console.log('AT · plan families on Signups, Households and Payments (offline)')
   const apps = read('supabase/functions/applications/index.ts');
   check('applications list: Needs attention leaves out plan families', apps.includes(`q = q.or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)');`));
   check('applications list: Unpaid and Overdue mean unpaid', /filter === 'unpaid'\)\s+q = q\.eq\('payment_status', 'unpaid'\)/.test(apps) && /\.eq\('status', 'approved'\)\.eq\('payment_status', 'unpaid'\)\.lt\('decided_at'/.test(apps));
-  check('applications list: attaches each plan\'s status and amount paid', /attachPlans\(sb, data/.test(apps));
+  check('applications list: attaches each plan\'s status and amount paid', /attachPlans\(sb, (data|rows)/.test(apps));
   check('verify_payment refuses a family on a plan', /if \(app\.payment_method === 'stripe_plan' && app\.payment_status === 'pending'\)[\s\S]{0,200}409/.test(apps));
   check('board home: the Signups number leaves out plan families', read('supabase/functions/_shared/board_home.ts').includes(`.or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)')`));
   const pay = read('supabase/functions/payments_admin/index.ts');

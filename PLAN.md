@@ -912,6 +912,12 @@ Doug, signing up on Bishop with Stripe's test cards (BN5): "it allowed me to do 
   - The setup checklist already sends a new club to Membership prices ("Set your membership prices"), so there's no new setup step.
 - Failing tests first: `test_signup_fixes` (BS2, BS3) and `test_drive_queue` (BS1, with the purge's other checks), offline.
 - ✅ Done 11/4. 18 checks failed first (`test_drive_queue` 3, `test_signup_fixes` 15); 7 checks on the real form in Chrome were added after the fix. Deployed `applications`, `households_admin`, `tenant_signup`; Bishop's Family set to at least 2 (`20261104000100_tier_min_people.sql`). Live: a person with no birthday is refused ("Add a date of birth for …") and one person on Family is refused ("Family is for 2 or more people. Single covers just you."), nothing saved. The live test scripts now send birthdays and two adults on Family. Every offline suite passes.
+- **BS4. A card signup that hasn't paid isn't the board's to approve.** Doug, seeing his declined-card test on Signups: "why is … 3 pending? and i need to approve". It sat in Needs attention with "Approve & create household", which would make a member who never paid.
+  - A signup by card or payment plan that's still unpaid leaves Needs attention and its count. Under Pending and All it says "Card not paid", with no Approve or Reject. Its details say: they didn't finish paying (they left the card page or the card was declined); paying approves them on their own; if they don't, Poolside removes it 24 hours after they signed up. Delete for good stays.
+  - The server refuses to approve one too ("They haven't paid by card yet…").
+  - Not changed: an imported family's claimed signup (the club chasing a member it knows) keeps its Approve, the same families the 24-hour cleanup skips.
+  - Failing tests first: `test_signup_fixes` (the rule, the server, and the Signups list in Chrome).
+  - ✅ Done 11/4. 7 checks failed first (the rule, the server, the Signups list in Chrome). Deployed `applications`. Every offline suite passes.
 
 ### BR. A better-looking roster, with keyfob numbers (Doug, 11/3)
 Doug, looking at the Bishop sheet: "the format looks kinda lame.. spice it up a little.. auto expand the width… we dont need the DOB of the kids in there… ensure we have the keyfob numbers in there as well once we import/sign people up."

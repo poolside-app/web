@@ -841,6 +841,12 @@ const App = (() => {
   const PAY_METHOD = { stripe: '💳 Card', stripe_plan: '💳 Payment plan', venmo: '💸 Venmo', check: '🧾 Check', cash: '💵 Cash', free: 'Free' };
   function payMethodName(m) { return PAY_METHOD[m] || String(m || ''); }
   function onPlan(a) { return a.payment_method === 'stripe_plan' && a.payment_status === 'pending'; }
+  // A card or plan signup not paid yet: nothing to approve (PLAN.md BS4).
+  // The same rule as _shared/card_signup.ts.
+  function waitingOnCard(a) {
+    return a.status === 'pending' && a.payment_status === 'unpaid'
+      && (a.payment_method === 'stripe' || a.payment_method === 'stripe_plan') && a.claim_source !== 'csv_import';
+  }
   function planPill(a) {
     const p = a.plan;
     if (p && (p.status === 'cancelled' || p.status === 'lapsed')) return 'Plan ended';
@@ -857,6 +863,8 @@ const App = (() => {
     if (a.payment_method) out.push(`<span class="pill ${escapeHtml(a.payment_method)}">${escapeHtml(payMethodName(a.payment_method) + code)}</span>`);
     if (onPlan(a)) {
       out.push(`<span class="pill ${a.plan && a.plan.status !== 'active' ? 'unpaid' : 'paid'}">${escapeHtml(planPill(a))}</span>`);
+    } else if (waitingOnCard(a)) {
+      out.push(`<span class="pill unpaid">Card not paid</span>`);
     } else if (a.status === 'approved' && a.payment_status !== 'paid') {
       const ageDays = a.decided_at ? Math.floor((Date.now() - new Date(a.decided_at).getTime()) / 86400_000) : 0;
       out.push(`<span class="pill unpaid">Unpaid${ageDays >= 10 ? ' · ' + ageDays + 'd' : ''}</span>`);
@@ -888,7 +896,9 @@ const App = (() => {
       // Approved-but-unpaid → one-click Verify payment so the legacy
       // auto-approve-then-claim Venmo path lives here too.
       let inlineActions = '';
-      if (isPending) {
+      if (waitingOnCard(a)) {
+        inlineActions = `<div style="font-size:12.5px;color:var(--muted);margin-top:8px">Waiting for them to pay. Removed 24 hours after they signed up if they don't.</div>`;
+      } else if (isPending) {
         inlineActions = `
         <div class="row-actions" data-id="${a.id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
           <button class="btn btn-success" data-act="approve" style="padding:8px 14px;font-size:13px">
@@ -1125,9 +1135,10 @@ const App = (() => {
     const isPending = a.status === 'pending';
     const isVenmoUnpaid = a.payment_method === 'venmo' && a.payment_status !== 'paid';
     const planFam = onPlan(a);
+    const cardUnpaid = waitingOnCard(a);
 
-    document.getElementById('am-reject').style.display = isPending ? 'inline-block' : 'none';
-    document.getElementById('am-approve').style.display = (isPending && !isVenmoUnpaid) ? 'inline-block' : 'none';
+    document.getElementById('am-reject').style.display = (isPending && !cardUnpaid) ? 'inline-block' : 'none';
+    document.getElementById('am-approve').style.display = (isPending && !isVenmoUnpaid && !cardUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-approve-venmo').style.display = (isPending && isVenmoUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid' && !planFam) ? 'inline-block' : 'none';
     document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid' && !planFam) || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
@@ -1154,6 +1165,9 @@ const App = (() => {
       } else if (a.status === 'approved' && a.payment_status !== 'paid') {
         const method = a.payment_method === 'venmo' ? 'Venmo' : a.payment_method === 'stripe_plan' ? 'a payment plan' : a.payment_method === 'stripe' ? 'a card' : 'their dues';
         html = `<b>Approved, awaiting payment.</b> Application is approved but ${method} hasn't been verified yet.<br><b>The green button below</b> marks this paid and flips their dues to ${CURRENT_YEAR}.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
+      } else if (cardUnpaid) {
+        html = `<b>Card not paid yet.</b> ${escapeHtml(a.primary_name || a.family_name)} picked ${a.payment_method === 'stripe_plan' ? 'a payment plan' : 'a card'} but didn't finish paying: they left the card page, or the card was declined. There's nothing to approve. If they pay, they're approved on their own. If not, Poolside removes this 24 hours after they signed up.`;
         explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
       } else if (isPending && isVenmoUnpaid) {
         html = `<b>New Venmo application.</b> ${escapeHtml(a.primary_name || a.family_name)} chose to pay via Venmo.<br><b>The green button below</b> creates their household, marks their dues paid, and emails them a sign-in link — all in one click. Use it once you've confirmed the payment landed in your Venmo account.`;
