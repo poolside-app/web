@@ -915,7 +915,7 @@ Found: the refunded signup read "Unpaid" with "Verify payment received" and "Sen
 - **BT7. Refunds Poolside makes itself** (a referral reward paid back to the member's card) make no to-do and don't mark the payment refunded.
 - **BT8. Loose ends:** a reactivation payment keeps its Stripe payment id so a refund on it is matched; Delete for good also removes to-dos about the family's plan payments.
 - Failing tests first: `test_refund_options` (new: the choices, each one against the pretend database, the webhook's wiring, the Signups and Waiting for payment fixes, and the Refunds card in Chrome).
-- Built 11/4: 22 checks failed first (the rest needed the new rules to run at all); now 73 pass, and every offline suite passes. The migration is applied (`20261105000100_plan_end_refunded.sql`). Deploying `stripe_webhook`, `payments_admin`, `parties_admin`, `households_admin`, then the pages, waits for Doug's OK (the permission check stopped it).
+- ✅ Done 11/4: 22 checks failed first (the rest needed the new rules to run at all); now 73 pass, and every offline suite passes. The migration is applied (`20261105000100_plan_end_refunded.sql`). Deployed `stripe_webhook`, `payments_admin`, `parties_admin`, `households_admin`, then the pages (Doug: "deploy it").
 
 ### BS. Fixes from the first Stripe test-card signups (Doug, 11/4)
 Doug, signing up on Bishop with Stripe's test cards (BN5): "it allowed me to do a family membership even with 1 person... also it let me add myself with no birthday even though it says required." And, after I deleted his first test family by hand: "ok fix the left overs."
