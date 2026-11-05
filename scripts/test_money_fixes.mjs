@@ -13,6 +13,7 @@ import { importTs } from './lib/importts.mjs';
 const root = new URL('../', import.meta.url);
 const read = rel => readFileSync(new URL(rel, root), 'utf8');
 const migs = pat => readdirSync(new URL('supabase/migrations/', root)).filter(f => pat.test(f)).map(f => read(`supabase/migrations/${f}`)).join('\n');
+const short = o => String(JSON.stringify(o)).slice(0, 300);
 let passed = 0, failed = 0;
 function check(label, ok, detail = '') {
   if (ok) { passed++; console.log(`  ✓ ${label}`); }
@@ -42,6 +43,35 @@ check('the payment id is kept for parties, fobs and programs',
   && /program_bookings add column if not exists stripe_payment_intent_id/.test(migs(/payment_intents/)));
 const csc = (hook.split("if (type === 'checkout.session.completed')")[1] || '').split("if (type === 'charge.refunded')")[0];
 check('the webhook records it when a party, fob or program is paid', (csc.match(/stripe_payment_intent_id: piAll/g) || []).length >= 3, String((csc.match(/stripe_payment_intent_id: piAll/g) || []).length));
+
+console.log('BS5 · a chargeback on a paid-off plan names the family');
+{
+  const { fakeDb } = await import('./lib/fake_google.mjs');
+  let pm = null;
+  try { pm = await importTs(new URL('supabase/functions/_shared/payment_match.ts', root)); } catch (e) { check('the matcher loads', false, e.message); }
+  if (pm) {
+    const db = () => fakeDb({
+      tenants: [{ id: 't1', stripe_account_id: 'acct_1' }],
+      payment_plans: [{ id: 'plan1', family_name: 'Rivera Family' }],
+      payment_plan_installments: [
+        { id: 'i1', tenant_id: 't1', plan_id: 'plan1', sequence: 1, stripe_payment_intent_id: 'pi_first' },
+        { id: 'i3', tenant_id: 't1', plan_id: 'plan1', sequence: 3, stripe_payment_intent_id: 'pi_payoff' },
+        { id: 'i2', tenant_id: 't1', plan_id: 'plan1', sequence: 2, stripe_payment_intent_id: 'pi_payoff' },
+      ],
+    });
+    const off = await pm.matchPayment(db(), 'pi_payoff', 'acct_1');
+    check('paying off a plan (one card payment, two plan payments) is matched to the family', off?.family === 'Rivera Family' && !off?.unmatched, short(off));
+    check('…as "payments 2 and 3 of a payment plan"', off?.what === 'payments 2 and 3 of a payment plan', off?.what);
+    check('…pointing at the first of them', off?.source_kind === 'payment_plan_installment' && off?.source_id === 'i2', short(off));
+    const one = await pm.matchPayment(db(), 'pi_first', 'acct_1');
+    check('a single plan payment still reads "payment 1 of a payment plan"', one?.what === 'payment 1 of a payment plan' && one?.family === 'Rivera Family', short(one));
+    const none = await pm.matchPayment(db(), 'pi_other', 'acct_1');
+    check('a payment Poolside doesn\'t know still goes to the club, unmatched', none?.unmatched === true && none?.tenant_id === 't1', short(none));
+  }
+  const { fakeDb: f2 } = await import('./lib/fake_google.mjs');
+  const two = await f2({ x: [{ id: 1, k: 'a' }, { id: 2, k: 'a' }] }).from('x').select('id').eq('k', 'a').maybeSingle();
+  check('the pretend database answers "exactly one" like the real one: nothing when two match', two.data === null && !!two.error, short(two));
+}
 
 console.log('BG3 · Mark paid runs the real confirm step');
 const pa = read('supabase/functions/payments_admin/index.ts');

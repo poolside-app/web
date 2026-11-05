@@ -166,7 +166,12 @@ export function fakeDb(tables) {
       update: patch => { st.op = 'update'; st.patch = patch; return b; },
       delete: () => { st.op = 'delete'; return b; },
       upsert: rows => { st.op = 'upsert'; st.rows = Array.isArray(rows) ? rows : [rows]; return b; },
-      maybeSingle: async () => { const r = run(); return { data: Array.isArray(r.data) ? (r.data[0] ?? null) : r.data, error: null }; },
+      // Like PostgREST: two or more rows is an error, not the first row (PLAN.md BS5).
+      maybeSingle: async () => {
+        const r = run();
+        if (Array.isArray(r.data) && r.data.length > 1) return { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned' } };
+        return { data: Array.isArray(r.data) ? (r.data[0] ?? null) : r.data, error: null };
+      },
       then: (res, rej) => Promise.resolve(run()).then(res, rej),
     };
     return b;

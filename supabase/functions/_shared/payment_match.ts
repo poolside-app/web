@@ -28,11 +28,16 @@ async function familyName(sb: SupabaseClient, householdId: unknown): Promise<str
 
 export async function matchPayment(sb: SupabaseClient, piId: string, accountId?: string | null): Promise<PaymentMatch | null> {
   if (piId) {
-    const { data: inst } = await sb.from('payment_plan_installments')
-      .select('id, tenant_id, plan_id, sequence').eq('stripe_payment_intent_id', piId).maybeSingle();
-    if (inst) {
+    // Paying off a plan puts one card payment on every payment left, so
+    // there can be several (PLAN.md BS5).
+    const { data: insts } = await sb.from('payment_plan_installments')
+      .select('id, tenant_id, plan_id, sequence').eq('stripe_payment_intent_id', piId).order('sequence').limit(24);
+    if (insts && insts.length) {
+      const inst = insts[0];
       const { data: plan } = await sb.from('payment_plans').select('family_name').eq('id', inst.plan_id).maybeSingle();
-      return { tenant_id: inst.tenant_id as string, what: `payment ${inst.sequence} of a payment plan`,
+      const seqs = insts.map(i => String(i.sequence));
+      const which = seqs.length === 1 ? `payment ${seqs[0]}` : `payments ${seqs.slice(0, -1).join(', ')} and ${seqs[seqs.length - 1]}`;
+      return { tenant_id: inst.tenant_id as string, what: `${which} of a payment plan`,
         family: (plan?.family_name as string) ?? null, link_url: '/club/admin/upcoming.html',
         source_kind: 'payment_plan_installment', source_id: inst.id as string };
     }
