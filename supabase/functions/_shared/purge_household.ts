@@ -25,15 +25,17 @@ export async function purgeHousehold(sb: Db, tid: string, id: string): Promise<
     .select('id, family_name').eq('id', id).eq('tenant_id', tid).maybeSingle();
   if (!hh) return { ok: false, error: 'Household not found', status: 404 };
 
-  const [apps, fobs, parties, helps, plans] = await Promise.all(
-    ['applications', 'keyfobs', 'party_bookings', 'help_requests', 'payment_plans'].map(t =>
+  const [apps, fobs, parties, helps, plans, bookings] = await Promise.all(
+    ['applications', 'keyfobs', 'party_bookings', 'help_requests', 'payment_plans', 'program_bookings'].map(t =>
       sb.from(t).select('id').eq('tenant_id', tid).eq('household_id', id)),
   );
   const appIds = idsOf(apps), planIds = idsOf(plans);
+  // A refund on a plan payment is a to-do about that payment (PLAN.md BT8).
+  const insts = planIds.length ? await sb.from('payment_plan_installments').select('id').in('plan_id', planIds) : { data: [] };
 
   // Every to-do about the family: its signups, keyfobs (one per fob, or the
-  // family's), parties, plans and help requests.
-  const sources = [id, ...appIds, ...idsOf(fobs), ...idsOf(parties), ...idsOf(helps), ...planIds];
+  // family's), parties, plans and their payments, programs and help requests.
+  const sources = [id, ...appIds, ...idsOf(fobs), ...idsOf(parties), ...idsOf(helps), ...planIds, ...idsOf(insts), ...idsOf(bookings)];
   const { data: tasks } = await sb.from('admin_tasks').select('id').eq('tenant_id', tid).in('source_id', sources);
   await sb.from('admin_tasks').delete().eq('tenant_id', tid).in('source_id', sources);
 

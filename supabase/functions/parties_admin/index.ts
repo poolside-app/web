@@ -421,40 +421,11 @@ Deno.serve(async (req) => {
   if (action === 'cancel_admin') {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-
-    // Need full booking row for admin_notes preservation + event cleanup +
-    // member email after cancel. The previous selection of just (id, status,
-    // event_id) caused admin_notes to silently null out on cancel.
-    const { data: bk } = await sb.from('party_bookings').select(FIELDS)
-      .eq('id', id).eq('tenant_id', TID).maybeSingle();
-    if (!bk) return jsonResponse({ ok: false, error: 'Booking not found' }, 404);
-
     const decided_by = payload.synthetic ? null : payload.sub;
-    const newAdminNotes = strOrNull(body.admin_notes) ?? (bk.admin_notes as string | null) ?? null;
-    await sb.from('party_bookings').update({
-      status: 'cancelled',
-      admin_notes: newAdminNotes,
-      decided_at: new Date().toISOString(),
-      decided_by,
-      updated_at: new Date().toISOString(),
-    }).eq('id', id).eq('tenant_id', TID);
-
-    // No more party doors (PLAN.md AR5).
-    await endPartyPass(sb as never, TID, id).catch(() => null);
-
-    // If we already materialized an event, soft-delete it so it leaves the calendar.
-    if (bk.event_id) {
-      await sb.from('events').update({
-        active: false, updated_at: new Date().toISOString(),
-      }).eq('id', bk.event_id).eq('tenant_id', TID);
-    }
-
-    // Close any open admin tasks for this party — the board already acted.
-    await sb.from('admin_tasks')
-      .update({ completed_at: new Date().toISOString(), completed_by: decided_by })
-      .eq('tenant_id', TID).eq('source_kind', 'party_booking').eq('source_id', id)
-      .in('kind', ['party.requested', 'party.venmo_claim']).is('completed_at', null);
-
+    // The same step as the refund choice (PLAN.md BT4): _shared/party_cancel.ts.
+    const { cancelParty } = await import('../_shared/party_cancel.ts');
+    const found = await cancelParty(sb as never, TID, id, decided_by, strOrNull(body.admin_notes));
+    if (!found) return jsonResponse({ ok: false, error: 'Booking not found' }, 404);
     return jsonResponse({ ok: true });
   }
 

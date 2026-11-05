@@ -18,6 +18,9 @@ export type PaymentMatch = {
   source_kind: string | null;
   source_id: string | null;
   unmatched?: boolean;
+  /** What the board's choices after a refund need (PLAN.md BT): the kind of
+   *  thing paid for and its rows. */
+  ref: Record<string, unknown>;
 };
 
 async function familyName(sb: SupabaseClient, householdId: unknown): Promise<string | null> {
@@ -34,26 +37,29 @@ export async function matchPayment(sb: SupabaseClient, piId: string, accountId?:
       .select('id, tenant_id, plan_id, sequence').eq('stripe_payment_intent_id', piId).order('sequence').limit(24);
     if (insts && insts.length) {
       const inst = insts[0];
-      const { data: plan } = await sb.from('payment_plans').select('family_name').eq('id', inst.plan_id).maybeSingle();
+      const { data: plan } = await sb.from('payment_plans').select('family_name, household_id, application_id').eq('id', inst.plan_id).maybeSingle();
       const seqs = insts.map(i => String(i.sequence));
       const which = seqs.length === 1 ? `payment ${seqs[0]}` : `payments ${seqs.slice(0, -1).join(', ')} and ${seqs[seqs.length - 1]}`;
       return { tenant_id: inst.tenant_id as string, what: `${which} of a payment plan`,
         family: (plan?.family_name as string) ?? null, link_url: '/club/admin/upcoming.html',
-        source_kind: 'payment_plan_installment', source_id: inst.id as string };
+        source_kind: 'payment_plan_installment', source_id: inst.id as string,
+        ref: { item: 'membership', plan_id: inst.plan_id, household_id: plan?.household_id ?? null, application_id: plan?.application_id ?? null } };
     }
     const { data: party } = await sb.from('party_bookings')
       .select('id, tenant_id, household_id, title').eq('stripe_payment_intent_id', piId).maybeSingle();
     if (party) {
       return { tenant_id: party.tenant_id as string, what: `a party (${party.title ?? 'party'})`,
         family: await familyName(sb, party.household_id), link_url: '/club/admin/parties.html',
-        source_kind: 'party_booking', source_id: party.id as string };
+        source_kind: 'party_booking', source_id: party.id as string,
+        ref: { item: 'party', party_id: party.id, household_id: party.household_id ?? null } };
     }
     const { data: fobs } = await sb.from('keyfobs')
-      .select('id, tenant_id, household_id').eq('stripe_payment_intent_id', piId).limit(10);
+      .select('id, tenant_id, household_id').eq('stripe_payment_intent_id', piId).limit(20);
     if (fobs && fobs.length) {
       return { tenant_id: fobs[0].tenant_id as string, what: fobs.length === 1 ? 'a keyfob' : `${fobs.length} keyfobs`,
         family: await familyName(sb, fobs[0].household_id), link_url: '/club/admin/keyfobs.html',
-        source_kind: 'keyfob', source_id: fobs[0].id as string };
+        source_kind: 'keyfob', source_id: fobs[0].id as string,
+        ref: { item: 'keyfobs', fob_ids: fobs.map(f => f.id), household_id: fobs[0].household_id ?? null } };
     }
     const { data: booking } = await sb.from('program_bookings')
       .select('id, tenant_id, household_id, participant_name, program_id').eq('stripe_payment_intent_id', piId).maybeSingle();
@@ -62,14 +68,16 @@ export async function matchPayment(sb: SupabaseClient, piId: string, accountId?:
       return { tenant_id: booking.tenant_id as string,
         what: `${prog?.name ?? 'a program'}${booking.participant_name ? ` for ${booking.participant_name}` : ''}`,
         family: await familyName(sb, booking.household_id), link_url: '/club/admin/programs.html',
-        source_kind: 'program_booking', source_id: booking.id as string };
+        source_kind: 'program_booking', source_id: booking.id as string,
+        ref: { item: 'program', booking_id: booking.id, household_id: booking.household_id ?? null } };
     }
     const { data: don } = await sb.from('donations')
       .select('id, tenant_id, donor_name').eq('stripe_payment_intent', piId).maybeSingle();
     if (don) {
       return { tenant_id: don.tenant_id as string, what: 'a donation',
         family: (don.donor_name as string) ?? null, link_url: '/club/admin/donations.html',
-        source_kind: 'donation', source_id: don.id as string };
+        source_kind: 'donation', source_id: don.id as string,
+        ref: { item: 'donation', donation_id: don.id } };
     }
   }
   // Nothing in Poolside matches. Tell the club whose Stripe account it is.
@@ -77,7 +85,7 @@ export async function matchPayment(sb: SupabaseClient, piId: string, accountId?:
     const { data: t } = await sb.from('tenants').select('id').eq('stripe_account_id', accountId).maybeSingle();
     if (t) {
       return { tenant_id: t.id as string, what: 'a card payment Poolside couldn\'t match', family: null,
-        link_url: '/club/admin/payments.html', source_kind: null, source_id: null, unmatched: true };
+        link_url: '/club/admin/payments.html', source_kind: null, source_id: null, unmatched: true, ref: { item: 'unknown' } };
     }
   }
   return null;

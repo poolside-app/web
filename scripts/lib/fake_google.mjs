@@ -172,6 +172,11 @@ export function fakeDb(tables) {
         if (Array.isArray(r.data) && r.data.length > 1) return { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned' } };
         return { data: Array.isArray(r.data) ? (r.data[0] ?? null) : r.data, error: null };
       },
+      single: async () => {
+        const r = run();
+        const rows = Array.isArray(r.data) ? r.data : r.data == null ? [] : [r.data];
+        return rows.length === 1 ? { data: rows[0], error: null } : { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned' } };
+      },
       then: (res, rej) => Promise.resolve(run()).then(res, rej),
     };
     return b;

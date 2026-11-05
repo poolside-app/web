@@ -113,6 +113,7 @@
 <script src="/js/admin-flags.js"></script>
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
+<script src="/js/refund-review.js"></script>
 
 <main>
   <!-- Every sibling admin page opens with an <h1>; this one went straight
@@ -133,6 +134,15 @@
       <span class="chev">▶</span> 💰 Waiting for payment <span style="font-weight:400;color:var(--muted);font-size:12.5px">— who owes what right now</span>
     </summary>
     <div style="margin-top:10px">
+      <!-- PLAN.md BT (Doug 11/4: "keep them a member until the board member
+           does something about it"): every refund and chargeback waits here
+           for a choice; nothing changes in Poolside until one is picked. -->
+      <div class="card" id="refunds-card" style="display:none;margin-top:8px" data-focus="refunds">
+        <a id="refunds" name="refunds"></a>
+        <h2>↩️ Refunds and chargebacks</h2>
+        <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 6px">Nothing changes in Poolside until you pick what to do with each one.</p>
+        <div id="refunds-list"></div>
+      </div>
       <!-- PLAN.md BC1 (Doug 10/19: "batch approval would be great"): every
            Venmo still to find, with the code the family's Venmo note carries.
            Tick the ones you see in Venmo and confirm them together; each runs
@@ -595,8 +605,30 @@ window.confirmVenmoSelected = async function() {
   if (window.PoolsideNav) window.PoolsideNav.paintNavBadges();
 };
 
+// ── Refunds and chargebacks (PLAN.md BT) ──────────────────────────────
+async function loadRefunds() {
+  const card = document.getElementById('refunds-card');
+  let list = [];
+  try {
+    const r = await call('refund_reviews');
+    list = r && r.ok ? (r.reviews || []) : [];
+  } catch (_) { list = []; }
+  card.style.display = list.length ? 'block' : 'none';
+  if (!list.length) return;
+  RefundReview.render(document.getElementById('refunds-list'), list, {
+    decide: async (rv, choice, extra) => {
+      const out = await call('refund_decide', { task_id: rv.id, choice, ...extra });
+      if (!out || !out.ok) throw new Error((out && out.error) || 'That didn\'t save. Try again.');
+      return out;
+    },
+    after: () => { if (window.PoolsideNav) window.PoolsideNav.paintNavBadges(); },
+  });
+  if (location.hash === '#refunds') card.scrollIntoView({ block: 'start' });
+}
+
 async function refresh() {
   loadVenmo();
+  loadRefunds();
   try {
     const data = await call('list');
     if (!data.ok) throw new Error(data.error || 'Failed to load');

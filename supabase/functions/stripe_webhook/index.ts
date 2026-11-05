@@ -108,7 +108,7 @@ async function approveFailedTask(sb: ReturnType<typeof createClient>, tenantId: 
 // 10/20: the board decides what to undo.
 async function paymentProblemTask(sb: ReturnType<typeof createClient>, args: {
   piId: string; accountId: string | null; kind: 'payment.refund' | 'payment.dispute';
-  amountCents: number; full?: boolean; reason?: string;
+  amountCents: number; chargeCents?: number; full?: boolean; reason?: string;
 }) {
   const { matchPayment } = await import('../_shared/payment_match.ts');
   const m = await matchPayment(sb as never, args.piId, args.accountId);
@@ -124,11 +124,15 @@ async function paymentProblemTask(sb: ReturnType<typeof createClient>, args: {
     ? `[URGENT] Chargeback on ${m.what}${who}: ${usd}${args.reason ? ` (${args.reason})` : ''}. Answer it in Stripe.`
     : `[REVIEW] Stripe refund on ${m.what}${who}: ${usd}${args.full === false ? ' (partial)' : ''}. Nothing was changed in Poolside.`;
   const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+  const { REFUNDS_LINK } = await import('../_shared/refund_review.ts');
   await enqueueAdminTask(sb, {
     tenant_id: m.tenant_id, target_scopes: ['payments'], kind: args.kind, summary,
-    link_url: m.link_url,
+    // The choices for it are on Money → Payments → Refunds (PLAN.md BT).
+    link_url: REFUNDS_LINK,
     ...(m.source_kind && m.source_id ? { source_kind: m.source_kind, source_id: m.source_id } : {}),
-    metadata: { payment_intent: args.piId, amount_cents: args.amountCents, unmatched: !!m.unmatched },
+    metadata: { ...m.ref, what: m.what, family: m.family, payment_intent: args.piId, amount_cents: args.amountCents,
+      ...(args.chargeCents ? { charge_cents: args.chargeCents } : {}), ...(args.full !== undefined ? { full: args.full } : {}),
+      ...(args.reason ? { reason: args.reason } : {}), unmatched: !!m.unmatched },
     push_title: dispute ? '🚨 Chargeback' : '↩️ Stripe refund',
     push_body: dispute ? `${usd} on ${m.what}${who}. Stripe is holding the money; answer it in Stripe.` : `${usd} refunded on ${m.what}${who}.`,
   });
@@ -507,7 +511,8 @@ Deno.serve(async (req) => {
           status: 'completed', completed_at: now, reactivated_at: now,
         }).eq('id', plan.id);
         await sb.from('payment_plan_installments').update({
-          status: 'manual', paid_at: now, last_error: null,
+          // Its Stripe payment id, so a refund on it is matched (PLAN.md BT8).
+          status: 'manual', paid_at: now, last_error: null, stripe_payment_intent_id: piAll,
         }).eq('plan_id', plan.id).neq('status', 'paid').neq('status', 'manual');
         if (plan.household_id) {
           await sb.from('households').update({
@@ -874,23 +879,47 @@ Deno.serve(async (req) => {
   }
 
   // ── charge.refunded — full or partial refund issued in Stripe Dashboard
-  // or via API. We DON'T auto-flip the family's gate access (that risks a
-  // bad reconciliation if the refund was a mistake / partial). We DO open
-  // a high-priority admin task so the treasurer reviews it the same day.
+  // or via API. Nothing is undone by itself: the Treasurer gets a to-do with
+  // the choices for what was paid for (PLAN.md BT, Doug 11/4: "keep them a
+  // member until the board member does something about it").
   if (type === 'charge.refunded') {
     const charge = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
     const piId = String(charge?.payment_intent || '');
     const amountRefunded = Number(charge?.amount_refunded || 0);
+    const chargeCents = Number(charge?.amount || 0);
     const fullRefund = !!charge?.refunded;
+    const acct = (event as { account?: string }).account ?? null;
+    // Refunds Poolside made itself (a referral reward paid back to the
+    // member's card) aren't the board's to decide (PLAN.md BT7).
+    let refundList = ((charge?.refunds as { data?: unknown[] } | undefined)?.data ?? null) as Array<{ amount?: number; metadata?: Record<string, unknown> }> | null;
+    if (!refundList && STRIPE_KEY && charge?.id) {
+      try {
+        const r = await fetch(`https://api.stripe.com/v1/refunds?charge=${encodeURIComponent(String(charge.id))}&limit=100`, {
+          headers: { Authorization: `Bearer ${STRIPE_KEY}`, ...(acct ? { 'Stripe-Account': acct } : {}) },
+        });
+        if (r.ok) refundList = ((await r.json()) as { data?: Array<{ amount?: number; metadata?: Record<string, unknown> }> }).data ?? [];
+      } catch { /* then all of it counts as the board's */ }
+    }
+    const { boardRefundCents, REFUNDS_LINK } = await import('../_shared/refund_review.ts');
+    const boardCents = boardRefundCents(amountRefunded, refundList);
+    if (piId && boardCents <= 0) {
+      await sb.from('audit_log').insert({ tenant_id: null, kind: 'stripe.refund.poolside', entity_type: 'stripe_charge',
+        summary: `$${(amountRefunded / 100).toFixed(2)} refunded by Poolside itself on PI ${piId} (a referral reward): nothing to decide`, actor_kind: 'stripe' });
+      return new Response('ok', { status: 200 });
+    }
     if (piId) {
       const { data: app } = await sb.from('applications')
-        .select('id, tenant_id, family_name, household_id')
+        .select('id, tenant_id, family_name, household_id, payment_method')
         .eq('stripe_payment_intent_id', piId).maybeSingle();
       if (app) {
-        await sb.from('applications').update({
-          payment_status: fullRefund ? 'refunded' : 'partial_refund',
-          refunded_at: new Date().toISOString(),
-        }).eq('id', app.id);
+        // A plan signup's own status follows its plan (its first payment
+        // carries this id); only a signup paid in full reads refunded.
+        if (app.payment_method !== 'stripe_plan') {
+          await sb.from('applications').update({
+            payment_status: fullRefund ? 'refunded' : 'partial_refund',
+            refunded_at: new Date().toISOString(),
+          }).eq('id', app.id);
+        }
         // A referral reward for bringing this family in is void once their
         // payment is refunded, even partly (H6).
         {
@@ -903,18 +932,20 @@ Deno.serve(async (req) => {
             tenant_id: app.tenant_id,
             target_scopes: ['payments'],
             kind: 'application.refund',
-            summary: `[REVIEW] Stripe refund: ${app.family_name} — $${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'}`,
-            link_url: '/club/admin/members.html#applications',
+            summary: `[REVIEW] Stripe refund: ${app.family_name} — $${(boardCents / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'}`,
+            link_url: REFUNDS_LINK,
             source_kind: 'application', source_id: app.id,
+            metadata: { item: 'membership', application_id: app.id, household_id: app.household_id ?? null, payment_intent: piId,
+              amount_cents: boardCents, charge_cents: chargeCents, full: fullRefund },
             push_title: `↩️ Stripe refund: ${app.family_name}`,
-            push_body: `$${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' fully refunded' : ' partial refund'}. Membership may need to be deactivated.`,
+            push_body: `$${(boardCents / 100).toFixed(2)}${fullRefund ? ' fully refunded' : ' partial refund'}. They're still members until you pick on Money → Payments.`,
           });
         }
         await sb.from('audit_log').insert({
           tenant_id: app.tenant_id,
           kind: 'application.payment_refunded',
           entity_type: 'application', entity_id: app.id,
-          summary: `Stripe refund $${(amountRefunded / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'} for ${app.family_name}`,
+          summary: `Stripe refund $${(boardCents / 100).toFixed(2)}${fullRefund ? ' (full)' : ' (partial)'} for ${app.family_name}`,
           actor_kind: 'stripe',
         });
       } else {
@@ -922,8 +953,8 @@ Deno.serve(async (req) => {
         // or nothing Poolside knows. The Treasurer gets a to-do either way;
         // nothing is undone by itself (PLAN.md BG3, Doug 10/20).
         await paymentProblemTask(sb, {
-          piId, accountId: (event as { account?: string }).account ?? null, kind: 'payment.refund',
-          amountCents: amountRefunded, full: fullRefund,
+          piId, accountId: acct, kind: 'payment.refund',
+          amountCents: boardCents, chargeCents, full: fullRefund,
         });
       }
     }
@@ -932,21 +963,26 @@ Deno.serve(async (req) => {
 
   // ── charge.dispute.created — chargeback opened by the cardholder. More
   // urgent than a refund: Stripe holds the funds, the club may need to
-  // submit evidence within the dispute window. Always opens an admin task.
+  // submit evidence within the dispute window. Always opens an admin task,
+  // with the same choices as a refund (PLAN.md BT6).
   if (type === 'charge.dispute.created') {
     const dispute = (event.data as Record<string, unknown>)?.object as Record<string, unknown>;
     const piId = String(dispute?.payment_intent || '');
     const amount = Number(dispute?.amount || 0);
     const reason = String(dispute?.reason || 'unknown');
+    const { REFUNDS_LINK } = await import('../_shared/refund_review.ts');
     if (piId) {
       const { data: app } = await sb.from('applications')
-        .select('id, tenant_id, family_name')
+        .select('id, tenant_id, family_name, household_id, payment_method')
         .eq('stripe_payment_intent_id', piId).maybeSingle();
       if (app) {
-        await sb.from('applications').update({
-          payment_status: 'disputed',
-          disputed_at: new Date().toISOString(),
-        }).eq('id', app.id);
+        // As with a refund, a plan signup's status follows its plan.
+        if (app.payment_method !== 'stripe_plan') {
+          await sb.from('applications').update({
+            payment_status: 'disputed',
+            disputed_at: new Date().toISOString(),
+          }).eq('id', app.id);
+        }
         {
           const { voidRewardsForApplication } = await import('../_shared/referral_rewards.ts');
           await voidRewardsForApplication(sb, app.id as string, 'Their card payment was disputed');
@@ -958,8 +994,10 @@ Deno.serve(async (req) => {
             target_scopes: ['payments'],
             kind: 'application.dispute',
             summary: `[URGENT] Chargeback: ${app.family_name} — $${(amount / 100).toFixed(2)} (${reason})`,
-            link_url: '/club/admin/members.html#applications',
+            link_url: REFUNDS_LINK,
             source_kind: 'application', source_id: app.id,
+            metadata: { item: 'membership', application_id: app.id, household_id: app.household_id ?? null, payment_intent: piId,
+              amount_cents: amount, reason },
             push_title: `🚨 Chargeback: ${app.family_name}`,
             push_body: `$${(amount / 100).toFixed(2)} disputed (${reason}). Stripe is holding the funds - respond ASAP.`,
           });

@@ -354,6 +354,7 @@ export function respond(fn, body, { side, state }) {
     case 'payments_admin':
       if (a === 'venmo_waiting') return { ok: true, items: VENMO_WAITING.filter(i => !state.confirmed.has(i.id)) };
       if (a === 'list') return { ok: true, items: [] };
+      if (a === 'refund_reviews') return { ok: true, reviews: [] };
       break;
     case 'applications':
       if (a === 'check_contact') return { ok: true, member: false, applied: false };

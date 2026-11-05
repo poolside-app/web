@@ -158,6 +158,7 @@
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/list-fold.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
+<script src="/js/refund-review.js"></script>
 
 <main>
   <!-- ── Households panel ──────────────────────────────────────────────── -->
@@ -386,6 +387,8 @@
          what the primary button below will do. Painted dynamically by
          App.openModal based on status + payment_status + payment_method. -->
     <div id="am-state-explainer" style="margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5"></div>
+    <!-- The choices after a refund or chargeback, the same as Money → Payments (PLAN.md BT). -->
+    <div id="am-refund" style="display:none;margin:6px 0 10px"></div>
     <div class="modal-foot" style="flex-wrap:wrap">
       <!-- Hidden by default — only shown for apps WITHOUT a household.
            Once an app creates a household, the household-edit modal's
@@ -409,6 +412,7 @@ const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
 const HH_URL       = `${SUPABASE_URL}/functions/v1/households_admin`;
 const APPS_URL     = `${SUPABASE_URL}/functions/v1/applications`;
 const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const PAY_URL      = `${SUPABASE_URL}/functions/v1/payments_admin`;
 const CURRENT_YEAR = +PoolTime.todayKey().slice(0, 4);
 
 function token() { return localStorage.getItem('poolside_tenant_token'); }
@@ -841,6 +845,13 @@ const App = (() => {
   const PAY_METHOD = { stripe: '💳 Card', stripe_plan: '💳 Payment plan', venmo: '💸 Venmo', check: '🧾 Check', cash: '💵 Cash', free: 'Free' };
   function payMethodName(m) { return PAY_METHOD[m] || String(m || ''); }
   function onPlan(a) { return a.payment_method === 'stripe_plan' && a.payment_status === 'pending'; }
+  // A card payment refunded or disputed in Stripe (PLAN.md BT2): not "Unpaid".
+  // They stay members until a board member picks what to do.
+  function refundState(a) {
+    return a.payment_status === 'refunded' ? 'Refunded'
+      : a.payment_status === 'partial_refund' ? 'Partly refunded'
+      : a.payment_status === 'disputed' ? 'Chargeback' : null;
+  }
   // A card or plan signup not paid yet: nothing to approve (PLAN.md BS4).
   // The same rule as _shared/card_signup.ts.
   function waitingOnCard(a) {
@@ -865,6 +876,8 @@ const App = (() => {
       out.push(`<span class="pill ${a.plan && a.plan.status !== 'active' ? 'unpaid' : 'paid'}">${escapeHtml(planPill(a))}</span>`);
     } else if (waitingOnCard(a)) {
       out.push(`<span class="pill unpaid">Card not paid</span>`);
+    } else if (refundState(a)) {
+      out.push(`<span class="pill unpaid">${escapeHtml(refundState(a))}</span>`);
     } else if (a.status === 'approved' && a.payment_status !== 'paid') {
       const ageDays = a.decided_at ? Math.floor((Date.now() - new Date(a.decided_at).getTime()) / 86400_000) : 0;
       out.push(`<span class="pill unpaid">Unpaid${ageDays >= 10 ? ' · ' + ageDays + 'd' : ''}</span>`);
@@ -890,7 +903,7 @@ const App = (() => {
       const total = (a.num_adults || 0) + (a.num_kids || 0);
       const isPending = a.status === 'pending';
       const isVenmo   = a.payment_method === 'venmo';
-      const needsPaymentVerify = a.status === 'approved' && a.payment_status !== 'paid' && !onPlan(a);
+      const needsPaymentVerify = a.status === 'approved' && a.payment_status !== 'paid' && !onPlan(a) && !refundState(a);
       // 2026-05-23 inline actions — same as the queue on applications.html.
       // Pending → one-click Approve & verify (Venmo) or Approve & create.
       // Approved-but-unpaid → one-click Verify payment so the legacy
@@ -1060,6 +1073,37 @@ const App = (() => {
     } catch { /* non-fatal */ }
   }
 
+  // The open refund or chargeback for this signup, with its choices (PLAN.md BT).
+  async function loadRefundChoices(a, refunded) {
+    const box = document.getElementById('am-refund');
+    box.style.display = 'none';
+    box.innerHTML = '';
+    if (!refunded) return;
+    let reviews = [], allowed = true;
+    try {
+      const r = await call(PAY_URL, 'refund_reviews', { application_id: a.id });
+      if (r && r.ok) reviews = r.reviews || []; else allowed = false;
+    } catch (_) { allowed = false; }
+    if (!SELECTED || SELECTED.id !== a.id) return;    // another signup opened meanwhile
+    box.style.display = 'block';
+    if (!allowed) {
+      box.innerHTML = '<div style="font-size:12.5px;color:var(--muted)">The Treasurer picks what to do on Money → Payments → Refunds and chargebacks.</div>';
+      return;
+    }
+    if (!reviews.length) {
+      box.innerHTML = '<div style="font-size:12.5px;color:var(--muted)">The board has already picked what to do.</div>';
+      return;
+    }
+    RefundReview.render(box, reviews, {
+      decide: async (rv, choice, extra) => {
+        const out = await call(PAY_URL, 'refund_decide', { task_id: rv.id, choice, ...extra });
+        if (!out || !out.ok) throw new Error((out && out.error) || 'That didn\'t save. Try again.');
+        return out;
+      },
+      after: () => { refresh(); if (window.PoolsideNav) window.PoolsideNav.paintNavBadges(); },
+    });
+  }
+
   function openModal(id, rows) {
     const a = (rows || CACHE).find(x => x.id === id);
     if (!a) return;
@@ -1140,8 +1184,9 @@ const App = (() => {
     document.getElementById('am-reject').style.display = (isPending && !cardUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-approve').style.display = (isPending && !isVenmoUnpaid && !cardUnpaid) ? 'inline-block' : 'none';
     document.getElementById('am-approve-venmo').style.display = (isPending && isVenmoUnpaid) ? 'inline-block' : 'none';
-    document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid' && !planFam) ? 'inline-block' : 'none';
-    document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid' && !planFam) || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
+    const refunded = refundState(a);
+    document.getElementById('am-verify').style.display = (a.status === 'approved' && a.payment_status !== 'paid' && !planFam && !refunded) ? 'inline-block' : 'none';
+    document.getElementById('am-remind').style.display = ((a.status === 'approved' && a.payment_status !== 'paid' && !planFam && !refunded) || (isPending && isVenmoUnpaid)) ? 'inline-block' : 'none';
     // Permanently delete: hidden when the app already created a household
     // (use the household modal's delete instead — it nukes both at once).
     // Always available for pending/rejected apps with no household yet.
@@ -1162,6 +1207,11 @@ const App = (() => {
           ? `<b>${escapeHtml(planPill(a))}.</b> Their payment plan stopped before it was paid off, so their membership is canceled. To come back, they pay what's overdue from their app.`
           : `<b>${escapeHtml(planPill(a))}.</b> ${escapeHtml(a.primary_name || a.family_name)} chose a payment plan. The rest is charged on billing days once a board member approves each payment on Money → Upcoming. Nothing to do here.`;
         explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;' + (ended ? 'background:#fef3c7;color:#78350f' : 'background:#dcfce7;color:#14532d');
+      } else if (refunded) {
+        html = a.payment_status === 'disputed'
+          ? `<b>Chargeback.</b> The card's bank is disputing their payment. Answer it in Stripe.`
+          : `<b>${escapeHtml(refunded)}.</b> Their card payment was ${a.payment_status === 'partial_refund' ? 'partly ' : ''}refunded in Stripe.`;
+        explainer.style.cssText = 'margin:14px 0 6px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;background:#fef3c7;color:#78350f';
       } else if (a.status === 'approved' && a.payment_status !== 'paid') {
         const method = a.payment_method === 'venmo' ? 'Venmo' : a.payment_method === 'stripe_plan' ? 'a payment plan' : a.payment_method === 'stripe' ? 'a card' : 'their dues';
         html = `<b>Approved, awaiting payment.</b> Application is approved but ${method} hasn't been verified yet.<br><b>The green button below</b> marks this paid and flips their dues to ${CURRENT_YEAR}.`;
@@ -1186,6 +1236,7 @@ const App = (() => {
       }
       explainer.innerHTML = html;
     }
+    loadRefundChoices(a, refunded);
 
     // Venmo helper visibility + content
     const helper = document.getElementById('am-venmo-helper');

@@ -25,6 +25,11 @@
 //          label, amount_cents, code, claimed, age_days }] }
 //   The page confirms each one with its own screen's step, so a batch does
 //   exactly what clicking each one would.
+//
+// Refunds and chargebacks (PLAN.md BT, Doug 11/4): nothing changes until a
+// board member picks one of each one's choices (_shared/refund_review.ts).
+//   { action: 'refund_reviews', application_id? } → { ok, reviews: [...] }
+//   { action: 'refund_decide', task_id, choice, paid_by?, fob_ids? } → { ok, done }
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -125,6 +130,25 @@ Deno.serve(async (req) => {
     return ['venmo', 'check', 'cash', 'paypal'].includes(m) ? m : 'venmo';
   };
 
+  if (action === 'refund_reviews') {
+    const { listReviews } = await import('../_shared/refund_review.ts');
+    const reviews = await listReviews(sb as never, TID, body.application_id ? { application_id: String(body.application_id) } : {});
+    return jsonResponse({ ok: true, reviews });
+  }
+
+  if (action === 'refund_decide') {
+    const taskId = String(body.task_id ?? '');
+    if (!taskId) return jsonResponse({ ok: false, error: 'task_id required' }, 400);
+    const { decideReview } = await import('../_shared/refund_review.ts');
+    const r = await decideReview(sb as never, TID, taskId, {
+      choice: String(body.choice ?? ''),
+      paid_by: body.paid_by ? String(body.paid_by) : null,
+      fob_ids: Array.isArray(body.fob_ids) ? body.fob_ids.map(String).slice(0, 20) : null,
+      by: (payload as { synthetic?: boolean }).synthetic ? null : payload.sub,
+    });
+    return jsonResponse(r, r.ok ? 200 : 409);
+  }
+
   if (action === 'list') {
     // The current season (PLAN.md U2): a family owes dues for it only if
     // they're a member for it but haven't paid. Families who didn't renew
@@ -145,7 +169,9 @@ Deno.serve(async (req) => {
         .select('id, family_name, household_id, payment_method, decided_at, created_at, amount_due_cents')
         .eq('tenant_id', TID).eq('status', 'approved')
         // 'pending' is a family on a payment plan; its payments are on Upcoming (PLAN.md AT2).
-        .not('payment_status', 'in', '("paid","pending")'),
+        // A refunded or disputed one waits for the board's choice under
+        // Refunds and chargebacks instead (PLAN.md BT2).
+        .not('payment_status', 'in', '("paid","pending","refunded","partial_refund","disputed")'),
       sb.from('program_bookings')
         .select('id, household_id, participant_name, program_id, created_at')
         .eq('tenant_id', TID).eq('paid', false).neq('status', 'cancelled'),

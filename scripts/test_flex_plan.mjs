@@ -257,8 +257,8 @@ console.log('AT · plan families on Signups, Households and Payments (offline)')
   const badges = mem.slice(mem.indexOf('function paymentBadges'), mem.indexOf('function render(rows)'));
   check('Signups: no Unpaid or Overdue for a plan family', /if \(onPlan\(a\)\)/.test(badges) && /planPill\(a\)/.test(badges) && /payMethodName\(a\.payment_method\)/.test(badges));
   check('Signups: no inline Verify for a plan family', /needsPaymentVerify = a\.status === 'approved' && a\.payment_status !== 'paid' && !onPlan\(a\)/.test(mem));
-  check('Signups pop-up: no Verify or Remind for a plan family', /const planFam = onPlan\(a\)/.test(mem) && /'am-verify'\)\.style\.display = \(a\.status === 'approved' && a\.payment_status !== 'paid' && !planFam\)/.test(mem)
-    && /'am-remind'\)\.style\.display = \(\(a\.status === 'approved' && a\.payment_status !== 'paid' && !planFam\)/.test(mem));
+  check('Signups pop-up: no Verify or Remind for a plan family', /const planFam = onPlan\(a\)/.test(mem) && /'am-verify'\)\.style\.display = \(a\.status === 'approved' && a\.payment_status !== 'paid' && !planFam( && !refunded)?\)/.test(mem)
+    && /'am-remind'\)\.style\.display = \(\(a\.status === 'approved' && a\.payment_status !== 'paid' && !planFam( && !refunded)?\)/.test(mem));
   check('Signups pop-up: explains the plan and where its payments are', /a\.status === .approved. && planFam\) \{[\s\S]{0,900}Money → Upcoming/.test(mem));
   check('Households: an active plan shows "On plan", with its own count', /h\.on_plan/.test(mem) && /plan:\s+h => h\.active !== false && !h\.dues_paid_for_year && !!h\.on_plan/.test(mem)
     && /unpaid:\s+h => h\.active !== false && !h\.dues_paid_for_year && !h\.on_plan/.test(mem));
@@ -270,7 +270,7 @@ console.log('AT · plan families on Signups, Households and Payments (offline)')
   check('verify_payment refuses a family on a plan', /if \(app\.payment_method === 'stripe_plan' && app\.payment_status === 'pending'\)[\s\S]{0,200}409/.test(apps));
   check('board home: the Signups number leaves out plan families', read('supabase/functions/_shared/board_home.ts').includes(`.or('status.eq.pending,and(status.eq.approved,payment_status.eq.unpaid)')`));
   const pay = read('supabase/functions/payments_admin/index.ts');
-  check('Payments: outstanding leaves out plan families, and names the method plainly', /\.not\('payment_status', 'in', '\("paid","pending"\)'\)/.test(pay) && !/'Venmo' : 'Stripe'/.test(pay));
+  check('Payments: outstanding leaves out plan families, and names the method plainly', /\.not\('payment_status', 'in', '\("paid","pending"[^']*\)'\)/.test(pay) && !/'Venmo' : 'Stripe'/.test(pay));
   check('households list: says which families are on an active plan', /on_plan: planIds\.has\(h\.id as string\)/.test(read('supabase/functions/households_admin/index.ts')));
 }
 

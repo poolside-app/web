@@ -900,6 +900,23 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BT. Choices after every refund and chargeback (Doug, 11/4)
+Doug, on "4 Family" after refunding it in Stripe (BN5 test 7): "says approved card unpaid... what are my options... what should my options be?" Then: "build it that way with the options... but keep them a member until the board member does something about it... make sure that we have proper options on all refunds... so like if we refund for a keyfob".
+Found: the refunded signup read "Unpaid" with "Verify payment received" and "Send reminder" (the reminder would ask the family to pay again), and Waiting for payment listed it as owing $300. And a referral reward, which Poolside pays as a refund on the member's own card payment, gave the Treasurer a refund to-do and marked that payment partly refunded.
+- **BT1. Nothing changes until a board member picks.** Every refund and chargeback on the club's Stripe gives the Treasurer one to-do, which opens Money → Payments → "Refunds and chargebacks". Each says what was paid for, the family, how much (all or part), and its choices. Picking one closes the to-do; Mark done on the to-do keeps things as they are.
+- **BT2. Membership** (a signup, a renewal, or plan payments, a payoff included):
+  - Keep them as members, and say how they paid instead if they did (check, cash or Venmo: the signup then reads paid that way).
+  - End their membership: their dues for that season go back to unpaid (a new family isn't counted as last season's member, so it gets no renewal invite), a payment plan stops with no more charges, each fob in use gets a "turn it off" to-do for the keyfob person, and the family gets a pop-up. Parties and other bookings aren't changed. Their record stays, so they can join again.
+  - The signup says "Refunded", "Partly refunded" or "Chargeback" with the amount instead of Unpaid, has no Verify or Reminder, and isn't on Waiting for payment. Its details show the same choices.
+- **BT3. Keyfobs:** Turn the fob off (one in use gets a "turn it off" to-do; one not handed out yet is canceled, with a pop-up), or Keep it. With several fobs on one payment, tick which.
+- **BT4. A party:** Cancel it (off the calendar, the party doors end, a pop-up), or Keep it. One already canceled just gets OK.
+- **BT5. A program:** Take them off it, or Keep them on. **A donation:** Take it off the fundraiser (the thermometer goes down), or Leave it. **A payment Poolside can't match:** OK, handled in Stripe.
+- **BT6. A chargeback** gets the same choices, and says Stripe decides it: answer it in Stripe, and if the club wins the money comes back.
+- **BT7. Refunds Poolside makes itself** (a referral reward paid back to the member's card) make no to-do and don't mark the payment refunded.
+- **BT8. Loose ends:** a reactivation payment keeps its Stripe payment id so a refund on it is matched; Delete for good also removes to-dos about the family's plan payments.
+- Failing tests first: `test_refund_options` (new: the choices, each one against the pretend database, the webhook's wiring, the Signups and Waiting for payment fixes, and the Refunds card in Chrome).
+- Built 11/4: 22 checks failed first (the rest needed the new rules to run at all); now 73 pass, and every offline suite passes. The migration is applied (`20261105000100_plan_end_refunded.sql`). Deploying `stripe_webhook`, `payments_admin`, `parties_admin`, `households_admin`, then the pages, waits for Doug's OK (the permission check stopped it).
+
 ### BS. Fixes from the first Stripe test-card signups (Doug, 11/4)
 Doug, signing up on Bishop with Stripe's test cards (BN5): "it allowed me to do a family membership even with 1 person... also it let me add myself with no birthday even though it says required." And, after I deleted his first test family by hand: "ok fix the left overs."
 - **BS1. Delete for good removes everything tied to the family.** It left the family's keyfob to-do (the empty Keyfobs badge Doug saw on 11/3) and their payment plan. Now it also deletes the family's payment plans with their payments, the auto-renew card consents, and every to-do about the family, its signups, keyfobs, parties, plans or help requests.

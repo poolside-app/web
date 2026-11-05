@@ -123,7 +123,8 @@ check('the keyfob list carries the levels and each fob\'s level', /accessConfig\
 const pb = read('supabase/functions/_shared/party_booked.ts');
 check('a paid party gives its family the party doors for the day', /givePartyPass\(/.test(pb));
 const pa = read('supabase/functions/parties_admin/index.ts');
-check('a canceled or rejected party loses it', /endPartyPass\(/.test(between(pa, "action === 'cancel_admin'", 'Unknown action')) && /endPartyPass\(/.test(between(pa, "status: 'rejected'", "action === '")));
+// The board's Cancel shares its step with the refund choice (PLAN.md BT4).
+check('a canceled or rejected party loses it', /cancelParty\(/.test(between(pa, "action === 'cancel_admin'", 'Unknown action')) && /endPartyPass\(/.test(read('supabase/functions/_shared/party_cancel.ts')) && /endPartyPass\(/.test(between(pa, "status: 'rejected'", "action === '")));
 
 console.log('AR · the pages');
 const page = read('club/admin/keyfobs.html');
