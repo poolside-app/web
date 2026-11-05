@@ -13,7 +13,7 @@ category: "News, Photos & Texts"
 1. Tap **▶ Start a meeting**.
 2. Mark **Who's here?**.
 3. Take **Notes** as you go.
-4. For each vote, tap **+ Add motion**, then **✓ Passed**, **✗ Failed** or **⏸ Tabled**.
+4. For each vote, tap **+ Add motion**, then the name of who made it and who seconded it. A motion needs a second before the vote. Tap **✓ All in favor** when everyone votes yes, or count a split vote with Yes, No and Abstain and tap **✓ Passed**, **✗ Failed** or **⏸ Tabled**.
 5. Add **+ Add follow-up** for anything someone needs to do.
 6. Tap **💾 Save** as you go, and **✓ Close meeting** at the end.
 

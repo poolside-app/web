@@ -900,6 +900,15 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### BU. Motions: tap who made it and who seconded (Doug, 11/4, for the 11/5 meeting)
+Doug: "it would be nice to simply click new motion, you check the persons name who started the motion, then vote from there if needed… someone can second the motion as well". His picks: "Do count plus all In favor" and "Needs a second to vote." Today "+ Add motion" has typed "Proposed by" and "Seconded by" boxes.
+- **BU1. Made by and Seconded by are names to tap:** everyone marked present (board members ticked and people added by hand), plus "Other…" to type a name. Tap again to take it back. Whoever made the motion isn't offered as its second. Marking someone present adds them to every motion's names.
+- **BU2. Needs a second to vote.** Until a second is picked, Yes, No, Abstain, All in favor, Passed and Failed are greyed out, with "Needs a second before the vote." Tabled still works.
+- **BU3. "All in favor (N)"** sets Yes to everyone marked present, No and Abstain to 0, and the motion to Passed. The counts still work for a split vote, and − takes one back (a guest who didn't vote).
+- The minutes still read "Proposed by … · Seconded by …"; nothing changes for meetings already written. The page only: no server change.
+- Failing test first: `test_motions` (new, offline, renders the meeting page in Chrome).
+- ✅ Done 11/4. 16 checks failed first; a screenshot then showed the vote buttons on when a meeting opens (the page switched every button back on after drawing), so a 17th check was added, failed, and was fixed. The help article says how. Every offline suite passes. Pages only, pushed.
+
 ### BT. Choices after every refund and chargeback (Doug, 11/4)
 Doug, on "4 Family" after refunding it in Stripe (BN5 test 7): "says approved card unpaid... what are my options... what should my options be?" Then: "build it that way with the options... but keep them a member until the board member does something about it... make sure that we have proper options on all refunds... so like if we refund for a keyfob".
 Found: the refunded signup read "Unpaid" with "Verify payment received" and "Send reminder" (the reminder would ask the family to pay again), and Waiting for payment listed it as owing $300. And a referral reward, which Poolside pays as a refund on the member's own card payment, gave the Treasurer a refund to-do and marked that payment partly refunded.
