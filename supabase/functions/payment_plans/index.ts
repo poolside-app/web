@@ -265,7 +265,7 @@ async function sendReceipt(
   if (!plan.primary_email) return;
   try {
     const { renderAndSend } = await import('../_shared/email_template.ts');
-    const { receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+    const { receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
     const next = rows.find(r => r.sequence > inst.sequence && !isPaid(r));
     await renderAndSend(sb, {
       tenantId: club.tenantId,
@@ -280,7 +280,7 @@ async function sendReceipt(
         next_due_date: next ? fmtPoolDay(next.due_date as string) : '',
         ...(receipt ? { receipt_no: receiptNo(receipt) } : {}),
       },
-      ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}),
+      ...(receipt ? { attachments: await receiptFiles(receipt) } : {}),
     });
   } catch { /* never fail the charge run because of an email */ }
 }
@@ -373,7 +373,7 @@ async function chargeRenewalWithSavedCard(sb: SupabaseClient, appId: string): Pr
     const { data: primary } = await sb.from('household_members')
       .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
     // Its receipt, attached (PLAN.md BZ).
-    const { issueReceipt, receiptAttachment, receiptNo, stripeCardLabel } = await import('../_shared/receipts.ts');
+    const { issueReceipt, receiptFiles, receiptNo, stripeCardLabel } = await import('../_shared/receipts.ts');
     const receipt = amountCents > 0 && intentId ? await issueReceipt(sb, {
       tenantId: tenant.id as string, paymentRef: intentId, kind: 'renewal', applicationId: appId, householdId: hh.id as string,
       lines: [{ label: `${app.membership_year ?? ''} renewal`.trim(), cents: due }], totalCents: amountCents,
@@ -384,7 +384,7 @@ async function chargeRenewalWithSavedCard(sb: SupabaseClient, appId: string): Pr
       await renderAndSend(sb, { tenantId: tenant.id as string, templateKey: 'auto_renew_charged', to: primary.email as string,
         variables: { family_name: hh.family_name as string, amount: '$' + (amountCents / 100).toFixed(2), season: String(app.membership_year ?? ''),
           ...(receipt ? { receipt_no: receiptNo(receipt) } : {}) },
-        ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}) });
+        ...(receipt ? { attachments: await receiptFiles(receipt) } : {}) });
     }
   } catch { /* the money moved; a failed receipt must not undo that */ }
   await sb.from('audit_log').insert({

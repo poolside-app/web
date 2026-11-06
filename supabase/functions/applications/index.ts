@@ -1686,10 +1686,10 @@ Deno.serve(async (req) => {
           const paidBy = ({ stripe: 'card', venmo: 'Venmo', check: 'check', cash: 'cash', free: 'credit' } as Record<string, string>)[app.payment_method as string] ?? 'card';
           const { renderAndSend } = await import('../_shared/email_template.ts');
           // Paid by card: its receipt, attached (PLAN.md BZ). Venmo's is Venmo's own.
-          const { latestReceipt, receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+          const { latestReceipt, receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
           const receipt = paidBy === 'card' ? await latestReceipt(sb as never, id) : null;
           const receiptBits = receipt ? { receipt_no: receiptNo(receipt) } : {};
-          const receiptFiles = receipt ? { attachments: [await receiptAttachment(receipt)] } : {};
+          const receiptFiles = receipt ? { attachments: await receiptFiles(receipt) } : {};
           const { notifyHousehold } = await import('../_shared/member_notify.ts');
           await notifyHousehold(sb as never, {
             tenantId: TID, householdId: app.household_id as string,
@@ -1945,10 +1945,10 @@ Deno.serve(async (req) => {
       let welcomeReceiptNo = '';
       if (app.primary_email && ((app.payment_status === 'paid' && app.payment_method === 'stripe') || onPlan)) {
         try {
-          const { latestReceipt, receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+          const { latestReceipt, receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
           const receipt = await latestReceipt(sb, id);
           if (receipt) {
-            welcomeAttachments = [...(welcomeAttachments ?? []), await receiptAttachment(receipt)];
+            welcomeAttachments = [...(welcomeAttachments ?? []), ...(await receiptFiles(receipt))];
             welcomeReceiptNo = receiptNo(receipt);
           }
         } catch (e) { console.error('welcome receipt (non-fatal):', (e as Error).message); }

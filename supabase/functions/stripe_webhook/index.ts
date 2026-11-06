@@ -577,12 +577,12 @@ Deno.serve(async (req) => {
         if (plan.primary_email && kind === 'payment_plan_payoff') {
           try {
             const { renderAndSend } = await import('../_shared/email_template.ts');
-            const { receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+            const { receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
             await renderAndSend(sb, {
               tenantId, templateKey: 'plan_installment_paid_final', to: plan.primary_email as string,
               variables: { family_name: plan.family_name as string, amount: `$${((Number(session.amount_total) || 0) / 100).toFixed(2)}`,
                 ...(receipt ? { receipt_no: receiptNo(receipt) } : {}) },
-              ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}),
+              ...(receipt ? { attachments: await receiptFiles(receipt) } : {}),
             });
           } catch { /* the payment is recorded either way */ }
         } else {
@@ -813,7 +813,7 @@ Deno.serve(async (req) => {
             });
             if (requester?.email) {
               const { renderAndSend } = await import('../_shared/email_template.ts');
-              const { receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+              const { receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
               const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
               await renderAndSend(sb, {
                 tenantId, templateKey: 'party_confirmed',
@@ -827,7 +827,7 @@ Deno.serve(async (req) => {
                   club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
                   ...(receipt ? { receipt_no: receiptNo(receipt) } : {}),
                 },
-                ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}),
+                ...(receipt ? { attachments: await receiptFiles(receipt) } : {}),
               });
             }
           } catch (e) { console.error('party_booking confirmed email (non-fatal):', (e as Error).message); }

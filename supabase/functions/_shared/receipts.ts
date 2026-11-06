@@ -241,6 +241,14 @@ export async function receiptAttachment(r: Row): Promise<{ filename: string; con
   return { filename: receiptFileName(r), content: bytesToBase64(await renderReceiptPdf(r)), contentType: 'application/pdf' };
 }
 
+/** The receipt for an email's attachments: none if it can't be drawn, so a
+ *  receipt never stops the email itself. */
+export async function receiptFiles(r: Row | null): Promise<Array<{ filename: string; content: string; contentType: string }>> {
+  if (!r) return [];
+  try { return [await receiptAttachment(r)]; }
+  catch (e) { console.error('receipt PDF (the email goes without it):', (e as Error).message); return []; }
+}
+
 /** "Payment receipt": for card payments with no email of their own (keyfobs,
  *  programs, donations, catching up or reinstating a plan). */
 export async function emailReceipt(sb: Sb, r: Row | null): Promise<void> {
@@ -254,7 +262,7 @@ export async function emailReceipt(sb: Sb, r: Row | null): Promise<void> {
         amount: usd(Number(r.total_cents)), what: ((r.lines ?? []) as ReceiptLine[]).map(l => l.label).join(', '),
         receipt_no: receiptNo(r),
       },
-      attachments: [await receiptAttachment(r)],
+      attachments: await receiptFiles(r),
     });
   } catch (e) { console.error('receipt email (non-fatal):', (e as Error).message); }
 }
