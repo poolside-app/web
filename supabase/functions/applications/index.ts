@@ -305,19 +305,9 @@ function unfinishedCardSignup(a: PendingApp): boolean {
  *  application is closed with a note (kept, for the record), its never-started
  *  payment plan removed, and its board task closed. */
 async function setAsideUnfinished(sb: ReturnType<typeof createClient>, tenantId: string, apps: PendingApp[]): Promise<void> {
+  const { dropPlansIfUnstarted } = await import('../_shared/plan_ops.ts');
   for (const a of apps) {
-    const { data: plans } = await sb.from('payment_plans').select('id, stripe_payment_method_id').eq('application_id', a.id);
-    let started = false;
-    for (const p of plans ?? []) {
-      const { count } = await sb.from('payment_plan_installments').select('id', { count: 'exact', head: true })
-        .eq('plan_id', p.id).in('status', ['paid', 'manual']);
-      if ((count ?? 0) > 0 || p.stripe_payment_method_id) started = true;
-    }
-    if (started) continue;   // under way after all: leave everything
-    for (const p of plans ?? []) {
-      await sb.from('payment_plan_installments').delete().eq('plan_id', p.id);
-      await sb.from('payment_plans').delete().eq('id', p.id);
-    }
+    if (!(await dropPlansIfUnstarted(sb, a.id))) continue;   // under way after all: leave everything
     const now = new Date().toISOString();
     await sb.from('applications').update({
       status: 'rejected', decided_at: now,
@@ -404,10 +394,13 @@ Deno.serve(async (req) => {
     }
 
     let deleted = 0, kept = 0;
+    const { dropPlansIfUnstarted } = await import('../_shared/plan_ops.ts');
     for (const a of (abandoned ?? [])) {
       try {
         const paid = await stripeSaysPaid(a as Record<string, unknown>);
         if (paid !== false) { kept++; continue; }     // paid, or Stripe couldn't say: try again next run
+        // Its never-started plan goes too, or it stays on Upcoming (PLAN.md BX).
+        if (!(await dropPlansIfUnstarted(sb, a.id as string))) { kept++; continue; }
         await sb.from('audit_log').insert({
           tenant_id: a.tenant_id,
           kind: 'application.auto_abandoned',

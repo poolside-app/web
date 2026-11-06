@@ -141,6 +141,41 @@ export function chargeableNow<T extends { sequence: number; due_date: string; st
 export const awaitingApproval = (i: { status: string; approved_at?: string | null }) =>
   !isPaid(i) && !i.approved_at;
 
+/**
+ * A plan under way: a card is saved or a payment is in (PLAN.md BX). A plan
+ * is saved when the family reaches Stripe's page, before they pay; one who
+ * left it isn't a member, so there's nothing for the board to approve (Doug
+ * 11/5: "If they aren't a member I shouldn't be able to approve payments").
+ */
+export function planStarted(plan: { stripe_payment_method_id?: unknown }, rows: Array<{ status: string }>): boolean {
+  return !!plan.stripe_payment_method_id || rows.some(isPaid);
+}
+
+/** Of these plans, the ids of the ones under way (planStarted). */
+export async function startedPlanIds(sb: SupabaseClient, plans: Array<{ id: unknown; stripe_payment_method_id?: unknown }>): Promise<Set<string>> {
+  const out = new Set(plans.filter(p => p.stripe_payment_method_id).map(p => String(p.id)));
+  const rest = plans.map(p => String(p.id)).filter(id => !out.has(id));
+  if (rest.length) {
+    const { data } = await sb.from('payment_plan_installments').select('plan_id').in('plan_id', rest).in('status', ['paid', 'manual']);
+    for (const r of data ?? []) out.add(String(r.plan_id));
+  }
+  return out;
+}
+
+/** An unpaid signup going away: delete its plans too, unless one is under
+ *  way, which leaves everything and returns false. Nothing links the two
+ *  tables, so a plan left behind stayed on Upcoming for good. */
+export async function dropPlansIfUnstarted(sb: SupabaseClient, applicationId: string): Promise<boolean> {
+  const { data: plans } = await sb.from('payment_plans').select('id, stripe_payment_method_id').eq('application_id', applicationId);
+  if (!plans?.length) return true;
+  if ((await startedPlanIds(sb, plans)).size) return false;
+  for (const p of plans) {
+    await sb.from('payment_plan_installments').delete().eq('plan_id', p.id);
+    await sb.from('payment_plans').delete().eq('id', p.id);
+  }
+  return true;
+}
+
 export async function installmentsOf(sb: SupabaseClient, planId: string): Promise<Inst[]> {
   const { data } = await sb.from('payment_plan_installments').select('*').eq('plan_id', planId).order('sequence');
   return (data ?? []) as Inst[];

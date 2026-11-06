@@ -64,6 +64,51 @@ console.log('S4 · Money → Upcoming (offline)');
   check('it\'s in the Money strip', /upcoming\.html/.test(read('js/admin-subtabs.js')));
 }
 
+console.log('BX · only plans under way can be approved (offline)');
+{
+  // Doug 11/5: "If they aren't a member I shouldn't be able to approve payments."
+  // A plan is saved when the family reaches Stripe's page, before they pay.
+  const { fakeDb } = await import('./lib/fake_google.mjs');
+  const ops = await importTs(new URL('supabase/functions/_shared/plan_ops.ts', root));
+  const inst = (plan_id, sequence, status) => ({ id: `${plan_id}-${sequence}`, plan_id, tenant_id: 't1', sequence, status, due_date: '2026-11-0' + sequence, amount_cents: 100 });
+  const started = typeof ops.planStarted === 'function' ? ops.planStarted : () => null;
+  check('a plan whose family left Stripe\'s page isn\'t under way', started({ stripe_payment_method_id: null }, [inst('p', 1, 'pending'), inst('p', 2, 'pending')]) === false);
+  check('a saved card or a payment in makes it under way', started({ stripe_payment_method_id: 'pm_1' }, [inst('p', 1, 'pending')]) === true
+    && started({ stripe_payment_method_id: null }, [inst('p', 1, 'manual'), inst('p', 2, 'pending')]) === true);
+
+  const tables = () => ({
+    payment_plans: [
+      { id: 'card', application_id: 'a1', stripe_payment_method_id: 'pm_1' },
+      { id: 'paid', application_id: 'a2', stripe_payment_method_id: null },
+      { id: 'left', application_id: 'a3', stripe_payment_method_id: null },
+    ],
+    payment_plan_installments: [inst('card', 1, 'pending'), inst('paid', 1, 'paid'), inst('paid', 2, 'pending'), inst('left', 1, 'pending'), inst('left', 2, 'pending')],
+  });
+  let ids = null;
+  try { const db = fakeDb(tables()); ids = await ops.startedPlanIds(db, db.tables.payment_plans); } catch (e) { ids = e.message; }
+  check('of several plans, only the ones under way', ids instanceof Set && ids.size === 2 && ids.has('card') && ids.has('paid'), short(ids instanceof Set ? [...ids] : ids));
+
+  let dropped = null, kept = null, none = null, db = null;
+  try {
+    db = fakeDb(tables());
+    dropped = await ops.dropPlansIfUnstarted(db, 'a3');
+    kept = await ops.dropPlansIfUnstarted(db, 'a2');
+    none = await ops.dropPlansIfUnstarted(db, 'a9');
+  } catch (e) { dropped = e.message; }
+  check('an unpaid signup\'s plan is deleted with its payments', dropped === true && !db?.tables.payment_plans.some(p => p.id === 'left') && !db?.tables.payment_plan_installments.some(i => i.plan_id === 'left'), short({ dropped, plans: db?.tables.payment_plans.map(p => p.id) }));
+  check('a plan under way is left alone (and says so)', kept === false && db?.tables.payment_plans.some(p => p.id === 'paid') && db?.tables.payment_plan_installments.filter(i => i.plan_id === 'paid').length === 2, short({ kept }));
+  check('a signup with no plan is fine', none === true, short({ none }));
+
+  const pp = read('supabase/functions/payment_plans/index.ts');
+  const block = (src, start, len = 4000) => { const i = src.indexOf(start); return i < 0 ? '' : src.slice(i, i + len); };
+  check('Money → Upcoming lists only plans under way', /planStarted\(/.test(block(pp, "if (action === 'upcoming')")));
+  check('the Treasurer\'s to-do counts only plans under way', /startedPlanIds\(/.test(block(pp, 'async function askForApproval', 2500)));
+  check('the approve button refuses the rest', /startedPlanIds\(/.test(block(pp, "if (action === 'approve')", 1500)));
+  const apps = read('supabase/functions/applications/index.ts');
+  check('the 24-hour cleanup deletes the plan with the signup', /dropPlansIfUnstarted\(/.test(block(apps, 'let deleted = 0, kept = 0;', 2000)));
+  check('so does starting over on a new signup', /dropPlansIfUnstarted\(/.test(block(apps, 'async function setAsideUnfinished', 1500)));
+}
+
 if (LIVE) {
   console.log('\nLive (Bishop, temporary family, test card)');
   const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));

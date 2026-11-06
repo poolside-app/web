@@ -84,6 +84,7 @@ async function hasPaymentsScope(sb: SupabaseClient, p: AdminPayload): Promise<bo
 // back) live in _shared/plan_ops.ts, shared with checkout and the webhook.
 import {
   PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor, chargeableNow, awaitingApproval,
+  planStarted, startedPlanIds,
   grantAccessIfReady, completeIfPaid, endPlan, enforceEnd, seasonStarted, rulesFor, planView,
   memberPlanView, type PlanClub, type PlanConfig, type Inst,
 } from '../_shared/plan_ops.ts';
@@ -391,9 +392,10 @@ async function askForApproval(sb: SupabaseClient, onlyTenant: string | null): Pr
   const { data: rows } = await q;
   const planIds = [...new Set((rows ?? []).map(r => r.plan_id as string))];
   const { data: plans } = planIds.length
-    ? await sb.from('payment_plans').select('id, status').in('id', planIds)
-    : { data: [] as Array<{ id: string; status: string }> };
-  const active = new Set((plans ?? []).filter(p => p.status === 'active').map(p => p.id as string));
+    ? await sb.from('payment_plans').select('id, status, stripe_payment_method_id').in('id', planIds)
+    : { data: [] as Array<{ id: string; status: string; stripe_payment_method_id: string | null }> };
+  // Only plans under way: a family who left Stripe's page has nothing to approve (BX).
+  const active = await startedPlanIds(sb, (plans ?? []).filter(p => p.status === 'active'));
   const byTenant = new Map<string, typeof rows>();
   for (const r of (rows ?? [])) {
     if (!active.has(r.plan_id as string)) continue;
@@ -954,9 +956,11 @@ Deno.serve(async (req) => {
       return later.length ? Math.max(...later) : 0;
     };
     const countOf = (pid: string) => all.filter(r => r.plan_id === pid).length;
+    // Only plans under way (PLAN.md BX): not a family who left Stripe's page.
+    const started = new Set([...planBy.values()].filter(p => planStarted(p, all.filter(r => r.plan_id === p.id) as Array<{ status: string }>)).map(p => p.id as string));
     const upcoming = all.filter(r => {
       const p = planBy.get(r.plan_id as string);
-      return p?.status === 'active' && (r.status === 'pending' || r.status === 'retrying') && (r.due_date as string) <= horizon;
+      return p?.status === 'active' && started.has(p.id as string) && (r.status === 'pending' || r.status === 'retrying') && (r.due_date as string) <= horizon;
     }).map(r => {
       const p = planBy.get(r.plan_id as string)!;
       return {
@@ -991,9 +995,18 @@ Deno.serve(async (req) => {
   if (action === 'approve') {
     const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(Boolean).slice(0, 500);
     if (!ids.length) return jsonResponse({ ok: false, error: 'Tick at least one payment.' }, 400);
+    // Only plans under way (PLAN.md BX): a family who left Stripe's page isn't a member.
+    const { data: picked } = await sb.from('payment_plan_installments').select('id, plan_id').in('id', ids).eq('tenant_id', payload.tid);
+    const pickedPlans = [...new Set((picked ?? []).map(r => r.plan_id as string))];
+    const { data: plans } = pickedPlans.length
+      ? await sb.from('payment_plans').select('id, stripe_payment_method_id').in('id', pickedPlans).eq('tenant_id', payload.tid)
+      : { data: [] };
+    const started = await startedPlanIds(sb, plans ?? []);
+    const okIds = (picked ?? []).filter(r => started.has(r.plan_id as string)).map(r => r.id as string);
+    if (!okIds.length) return jsonResponse({ ok: false, error: 'That family hasn\'t made their first payment, so there\'s nothing to approve yet.' }, 400);
     const { data, error } = await sb.from('payment_plan_installments')
       .update({ approved_at: new Date().toISOString(), approved_by: payload.sub })
-      .in('id', ids).eq('tenant_id', payload.tid).is('approved_at', null).in('status', ['pending', 'retrying'])
+      .in('id', okIds).eq('tenant_id', payload.tid).is('approved_at', null).in('status', ['pending', 'retrying'])
       .select('id');
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     await askForApproval(sb, payload.tid);   // closes the task once nothing waits
