@@ -56,5 +56,32 @@ check('the routing is untouched (the demo club\'s 4 rules first, then the 9 club
 console.log('BG8 · scheduled calls (item 42)');
 check('they wait 30 seconds', /timeout_milliseconds := 30000/.test(read('supabase/migrations/20261020000700_cron_timeouts.sql')));
 
+// 11/6 (PLAN.md BZ): a name declared twice in applications/index.ts stopped
+// it booting for two minutes. Every function and shared file must parse.
+console.log('Every Edge Function parses');
+{
+  const { readdirSync, writeFileSync, mkdtempSync } = await import('node:fs');
+  const { stripTypeScriptTypes } = await import('node:module');
+  const { execFileSync } = await import('node:child_process');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const fnDir = new URL('supabase/functions/', root);
+  const out = mkdtempSync(join(tmpdir(), 'parse-'));
+  const files = [];
+  for (const d of readdirSync(fnDir)) {
+    if (d === '_shared') { for (const f of readdirSync(new URL('_shared/', fnDir))) if (f.endsWith('.ts')) files.push(`_shared/${f}`); }
+    else if (existsSync(new URL(`${d}/index.ts`, fnDir))) files.push(`${d}/index.ts`);
+  }
+  const broken = [];
+  for (const f of files) {
+    try {
+      const p = join(out, f.replace(/\//g, '_') + '.mjs');
+      writeFileSync(p, stripTypeScriptTypes(read(`supabase/functions/${f}`), { mode: 'strip' }));
+      execFileSync(process.execPath, ['--check', p], { stdio: 'pipe' });
+    } catch (e) { broken.push(`${f}: ${String(e.stderr || e.message).split('\n').find(l => /Error/.test(l)) || ''}`); }
+  }
+  check(`all ${files.length} parse`, files.length > 100 && !broken.length, broken.join(' | '));
+}
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -908,7 +908,7 @@ Doug: "the recpeit isn't like an official one... can you make a PDF of some sort
 - **BZ4. A folder per family in Drive:** a "Families" folder in the club's folder, one folder per family ("Smith - 123 Oak St"), holding "2027 Membership.pdf" and every receipt ("2027 Receipt 0001.pdf"). New files only; the old "2027 Sign-ups" folder stays as it is. The roster's rows still link to the membership PDF, now in the family's folder. The board sends a copy again from Drive; nothing to resend in Poolside.
 - **BZ5. The club's address:** a "Club address" box on Settings → Club info, exactly as the club types it (until then, its location), and "Enter your club's address" in the setup checklist on the board home.
 - Not in the app. A help article, "Do families get a receipt?".
-- Built 11/6: `test_receipts` (new, offline) failed 34 of 35 first; now 59 pass, and every offline suite (58; `test_drive_backup` now expects the family folder, `test_emails` 21 emails, the demo site rebuilt). One migration (`receipts`).
+- Built 11/6: `test_receipts` (new, offline) failed 34 of 35 first; now 59 pass, and every offline suite (58; `test_drive_backup` now expects the family folder, `test_emails` 21 emails, the demo site rebuilt). One migration (`receipts`). ✅ Live 11/6: the migration, 11 functions and the pages. A redeploy of `applications` failed to boot for about two minutes (a name declared twice); fixed at once, no signups in that window, and `test_housekeeping` now parses every function so CI catches it.
 
 ### BY. Three fixes from the 11/5 review (Doug, 11/6)
 Doug, on the review: "yes... do your unpaid plan idea", "yes do your idea for payment for deleted signup", "yes go do that for the minutes upload". The test club is on hold ("we'll do that later").

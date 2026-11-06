@@ -1689,13 +1689,13 @@ Deno.serve(async (req) => {
           const { latestReceipt, receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
           const receipt = paidBy === 'card' ? await latestReceipt(sb as never, id) : null;
           const receiptBits = receipt ? { receipt_no: receiptNo(receipt) } : {};
-          const receiptFiles = receipt ? { attachments: await receiptFiles(receipt) } : {};
+          const receiptAttached = receipt ? { attachments: await receiptFiles(receipt) } : {};
           const { notifyHousehold } = await import('../_shared/member_notify.ts');
           await notifyHousehold(sb as never, {
             tenantId: TID, householdId: app.household_id as string,
             pop: { title: `✅ You're renewed for ${renewYear}`, body: `Thanks! ${cents ? `Your ${amount} payment came through. ` : ''}See you at the pool.`, url: '/m/', tag: 'renewal' },
             email: to ? { to, send: () => renderAndSend(sb as never, { tenantId: TID, templateKey: 'renewal_confirmed', to,
-              variables: { family_name: app.family_name as string, season: String(renewYear), amount, paid_by: paidBy, ...receiptBits }, ...receiptFiles }) } : null,
+              variables: { family_name: app.family_name as string, season: String(renewYear), amount, paid_by: paidBy, ...receiptBits }, ...receiptAttached }) } : null,
             alsoEmail: true,
           });
         } catch (e) { console.error('renewal receipt (non-fatal):', (e as Error).message); }
