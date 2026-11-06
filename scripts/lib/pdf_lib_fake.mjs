@@ -17,6 +17,7 @@ export const PDFDocument = {
   create: async () => ({
     embedFont: async () => font,
     embedPng: async () => ({ width: 300, height: 100 }),
+    embedJpg: async () => ({ width: 400, height: 400 }),
     addPage: () => page(),
     setTitle: () => {}, setAuthor: () => {}, setSubject: () => {}, setCreator: () => {}, setProducer: () => {}, setCreationDate: () => {},
     save: async () => new Uint8Array([37, 80, 68, 70]),

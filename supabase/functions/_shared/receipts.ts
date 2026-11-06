@@ -89,12 +89,18 @@ async function clubFor(sb: Sb, tenantId: string, now: Date) {
   ]);
   const sv = (s?.value ?? {}) as Row;
   const club = (sv.club ?? {}) as Row;
+  const br = (sv.branding ?? {}) as Row;
+  const logo = String(br.logo_url ?? '').trim();
+  // The app icon made from the logo (a PNG), for a logo a PDF can't hold, like a WebP.
+  const icon = br.icon_mode === 'logo' ? String(br.icon_512_url ?? '').trim() : '';
   const { sellingYear } = await import('./membership_year.ts');
   return {
     name: String(t?.display_name || t?.slug || 'Your club'),
     address: String(club.address ?? '').trim() || String(club.location ?? '').trim(),
     tz: zoneOrDefault(t?.timezone),
     season: sellingYear(sv, now),
+    logo: logo || null,
+    icon: icon || null,
   };
 }
 
@@ -140,7 +146,7 @@ export async function issueReceipt(sb: Sb, input: ReceiptInput): Promise<Row | n
     lines: input.lines.map(l => ({ label: String(l.label), cents: Math.round(Number(l.cents) || 0) })),
     card_fee_cents: Math.max(0, input.totalCents - forCents), total_cents: input.totalCents,
     paid_with: input.paidWith ?? 'Card', balance_cents: input.balanceCents ?? null,
-    club_name: club.name, club_address: club.address, tz: club.tz, paid_at: paidAt,
+    club_name: club.name, club_address: club.address, logo_url: club.logo, logo_icon_url: club.icon, tz: club.tz, paid_at: paidAt,
   };
   // The next number; two payments at once both try it, and one tries again.
   for (let tries = 0; tries < 5; tries++) {
@@ -190,9 +196,25 @@ const clean = (s: unknown) => {
   return Array.from(out).filter(c => c.codePointAt(0)! >= 0x20 && c.codePointAt(0)! <= 0xFF).join('');
 };
 
-/** One letter-size page: the club, the receipt number and day, who paid, what
- *  for, the card fee, the total, the card, and for a plan what's left. */
-export async function renderReceiptPdf(r: Row): Promise<Uint8Array> {
+// The club's logo (Doug 11/6: "add the club logo at the top"), a PNG or a
+// JPEG; anything else, or one that can't be fetched, and the receipt goes
+// without it.
+async function logoImage(doc: Awaited<ReturnType<typeof PDFDocument.create>>, url: unknown, fetchFn: typeof fetch) {
+  if (!url) return null;
+  try {
+    const res = await fetchFn(String(url));
+    if (!res.ok) return null;
+    const b = new Uint8Array(await res.arrayBuffer());
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return await doc.embedPng(b);
+    if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return await doc.embedJpg(b);
+  } catch { /* without it */ }
+  return null;
+}
+
+/** One letter-size page: the club's logo, name and address, the receipt
+ *  number and day, who paid, what for, the card fee, the total, the card,
+ *  and for a plan what's left. */
+export async function renderReceiptPdf(r: Row, opts: { fetchFn?: typeof fetch } = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -207,8 +229,21 @@ export async function renderReceiptPdf(r: Row): Promise<Uint8Array> {
   const rule = () => { page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: COLOR_MUTED }); };
   const tz = zoneOrDefault(r.tz);
 
-  text(r.club_name, { size: 18, b: true, color: COLOR_BLUE }); down(24);
-  if (r.club_address) { text(r.club_address, { size: 10, color: COLOR_MUTED }); down(16); }
+  // The logo on the left, at most 60 tall and 140 wide; the name and address beside it.
+  const logo = await logoImage(doc, r.logo_url, opts.fetchFn ?? fetch) ?? await logoImage(doc, r.logo_icon_url, opts.fetchFn ?? fetch);
+  let nameX = MARGIN, logoH = 0;
+  if (logo) {
+    const scale = Math.min(60 / logo.height, 140 / logo.width);
+    const w = logo.width * scale;
+    logoH = logo.height * scale;
+    page.drawImage(logo, { x: MARGIN, y: y - logoH, width: w, height: logoH });
+    nameX = MARGIN + w + 14;
+  }
+  const top = y;
+  if (logo) y -= Math.max(0, (logoH - (r.club_address ? 40 : 24)) / 2);
+  text(r.club_name, { size: 18, b: true, color: COLOR_BLUE, x: nameX }); down(24);
+  if (r.club_address) { text(r.club_address, { size: 10, color: COLOR_MUTED, x: nameX }); down(16); }
+  y = Math.min(y, top - logoH);
   down(18);
   text(`Receipt ${receiptNo(r)}`, { size: 14, b: true });
   text(fmtPoolDate(String(r.paid_at), tz, { month: 'long', day: 'numeric', year: 'numeric' }), { size: 11, right: true });

@@ -41,7 +41,7 @@ function club({ address = '1 Pool Lane, Concord, CA 94521' } = {}) {
   return fakeDb({
     tenants: [{ id: TID, slug: 'bishopestates', display_name: 'Bishop Estates Cabana Club', timezone: 'America/Los_Angeles' },
       { id: 't2', slug: 'maple', display_name: 'Maple Grove', timezone: 'America/Los_Angeles' }],
-    settings: [{ tenant_id: TID, value: { membership: { year: 2027 }, club: { address, location: 'Concord, California' } } },
+    settings: [{ tenant_id: TID, value: { membership: { year: 2027 }, club: { address, location: 'Concord, California' }, branding: { logo_url: 'https://x.supabase.co/storage/v1/object/public/club-assets/t1/logo.jpg', icon_mode: 'logo', icon_512_url: 'https://x.supabase.co/storage/v1/object/public/club-assets/t1/icon512.png' } } },
       { tenant_id: 't2', value: { membership: { year: 2027 }, club: { location: 'Davis, California' } } }],
     applications: [{ id: 'a1', tenant_id: TID, family_name: 'Smith', address: '123 Oak St', primary_name: 'Sam Smith', primary_email: 'sam@example.com', household_id: null }],
     households: [{ id: 'h1', tenant_id: TID, family_name: 'Lee', address: '9 Elm Ct, Concord, CA' }],
@@ -90,6 +90,25 @@ if (rc) {
   pdf.resetDrawn();
   await rc.renderReceiptPdf(paidOff);
   check('…and the last one says paid in full', /Paid in full/.test(pdf.drawn.texts.join('\n')));
+
+  // Doug 11/6: "add the club logo at the top".
+  check('the club\'s logo is kept with the receipt, like its address', r1?.logo_url === 'https://x.supabase.co/storage/v1/object/public/club-assets/t1/logo.jpg' && other?.logo_url == null, short({ a: r1?.logo_url, b: other?.logo_url }));
+  const img = bytes => async () => ({ ok: true, status: 200, arrayBuffer: async () => new Uint8Array(bytes).buffer });
+  const drawWith = async (row, fetchFn) => { pdf.resetDrawn(); await rc.renderReceiptPdf(row, { fetchFn }); return { images: pdf.drawn.images, name: pdf.drawn.texts.includes('Bishop Estates Cabana Club') }; };
+  const jpg = await drawWith(r1, img([0xFF, 0xD8, 0xFF, 0xE0, 0, 0]));
+  const png = await drawWith(r1, img([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+  check('the logo at the top, a JPEG or a PNG, next to the club\'s name', jpg.images === 1 && png.images === 1 && jpg.name && png.name, short({ jpg, png }));
+  // Bishop's logo is a WebP photo, which a PDF can't hold: the app icon Poolside made from it (a PNG) instead.
+  check('the logo\'s app icon is kept too, when the icon is made from the logo', r1?.logo_icon_url === 'https://x.supabase.co/storage/v1/object/public/club-assets/t1/icon512.png', short(r1?.logo_icon_url));
+  const byUrl = map => async url => { const b = map[String(url).split('/').pop()]; if (!b) throw new Error('no file'); return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array(b).buffer }; };
+  const webp = await drawWith(r1, byUrl({ 'logo.jpg': [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50], 'icon512.png': [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] }));
+  check('a WebP logo: its PNG app icon instead', webp.images === 1 && webp.name, short(webp));
+  const svg = await drawWith({ ...r1, logo_icon_url: null }, img([0x3C, 0x73, 0x76, 0x67]));
+  const down = await drawWith(r1, async () => { throw new Error('offline'); });
+  const noLogo = await drawWith({ ...r1, logo_url: null, logo_icon_url: null }, async () => { throw new Error('not called'); });
+  check('a logo it can\'t use, or can\'t fetch: the receipt still comes out, without it', svg.images === 0 && svg.name && down.images === 0 && down.name && noLogo.images === 0 && noLogo.name, short({ svg, down, noLogo }));
+  const logoMig = (await import('node:fs')).readdirSync(new URL('supabase/migrations/', root)).filter(f => /receipt/.test(f)).map(f => read(`supabase/migrations/${f}`)).join('\n');
+  check('…kept in their own columns', /logo_url/.test(logoMig) && /logo_icon_url/.test(logoMig));
 
   const att = await rc.receiptAttachment(r1);
   check('attached to an email as "2027 Receipt 0001.pdf"', att?.filename === '2027 Receipt 0001.pdf' && att?.contentType === 'application/pdf' && att?.content?.length > 0, short(att));
