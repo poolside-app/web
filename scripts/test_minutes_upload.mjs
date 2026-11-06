@@ -35,7 +35,6 @@ try { dp = await importTs(new URL('supabase/functions/_shared/drive_parties.ts',
 const TID = 't1';
 const SUPA = 'https://x.supabase.co';
 const KEYS = { googleClientId: 'cid', googleClientSecret: 'cs' };
-const B64 = s => Buffer.from(s).toString('base64');
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 function club() {
   const db = fakeDb({
@@ -51,8 +50,24 @@ function club() {
     download: async path => files[`${bucket}/${path}`] ? { data: new Blob([files[`${bucket}/${path}`].bytes]), error: null } : { data: null, error: { message: 'not found' } },
     remove: async paths => { for (const p of paths) delete files[`${bucket}/${p}`]; return { data: null, error: null }; },
     createSignedUrl: async (path, secs) => ({ data: { signedUrl: `${SUPA}/storage/v1/object/sign/${bucket}/${path}?token=t&exp=${secs}` }, error: null }),
+    createSignedUploadUrl: async path => { db.links.push(`${bucket}/${path}`); return { data: { signedUrl: `${SUPA}/storage/v1/object/upload/sign/${bucket}/${path}?token=up`, token: 'up', path }, error: null }; },
+    list: async (prefix, opts = {}) => ({ data: Object.entries(files)
+      .filter(([k]) => k.startsWith(`${bucket}/${prefix}/`) && k.slice(bucket.length + prefix.length + 2).startsWith(opts.search || ''))
+      .map(([k, v]) => ({ name: k.slice(bucket.length + prefix.length + 2), metadata: { size: v.bytes.length, mimetype: v.contentType } })), error: null }),
   }) };
+  db.links = [];
+  // The board member's phone sending the file to the one-time link.
+  db.put = (url, bytes, contentType) => { const m = String(url).match(/\/object\/upload\/sign\/([^?]+)/); if (m) files[decodeURIComponent(m[1])] = { bytes, contentType }; };
   return db;
+}
+// Both steps, as the page does them (PLAN.md BY4): the link, the file, then save.
+async function send(db, body, content, me) {
+  const bytes = content == null ? null : Buffer.from(content);
+  if (typeof mu.startMinutesUpload !== 'function') return { ok: false, error: 'no startMinutesUpload' };
+  const s = await mu.startMinutesUpload(db, TID, { ...body, size: bytes ? bytes.length : 0 });
+  if (!s.ok) return s;
+  if (bytes) db.put(s.upload_url, bytes, s.content_type);
+  return mu.saveUploadedMinutes(db, TID, { ...body, content_type: s.content_type, upload_id: s.id }, me);
 }
 const SAM = { id: 'adm-sam', name: 'Sam Brooks', isOwner: true };
 const MEI = { id: 'adm-chen', name: 'Mei Chen', isOwner: false };
@@ -71,26 +86,59 @@ if (mu) {
 
   console.log('\nBW3 · saved private, posted at once');
   const db = club();
-  const r = await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-01-01', file_name: 'January minutes.pdf', content_type: 'application/pdf', base64: B64('%PDF-1.4 jan') }, MEI);
+  const r = await send(db, { meeting_date: '2026-01-01', file_name: 'January minutes.pdf', content_type: 'application/pdf' }, '%PDF-1.4 jan', MEI);
   const row = db.tables.club_documents[0];
   check('it saves', r.ok === true && !!row, short(r));
   check('a minutes row with its date, Members by default, who uploaded it', row?.kind === 'minutes' && row.meeting_date === '2026-01-01' && row.visibility === 'members' && row.uploaded_by === 'adm-chen' && row.uploaded_by_name === 'Mei Chen' && row.file_name === 'January minutes.pdf' && row.content_type === 'application/pdf', short(row));
   const keys = Object.keys(db.files);
   check('the file goes straight to the private club-docs folder, never the public one', keys.length === 1 && keys[0].startsWith(`club-docs/${TID}/minutes-`) && keys[0].endsWith('.pdf') && row?.storage_path === keys[0].slice('club-docs/'.length) && row.url == null, short({ keys, row }));
   check('…as a PDF', db.files[keys[0]]?.contentType === 'application/pdf');
-  const r2 = await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-02-12', visibility: 'private', file_name: 'Closed session.docx', content_type: DOCX, base64: B64('PK word') }, ANA);
+  const r2 = await send(db, { meeting_date: '2026-02-12', visibility: 'private', file_name: 'Closed session.docx', content_type: DOCX }, 'PK word', ANA);
   check('Board only when picked', r2.ok && db.tables.club_documents[1]?.visibility === 'private' && Object.keys(db.files).some(k => k.endsWith('.docx')), short(r2));
   const bad = [
-    await mu.saveUploadedMinutes(db, TID, { meeting_date: '', file_name: 'x.pdf', content_type: 'application/pdf', base64: B64('x') }, MEI),
-    await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-13-40', file_name: 'x.pdf', content_type: 'application/pdf', base64: B64('x') }, MEI),
-    await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-01-01', file_name: 'x.zip', content_type: 'application/zip', base64: B64('x') }, MEI),
-    await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-01-01', file_name: 'x.pdf', content_type: 'application/pdf', base64: '' }, MEI),
+    await send(db, { meeting_date: '', file_name: 'x.pdf', content_type: 'application/pdf' }, 'x', MEI),
+    await send(db, { meeting_date: '2026-13-40', file_name: 'x.pdf', content_type: 'application/pdf' }, 'x', MEI),
+    await send(db, { meeting_date: '2026-01-01', file_name: 'x.zip', content_type: 'application/zip' }, 'x', MEI),
+    await send(db, { meeting_date: '2026-01-01', file_name: 'x.pdf', content_type: 'application/pdf' }, null, MEI),
   ];
   check('no date, a made-up date, a wrong kind of file or no file: refused, nothing saved', bad.every(b => b.ok === false && b.error) && db.tables.club_documents.length === 2, short(bad.map(b => b.error)));
   check('…in plain words', /date/i.test(bad[0].error) && /PDF, a Word file or a photo/.test(bad[2].error), short(bad.map(b => b.error)));
-  const big = await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-01-01', file_name: 'big.pdf', content_type: 'application/pdf', base64: 'A'.repeat(36 * 1024 * 1024) }, MEI);
+  const big = await send(db, { meeting_date: '2026-01-01', file_name: 'big.pdf', content_type: 'application/pdf' }, 'A'.repeat(36 * 1024 * 1024), MEI);
   check('over 25 MB: refused', big.ok === false && /25 MB/.test(big.error || ''), short(big));
-  await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-03-05', file_name: 'March.jpg', content_type: 'image/jpeg', base64: B64('jpg') }, MEI);
+  await send(db, { meeting_date: '2026-03-05', file_name: 'March.jpg', content_type: 'image/jpeg' }, 'jpg', MEI);
+
+  console.log('\nBY4 · straight to storage, not through Poolside\'s server');
+  // Doug 11/6: "yes go do that for the minutes uopload". A 25 MB scan sent
+  // through the server as text could run out of time or memory there.
+  const src = read('supabase/functions/_shared/minutes_upload.ts');
+  check('the server never handles the file itself', !/base64|atob\(/.test(src));
+  const d4 = club();
+  const st = typeof mu.startMinutesUpload === 'function' ? await mu.startMinutesUpload(d4, TID, { meeting_date: '2026-04-02', file_name: 'April.pdf', content_type: 'application/pdf', size: 20 * 1024 * 1024 }) : {};
+  check('a 20 MB file gets a one-time link into the private folder', st.ok === true && /^https:\/\/x\.supabase\.co\/storage\/v1\/object\/upload\/sign\/club-docs\/t1\/minutes-[0-9a-f-]{36}\.pdf\?token=/.test(st.upload_url || '') && st.content_type === 'application/pdf', short(st));
+  const pre = typeof mu.startMinutesUpload === 'function' ? [
+    await mu.startMinutesUpload(d4, TID, { meeting_date: '', file_name: 'x.pdf', content_type: 'application/pdf', size: 10 }),
+    await mu.startMinutesUpload(d4, TID, { meeting_date: '2026-04-02', file_name: 'x.zip', content_type: 'application/zip', size: 10 }),
+    await mu.startMinutesUpload(d4, TID, { meeting_date: '2026-04-02', file_name: 'x.pdf', content_type: 'application/pdf', size: 26 * 1024 * 1024 }),
+  ] : [];
+  check('the date, the kind of file and its size are checked before any link', pre.length === 3 && pre.every(p => p.ok === false) && d4.links.length === 1, short(pre.map(p => p.error)));
+  const save = async (body, me = MEI) => mu.saveUploadedMinutes(d4, TID, { meeting_date: '2026-04-02', file_name: 'April.pdf', content_type: 'application/pdf', ...body }, me);
+  const notYet = await save({ upload_id: st.id });
+  check('saving before the file arrived: refused, nothing posted', notYet.ok === false && /didn.t arrive/.test(notYet.error || '') && !d4.tables.club_documents.length, short(notYet));
+  d4.put(st.upload_url || '', Buffer.alloc(26 * 1024 * 1024), 'application/pdf');
+  const tooBig = await save({ upload_id: st.id });
+  check('a file bigger than 25 MB when it lands: refused and removed', tooBig.ok === false && /25 MB/.test(tooBig.error || '') && !Object.keys(d4.files).length, short(tooBig));
+  const st2 = typeof mu.startMinutesUpload !== 'function' ? {} : await mu.startMinutesUpload(d4, TID, { meeting_date: '2026-04-02', file_name: 'April.pdf', content_type: 'application/pdf', size: 100 });
+  d4.put(st2.upload_url, Buffer.from('<html>'), 'text/html');
+  const wrong = await save({ upload_id: st2.id });
+  check('a file stored as something other than what was said: refused and removed', wrong.ok === false && !Object.keys(d4.files).length, short(wrong));
+  const fake = await save({ upload_id: 'not-an-id' });
+  const other = await mu.saveUploadedMinutes(d4, 't2', { meeting_date: '2026-04-02', file_name: 'April.pdf', content_type: 'application/pdf', upload_id: st2.id }, MEI);
+  check('a made-up upload, or another club\'s: refused', fake.ok === false && other.ok === false, short({ fake, other }));
+  const st3 = typeof mu.startMinutesUpload !== 'function' ? {} : await mu.startMinutesUpload(d4, TID, { meeting_date: '2026-04-02', file_name: 'April.pdf', content_type: 'application/pdf', size: 9 });
+  d4.put(st3.upload_url, Buffer.from('%PDF-1.4 '), 'application/pdf');
+  const ok1 = await save({ upload_id: st3.id });
+  const ok2 = await save({ upload_id: st3.id });
+  check('it posts once it\'s there, and a second tap doesn\'t post it twice', ok1.ok === true && ok2.ok === true && d4.tables.club_documents.length === 1 && d4.tables.club_documents[0].id === st3.id, short({ ok1, ok2, n: d4.tables.club_documents.length }));
 
   console.log('\nBW2 · who sees them');
   const forMembers = await mu.uploadedMinutes(db, TID, { membersOnly: true });
@@ -121,8 +169,8 @@ console.log('\nBW4 · backed up to Drive');
 if (mu && dm) {
   const g = fakeGoogle(); globalThis.fetch = g.fetch;
   const db = club();
-  await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-01-01', file_name: 'January minutes.docx', content_type: DOCX, base64: B64('PK word') }, MEI);
-  await mu.saveUploadedMinutes(db, TID, { meeting_date: '2026-02-12', visibility: 'private', file_name: 'Feb.pdf', content_type: 'application/pdf', base64: B64('%PDF feb') }, MEI);
+  await send(db, { meeting_date: '2026-01-01', file_name: 'January minutes.docx', content_type: DOCX }, 'PK word', MEI);
+  await send(db, { meeting_date: '2026-02-12', visibility: 'private', file_name: 'Feb.pdf', content_type: 'application/pdf' }, '%PDF feb', MEI);
   const r = await dm.backupDocs(db, TID, KEYS);
   const pdfs = Object.values(g.files).filter(f => !/folder/.test(f.mimeType));
   const folder = Object.values(g.files).find(f => f.name === 'Board minutes');
@@ -136,7 +184,7 @@ if (mu && dm) {
   if (dp) {
     const g2 = fakeGoogle(); globalThis.fetch = g2.fetch;
     const db2 = club();
-    await mu.saveUploadedMinutes(db2, TID, { meeting_date: '2026-03-05', file_name: 'March.jpg', content_type: 'image/jpeg', base64: B64('jpg') }, MEI);
+    await send(db2, { meeting_date: '2026-03-05', file_name: 'March.jpg', content_type: 'image/jpeg' }, 'jpg', MEI);
     const rn = await dp.nightlyDrive(db2, TID, KEYS);
     check('the nightly run copies one that was missed', Object.values(g2.files).some(f => f.name === '2026-03-05 Meeting minutes - uploaded.jpg' && f.mimeType === 'image/jpeg'), short(rn));
   }
@@ -148,6 +196,7 @@ const bm = read('supabase/functions/board_meetings/index.ts');
 const part = (src, start, end) => { const i = src.indexOf(start); if (i < 0) return ''; const j = src.indexOf(end, i + start.length); return src.slice(i, j < 0 ? undefined : j); };
 check('board_meetings uses minutes_upload.ts', /from '\.\.\/_shared\/minutes_upload\.ts'/.test(bm));
 const up = part(bm, "action === 'upload_minutes'", "if (action ===");
+check('BY4: an upload_minutes_start action for the link, any board member', /startMinutesUpload\(/.test(part(bm, "action === 'upload_minutes_start'", "if (action ===")) && !/isOwner/.test(part(bm, "action === 'upload_minutes_start'", "if (action ===")));
 check('BW1: an upload_minutes action, any board member, backed up after', /saveUploadedMinutes\(/.test(up) && /docsLater\(/.test(up) && !/isOwner/.test(up), up.slice(0, 200));
 check('BW5: a delete_upload action', /deleteUploadedMinutes\(/.test(part(bm, "action === 'delete_upload'", "if (action ===")));
 check('BW2: the board\'s list has them', /uploadedMinutes\(/.test(part(bm, "action === 'list'", "action === 'get'")));
@@ -173,9 +222,11 @@ const UPLOADS = [
 const MEETINGS = [{ id: 'm1', title: 'March board meeting', meeting_date: '2026-03-12', status: 'completed', minutes_status: 'approved', visibility: 'members', attendees_json: [], votes_json: [], follow_ups_json: [], approval: {} },
   { id: 'm0', title: 'December board meeting', meeting_date: '2025-12-04', status: 'completed', minutes_status: 'approved', visibility: 'members', attendees_json: [], votes_json: [], follow_ups_json: [], approval: {} }];
 const sent = [];
+const LINK = 'https://x.supabase.co/storage/v1/object/upload/sign/club-docs/t1/minutes-0d6f1c2e-0000-4000-8000-000000000009.pdf?token=up';
 const answer = (f, body, ctx) => {
   if (f === 'board_meetings') {
     if (body.action === 'list') return { ok: true, meetings: MEETINGS, uploads: UPLOADS };
+    if (body.action === 'upload_minutes_start') { sent.push(body); return { ok: true, id: '0d6f1c2e-0000-4000-8000-000000000009', upload_url: LINK, content_type: 'application/pdf' }; }
     if (body.action === 'upload_minutes') { sent.push(body); return { ok: true, upload: { ...UPLOADS[0], id: 'u9' } }; }
     if (body.action === 'delete_upload') { sent.push(body); return { ok: true }; }
     if (body.action === 'governance') return { ok: true, meetings: MEETINGS.map(m => ({ ...m, notes_md: 'Notes.' })), uploads: [UPLOADS[0]], bylaws: { current: null, earlier: [] }, board: [] };
@@ -190,6 +241,19 @@ try {
   page.on('pageerror', e => errors.push(e.message));
   let confirms = 0;
   page.on('dialog', d => { confirms++; d.accept(); });
+  // What the phone sends to storage, caught in the page before it leaves.
+  await page.evaluateOnNewDocument(() => {
+    const real = window.fetch;
+    window.__puts = [];
+    window.fetch = async (url, init = {}) => {
+      if ((init.method || 'GET') === 'PUT' && /\/object\/upload\/sign\//.test(String(url))) {
+        const body = init.body instanceof Blob ? await init.body.text() : String(init.body ?? '');
+        window.__puts.push({ url: String(url), type: (init.headers || {})['content-type'] || '', body });
+        return new Response('{"Key":"ok"}', { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return real(url, init);
+    };
+  });
   await attach(page, { answer });
   await page.goto(BOARD + '/club/admin/board-meetings.html', { waitUntil: 'networkidle0', timeout: 45000 });
   await new Promise(r => setTimeout(r, 600));
@@ -227,9 +291,12 @@ try {
   const preview = await page.evaluate(() => document.getElementById('upload-form').innerText);
   check('it shows what members will see', /Meeting minutes from 1\/1\/2026/.test(preview), preview.slice(0, 300));
   await page.evaluate(() => [...document.querySelectorAll('#upload-form button')].find(b => /^Upload$/.test(b.textContent.trim()))?.click());
-  for (let i = 0; i < 30 && !sent.length; i++) await new Promise(r => setTimeout(r, 100));
-  const s = sent[0] || {};
-  check('Upload sends the date, the file and who sees it', s.action === 'upload_minutes' && s.meeting_date === '2026-01-01' && s.visibility === 'members' && s.file_name === 'January minutes.pdf' && s.content_type === 'application/pdf' && Buffer.from(s.base64 || '', 'base64').toString() === '%PDF-1.4 January', short({ ...s, base64: (s.base64 || '').slice(0, 20) }));
+  for (let i = 0; i < 30 && sent.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+  const [s0 = {}, s = {}] = sent;
+  const puts = await page.evaluate(() => window.__puts || []);
+  check('BY4: it asks for the link with the date, the file\'s name, type and size', s0.action === 'upload_minutes_start' && s0.meeting_date === '2026-01-01' && s0.file_name === 'January minutes.pdf' && s0.content_type === 'application/pdf' && s0.size === 16 && !('base64' in s0), short(s0));
+  check('BY4: the file goes straight to that link, as itself', puts.length === 1 && puts[0].url === LINK && puts[0].type === 'application/pdf' && puts[0].body === '%PDF-1.4 January', short(puts));
+  check('Upload then sends the date, the file and who sees it', s.action === 'upload_minutes' && s.upload_id === '0d6f1c2e-0000-4000-8000-000000000009' && s.meeting_date === '2026-01-01' && s.visibility === 'members' && s.file_name === 'January minutes.pdf' && s.content_type === 'application/pdf' && !('base64' in s), short(s));
   await new Promise(r => setTimeout(r, 400));
   const after = await page.evaluate(() => ({ open: document.getElementById('upload-form')?.offsetParent !== null, msg: document.getElementById('upload-msg')?.textContent || '' }));
   check('…then the form closes and the list refreshes', after.open === false, short(after));

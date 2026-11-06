@@ -36,7 +36,7 @@ const appBranch = (hook.split("if (kind === 'application' && md.application_id)"
 const closeAt = appBranch.indexOf("// Close any related admin tasks");
 const taskAt = appBranch.indexOf('approveFailedTask(');
 check('…opened after the step that closes the signup\'s to-dos', closeAt > 0 && taskAt > closeAt, `${closeAt} ${taskAt}`);
-check('…for plan signups too', /approveFailedTask\(/.test((hook.split("kind === 'payment_plan_first' || kind === 'payment_plan_setup'")[1] || '').slice(0, 4000)));
+check('…for plan signups too', /approveFailedTask\(/.test((hook.split("if (kind === 'payment_plan_first' || kind === 'payment_plan_setup')")[1] || '').slice(0, 4000)));
 check('it goes to the signups person', /'application\.approve_failed': 'signups'/.test(read('supabase/functions/_shared/positions.ts')));
 
 console.log('BG4 · the plan signup\'s Sign in button (item 11)');
@@ -200,7 +200,9 @@ console.log('BS4 · the Signups list (offline, in Chrome)');
 console.log('BG4 · unpaid card signups (item 19)');
 const cleanup = (apps.split("if (action === 'cron_cleanup_abandoned')")[1] || '').split("if (action === '")[0];
 check('waits 24 hours, not 60 minutes', /24 \* 60 \* 60 \* 1000/.test(cleanup) && !/60 \* 60 \* 1000\)\.toISOString/.test(cleanup.replace('24 * 60 * 60 * 1000', '')));
-check('asks Stripe first and keeps a paid one', /checkout\/sessions\//.test(cleanup) && /payment_status === 'paid'/.test(cleanup));
+// Since BY2 it closes the page through _shared/checkout_close.ts, which hears "paid" from Stripe.
+const close = read('supabase/functions/_shared/checkout_close.ts');
+check('asks Stripe first and keeps a paid one', /closeSignupCheckout\(/.test(cleanup) && /!== 'closed'\) \{ kept\+\+/.test(cleanup) && /checkout\/sessions\//.test(close) && /payment_status === 'paid'/.test(close));
 
 console.log('BG4 · a released party paid late (item 20)');
 const party = (hook.split("if (kind === 'party_booking' && md.party_id && tenantId)")[1] || '').split("// Fundraiser donations")[0];

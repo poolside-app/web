@@ -306,7 +306,10 @@ function unfinishedCardSignup(a: PendingApp): boolean {
  *  payment plan removed, and its board task closed. */
 async function setAsideUnfinished(sb: ReturnType<typeof createClient>, tenantId: string, apps: PendingApp[]): Promise<void> {
   const { dropPlansIfUnstarted } = await import('../_shared/plan_ops.ts');
+  const { closeSignupCheckout } = await import('../_shared/checkout_close.ts');
   for (const a of apps) {
+    // Its Stripe page closes first; paid after all, or Stripe can't say: leave it (PLAN.md BY2).
+    if ((await closeSignupCheckout(sb, tenantId, a.id)) !== 'closed') continue;
     if (!(await dropPlansIfUnstarted(sb, a.id))) continue;   // under way after all: leave everything
     const now = new Date().toISOString();
     await sb.from('applications').update({
@@ -360,45 +363,15 @@ Deno.serve(async (req) => {
       .or('claim_source.is.null,claim_source.neq.csv_import')
       .limit(500);
 
-    // Ask Stripe before deleting: a checkout it says was paid is kept for
-    // the confirmation still on its way (PLAN.md BG4).
-    const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY');
-    const accounts = new Map<string, string | null>();
-    async function stripeSaysPaid(a: Record<string, unknown>): Promise<boolean | null> {
-      let sid = (a.stripe_session_id as string | null) ?? null;
-      if (!sid && a.payment_method === 'stripe_plan') {
-        const { data: plan } = await sb.from('payment_plans').select('id').eq('application_id', a.id as string)
-          .order('created_at', { ascending: false }).limit(1).maybeSingle();
-        if (plan) {
-          const { data: first } = await sb.from('payment_plan_installments').select('stripe_session_id')
-            .eq('plan_id', plan.id).eq('sequence', 1).maybeSingle();
-          sid = (first?.stripe_session_id as string | null) ?? null;
-        }
-      }
-      if (!sid || !sid.startsWith('cs_')) return false;    // never reached Stripe, or a test checkout
-      if (!STRIPE_KEY) return null;
-      const tid = a.tenant_id as string;
-      if (!accounts.has(tid)) {
-        const { data: t } = await sb.from('tenants').select('stripe_account_id').eq('id', tid).maybeSingle();
-        accounts.set(tid, (t?.stripe_account_id as string) ?? null);
-      }
-      const acct = accounts.get(tid);
-      try {
-        const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sid)}`, {
-          headers: { Authorization: `Bearer ${STRIPE_KEY}`, ...(acct ? { 'Stripe-Account': acct } : {}) },
-        });
-        if (!r.ok) return null;
-        const cs = await r.json();
-        return cs.payment_status === 'paid' || cs.status === 'complete';
-      } catch { return null; }
-    }
-
+    // Close its Stripe page before deleting (PLAN.md BY2): one Stripe says
+    // was paid is kept for the confirmation still on its way (BG4), and one
+    // Stripe can't answer about waits for the next run.
     let deleted = 0, kept = 0;
     const { dropPlansIfUnstarted } = await import('../_shared/plan_ops.ts');
+    const { closeSignupCheckout } = await import('../_shared/checkout_close.ts');
     for (const a of (abandoned ?? [])) {
       try {
-        const paid = await stripeSaysPaid(a as Record<string, unknown>);
-        if (paid !== false) { kept++; continue; }     // paid, or Stripe couldn't say: try again next run
+        if ((await closeSignupCheckout(sb, a.tenant_id as string, a.id as string)) !== 'closed') { kept++; continue; }
         // Its never-started plan goes too, or it stays on Upcoming (PLAN.md BX).
         if (!(await dropPlansIfUnstarted(sb, a.id as string))) { kept++; continue; }
         await sb.from('audit_log').insert({
@@ -475,10 +448,14 @@ Deno.serve(async (req) => {
     // a financial record, so only unpaid ones are swept.
     let orphanedRenewals = 0;
     const { data: orphanRenewals } = await sb.from('applications')
-      .select('id').eq('is_renewal', true)
+      .select('id, tenant_id').eq('is_renewal', true)
       .neq('payment_status', 'paid').is('household_id', null).limit(500);
-    if (orphanRenewals?.length) {
-      const deadIds = orphanRenewals.map(r => r.id as string);
+    // Each one's Stripe page closes first; one paid or unanswered stays (PLAN.md BY2).
+    const deadIds: string[] = [];
+    for (const r of orphanRenewals ?? []) {
+      if ((await closeSignupCheckout(sb, r.tenant_id as string, r.id as string)) === 'closed') deadIds.push(r.id as string);
+    }
+    if (deadIds.length) {
       await sb.from('application_actions').delete().in('application_id', deadIds);
       await sb.from('admin_tasks').delete().eq('source_kind', 'application').in('source_id', deadIds);
       const { error } = await sb.from('applications').delete().in('id', deadIds);
@@ -2345,6 +2322,17 @@ Deno.serve(async (req) => {
         error: 'This application created a household. Permanently delete the household instead (Members → Households → Edit → Permanently delete) — it will remove the application too.',
         has_household: true,
       }, 409);
+    }
+    // Its Stripe page closes first, so it can't be paid after (PLAN.md BY2);
+    // one paid a moment ago is about to be confirmed, so it stays.
+    {
+      const { closeSignupCheckout } = await import('../_shared/checkout_close.ts');
+      if ((await closeSignupCheckout(sb, TID, id)) === 'paid') {
+        return jsonResponse({ ok: false, error: 'Stripe says this family just paid. Give it a minute to show, then look again.' }, 409);
+      }
+      // Its never-started plan goes too (PLAN.md BX).
+      const { dropPlansIfUnstarted } = await import('../_shared/plan_ops.ts');
+      await dropPlansIfUnstarted(sb, id);
     }
     await sb.from('admin_tasks').delete()
       .eq('tenant_id', TID).eq('source_kind', 'application').eq('source_id', id);

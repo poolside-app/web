@@ -168,6 +168,7 @@ export function fakeDb(tables) {
       limit: n => { st.limit = n; return b; },
       eq:  (k, v) => { st.tests.push(r => r[k] === v); return b; },
       neq: (k, v) => { st.tests.push(r => r[k] !== v); return b; },
+      lt:  (k, v) => { st.tests.push(r => r[k] != null && r[k] < v); return b; },
       in:  (k, vs) => { st.tests.push(r => vs.includes(r[k])); return b; },
       is:  (k, v) => { st.tests.push(r => (v === null ? r[k] == null : r[k] === v)); return b; },
       not: (k, op, v) => { st.tests.push(r => (op === 'is' ? (v === null ? r[k] != null : r[k] !== v) : op === 'like' ? !like(r[k], v) : true)); return b; },

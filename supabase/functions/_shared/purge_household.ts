@@ -40,6 +40,9 @@ export async function purgeHousehold(sb: Db, tid: string, id: string): Promise<
   await sb.from('admin_tasks').delete().eq('tenant_id', tid).in('source_id', sources);
 
   if (appIds.length) {
+    // Each signup's open Stripe page closes, so nothing is paid for it after (PLAN.md BY2).
+    const { closeSignupCheckout } = await import('./checkout_close.ts');
+    for (const a of appIds) await closeSignupCheckout(sb, tid, a);
     // Their waiting Drive backups too (PLAN.md Z1), or they retry forever.
     await sb.from('drive_sync_queue').delete().eq('tenant_id', tid).in('application_id', appIds);
     await sb.from('applications').delete().eq('tenant_id', tid).in('id', appIds);

@@ -109,6 +109,51 @@ console.log('BX · only plans under way can be approved (offline)');
   check('so does starting over on a new signup', /dropPlansIfUnstarted\(/.test(block(apps, 'async function setAsideUnfinished', 1500)));
 }
 
+console.log('BY1 · a plan waits for its first payment (offline)');
+{
+  // Doug 11/6: "yes... do your unpaid plan idea". Saved as 'waiting' at
+  // Stripe's page; Stripe's confirmation makes it active.
+  const { fakeDb } = await import('./lib/fake_google.mjs');
+  const ops = await importTs(new URL('supabase/functions/_shared/plan_ops.ts', root));
+  const block = (src, start, len = 4000) => { const i = src.indexOf(start); return i < 0 ? '' : src.slice(i, i + len); };
+  const co = read('supabase/functions/stripe_checkout/index.ts');
+  check('a new plan is saved as waiting, not active', /status: 'waiting'/.test(block(co, 'A family that went back from Stripe', 1800)) && !/total_cents: totalCents, status: 'active'/.test(co));
+  const { readdirSync } = await import('node:fs');
+  const migSrc = readdirSync(new URL('supabase/migrations/', root)).filter(f => f >= '20261106').map(f => read(`supabase/migrations/${f}`)).join('\n');
+  check('the database takes the new status', /payment_plans_status_check/.test(migSrc) && /'waiting'/.test(migSrc));
+
+  let started = null, db = null;
+  try {
+    db = fakeDb({ payment_plans: [{ id: 'w', status: 'waiting' }, { id: 'a', status: 'active' }, { id: 'l', status: 'lapsed' }] });
+    const [w, a, l] = db.tables.payment_plans.map(p => ({ ...p }));
+    await ops.startPlan(db, w); await ops.startPlan(db, a); await ops.startPlan(db, l);
+    started = { w: w.status, a: a.status, l: l.status, rows: db.tables.payment_plans.map(p => p.status).join(',') };
+  } catch (e) { started = e.message; }
+  check('Stripe\'s confirmation makes a waiting plan active', started?.w === 'active' && started?.rows === 'active,active,lapsed', short(started));
+  check('and leaves any other plan as it was', started?.a === 'active' && started?.l === 'lapsed', short(started));
+  const wh = read('supabase/functions/stripe_webhook/index.ts');
+  check('the webhook starts it on the first payment or the saved card', /startPlan\(/.test(block(wh, "if (kind === 'payment_plan_first' || kind === 'payment_plan_setup')", 600)));
+
+  let swept = null;
+  try {
+    const old = '2026-10-20T00:00:00Z', fresh = '2026-11-05T00:00:00Z';
+    db = fakeDb({
+      payment_plans: [{ id: 'old', status: 'waiting', created_at: old }, { id: 'new', status: 'waiting', created_at: fresh }, { id: 'run', status: 'active', created_at: old }],
+      payment_plan_installments: [{ id: 'o1', plan_id: 'old' }, { id: 'n1', plan_id: 'new' }, { id: 'r1', plan_id: 'run' }],
+    });
+    const n = await ops.dropStaleWaitingPlans(db, new Date('2026-11-06T16:00:00Z'));
+    swept = { n, plans: db.tables.payment_plans.map(p => p.id).join(','), insts: db.tables.payment_plan_installments.map(i => i.id).join(',') };
+  } catch (e) { swept = e.message; }
+  check('a plan still waiting after 7 days is deleted with its payments', swept?.n === 1 && swept?.plans === 'new,run' && swept?.insts === 'n1,r1', short(swept));
+  const pp = read('supabase/functions/payment_plans/index.ts');
+  check('the daily run sweeps them', /dropStaleWaitingPlans\(/.test(block(pp, "if (action === 'cron_run')", 8000)));
+  check('Money → Plans leaves waiting plans out', /neq\('status', 'waiting'\)/.test(block(pp, "if (action === 'list_plans')", 500)));
+  check('so does the family\'s own plan in the app', /neq\('status', 'waiting'\)/.test(block(read('supabase/functions/_shared/plan_ops.ts'), 'export async function memberPlanView', 500)));
+  // Everything else that counts or charges plans reads active ones by name.
+  const counts = ['supabase/functions/_shared/board_home.ts', 'supabase/functions/_shared/membership_status.ts', 'supabase/functions/payments_admin/index.ts', 'supabase/functions/households_admin/index.ts'];
+  check('the board home, the member check and the money screens count active plans only', counts.every(f => /\.(eq|in)\('status', (\[)?'active'/.test(read(f))));
+}
+
 if (LIVE) {
   console.log('\nLive (Bishop, temporary family, test card)');
   const env = Object.fromEntries(read('.env.local').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));

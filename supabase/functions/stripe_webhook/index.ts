@@ -103,6 +103,25 @@ async function approveFailedTask(sb: ReturnType<typeof createClient>, tenantId: 
   });
 }
 
+// A card payment for a signup or plan deleted or closed meanwhile (PLAN.md
+// BY3, Doug 11/6): the Treasurer gets a to-do and pop-up, never an automatic
+// refund. Nothing to give back when only a card was saved.
+async function orphanPayment(sb: ReturnType<typeof createClient>, tenantId: string, session: Record<string, unknown>, why: 'deleted' | 'closed') {
+  const amount = Number(session.amount_total) || 0;
+  if (amount <= 0) return;
+  const cd = (session.customer_details as Record<string, unknown> | null) ?? {};
+  const { orphanPaymentTask } = await import('../_shared/checkout_close.ts');
+  const task = orphanPaymentTask({
+    tenantId, tz: await tenantTimeZone(sb, tenantId), why,
+    name: (cd.name as string) || null, email: (cd.email as string) || (session.customer_email as string) || null,
+    amountCents: amount, paidAt: new Date().toISOString(),
+    paymentIntent: (session.payment_intent as string) || null, sessionId: String(session.id || ''),
+  });
+  const { enqueueAdminTask } = await import('../_shared/enqueue_task.ts');
+  await enqueueAdminTask(sb, task);
+  await sb.from('audit_log').insert({ tenant_id: tenantId, kind: 'payment.no_signup', entity_type: 'stripe_charge', summary: task.summary, actor_kind: 'stripe' });
+}
+
 // A refund or chargeback on anything but a signup (PLAN.md BG3): find what
 // it was for and give the Treasurer a to-do and pop-up. To-do only, Doug
 // 10/20: the board decides what to undo.
@@ -239,6 +258,13 @@ Deno.serve(async (req) => {
 
     if (kind === 'application' && md.application_id) {
       const now = new Date().toISOString();
+      // Paid for a signup deleted or closed meanwhile: the Treasurer decides (PLAN.md BY3).
+      const { data: here } = await sb.from('applications').select('id, status')
+        .eq('id', md.application_id).eq('tenant_id', tenantId).maybeSingle();
+      if (!here || here.status === 'rejected') {
+        await orphanPayment(sb, tenantId, session, here ? 'closed' : 'deleted');
+        return new Response('ok (no open signup)', { status: 200 });
+      }
       // md.free: a discount or credit covered the whole price, confirmed by
       // stripe_checkout.confirm_free (H5). No card, no Stripe session.
       const free = md.free === '1';
@@ -359,7 +385,18 @@ Deno.serve(async (req) => {
       const ops = await import('../_shared/plan_ops.ts');
       const club = await ops.loadPlanClub(sb, tenantId);
       const { data: plan } = await sb.from('payment_plans').select('*').eq('id', md.plan_id).eq('tenant_id', tenantId).maybeSingle();
-      if (!club || !plan) return new Response('Plan not found', { status: 200 });
+      if (!club) return new Response('Club not found', { status: 200 });
+      // The plan, or the signup it starts, deleted or closed meanwhile: the
+      // Treasurer decides (PLAN.md BY3).
+      const starts = kind === 'payment_plan_first' || kind === 'payment_plan_setup';
+      const { data: planApp } = starts && md.application_id
+        ? await sb.from('applications').select('id, status').eq('id', md.application_id).eq('tenant_id', tenantId).maybeSingle()
+        : { data: null };
+      const signupGone = starts && !!md.application_id && (!planApp || planApp.status === 'rejected');
+      if (!plan || signupGone) {
+        await orphanPayment(sb, tenantId, session, planApp ? 'closed' : 'deleted');
+        return new Response('Plan not found', { status: 200 });
+      }
       const sessionId = String(session.id || '');
       const piId = (session.payment_intent as string) || null;
       const now = new Date().toISOString();
@@ -394,6 +431,8 @@ Deno.serve(async (req) => {
       }
 
       if (kind === 'payment_plan_first' || kind === 'payment_plan_setup') {
+        // Under way now: active from here on (PLAN.md BY1).
+        await ops.startPlan(sb, plan);
         if (kind === 'payment_plan_first') {
           await sb.from('payment_plan_installments').update({
             status: 'paid', paid_at: now, stripe_payment_intent_id: piId, stripe_session_id: sessionId, last_error: null,

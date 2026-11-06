@@ -176,6 +176,31 @@ export async function dropPlansIfUnstarted(sb: SupabaseClient, applicationId: st
   return true;
 }
 
+/**
+ * A plan is saved as 'waiting' when the family reaches Stripe's page (PLAN.md
+ * BY1, Doug 11/6). Stripe's confirmation, the first payment or the card saved
+ * when nothing is paid today, makes it active. Everything that charges or
+ * counts plans reads active ones only.
+ */
+export async function startPlan(sb: SupabaseClient, plan: Record<string, unknown>): Promise<void> {
+  if (plan.status !== 'waiting') return;
+  await sb.from('payment_plans').update({ status: 'active' }).eq('id', plan.id).eq('status', 'waiting');
+  plan.status = 'active';
+}
+
+/** Stripe's page closes after a day and its confirmation retries for 3, so a
+ *  plan still waiting after a week never started. */
+export const WAITING_DAYS = 7;
+export async function dropStaleWaitingPlans(sb: SupabaseClient, now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - WAITING_DAYS * 86_400_000).toISOString();
+  const { data } = await sb.from('payment_plans').select('id').eq('status', 'waiting').lt('created_at', cutoff).limit(500);
+  const ids = (data ?? []).map(p => p.id as string);
+  if (!ids.length) return 0;
+  await sb.from('payment_plan_installments').delete().in('plan_id', ids);
+  await sb.from('payment_plans').delete().in('id', ids);
+  return ids.length;
+}
+
 export async function installmentsOf(sb: SupabaseClient, planId: string): Promise<Inst[]> {
   const { data } = await sb.from('payment_plan_installments').select('*').eq('plan_id', planId).order('sequence');
   return (data ?? []) as Inst[];
@@ -428,7 +453,7 @@ export function grossUp(club: PlanClub, cents: number): number {
  */
 export async function memberPlanView(sb: SupabaseClient, tenantId: string, householdId: string): Promise<Record<string, unknown> | null> {
   const { data: plans } = await sb.from('payment_plans').select('*')
-    .eq('tenant_id', tenantId).eq('household_id', householdId)
+    .eq('tenant_id', tenantId).eq('household_id', householdId).neq('status', 'waiting')
     .order('created_at', { ascending: false }).limit(3);
   const plan = (plans ?? []).find(p => p.status !== 'completed') ?? (plans ?? [])[0];
   if (!plan) return null;

@@ -61,7 +61,9 @@
 //
 // Minutes of a meeting not taken in Poolside (PLAN.md BW, Doug 11/5), any
 // board member, posted at once (_shared/minutes_upload.ts):
-//   { action: 'upload_minutes', meeting_date, visibility, file_name, content_type, base64 }
+//   { action: 'upload_minutes_start', meeting_date, file_name, content_type, size } → { id, upload_url }
+//   the page PUTs the file to upload_url, then
+//   { action: 'upload_minutes', upload_id, meeting_date, visibility, file_name, content_type }
 //   { action: 'delete_upload', id }        whoever uploaded it or the president
 // 'list' and 'governance' return them as `uploads`.
 //
@@ -114,7 +116,7 @@ import { moveToPrivate, withLinks, type DocRow } from '../_shared/club_docs.ts';
 import { approversFor, progress, mayApproveFor, editMode, snapshot, ON_BEHALF_DAYS, type Attendee } from '../_shared/minutes_approval.ts';
 import { enqueueAdminTask, pushBoard } from '../_shared/enqueue_task.ts';
 import { backupDocs, backupMinutes } from '../_shared/drive_minutes.ts';
-import { deleteUploadedMinutes, saveUploadedMinutes, uploadedMinutes } from '../_shared/minutes_upload.ts';
+import { deleteUploadedMinutes, saveUploadedMinutes, startMinutesUpload, uploadedMinutes } from '../_shared/minutes_upload.ts';
 
 // The bylaws (PLAN.md K6): every upload is kept; the newest is current. The
 // files are private (BJ1): readers get links that work for an hour.
@@ -770,6 +772,13 @@ Deno.serve(async (req) => {
 
   // ── Minutes uploaded for a meeting not taken in Poolside (PLAN.md BW) ──
   // Any board member; posted at once, Members or Board only; backed up to Drive.
+  // The one-time link the page sends the file to, straight into the private
+  // folder (PLAN.md BY4); then upload_minutes posts it.
+  if (action === 'upload_minutes_start') {
+    const r = await startMinutesUpload(sb, TID, body);
+    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, r.status);
+    return jsonResponse(r);
+  }
   if (action === 'upload_minutes') {
     const r = await saveUploadedMinutes(sb, TID, body, { ...me, id: payload.synthetic ? null : me.id });
     if (!r.ok) return jsonResponse({ ok: false, error: r.error }, r.status);

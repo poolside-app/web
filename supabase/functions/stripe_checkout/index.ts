@@ -316,6 +316,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'This club hasn\'t finished connecting Stripe yet' }, 400);
     }
     if (!tenant) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    // A page from an earlier try is closed first, so nobody pays twice (PLAN.md BY2).
+    {
+      const { closeSignupCheckout } = await import('../_shared/checkout_close.ts');
+      if ((await closeSignupCheckout(sb, app.tenant_id as string, app.id as string)) === 'paid') {
+        return jsonResponse({ ok: false, error: 'Your payment already went through. It can take a minute to show.' }, 409);
+      }
+    }
 
     // The price after any discount and credit (H5), worked out again here so
     // what the card is charged always matches the rules.
@@ -447,7 +454,14 @@ Deno.serve(async (req) => {
     const later = first ? rows.slice(1) : rows;
 
     // A family that went back from Stripe and chose again replaces the plan
-    // that never started. One that has started is left alone.
+    // that never started. One that has started is left alone. Its old page is
+    // closed first, so nobody pays twice (PLAN.md BY2).
+    {
+      const { closeSignupCheckout } = await import('../_shared/checkout_close.ts');
+      if ((await closeSignupCheckout(sb, app.tenant_id as string, id)) === 'paid') {
+        return jsonResponse({ ok: false, error: 'Your payment already went through. Sign in to see it.' }, 409);
+      }
+    }
     const { data: existing } = await sb.from('payment_plans')
       .select('id, stripe_payment_method_id').eq('application_id', id);
     for (const p of existing ?? []) {
@@ -461,7 +475,8 @@ Deno.serve(async (req) => {
     }
     const { data: plan, error: planErr } = await sb.from('payment_plans').insert({
       tenant_id: app.tenant_id, application_id: id, household_id: app.household_id ?? null,
-      plan_type: q.weekly ? 'weekly' : 'flex', total_cents: totalCents, status: 'active',
+      // Waiting until Stripe confirms the first payment or the card (PLAN.md BY1).
+      plan_type: q.weekly ? 'weekly' : 'flex', total_cents: totalCents, status: 'waiting',
       today_cents: q.choice.today_cents, payoff_month: q.choice.payoff_month,
       primary_email: app.primary_email, primary_phone: app.primary_phone, family_name: app.family_name,
     }).select('id').single();
@@ -548,6 +563,8 @@ Deno.serve(async (req) => {
     }
     const s = await stripeApi('/checkout/sessions', params, tenant.stripe_account_id as string);
     if (!s.ok) return jsonResponse({ ok: false, error: s.error }, 500);
+    // On the signup too, so it can be closed if the signup goes (PLAN.md BY2).
+    await sb.from('applications').update({ stripe_session_id: s.data.id }).eq('id', id);
     if (first) {
       await sb.from('payment_plan_installments').update({ stripe_session_id: s.data.id }).eq('plan_id', planId).eq('sequence', 1);
     }

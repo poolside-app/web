@@ -9,7 +9,8 @@
 // Members or Board only each time.
 //
 // Each upload is a club_documents row of kind 'minutes' with its date and who
-// sees it. The file goes straight to the private club-docs folder; readers
+// sees it. The file goes straight from the phone to the private club-docs
+// folder (BY4: a one-time upload link, never through the server); readers
 // get links that work for an hour, like the bylaws. Whoever uploaded it or
 // the President can delete it; its Drive copy (drive_minutes.ts) stays.
 // board_meetings uses these; tested offline by scripts/test_minutes_upload.mjs.
@@ -57,29 +58,67 @@ function realDay(s: unknown): string | null {
   return !isNaN(t.getTime()) && t.toISOString().slice(0, 10) === day ? day : null;
 }
 
-export async function saveUploadedMinutes(sb: Sb, tid: string, body: Record<string, unknown>, me: Me):
-  Promise<{ ok: true; row: Record<string, unknown> } | { ok: false; error: string; status: number }> {
+const uploadPath = (tid: string, id: string, ext: string) => `${tid}/minutes-${id}.${ext}`;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+type Checked = { day: string; fileName: string; type: { mime: string; ext: string } };
+function checkUpload(body: Record<string, unknown>): Checked | { ok: false; error: string; status: number } {
   const day = realDay(body.meeting_date);
   if (!day) return { ok: false, status: 400, error: 'Pick the date of the meeting.' };
   const fileName = String(body.file_name ?? '').trim().slice(0, 160) || 'Minutes';
   const type = minutesFileType(body.content_type, fileName);
   if (!type) return { ok: false, status: 400, error: 'Upload a PDF, a Word file or a photo of the minutes.' };
-  const b64 = String(body.base64 ?? '').replace(/\s+/g, '');
-  if (!b64) return { ok: false, status: 400, error: 'Pick the file with the minutes.' };
-  if (Math.floor(b64.length * 3 / 4) > MAX_BYTES) return { ok: false, status: 400, error: 'That file is over 25 MB.' };
-  let bytes: Uint8Array;
-  try { bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
-  catch { return { ok: false, status: 400, error: 'That file couldn\'t be read. Try again.' }; }
+  return { day, fileName, type };
+}
+
+/**
+ * Step 1 (PLAN.md BY4, Doug 11/6): the date, the kind of file and its size
+ * are checked, then the phone gets a one-time link to put the file straight
+ * into the private folder. Nothing big passes through Poolside's server,
+ * which a 25 MB scan sent as text could run out of time or memory in.
+ */
+export async function startMinutesUpload(sb: Sb, tid: string, body: Record<string, unknown>):
+  Promise<{ ok: true; id: string; upload_url: string; content_type: string } | { ok: false; error: string; status: number }> {
+  const c = checkUpload(body);
+  if ('ok' in c) return c;
+  const size = Number(body.size);
+  if (!(size > 0)) return { ok: false, status: 400, error: 'Pick the file with the minutes.' };
+  if (size > MAX_BYTES) return { ok: false, status: 400, error: 'That file is over 25 MB.' };
   const id = crypto.randomUUID();
-  const path = `${tid}/minutes-${id}.${type.ext}`;
-  const up = await sb.storage.from(PRIVATE_BUCKET).upload(path, bytes, { contentType: type.mime, upsert: false });
-  if (up.error) return { ok: false, status: 500, error: `Upload failed: ${up.error.message}` };
+  const { data, error } = await sb.storage.from(PRIVATE_BUCKET).createSignedUploadUrl(uploadPath(tid, id, c.type.ext));
+  if (error || !data?.signedUrl) return { ok: false, status: 500, error: `Upload failed: ${error?.message ?? 'no link'}` };
+  return { ok: true, id, upload_url: data.signedUrl, content_type: c.type.mime };
+}
+
+/** Step 2: once the file is there (its size and type checked again), it's posted. */
+export async function saveUploadedMinutes(sb: Sb, tid: string, body: Record<string, unknown>, me: Me):
+  Promise<{ ok: true; row: Record<string, unknown> } | { ok: false; error: string; status: number }> {
+  const c = checkUpload(body);
+  if ('ok' in c) return c;
+  const id = String(body.upload_id ?? '');
+  if (!UUID.test(id)) return { ok: false, status: 400, error: 'Pick the file with the minutes.' };
+  // A second tap on Upload: already posted.
+  const { data: had } = await sb.from('club_documents').select('*').eq('id', id).eq('tenant_id', tid).maybeSingle();
+  if (had) return { ok: true, row: had };
+  const path = uploadPath(tid, id, c.type.ext);
+  const name = path.slice(tid.length + 1);
+  const { data: found } = await sb.storage.from(PRIVATE_BUCKET).list(tid, { search: name });
+  const obj = (found ?? []).find((f: { name: string }) => f.name === name);
+  if (!obj) return { ok: false, status: 400, error: 'The file didn\'t arrive. Try again.' };
+  const size = Number(obj.metadata?.size ?? 0), stored = String(obj.metadata?.mimetype ?? '');
+  if (size > MAX_BYTES || (stored && stored !== c.type.mime)) {
+    await sb.storage.from(PRIVATE_BUCKET).remove([path]);
+    return { ok: false, status: 400, error: size > MAX_BYTES ? 'That file is over 25 MB.' : 'Upload a PDF, a Word file or a photo of the minutes.' };
+  }
   const { data, error } = await sb.from('club_documents').insert({
-    id, tenant_id: tid, kind: 'minutes', url: null, storage_path: path, file_name: fileName, content_type: type.mime,
-    meeting_date: day, visibility: body.visibility === 'private' ? 'private' : 'members',
+    id, tenant_id: tid, kind: 'minutes', url: null, storage_path: path, file_name: c.fileName, content_type: c.type.mime,
+    meeting_date: c.day, visibility: body.visibility === 'private' ? 'private' : 'members',
     uploaded_by: me.id, uploaded_by_name: me.name,
   }).select('*').single();
   if (error || !data) {
+    // Two taps at once: the other one posted it, so the file stays.
+    const { data: again } = await sb.from('club_documents').select('*').eq('id', id).eq('tenant_id', tid).maybeSingle();
+    if (again) return { ok: true, row: again };
     await sb.storage.from(PRIVATE_BUCKET).remove([path]);
     return { ok: false, status: 500, error: error?.message ?? 'Could not save it.' };
   }

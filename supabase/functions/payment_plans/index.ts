@@ -84,7 +84,7 @@ async function hasPaymentsScope(sb: SupabaseClient, p: AdminPayload): Promise<bo
 // back) live in _shared/plan_ops.ts, shared with checkout and the webhook.
 import {
   PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor, chargeableNow, awaitingApproval,
-  planStarted, startedPlanIds,
+  planStarted, startedPlanIds, dropStaleWaitingPlans,
   grantAccessIfReady, completeIfPaid, endPlan, enforceEnd, seasonStarted, rulesFor, planView,
   memberPlanView, type PlanClub, type PlanConfig, type Inst,
 } from '../_shared/plan_ops.ts';
@@ -626,6 +626,9 @@ Deno.serve(async (req) => {
     // After a shift, its poster ticks who came (sign-ups, PLAN.md BM).
     let signups = { asked: 0, closed: 0 };
     try { signups = await askAttendance(sb, null); } catch (e) { console.error('sign-up attendance:', (e as Error).message); }
+    // Plans whose family left Stripe's page a week ago (PLAN.md BY1).
+    let waiting_dropped = 0;
+    try { waiting_dropped = await dropStaleWaitingPlans(sb); } catch (e) { console.error('waiting plans:', (e as Error).message); }
     // Every club's own "today" (pool time), loaded once per club.
     const clubs = new Map<string, PlanClub | null>();
     const clubFor = async (tid: string) => {
@@ -894,7 +897,7 @@ Deno.serve(async (req) => {
       console.error('text queue drain (non-fatal):', (e as Error).message);
     }
 
-    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, minutes, signups, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
+    return jsonResponse({ ok: true, texts_sent, texts_waiting, approval, minutes, signups, waiting_dropped, season_cutoffs, charged, retried, lapsed, past_deadline, reminded, enforced, parties_released, keyfob_syncs_started, trial_notices, emails_sent, emails_queued, referrals_unlocked: referralsUnlocked });
   }
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
@@ -1044,8 +1047,9 @@ Deno.serve(async (req) => {
   if (action === 'list_plans') {
     const club = await loadPlanClub(sb, payload.tid);
     if (!club) return jsonResponse({ ok: false, error: 'Club not found' }, 404);
+    // Not a family who left Stripe's page (PLAN.md BY1).
     const { data: plans } = await sb.from('payment_plans').select('*')
-      .eq('tenant_id', payload.tid).order('created_at', { ascending: false }).limit(300);
+      .eq('tenant_id', payload.tid).neq('status', 'waiting').order('created_at', { ascending: false }).limit(300);
     const ids = (plans ?? []).map(p => p.id);
     const byPlan = new Map<string, Inst[]>();
     if (ids.length) {

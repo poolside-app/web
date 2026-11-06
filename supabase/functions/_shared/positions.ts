@@ -82,6 +82,8 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'keyfob.season': 'gate',
   // A card payment for a request canceled meanwhile: a refund (PLAN.md X2).
   'keyfob.paid_after_cancel': 'payments',
+  // A card payment for a signup deleted or closed meanwhile (PLAN.md BY3).
+  'payment.no_signup': 'payments',
   'renewal.auto_renew_failed': 'payments',
   // Plan payments waiting for approval (PLAN.md S3).
   'payments.approve_due': 'payments',
