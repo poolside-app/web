@@ -123,7 +123,8 @@ const INSTALL_ENV = detectInstallEnv();
 
 // One short instruction set per browser. Only ever ONE is shown at a time.
 const INSTALL_INSTR = {
-  'ios-safari': `<ol class="steps"><li>Tap <b>Share</b> <span class="ic">↑</span> at the <b>bottom</b> of Safari.</li><li>Tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b> (top-right).</li></ol>`,
+  // Since iOS 26, Share is behind ••• next to the address bar (PLAN.md CA1).
+  'ios-safari': `<ol class="steps"><li>Tap <b>•••</b> next to the address bar, then <b>Share</b>. (On older iPhones, <b>Share</b> <span class="ic">↑</span> is at the bottom of Safari.)</li><li>Scroll down and tap <b>Add to Home Screen</b>.</li><li>Leave <b>Open as Web App</b> on and tap <b>Add</b>.</li></ol>`,
   'ios-chrome': `<ol class="steps"><li>Tap the <b>Share</b> icon <span class="ic">↑</span> (near the address bar, <b>top-right</b>).</li><li>Tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>.</li></ol><p class="hintline">Don’t see it? Open this page in <b>Safari</b> and try the same steps.</p>`,
   'android': `<div id="android-btn-slot"></div><ol class="steps"><li>Or tap Chrome’s <b>⋮</b> menu (top-right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>).</li></ol>`,
 };

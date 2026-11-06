@@ -88,7 +88,8 @@
   }
 
   const INSTALL_INSTR = {
-    'ios-safari': '<ol class="pwa-steps"><li>Tap <b>Share</b> <span class="pwa-ic">&#8593;</span> at the <b>bottom</b> of Safari.</li><li>Tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b> (top-right).</li></ol>',
+    // Since iOS 26, Share is behind ••• next to the address bar (PLAN.md CA1).
+    'ios-safari': '<ol class="pwa-steps"><li>Tap <b>•••</b> next to the address bar, then <b>Share</b>. (On older iPhones, <b>Share</b> <span class="pwa-ic">&#8593;</span> is at the bottom of Safari.)</li><li>Scroll down and tap <b>Add to Home Screen</b>.</li><li>Leave <b>Open as Web App</b> on and tap <b>Add</b>.</li></ol>',
     'ios-chrome': '<ol class="pwa-steps"><li>Tap the <b>Share</b> icon <span class="pwa-ic">&#8593;</span> near the address bar (<b>top-right</b>).</li><li>Tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>.</li></ol><p class="pwa-hint">Don\u2019t see it? Open this page in <b>Safari</b> and try again.</p>',
     'android': '<div class="pwa-android-slot"></div><ol class="pwa-steps"><li>Or tap Chrome\u2019s <b>&#8942;</b> menu (top-right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>).</li></ol>',
   };

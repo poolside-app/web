@@ -70,6 +70,36 @@ if (promo) {
   check('it comes up between parts and before she starts', at(10) > at(3) * 2 && at(0.5) > at(3) * 2);
   check('it fades out at the end, never above full volume', at(20) === 0 && pts.every(p => p[1] >= 0 && p[1] <= 1));
 }
+console.log('CA · the "add the app" videos');
+{
+  // Doug 11/6: "a video describing and walking through how to add the app to
+  // your home screen on a iphone/android", made like the 90-second video.
+  const read = rel => { try { return readFileSync(new URL(rel, import.meta.url), 'utf8'); } catch { return ''; } };
+  const ios = steps => /•••/.test(steps) && /Share/.test(steps) && /Add to Home Screen/.test(steps) && /Open as Web App/.test(steps) && /older iPhones/.test(steps);
+  const pwa = read('../js/pwa.js'), act = read('../club/admin/activate.html');
+  const iosOf = src => (src.match(/'ios-safari':\s*[`'](.*?)[`'],\n/s) || [])[1] || '';
+  check('CA1: the app\'s iPhone steps are today\'s: ••• → Share → Add to Home Screen → Open as Web App', ios(iosOf(pwa)), iosOf(pwa).slice(0, 160));
+  check('CA1: so are the board\'s activation page\'s', ios(iosOf(act)), iosOf(act).slice(0, 160));
+  let hs = null;
+  try { hs = await import('./demo_video/homescreen.mjs'); } catch (e) { check('homescreen.mjs loads without recording', false, String(e.message).slice(0, 120)); }
+  const stage = read('./demo_video/homescreen.html'), src = read('./demo_video/homescreen.mjs');
+  if (hs) {
+    const said = phone => hs.SCRIPTS[phone].filter(x => x.say).map(x => x.say);
+    const inOrder = (lines, words) => { let i = 0; for (const l of lines) if (i < words.length && words[i].test(l)) i++; return i === words.length; };
+    const ip = said('iphone'), an = said('android');
+    check('CA2: the iPhone one: Safari, ••• and Share, Add to Home Screen, Open as Web App and Add, the icon, signed in, notifications', inOrder(ip,
+      [/Safari/, /three dots/, /Add to Home Screen/, /Open as Web App/, /Home Screen/, /signed in/, /notifications/]), JSON.stringify(ip));
+    check('CA3: the Android one: Chrome, Add to home screen, Install, Chrome\'s menu, the icon, signed in, notifications', inOrder(an,
+      [/Chrome/, /Add to home screen/, /Install/, /menu/, /home screen/, /signed in/, /notifications/]), JSON.stringify(an));
+    check('each about 45 seconds: 8 to 12 short sentences', [ip, an].every(l => l.length >= 8 && l.length <= 12 && l.every(t => t.split(' ').length <= 22)), `${ip.length}, ${an.length}`);
+    check('"your club", so it fits any club; the screens show the made-up one', ![...ip, ...an].some(t => /Maple Grove|Bishop/.test(t)) && [...ip, ...an].some(t => /your club/i.test(t)));
+    check('every subtitle fits on two lines', [...ip, ...an].every(t => { const c = promo.captionLines(t); return c.length <= 2 && c.every(l => l.length <= 64); }));
+  }
+  const taps = [...src.matchAll(/ui\(h, '([^']+)'/g)].map(m => m[1]);
+  const missing = taps.filter(sel => !stage.includes(`id="${sel.replace(/^#/, '')}"`));
+  check('every button the videos tap is drawn on the stage', taps.length >= 10 && !missing.length, missing.join(', ') || String(taps.length));
+}
+
 const enc = readFileSync(new URL('./demo_video/encode.swift', import.meta.url), 'utf8');
 check('the encoder mixes in music with its volume curve', /music\.json/.test(enc) && /setVolumeRamp/.test(enc) && /audioMix/.test(enc));
 

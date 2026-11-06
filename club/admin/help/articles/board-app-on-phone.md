@@ -10,8 +10,8 @@ Poolside works best as an app on your phone's Home Screen. That's also the only 
 On an iPhone, in Safari:
 
 1. Open your club's board sign-in link in Safari and sign in.
-2. Tap the Share button (the square with the arrow).
-3. Tap "Add to Home Screen", then "Add".
+2. Tap the three dots (•••) next to the address bar, then Share. On older iPhones, Share (the square with the arrow) is at the bottom of Safari.
+3. Scroll down and tap "Add to Home Screen". Leave "Open as Web App" on, then tap "Add".
 4. Open Poolside from the new icon. It opens already signed in.
 
 On Android, in Chrome:

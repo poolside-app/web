@@ -1,0 +1,352 @@
+<!doctype html>
+<!-- The "add the app" videos' stage (PLAN.md CA): the 90-second video's look
+     (pool blue, a big title beside the phone, subtitles), one phone holding the
+     real member app (frame 'app'), and the parts of the phone itself drawn
+     here: Safari's bar, its ••• menu, the share sheet, Add to Home Screen, the
+     Home Screen and the notifications question on an iPhone; Chrome's bar and
+     menu, the install sheet, the home screen and the question on Android.
+     homescreen.mjs runs the story; Stage.ui() taps what's drawn here. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poolside: add the app</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root { --navy: #0b3a5a; --amber: #f5b324; --pool: #1191d2; --ios-blue: #0a84ff; --and-blue: #0b57d0; }
+  html, body { margin: 0; width: 1440px; height: 810px; overflow: hidden; font-family: Inter, sans-serif; color: #fff; background: var(--pool); }
+  .stage { position: fixed; inset: 0; overflow: clip; }
+  .bg { position: absolute; inset: 0; background:
+      radial-gradient(1200px 820px at 28% 18%, rgba(255,255,255,.12), rgba(255,255,255,0) 62%),
+      linear-gradient(180deg, #169bd9 0%, #0d84c4 100%); }
+  .bg::before { content: ''; position: absolute; inset: -400px; animation: drift 40s linear infinite;
+    background: repeating-linear-gradient(-55deg, rgba(255,255,255,.06) 0 90px, rgba(255,255,255,0) 90px 180px); }
+  @keyframes drift { to { transform: translateX(-219.7px); } }
+
+  /* The step's title, beside the phone (the 90-second video's). */
+  .title { position: absolute; left: 80px; top: 0; width: 640px; height: 700px; display: flex; flex-direction: column; justify-content: center; z-index: 5; }
+  .t-icon { width: 78px; height: 78px; border-radius: 50%; background: #fff; display: grid; place-items: center; font: 900 34px Inter; color: var(--navy); margin-bottom: 26px;
+    box-shadow: 0 14px 32px rgba(3,45,80,.28); transform: scale(0); transition: transform .5s cubic-bezier(.3,1.6,.5,1); }
+  .title.in .t-icon { transform: scale(1); }
+  .title.out .t-icon { transform: scale(0); transition: transform .3s ease-in; }
+  .ln { overflow: hidden; padding: 6px 0 8px; margin: -6px 0 -8px; }
+  .ln span { display: inline-block; font: 900 62px/1.04 Inter; letter-spacing: -.02em; text-transform: uppercase; color: #fff;
+    transform: translateY(115%); transition: transform .6s cubic-bezier(.2,.85,.25,1); text-shadow: 0 4px 18px rgba(3,45,80,.18); }
+  .ln.acc span { background: var(--amber); color: var(--navy); padding: 8px 18px 6px; border-radius: 12px; margin-top: 12px; text-shadow: none; box-shadow: 0 12px 28px rgba(3,45,80,.22); }
+  .ln.on span { transform: none; }
+  .title.out .ln span { transform: translateY(-120%); transition: transform .45s cubic-bezier(.6,0,.8,.3); }
+  .chip { position: absolute; left: 80px; top: 600px; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 9px 24px 9px 9px; background: #fff; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 16px 36px rgba(3,40,72,.3); font: 700 21px Inter; color: var(--navy); transform: scale(0); transform-origin: left center; transition: transform .5s cubic-bezier(.3,1.7,.5,1); }
+  .chip i { width: 46px; height: 46px; border-radius: 50%; background: #e3f3fc; display: grid; place-items: center; font-style: normal; font-size: 24px; }
+  .chip.in { transform: scale(1); }
+
+  /* The camera: the phone, the tap dot and the ring, zooming together. */
+  #rig { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; transform-origin: 0 0; transition: transform .9s cubic-bezier(.45,.05,.2,1); z-index: 3; }
+  .phone { position: absolute; left: 880px; top: 32px; width: 414px; transition: transform .8s cubic-bezier(.3,.9,.3,1), opacity .3s; }
+  .phone.gone { transform: translateY(860px); opacity: 0; }
+  .bezel { position: relative; width: 414px; height: 744px; border-radius: 52px; background: #fff; padding: 12px; box-sizing: border-box;
+    box-shadow: 0 44px 90px rgba(3,40,72,.42), 0 12px 26px rgba(3,40,72,.2), inset 0 0 0 1.5px #dfe7ee; }
+  .android .bezel { border-radius: 38px; }
+  .screen { position: relative; width: 390px; height: 720px; border-radius: 40px; overflow: hidden; background: #fbfaf7; color: #0f172a; }
+  .android .screen { border-radius: 28px; }
+  .screen iframe { position: absolute; left: 0; width: 390px; border: 0; background: #fbfaf7; display: block; }
+  .ios .screen iframe { top: 50px; height: 600px; }
+  .ios .screen.app iframe { height: 670px; }
+  .android .screen iframe { top: 92px; height: 628px; }
+  .android .screen.app iframe { top: 30px; height: 690px; }
+
+  /* Status bars. */
+  .sb { position: absolute; left: 0; right: 0; top: 0; z-index: 4; display: flex; justify-content: space-between; align-items: center; font: 600 15px Inter; color: #0f172a; background: #fbfaf7; }
+  .ios .sb { height: 50px; padding: 4px 34px 0 40px; box-sizing: border-box; }
+  .ios .sb::after { content: ''; position: absolute; left: 50%; top: 11px; width: 118px; height: 33px; margin-left: -59px; border-radius: 20px; background: #0b0b0d; }
+  .android .sb { height: 30px; padding: 0 20px; box-sizing: border-box; font-size: 13px; background: #fff; }
+  .sb .ic { display: flex; gap: 6px; align-items: center; }
+  .bat { width: 24px; height: 11px; border: 1.6px solid #0f172a; border-radius: 4px; position: relative; box-sizing: border-box; }
+  .bat::after { content: ''; position: absolute; inset: 1.5px; right: 5px; background: #0f172a; border-radius: 1.5px; }
+  .bars { display: flex; gap: 2px; align-items: flex-end; height: 11px; } .bars b { width: 3px; background: #0f172a; border-radius: 1px; }
+  .home-on .sb, .home-on .sb .bat, .home-on .sb .bars b { color: #fff; border-color: #fff; background: transparent; }
+  .home-on .sb .bat::after, .home-on .sb .bars b { background: #fff; }
+
+  /* Safari (iOS 26): a floating bar at the bottom, ••• on the right. */
+  .ios-bar { position: absolute; left: 12px; right: 12px; bottom: 16px; height: 50px; z-index: 5; display: flex; align-items: center; gap: 8px; transition: opacity .3s; }
+  .ios-bar .b { width: 46px; height: 46px; border-radius: 50%; background: rgba(250,250,252,.92); box-shadow: 0 6px 20px rgba(0,0,0,.16), inset 0 0 0 .5px rgba(0,0,0,.08);
+    display: grid; place-items: center; font: 600 22px Inter; color: #0f172a; flex-shrink: 0; }
+  .ios-bar .url { flex: 1; height: 46px; border-radius: 23px; background: rgba(250,250,252,.92); box-shadow: 0 6px 20px rgba(0,0,0,.16), inset 0 0 0 .5px rgba(0,0,0,.08);
+    display: flex; align-items: center; justify-content: center; gap: 6px; font: 500 15px Inter; color: #0f172a; }
+  .ios-bar .url small { font-size: 12px; color: #64748b; }
+  .ios-bar #ios-dots { font: 800 20px Inter; letter-spacing: 1px; padding-bottom: 6px; box-sizing: border-box; }
+  .app .ios-bar, .app .cr-bar { opacity: 0; pointer-events: none; }
+
+  /* The ••• menu. */
+  .ios-menu { position: absolute; right: 14px; bottom: 76px; width: 236px; z-index: 6; border-radius: 22px; background: rgba(246,246,248,.97); box-shadow: 0 18px 50px rgba(0,0,0,.28);
+    overflow: hidden; transform-origin: 90% 100%; transform: scale(.6); opacity: 0; transition: transform .28s cubic-bezier(.3,1.3,.5,1), opacity .2s; }
+  .ios-menu.on { transform: none; opacity: 1; }
+  .ios-menu div { display: flex; justify-content: space-between; align-items: center; padding: 13px 18px; font: 500 16px Inter; border-top: .5px solid rgba(0,0,0,.1); }
+  .ios-menu div:first-child { border-top: 0; }
+  .ios-menu div span { font-size: 17px; width: 22px; text-align: center; }
+
+  /* The share sheet and Add to Home Screen. */
+  .dim { position: absolute; inset: 0; z-index: 6; background: rgba(0,0,0,.28); opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .dim.on { opacity: 1; }
+  .ios-sheet { position: absolute; left: 0; right: 0; bottom: 0; height: 560px; z-index: 7; background: #f2f2f7; border-radius: 26px 26px 0 0;
+    transform: translateY(100%); transition: transform .45s cubic-bezier(.2,.9,.3,1); overflow: hidden; }
+  .ios-sheet.on { transform: none; }
+  .sh-head { display: flex; align-items: center; gap: 12px; padding: 18px 18px 14px; }
+  .sh-head .ico { width: 46px; height: 46px; border-radius: 11px; }
+  .sh-head b { display: block; font: 600 15px Inter; } .sh-head small { font: 400 13px Inter; color: #6b7280; }
+  .sh-head .x { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; background: #e5e5ea; display: grid; place-items: center; font: 600 14px Inter; color: #6b7280; }
+  .sh-apps { display: flex; gap: 18px; padding: 6px 18px 16px; border-bottom: .5px solid rgba(0,0,0,.1); }
+  .sh-apps div { width: 62px; text-align: center; font: 500 11px Inter; color: #3c3c43; }
+  .sh-apps i { display: block; width: 58px; height: 58px; border-radius: 14px; margin: 0 auto 6px; font-style: normal; font-size: 26px; display: grid; place-items: center; }
+  .sh-list { position: relative; background: #f2f2f7; padding: 12px 16px 40px; transition: transform .7s cubic-bezier(.4,.1,.2,1); }
+  .sh-group { background: #fff; border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+  .sh-group div { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; font: 400 16px Inter; border-top: .5px solid rgba(0,0,0,.1); }
+  .sh-group div:first-child { border-top: 0; }
+  .sh-group div span { font-size: 18px; width: 24px; text-align: center; color: #0f172a; }
+
+  .ios-add { position: absolute; left: 0; right: 0; top: 54px; bottom: 0; z-index: 8; background: #f2f2f7; border-radius: 22px 22px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,.18); transform: translateY(105%); transition: transform .45s cubic-bezier(.2,.9,.3,1); }
+  .ios-add.on { transform: none; }
+  .ad-nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 18px 14px; font: 400 16px Inter; }
+  .ad-nav b { font: 600 16px Inter; } .ad-nav .blue { color: var(--ios-blue); } .ad-nav #ios-add { font-weight: 700; }
+  .ad-card { margin: 14px 16px; background: #fff; border-radius: 12px; display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+  .ad-card .ico { width: 62px; height: 62px; border-radius: 14px; flex-shrink: 0; }
+  .ad-card .nm { font: 400 17px Inter; border-bottom: .5px solid rgba(0,0,0,.15); padding-bottom: 8px; margin-bottom: 8px; }
+  .ad-card small { font: 400 13px Inter; color: #6b7280; }
+  .ad-row { margin: 18px 16px 6px; background: #fff; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; font: 400 16px Inter; }
+  .tog { width: 52px; height: 32px; border-radius: 16px; background: #34c759; position: relative; }
+  .tog::after { content: ''; position: absolute; right: 2px; top: 2px; width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); }
+  .ad-note { margin: 0 32px; font: 400 13px/1.4 Inter; color: #6b7280; }
+
+  /* The club's icon: navy, the amber dot. */
+  .ico { background: linear-gradient(160deg, #0f4c75, #0b3a5a); position: relative; }
+  .ico::after { content: ''; position: absolute; left: 50%; top: 50%; width: 32%; height: 32%; margin: -16% 0 0 -16%; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(245,179,36,.3); }
+
+  /* The Home Screen. */
+  .home { position: absolute; inset: 0; z-index: 9; background: linear-gradient(170deg, #7cc4ec 0%, #3a8fd0 45%, #1d4f8f 100%); opacity: 0; pointer-events: none; transition: opacity .45s; }
+  .android .home { background: linear-gradient(170deg, #c9e2c8 0%, #6fa98d 45%, #2f5d58 100%); }
+  .home.on { opacity: 1; }
+  .home.away { opacity: 0; transform: scale(1.12); transition: opacity .4s, transform .5s; }
+  .grid { position: absolute; left: 22px; right: 22px; top: 76px; display: grid; grid-template-columns: repeat(4, 1fr); row-gap: 22px; }
+  .android .grid { top: 120px; }
+  .app-ic { text-align: center; font: 500 11.5px Inter; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+  .app-ic i { display: grid; place-items: center; width: 62px; height: 62px; margin: 0 auto 6px; border-radius: 15px; font-style: normal; font-size: 28px; box-shadow: 0 4px 10px rgba(0,0,0,.15); }
+  .android .app-ic i { border-radius: 50%; }
+  #home-new { transform: scale(0); transition: transform .55s cubic-bezier(.3,1.7,.5,1); }
+  #home-new.in { transform: none; }
+  #home-new i { width: 62px; height: 62px; }
+  .dock { position: absolute; left: 14px; right: 14px; bottom: 16px; height: 86px; border-radius: 30px; background: rgba(255,255,255,.28); display: flex; justify-content: space-around; align-items: center; }
+  .android .dock { background: transparent; }
+  .dock i { display: grid; place-items: center; width: 60px; height: 60px; border-radius: 15px; font-style: normal; font-size: 27px; }
+  .android .dock i { border-radius: 50%; }
+  .search { display: none; position: absolute; left: 22px; right: 22px; bottom: 112px; height: 48px; border-radius: 24px; background: rgba(255,255,255,.85); }
+  .android .search { display: block; }
+
+  /* The notifications question. */
+  .alert { position: absolute; inset: 0; z-index: 10; background: rgba(0,0,0,.3); display: grid; place-items: center; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  .alert.on { opacity: 1; }
+  .ios-al { width: 272px; border-radius: 16px; background: rgba(240,240,244,.98); text-align: center; overflow: hidden; transform: scale(1.15); transition: transform .3s cubic-bezier(.3,1.3,.5,1); }
+  .alert.on .ios-al, .alert.on .an-al { transform: none; }
+  .ios-al b { display: block; font: 600 16px/1.3 Inter; padding: 18px 16px 4px; } .ios-al p { margin: 0; padding: 0 16px 16px; font: 400 13px/1.35 Inter; }
+  .ios-al .btns { display: flex; border-top: .5px solid rgba(0,0,0,.18); }
+  .ios-al .btns div { flex: 1; padding: 12px 0; font: 400 16px Inter; color: var(--ios-blue); } .ios-al .btns div + div { border-left: .5px solid rgba(0,0,0,.18); font-weight: 600; }
+  .an-al { width: 300px; border-radius: 26px; background: #f3f5f8; padding: 22px 20px 16px; transform: scale(1.12); transition: transform .3s cubic-bezier(.3,1.3,.5,1); }
+  .an-al .bell { width: 32px; height: 32px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 22px; }
+  .an-al b { display: block; text-align: center; font: 500 18px/1.35 Inter; margin-bottom: 18px; }
+  .an-al div.bt { padding: 12px 0; margin-top: 8px; border-radius: 22px; text-align: center; font: 600 15px Inter; color: #fff; background: var(--and-blue); }
+  .an-al div.bt.no { background: #e0e7ef; color: #0f172a; }
+
+  /* Chrome on Android: the bar at the top, ⋮ on the right. */
+  .cr-bar { position: absolute; left: 0; right: 0; top: 30px; height: 62px; z-index: 5; background: #fff; display: flex; align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
+    border-bottom: 1px solid #eef0f3; transition: opacity .3s; }
+  .cr-bar .url { flex: 1; height: 44px; border-radius: 22px; background: #eef1f5; display: flex; align-items: center; gap: 8px; padding: 0 14px; font: 400 15px Inter; color: #0f172a; white-space: nowrap; overflow: hidden; }
+  .cr-bar .tabs { width: 22px; height: 22px; border: 2.2px solid #3c4043; border-radius: 5px; display: grid; place-items: center; font: 700 12px Inter; color: #3c4043; }
+  .cr-bar #cr-dots { width: 34px; height: 44px; display: grid; place-items: center; font: 800 24px Inter; color: #3c4043; }
+  .cr-menu { position: absolute; right: 8px; top: 38px; width: 250px; z-index: 6; background: #fff; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.28); padding: 6px 0;
+    transform-origin: 95% 0; transform: scale(.7); opacity: 0; transition: transform .25s cubic-bezier(.3,1.3,.5,1), opacity .2s; }
+  .cr-menu.on { transform: none; opacity: 1; }
+  .cr-menu .top { display: flex; justify-content: space-around; padding: 8px 6px 10px; font-size: 18px; color: #3c4043; border-bottom: 1px solid #eef0f3; }
+  .cr-menu div.it { display: flex; align-items: center; gap: 14px; padding: 11px 18px; font: 400 15px Inter; color: #1f1f1f; }
+  .cr-menu div.it span { width: 20px; text-align: center; font-size: 15px; color: #5f6368; }
+  .cr-install { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; background: #fff; border-radius: 26px 26px 0 0; padding: 24px 22px 26px;
+    transform: translateY(100%); transition: transform .4s cubic-bezier(.2,.9,.3,1); }
+  .cr-install.on { transform: none; }
+  .cr-install h4 { margin: 0 0 18px; font: 500 22px Inter; color: #1f1f1f; }
+  .cr-install .row { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+  .cr-install .row .ico { width: 52px; height: 52px; border-radius: 50%; }
+  .cr-install .row b { display: block; font: 500 16px Inter; } .cr-install .row small { font: 400 13px Inter; color: #5f6368; }
+  .cr-install .btns { display: flex; justify-content: flex-end; gap: 10px; }
+  .cr-install .btns div { padding: 11px 22px; border-radius: 22px; font: 600 15px Inter; color: var(--and-blue); }
+  .cr-install .btns #cr-install-btn { background: var(--and-blue); color: #fff; }
+
+  /* Each phone shows only its own parts. */
+  .android .ios-bar, .android .ios-menu, .android .ios-sheet, .android .ios-add, .android #ios-alert,
+  .ios .cr-bar, .ios .cr-menu, .ios .cr-install, .ios #an-alert { display: none; }
+
+  /* Tap dot and ring (the 90-second video's). */
+  .tap { position: absolute; left: 0; top: 0; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; z-index: 20;
+    background: rgba(245,179,36,.32); border: 3.5px solid var(--amber); pointer-events: none; opacity: 0;
+    transition: left .32s cubic-bezier(.4,.1,.2,1), top .32s cubic-bezier(.4,.1,.2,1), opacity .2s; }
+  .tap.on { opacity: 1; }
+  .tap.press { animation: press .36s ease; }
+  @keyframes press { 0% { transform: scale(1); } 40% { transform: scale(.68); background: rgba(245,179,36,.65); } 100% { transform: scale(1); } }
+  .ring { position: absolute; z-index: 19; border: 4px solid var(--amber); border-radius: 16px; box-shadow: 0 0 0 7px rgba(245,179,36,.25); pointer-events: none; opacity: 0; transition: opacity .3s, left .35s, top .35s, width .35s, height .35s; }
+  .ring.on { opacity: 1; }
+
+  .end { position: absolute; left: 80px; top: 0; height: 700px; width: 680px; display: flex; flex-direction: column; justify-content: center; z-index: 5; opacity: 0; transform: translateY(20px); transition: all .6s cubic-bezier(.2,.85,.25,1); }
+  .end.on { opacity: 1; transform: none; }
+  .end b { font: 900 70px/1.05 Inter; letter-spacing: -.02em; text-shadow: 0 4px 18px rgba(3,45,80,.18); }
+  .end span { font: 600 26px/1.4 Inter; margin-top: 18px; color: rgba(255,255,255,.92); }
+  .note { position: absolute; left: 80px; bottom: 30px; font: 500 15px Inter; color: rgba(255,255,255,.7); z-index: 5; }
+
+  .cap { position: absolute; left: 50%; bottom: 22px; z-index: 30; max-width: 1140px; padding: 12px 28px 14px; border-radius: 16px; box-sizing: border-box;
+    background: rgba(5,33,54,.86); color: #fff; font: 600 30px/1.32 Inter; text-align: center; white-space: nowrap;
+    opacity: 0; transform: translate(-50%, 10px); transition: opacity .18s, transform .22s; }
+  .cap.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body><div class="stage">
+  <div class="bg"></div>
+  <div class="title" id="title"></div>
+  <div class="chip" id="chip"></div>
+  <div class="end" id="end"><b id="end-b"></b><span id="end-s"></span></div>
+  <div class="note">The club and family here are made up for this video.</div>
+
+  <div id="rig">
+    <div class="phone ios gone" id="phone"><div class="bezel"><div class="screen" id="screen">
+      <div class="sb"><span>9:41</span><span class="ic"><span class="bars"><b style="height:4px"></b><b style="height:6px"></b><b style="height:8px"></b><b style="height:11px"></b></span>📶 <span class="bat"></span></span></div>
+      <iframe name="app" id="f-app"></iframe>
+
+      <!-- iPhone: Safari -->
+      <div class="ios-bar" id="ios-bar"><div class="b">‹</div><div class="url">🔒 maplegrove.poolsideapp.com</div><div class="b" id="ios-dots">•••</div></div>
+      <div class="ios-menu" id="ios-menu">
+        <div id="ios-share">Share <span>⬆︎</span></div><div>Add to Bookmarks <span>📖</span></div><div>Add to Favorites <span>☆</span></div>
+        <div>Find on Page <span>🔍</span></div><div>New Tab <span>＋</span></div></div>
+      <div class="dim" id="dim"></div>
+      <div class="ios-sheet" id="ios-sheet">
+        <div class="sh-head"><div class="ico"></div><div><b>Maple Grove Swim Club</b><small>maplegrove.poolsideapp.com</small></div><div class="x">✕</div></div>
+        <div class="sh-apps"><div><i style="background:#e5f0ff">📶</i>AirDrop</div><div><i style="background:#dcfce7">💬</i>Messages</div><div><i style="background:#dbeafe">✉️</i>Mail</div><div><i style="background:#fef9c3">📝</i>Notes</div></div>
+        <div class="sh-list" id="sh-list">
+          <div class="sh-group"><div>Copy <span>⧉</span></div><div>Add to Reading List <span>👓</span></div><div>Add Bookmark <span>📖</span></div><div>Add to Favorites <span>☆</span></div></div>
+          <div class="sh-group"><div>Find on Page <span>🔍</span></div><div id="ios-a2hs">Add to Home Screen <span>⊞</span></div><div>Markup <span>✎</span></div><div>Print <span>⎙</span></div></div>
+        </div>
+      </div>
+      <div class="ios-add" id="ios-addsheet">
+        <div class="ad-nav"><span class="blue">Cancel</span><b>Add to Home Screen</b><span class="blue" id="ios-add">Add</span></div>
+        <div class="ad-card"><div class="ico"></div><div style="flex:1"><div class="nm">Maple Grove</div><small>maplegrove.poolsideapp.com</small></div></div>
+        <div class="ad-row" id="ios-webapp"><span>Open as Web App</span><span class="tog"></span></div>
+        <p class="ad-note">An icon will be added to your Home Screen so you can quickly open this website.</p>
+      </div>
+
+      <!-- Android: Chrome -->
+      <div class="cr-bar" id="cr-bar"><span style="font-size:20px;color:#3c4043">⌂</span><div class="url">🔒 maplegrove.poolsideapp.com</div><div class="tabs">1</div><div id="cr-dots">⋮</div></div>
+      <div class="cr-menu" id="cr-menu"><div class="top"><span>→</span><span>☆</span><span>⬇</span><span>ⓘ</span><span>↻</span></div>
+        <div class="it"><span>＋</span>New tab</div><div class="it"><span>🕶</span>New Incognito tab</div><div class="it"><span>🕘</span>History</div>
+        <div class="it"><span>⬇</span>Downloads</div><div class="it"><span>★</span>Bookmarks</div><div class="it"><span>⤴</span>Share…</div>
+        <div class="it"><span>🔍</span>Find in page</div><div class="it" id="cr-a2hs"><span>📲</span>Add to Home screen</div><div class="it"><span>🖥</span>Desktop site</div><div class="it"><span>⚙</span>Settings</div></div>
+      <div class="cr-install" id="cr-install"><h4>Install app</h4>
+        <div class="row"><div class="ico"></div><div><b>Maple Grove</b><small>maplegrove.poolsideapp.com</small></div></div>
+        <div class="btns"><div>Cancel</div><div id="cr-install-btn">Install</div></div></div>
+
+      <!-- Both: the Home Screen and the notifications question -->
+      <div class="home" id="home">
+        <div class="grid">
+          <div class="app-ic"><i style="background:#fff">📅</i>Calendar</div><div class="app-ic"><i style="background:#fde68a">🌤</i>Weather</div>
+          <div class="app-ic"><i style="background:#fecaca">📷</i>Camera</div><div class="app-ic"><i style="background:#e9d5ff">🖼</i>Photos</div>
+          <div class="app-ic"><i style="background:#bbf7d0">🗺</i>Maps</div><div class="app-ic"><i style="background:#fed7aa">🎵</i>Music</div>
+          <div class="app-ic"><i style="background:#e2e8f0">⚙️</i>Settings</div><div class="app-ic" id="home-new"><i class="ico"></i>Maple Grove</div>
+        </div>
+        <div class="search"></div>
+        <div class="dock"><i style="background:#bbf7d0">📞</i><i style="background:#dbeafe">💬</i><i style="background:#fff">🧭</i><i style="background:#fde68a">✉️</i></div>
+      </div>
+      <div class="alert" id="ios-alert"><div class="ios-al"><b>“Maple Grove” Would Like to Send You Notifications</b>
+        <p>Notifications may include alerts, sounds and icon badges. These can be configured in Settings.</p>
+        <div class="btns"><div>Don’t Allow</div><div id="ios-allow">Allow</div></div></div></div>
+      <div class="alert" id="an-alert"><div class="an-al"><div class="bell">🔔</div><b>Allow Maple Grove to send you notifications?</b>
+        <div class="bt" id="an-allow">Allow</div><div class="bt no">Don’t allow</div></div></div>
+    </div></div></div>
+    <div class="ring" id="ring"></div>
+    <div class="tap" id="tap"></div>
+  </div>
+  <div class="cap" id="cap"></div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  window.Stage = {
+    // 'ios' or 'android', and the phone rises.
+    device(kind) { $('phone').className = 'phone ' + kind; },
+    // In the browser, or opened from the Home Screen ('app': no browser bar).
+    mode(m) { $('screen').classList.toggle('app', m === 'app'); },
+
+    async title(lines, { icon = '', accent = -1 } = {}) {
+      await this.titleOut();
+      const t = $('title');
+      t.className = 'title';
+      t.innerHTML = (icon ? `<div class="t-icon">${icon}</div>` : '') + lines.map((l, i) => `<div class="ln${i === accent ? ' acc' : ''}"><span>${esc(l)}</span></div>`).join('');
+      t.offsetWidth; t.classList.add('in');
+      [...t.querySelectorAll('.ln')].forEach((ln, i) => { ln.firstChild.style.transitionDelay = (0.1 + i * 0.13) + 's'; ln.classList.add('on'); });
+    },
+    async titleOut() {
+      const t = $('title');
+      if (!t.children.length) return;
+      t.querySelectorAll('.ln span').forEach((s, i) => { s.style.transitionDelay = (i * 0.06) + 's'; });
+      t.classList.add('out'); await wait(520);
+      t.innerHTML = ''; t.className = 'title';
+    },
+    chip(icon, text) { const c = $('chip'); if (!icon) { c.classList.remove('in'); return; } c.innerHTML = `<i>${icon}</i>${esc(text)}`; c.offsetWidth; c.classList.add('in'); },
+    end(big, small) { $('end-b').innerHTML = big; $('end-s').textContent = small; $('end').classList.add('on'); },
+
+    // Something drawn here: on, off.
+    show(id, on = true) { $(id).classList.toggle('on', on); },
+    scrollSheet(px) { $('sh-list').style.transform = `translateY(${-px}px)`; },
+    homeNew() { $('home-new').classList.add('in'); },
+    homeAway() { $('home').classList.add('away'); setTimeout(() => { $('home').classList.remove('on', 'away'); $('screen').classList.remove('home-on'); }, 520); },
+    home(on) { $('home').classList.toggle('on', on); $('screen').classList.toggle('home-on', on); },
+
+    caption(html) {
+      const c = $('cap');
+      if (html) { c.innerHTML = html; c.offsetWidth; c.classList.add('on'); } else c.classList.remove('on');
+    },
+
+    // A point on the screen (390 × 720), in the rig.
+    at(x, y) { const p = $('phone'); return { x: p.offsetLeft + 12 + x, y: p.offsetTop + 12 + y }; },
+    // drive.mjs passes points in the app's frame: below the status and browser bars.
+    frameAt(x, y) { const f = $('f-app'); return { x: x + f.offsetLeft, y: y + f.offsetTop }; },
+    async tapAt(side, x, y, press = true) {
+      const s = this.frameAt(x, y);
+      return this.tapScreen(s.x, s.y, press);
+    },
+    async tapScreen(x, y, press = true) {
+      const p = this.at(x, y), t = $('tap');
+      if (!t.classList.contains('on')) { t.style.transition = 'none'; t.style.left = p.x + 'px'; t.style.top = (p.y + 60) + 'px'; t.offsetWidth; t.style.transition = ''; }
+      t.classList.add('on'); t.style.left = p.x + 'px'; t.style.top = p.y + 'px';
+      await wait(340);
+      if (press) { t.classList.remove('press'); t.offsetWidth; t.classList.add('press'); await wait(200); }
+    },
+    // Where something drawn here is on the screen.
+    boxOf(id) {
+      const s = $('screen').getBoundingClientRect(), b = $(id).getBoundingClientRect(), k = s.width / 390;
+      return { x: (b.left - s.left) / k, y: (b.top - s.top) / k, w: b.width / k, h: b.height / k };
+    },
+    async ui(id, press = true) { const b = this.boxOf(id); await this.tapScreen(b.x + Math.min(b.w / 2, 60), b.y + b.h / 2, press); },
+    hideTap() { $('tap').classList.remove('on'); $('tap').style.transition = ''; },
+    ring(side, r) { const s = this.frameAt(r.x, r.y); this.ringScreen({ x: s.x, y: s.y, w: r.w, h: r.h }); },
+    ringUi(id) { this.ringScreen(this.boxOf(id)); },
+    ringScreen(r) {
+      const p = this.at(r.x - 6, r.y - 6), g = $('ring');
+      g.style.left = p.x + 'px'; g.style.top = p.y + 'px'; g.style.width = (r.w + 12) + 'px'; g.style.height = (r.h + 12) + 'px';
+      g.classList.add('on');
+    },
+    unring() { $('ring').classList.remove('on'); },
+    // Closer in on a point of the screen, keeping it about where it is.
+    zoom(x, y, s = 1.35) {
+      const p = this.at(x, y);
+      const ax = Math.min(1100, p.x), ay = Math.min(520, Math.max(240, p.y));
+      $('rig').style.transform = `translate(${ax - s * p.x}px, ${ay - s * p.y}px) scale(${s})`;
+    },
+    unzoom() { $('rig').style.transform = 'none'; },
+  };
+</script>
+</body>
+</html>

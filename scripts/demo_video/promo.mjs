@@ -250,7 +250,7 @@ export function musicCurve(voice, end, loud, { step = 0.25, fade = 3 } = {}) {
 }
 
 /** The music's loudness (dB) every half second, from a 16-bit WAV. */
-function loudness(wav) {
+export function loudness(wav) {
   const b = readFileSync(wav);
   let o = 12, rate = 44100, ch = 2, data = null;
   while (o + 8 <= b.length) {
