@@ -84,7 +84,7 @@ async function hasPaymentsScope(sb: SupabaseClient, p: AdminPayload): Promise<bo
 // back) live in _shared/plan_ops.ts, shared with checkout and the webhook.
 import {
   PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor, chargeableNow, awaitingApproval,
-  planStarted, startedPlanIds, dropStaleWaitingPlans,
+  planStarted, startedPlanIds, dropStaleWaitingPlans, planReceiptArgs,
   grantAccessIfReady, completeIfPaid, endPlan, enforceEnd, seasonStarted, rulesFor, planView,
   memberPlanView, type PlanClub, type PlanConfig, type Inst,
 } from '../_shared/plan_ops.ts';
@@ -203,7 +203,9 @@ async function chargeInstallment(
       attempt_count: attempts, last_attempt_at: now, last_error: null,
     }).eq('id', inst.id);
     inst.status = 'paid';
-    await sendReceipt(sb, club, plan, inst, rows, amount);
+    // The card it was charged to, for the receipt (PLAN.md BZ).
+    const { stripeCardLabel } = await import('../_shared/receipts.ts');
+    await sendReceipt(sb, club, plan, inst, rows, amount, { ref: data.id, with: await stripeCardLabel(data.id, club.stripeAccount) });
     return { paid: true, exhausted: false };
   }
 
@@ -238,9 +240,11 @@ async function chargeInstallment(
 }
 
 /** The family's receipt for one payment, naming the next one if any: a
- *  pop-up in their app (N6) and the emailed receipt, which is the record. */
+ *  pop-up in their app (N6) and the email, with the PDF receipt attached
+ *  (PLAN.md BZ), which is the record. */
 async function sendReceipt(
   sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>, inst: Inst, rows: Inst[], amount: number,
+  paid: { ref?: string | null; with?: string | null } = {},
 ): Promise<void> {
   if (plan.household_id) {
     const { pushMembers } = await import('../_shared/member_notify.ts');
@@ -249,9 +253,19 @@ async function sendReceipt(
       title: left ? `Payment received: $${(amount / 100).toFixed(2)}` : 'You\'re paid in full 🎉',
       body: left ? 'Thanks! Your plan is on track.' : `Your ${club.name} dues are paid in full.`, url: '/m/#plan', tag: `plan-${plan.id}` });
   }
+  // Numbered and copied to the family's Drive folder even without an email.
+  let receipt: Record<string, unknown> | null = null;
+  try {
+    const { issueReceipt } = await import('../_shared/receipts.ts');
+    receipt = await issueReceipt(sb, {
+      ...planReceiptArgs(club, plan, rows, [inst], await planYear(sb, plan)),
+      tenantId: club.tenantId, paymentRef: paid.ref || inst.id, totalCents: amount, paidWith: paid.with ?? null,
+    });
+  } catch (e) { console.error('plan receipt (non-fatal):', (e as Error).message); }
   if (!plan.primary_email) return;
   try {
     const { renderAndSend } = await import('../_shared/email_template.ts');
+    const { receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
     const next = rows.find(r => r.sequence > inst.sequence && !isPaid(r));
     await renderAndSend(sb, {
       tenantId: club.tenantId,
@@ -264,7 +278,9 @@ async function sendReceipt(
         next_amount: next ? '$' + (chargeFor(next, club.feesWaived) / 100).toFixed(2) : '',
         // Words, not "2027-08-01" (PLAN.md BG5).
         next_due_date: next ? fmtPoolDay(next.due_date as string) : '',
+        ...(receipt ? { receipt_no: receiptNo(receipt) } : {}),
       },
+      ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}),
     });
   } catch { /* never fail the charge run because of an email */ }
 }
@@ -356,10 +372,19 @@ async function chargeRenewalWithSavedCard(sb: SupabaseClient, appId: string): Pr
   try {
     const { data: primary } = await sb.from('household_members')
       .select('email').eq('household_id', hh.id).eq('role', 'primary').eq('active', true).maybeSingle();
+    // Its receipt, attached (PLAN.md BZ).
+    const { issueReceipt, receiptAttachment, receiptNo, stripeCardLabel } = await import('../_shared/receipts.ts');
+    const receipt = amountCents > 0 && intentId ? await issueReceipt(sb, {
+      tenantId: tenant.id as string, paymentRef: intentId, kind: 'renewal', applicationId: appId, householdId: hh.id as string,
+      lines: [{ label: `${app.membership_year ?? ''} renewal`.trim(), cents: due }], totalCents: amountCents,
+      paidWith: sim ? 'Test card' : await stripeCardLabel(intentId, tenant.stripe_account_id as string),
+    }) : null;
     if (primary?.email && amountCents > 0) {
       const { renderAndSend } = await import('../_shared/email_template.ts');
       await renderAndSend(sb, { tenantId: tenant.id as string, templateKey: 'auto_renew_charged', to: primary.email as string,
-        variables: { family_name: hh.family_name as string, amount: '$' + (amountCents / 100).toFixed(2), season: String(app.membership_year ?? '') } });
+        variables: { family_name: hh.family_name as string, amount: '$' + (amountCents / 100).toFixed(2), season: String(app.membership_year ?? ''),
+          ...(receipt ? { receipt_no: receiptNo(receipt) } : {}) },
+        ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}) });
     }
   } catch { /* the money moved; a failed receipt must not undo that */ }
   await sb.from('audit_log').insert({
@@ -1088,7 +1113,7 @@ Deno.serve(async (req) => {
       status: 'paid', paid_at: now, stripe_payment_intent_id: `sim_pi_${crypto.randomUUID().slice(0, 8)}`, last_error: null,
     }).eq('id', next.id);
     next.status = 'paid';
-    await sendReceipt(sb, club, plan, next, rows, chargeFor(next, club.feesWaived));
+    await sendReceipt(sb, club, plan, next, rows, chargeFor(next, club.feesWaived), { with: 'Test card' });
     await afterPayment(sb, club, plan);
     return jsonResponse({ ok: true });
   }

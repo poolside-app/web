@@ -23,12 +23,13 @@ import { driveSeason, rosterRecord, rowByHeaders, sheetSafe } from './drive_row.
 import { SUN, type ColSpec } from './sheet_look.ts';
 import { zoneOrDefault } from './pool_time.ts';
 import { catchUpMinutes } from './drive_minutes.ts';
+import { backupReceipts } from './drive_family.ts';
 
 type Keys = { googleClientId: string; googleClientSecret: string };
 export type NightlyResult = {
   ok: true; skipped?: boolean;
   retried: number; copied: number; failed: number; dropped: number; parties: number;
-  minutes?: number; bylaws?: number;
+  minutes?: number; bylaws?: number; receipts?: number;
   errors: Array<{ family: string; error: string }>;
 };
 
@@ -257,11 +258,16 @@ export async function nightlyDrive(sb: SupabaseClient, tenantId: string, keys: K
   let mn: Awaited<ReturnType<typeof catchUpMinutes>> = { minutes: 0, bylaws: 0, errors: [] };
   try { mn = await catchUpMinutes(sb, tenantId, keys); }
   catch (e) { mn.errors.push({ family: 'Board minutes', error: (e as Error).message }); }
+  // Card receipts into each family's folder (PLAN.md BZ4), any that were missed.
+  let rc: { copied: number; errors: Array<{ family: string; error: string }> } = { copied: 0, errors: [] };
+  try { rc = await backupReceipts(sb, tenantId, keys); }
+  catch (e) { rc.errors.push({ family: 'Receipts', error: (e as Error).message }); }
+  mn.errors.push(...rc.errors);
   const firstError = c.errors[0]?.error ?? mn.errors[0]?.error;
   await sb.from('google_drive_grants').update({
     last_sync_at: new Date().toISOString(),
     last_error: q.failed + c.failed + mn.errors.length ? (firstError ?? 'A backup failed; it is tried again tonight.').slice(0, 500) : null,
   }).eq('tenant_id', tenantId);
   return { ok: true, retried: q.succeeded, copied: c.copied, failed: q.failed + c.failed, dropped: q.dropped, parties,
-    minutes: mn.minutes, bylaws: mn.bylaws, errors: [...c.errors, ...mn.errors] };
+    minutes: mn.minutes, bylaws: mn.bylaws, receipts: rc.copied, errors: [...c.errors, ...mn.errors] };
 }

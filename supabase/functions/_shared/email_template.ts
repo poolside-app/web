@@ -24,6 +24,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendEmail, escHtml, emailShell, type EmailAttachment } from './send_email.ts';
 import { clubReplyTo } from './reply_to.ts';
+import { VENMO_RECEIPT_LINE } from './venmo.ts';
 
 type Vars = Record<string, string | number | null | undefined>;
 type Variant = Record<string, unknown>;
@@ -71,6 +72,9 @@ const button = (label: string, url: unknown) => url
 const link = (url: unknown, text?: string) => `<a href="${e(url)}" style="color:#0a3b5c">${e(text ?? url)}</a>`;
 const signedCopy = (x: Variant, who = 'every policy you accepted') => x.attached
   ? small(`📎 A signed copy of your application is attached, with ${who} and your signature. Please keep it for your records.`) : '';
+// The receipt: a PDF for a card payment (PLAN.md BZ2); Venmo's own for Venmo (BZ3).
+const receiptNote = (v: Vars) => v.receipt_no ? small(`📎 Your receipt ${e(v.receipt_no)} is attached.`) : small('Keep this email as your receipt.');
+const venmoNote = () => small(e(VENMO_RECEIPT_LINE));
 const boardNote = (v: Vars) => v.admin_notes ? box(`<b>Note from the board:</b> ${e(v.admin_notes)}`, 'warn') : '';
 const memberHome = (v: Vars) => `${String(v.club_url ?? '')}/m/`;
 
@@ -92,6 +96,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
           ? box(`<b>Next step: send your dues by Venmo</b><br>Tap the button to pay ${e(v.tier_price)} to <b>@${e(v.venmo_handle)}</b>. The amount and a note with your code, <b>#${e(v.venmo_code)}</b>, are filled in for you. Once the board sees it, you'll get an email with your sign-in link.`, 'warn')
             + button('Pay with Venmo', v.venmo_link)
           : box(`<b>Next step: send your dues by Venmo</b><br>Send ${e(v.tier_price)} to <b>@${e(v.venmo_handle)}</b>, with your family name in the note. Once the board sees it, you'll get an email with your sign-in link.`, 'warn'))
+          + venmoNote()
         : para('A board member will be in touch about payment. Once that\'s sorted, you\'ll get an email with your sign-in link.'))
       + signedCopy(x),
     variants: [
@@ -125,18 +130,19 @@ export const EMAIL_REGISTRY: EmailDef[] = [
       const pay = ({
         card: ok('✓ Your card payment cleared. Your membership is active.'),
         free: ok('✓ Your discount covered the whole price, so there\'s nothing to pay. Your membership is active.'),
-        venmo_verified: ok('✓ The board verified your Venmo payment. Your dues are paid in full.'),
+        venmo_verified: ok('✓ The board verified your Venmo payment. Your dues are paid in full.') + venmoNote(),
         plan: ok('✓ Your payment plan is set up. Each payment is charged on its date, with a receipt each time. Sign in to see what\'s paid and what\'s next.'),
         unpaid_venmo: v.venmo_link
           ? box(`<b>Last step: send your dues by Venmo</b><br>Tap the button to pay <b>@${e(v.venmo_handle)}</b>. The amount and your code, <b>#${e(v.venmo_code)}</b>, are filled in. We'll email you when the board sees it.`, 'warn') + button('Pay with Venmo', v.venmo_link)
           : box(`<b>Last step: send your dues by Venmo</b><br>Send them to <b>@${e(v.venmo_handle)}</b>. We'll email you when the board sees it.`, 'warn'),
         other: para('A board member will be in touch about payment.'),
       } as Record<string, string>)[String(x.pay ?? 'other')] ?? '';
+      const paidNote = x.pay === 'unpaid_venmo' ? venmoNote() : v.receipt_no ? receiptNote(v) : '';
       const signIn = x.noApp
         ? small(`You can manage your membership online any time at ${link(memberHome(v))}. Your email or phone is all you need.`)
         : button(`Sign in to ${String(v.tenant_name ?? 'the club')}`, v.sign_in_link)
           + small(`This sign-in link works once and expires in 7 days. If it expires, get a new one at ${link(`${String(v.club_url ?? '')}/m/login.html`, 'your member login page')}.`);
-      return pay + signIn + signedCopy(x);
+      return pay + paidNote + signIn + signedCopy(x);
     },
     variants: [
       { id: 'card', label: 'Paid by card', x: { pay: 'card', attached: true } },
@@ -159,7 +165,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     placeholders: ['primary_name', 'tenant_name'],
     adds: 'a button to their member page',
     heading: () => '✓ Payment verified',
-    details: v => button('Open my member page', memberHome(v)),
+    details: v => venmoNote() + button('Open my member page', memberHome(v)),
   },
   {
     // PLAN.md BG5: was hand-built in applications send_reminder, told a
@@ -175,7 +181,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     heading: (_v, x) => x.approved ? 'A reminder about your dues' : 'Your signup is waiting on your dues',
     details: (v, x) => box(`${x.approved ? 'Your membership is approved.' : 'The board will approve your signup once your payment arrives.'}${v.amount ? ` What you owe: <b>${e(v.amount)}</b>.` : ''}`)
       + (v.venmo_link ? button(`Pay${v.amount ? ' ' + String(v.amount) : ''} with Venmo`, v.venmo_link)
-        + small(`The Venmo note is filled in with your code <b>${e(v.venmo_code)}</b>, so the board can match your payment.`) : '')
+        + small(`The Venmo note is filled in with your code <b>${e(v.venmo_code)}</b>, so the board can match your payment.`) + venmoNote() : '')
       + (x.approved ? button('Open my member page', memberHome(v)) : ''),
     variants: [
       { id: 'waiting', label: 'Waiting for payment', x: { approved: false } },
@@ -207,11 +213,23 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     details: (v, x) => (x.final
       ? ok(`We charged ${e(v.amount)}. Your dues are paid in full for the season.`)
       : box(`We charged ${e(v.amount)} to your saved card.${v.next_amount ? ` Your next payment of <b>${e(v.next_amount)}</b> is on <b>${e(v.next_due_date)}</b>.` : ''}`))
-      + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
+      + receiptNote(v) + button('Open my member page', memberHome(v)),
     variants: [
       { id: 'partial', label: 'More to go', x: { final: false } },
       { id: 'final', label: 'Paid in full', x: { final: true } },
     ],
+  },
+  {
+    // PLAN.md BZ2 (Doug 11/6): card payments with no email of their own.
+    key: 'payment_receipt', section: 'payments',
+    label: 'Card payment receipt',
+    when: 'After a card payment that has no email of its own: keyfobs, a program, a donation, or catching up or reinstating a payment plan.',
+    default_subject: 'Your {{tenant_name}} receipt',
+    default_message: '<p>Hi {{family_name}},</p><p>Thanks! Your payment went through.</p>',
+    placeholders: ['family_name', 'tenant_name', 'amount'],
+    adds: 'what was paid for and the amount, with the receipt attached as a PDF',
+    heading: () => '✓ Payment received',
+    details: v => box(`<b>${e(v.amount)}</b>${v.what ? ` for ${e(v.what)}` : ''}`) + receiptNote(v),
   },
   {
     key: 'plan_payment_failed', section: 'payments',
@@ -274,7 +292,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     adds: 'the amount charged and the season it covers',
     heading: v => `✅ You're renewed for ${e(v.season)}`,
     details: v => ok(`We charged ${e(v.amount)} to your saved card. Your membership is paid through the ${e(v.season)} season.`)
-      + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
+      + receiptNote(v) + button('Open my member page', memberHome(v)),
   },
 
   // A renewal paid by card or a Venmo the board confirms (PLAN.md BE2, Doug
@@ -290,7 +308,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     heading: v => `✅ You're renewed for ${e(v.season)}`,
     details: v => ok((v.amount && v.amount !== '$0.00' ? `We got your ${e(v.amount)} payment by ${e(v.paid_by || 'card')}. ` : 'Nothing was due this time. ')
       + `Your membership is paid through the ${e(v.season)} season.`)
-      + small('Keep this email as your receipt.') + button('Open my member page', memberHome(v)),
+      + (v.paid_by === 'Venmo' ? venmoNote() : receiptNote(v)) + button('Open my member page', memberHome(v)),
   },
 
   // ─── Parties ───────────────────────────────────────────────────────────
@@ -317,6 +335,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     heading: () => '✓ Party approved',
     details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''} · ${e(v.price)} party fee`)
       + para(`To book it, pay in the app by card (the card fee is added)${v.venmo_handle ? `, or send ${e(v.price)} by Venmo to <b>@${e(v.venmo_handle)}</b> and tap "I paid by Venmo"` : ''}. Until it's paid, the time is only held for a short while.`)
+      + (v.venmo_handle ? venmoNote() : '')
       + button('Pay for my party', v.member_url),
   },
   {
@@ -329,7 +348,7 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     adds: 'the date and time, and a button to their member page',
     heading: () => '🎉 It\'s booked!',
     // Questions go through Ask the board, to the party person (PLAN.md AE2).
-    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''}`) + button('Open my member page', memberHome(v))
+    details: v => box(`<b>${e(v.party_date)}</b>${v.party_time ? ` at <b>${e(v.party_time)}</b>` : ''}`) + (v.receipt_no ? receiptNote(v) : '') + button('Open my member page', memberHome(v))
       + small('Questions about your party? Tap <b>Ask the board</b> in the app and pick <b>Parties &amp; events</b>. It goes straight to the board member who handles parties.'),
   },
   {

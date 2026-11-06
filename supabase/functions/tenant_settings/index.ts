@@ -343,6 +343,10 @@ Deno.serve(async (req) => {
       { id: 'hero', label: 'Write your front-page headline', done: !!(hero.headline && String(hero.headline).trim()),
         fix_url: '/club/admin/settings.html?focus=hero', fix_label: 'Write it',
         why: 'The big line at the top of your public page.' },
+      // On every receipt (PLAN.md BZ5, Doug 11/6: "make sure during onboarding, there is an address tab").
+      { id: 'address', label: 'Enter your club\'s address', done: !!(club.address && String(club.address).trim()),
+        fix_url: '/club/admin/settings.html?focus=club_address', fix_label: 'Add it',
+        why: 'It goes on every receipt families get.' },
       { id: 'location', label: 'Set your pool location and hours',
         done: !!((club.location || (pool.lat && pool.lng)) && pool.opens_at && pool.closes_at),
         fix_url: '/club/admin/settings.html?focus=pool', fix_label: 'Set them',

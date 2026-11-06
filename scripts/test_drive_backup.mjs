@@ -77,7 +77,8 @@ if (sync) {
   const r1 = await go(db, 'app-1');
   check('it backs up', r1.ok && !r1.skipped, short(r1));
   const names = Object.values(g.files).map(f => f.name);
-  check('BO4: into "2027 Sign-ups" and the "2027" tab (sent in November 2026)', names.includes('2027 Sign-ups') && !names.includes('2026 Sign-ups') && r1.tab_name === '2027', short({ names, tab: r1.tab_name }));
+  // Since PLAN.md BZ4 the PDF goes in the family's own folder, named for the season it's for.
+  check('BO4: "2027 Membership.pdf" in Families → the family\'s folder, and the "2027" tab (sent in November 2026)', names.includes('Families') && names.includes('2027 Membership.pdf') && !names.includes('2026 Membership.pdf') && names.some(n => / - 1 Pool Way$/.test(n)) && r1.tab_name === '2027', short({ names, tab: r1.tab_name }));
   const [c] = cellsOf(g, grantOf(db).spreadsheet_id, '2027') || [{}];
   check('BO2: the phone reads 408-555-0001', c.Phone === '408-555-0001', short(c.Phone));
   check('BO2: the emergency contact\'s phone too', c['Emergency Contact'] === 'Pat Lee — 408-555-0003', short(c['Emergency Contact']));
@@ -151,7 +152,7 @@ const signed = rs.slice(rs.indexOf('export async function signRenewal'));
 check('BO6: signing a renewal sends it to Drive', /backupToDrive\(/.test(signed) && /import\('\.\/sync_application\.ts'\)/.test(signed));
 check('BO6: backupToDrive retries later if Drive fails', /export async function backupToDrive/.test(read('supabase/functions/_shared/sync_application.ts')) && /enqueueDriveSync\(/.test(read('supabase/functions/_shared/sync_application.ts').slice(read('supabase/functions/_shared/sync_application.ts').indexOf('export async function backupToDrive'))));
 const st = read('club/admin/settings.html');
-check('the Settings card says it files by season and includes renewals', /2027 Sign-ups/.test(st) && /renewal/i.test(st.slice(st.indexOf('id="drive-card"'), st.indexOf('id="drive-status"'))));
+check('the Settings card says it files by family and includes renewals', /Families/.test(st.slice(st.indexOf('id="drive-card"'), st.indexOf('id="drive-status"'))) && /renewal/i.test(st.slice(st.indexOf('id="drive-card"'), st.indexOf('id="drive-status"'))));
 check('the added-member PDF formats the phone too', /prettyPhone\(/.test(read('supabase/functions/_shared/household_member_pdf.ts')));
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

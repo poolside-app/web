@@ -15,8 +15,9 @@ import {
   updateRowCellByAppId, readHeaders, SHEET_HEADERS, type DriveGrant,
 } from './google_drive.ts';
 import { renderApplicationPdf, type ApplicationForPdf, type PolicyForPdf } from './application_pdf.ts';
-import { fmtPoolStamp, poolDate, tenantTimeZone, wallParts, zoneOrDefault } from './pool_time.ts';
+import { fmtPoolStamp, tenantTimeZone, wallParts, zoneOrDefault } from './pool_time.ts';
 import { driveSeason, rosterRecord, rowByHeaders } from './drive_row.ts';
+import { familyFolder } from './drive_family.ts';
 
 export type SyncResult =
   | { ok: true; pdf_id: string; spreadsheet_id: string; tab_name: string; row_index: number; skipped?: never }
@@ -154,7 +155,6 @@ export async function syncApplicationToDrive(
   // 4) PDF data + bytes — reuse prebuilt if provided, otherwise build now.
   // The board reads the Drive sheet in pool time, so it's written in pool time.
   const tz = zoneOrDefault(tenant.timezone);
-  const submittedAt = new Date(app.created_at as string);
   // Filed by the season it's for (PLAN.md BO4): a November signup for 2027 goes in 2027.
   const year = driveSeason(app, tz);
 
@@ -176,9 +176,9 @@ export async function syncApplicationToDrive(
 
   const { rootId, clubId, spreadsheetId } = await ensureRoster(accessToken, tenant, grant);
 
-  const yearFolderName = `${year} Sign-ups`;
-  const cachedYearFolder = (grant.year_folder_ids ?? {})[year] ?? null;
-  const yearFolderId = await ensureFolder(accessToken, yearFolderName, clubId, cachedYearFolder);
+  // The family's own folder, "Smith - 123 Oak St", under Families (PLAN.md
+  // BZ4, Doug 11/6: "signups and receiepts in that folder per family").
+  const familyId = await familyFolder(accessToken, clubId, app.family_name, app.address);
 
   // A new sheet (the old one was trashed) has none of the old sheet's tabs (PLAN.md BO5).
   const sameSheet = spreadsheetId === grant.spreadsheet_id;
@@ -186,10 +186,7 @@ export async function syncApplicationToDrive(
   const yearTabId = await ensureYearTab(accessToken, spreadsheetId, year, cachedYearTab);
 
   // 6) Upload PDF first (so the link can be embedded in the sheet row).
-  const safeFamily = (app.family_name as string ?? 'Family').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40);
-  const dateStr = poolDate(submittedAt, tz);
-  const pdfFilename = `${safeFamily}-${dateStr}-${(app.id as string).slice(0, 8)}.pdf`;
-  const pdfId = await uploadPdf(accessToken, yearFolderId, pdfFilename, pdfBytes);
+  const pdfId = await uploadPdf(accessToken, familyId, `${year} Membership.pdf`, pdfBytes);
 
   // 7) Append its row to the season tab: the same row the nightly run writes (drive_row.ts rosterRecord), by
   // column name against the tab's own header row.
@@ -200,13 +197,11 @@ export async function syncApplicationToDrive(
   const rowIndex = await appendRow(accessToken, spreadsheetId, year, rowValues);
 
   // 8) Persist updated cache + sync log.
-  const newYearFolderIds = { ...(grant.year_folder_ids ?? {}), [year]: yearFolderId };
   const newYearTabIds    = { ...(sameSheet ? (grant.year_tab_ids ?? {}) : {}), [year]: yearTabId };
   await updateGrantCache(sb, args.tenantId, {
     root_folder_id: rootId,
     club_folder_id: clubId,
     spreadsheet_id: spreadsheetId,
-    year_folder_ids: newYearFolderIds,
     year_tab_ids: newYearTabIds,
   });
   await sb.from('drive_sync_log').insert({

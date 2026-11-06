@@ -637,7 +637,8 @@ Deno.serve(async (req) => {
     const metadata: Record<string, string> = {
       kind, plan_id: plan.id as string, tenant_id: TID,
       ...(ids.length ? { installment_ids: ids.join(',') } : {}),
-      ...(action === 'plan_reinstate' ? { reinstate: '1' } : {}),
+      // The fee shows on its receipt (PLAN.md BZ).
+      ...(action === 'plan_reinstate' ? { reinstate: '1', reactivation_fee_cents: String(extra) } : {}),
     };
     const successUrl = `${clubUrl}/m/?plan=${action === 'plan_card' ? 'card' : action === 'plan_payoff' ? 'paid' : 'back'}#plan`;
     const cancelUrl = `${clubUrl}/m/#plan`;

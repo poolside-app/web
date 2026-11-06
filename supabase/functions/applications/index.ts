@@ -1685,12 +1685,17 @@ Deno.serve(async (req) => {
           const amount = cents != null ? '$' + (cents / 100).toFixed(2) : '';
           const paidBy = ({ stripe: 'card', venmo: 'Venmo', check: 'check', cash: 'cash', free: 'credit' } as Record<string, string>)[app.payment_method as string] ?? 'card';
           const { renderAndSend } = await import('../_shared/email_template.ts');
+          // Paid by card: its receipt, attached (PLAN.md BZ). Venmo's is Venmo's own.
+          const { latestReceipt, receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+          const receipt = paidBy === 'card' ? await latestReceipt(sb as never, id) : null;
+          const receiptBits = receipt ? { receipt_no: receiptNo(receipt) } : {};
+          const receiptFiles = receipt ? { attachments: [await receiptAttachment(receipt)] } : {};
           const { notifyHousehold } = await import('../_shared/member_notify.ts');
           await notifyHousehold(sb as never, {
             tenantId: TID, householdId: app.household_id as string,
             pop: { title: `✅ You're renewed for ${renewYear}`, body: `Thanks! ${cents ? `Your ${amount} payment came through. ` : ''}See you at the pool.`, url: '/m/', tag: 'renewal' },
             email: to ? { to, send: () => renderAndSend(sb as never, { tenantId: TID, templateKey: 'renewal_confirmed', to,
-              variables: { family_name: app.family_name as string, season: String(renewYear), amount, paid_by: paidBy } }) } : null,
+              variables: { family_name: app.family_name as string, season: String(renewYear), amount, paid_by: paidBy, ...receiptBits }, ...receiptFiles }) } : null,
             alsoEmail: true,
           });
         } catch (e) { console.error('renewal receipt (non-fatal):', (e as Error).message); }
@@ -1936,6 +1941,18 @@ Deno.serve(async (req) => {
           console.error('welcome PDF attach (non-fatal):', (e as Error).message);
         }
       }
+      // The second PDF: the receipt for what they paid by card (PLAN.md BZ).
+      let welcomeReceiptNo = '';
+      if (app.primary_email && ((app.payment_status === 'paid' && app.payment_method === 'stripe') || onPlan)) {
+        try {
+          const { latestReceipt, receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
+          const receipt = await latestReceipt(sb, id);
+          if (receipt) {
+            welcomeAttachments = [...(welcomeAttachments ?? []), await receiptAttachment(receipt)];
+            welcomeReceiptNo = receiptNo(receipt);
+          }
+        } catch (e) { console.error('welcome receipt (non-fatal):', (e as Error).message); }
+      }
 
       if (app.primary_email) try {
         const { renderAndSend } = await import('../_shared/email_template.ts');
@@ -1955,6 +1972,7 @@ Deno.serve(async (req) => {
             })()),
             venmo_handle: venmo ? String(venmo) : '',
             club_url: clubUrl,
+            ...(welcomeReceiptNo ? { receipt_no: welcomeReceiptNo } : {}),
           },
           attachments: welcomeAttachments,
         });

@@ -178,6 +178,9 @@
       <input id="display_name">
       <label>Location <span class="opt">(shown on the home page)</span></label>
       <input id="location" placeholder="Concord, California">
+      <!-- PLAN.md BZ5 (Doug 11/6): exactly what's typed here goes on every receipt. -->
+      <label>Club address <span class="opt">(on every receipt)</span></label>
+      <input id="club_address" data-focus="club_address" placeholder="1234 Pool Lane, Concord, CA 94521" autocomplete="street-address">
       <label>Time zone <span class="opt">(every time in the app — hours, parties, events, emails — is shown in this zone)</span></label>
       <select id="timezone">
         <option value="America/New_York">Eastern</option>
@@ -457,7 +460,7 @@
       <span class="chev">▶</span> 📁 Backups &amp; archive <span class="sub">— Google Drive auto-archive of every application</span>
     </summary>
     <div class="card">
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application and signed renewal is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved into a folder for its season (e.g. "2027 Sign-ups"), and a row, with every adult's and child's name, the address, phone numbers, keyfob numbers and where the family stands, is added to your master roster spreadsheet. Its Parties tab lists every party and what happened to it, canceled ones too. The board minutes and bylaws are copied too, as PDFs in a "Board minutes" folder: each meeting's draft when it closes (kept up to date), each approved copy, and each new version of the bylaws. Each night Poolside copies anything that was missed and brings the Parties tab up to date. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">When connected, every new application and signed renewal is automatically archived to your club's Google Drive: a frozen PDF of the signed waiver gets saved in the family's own folder under Families (e.g. "Smith - 123 Oak St"), with a PDF receipt for every card payment, and a row, with every adult's and child's name, the address, phone numbers, keyfob numbers and where the family stands, is added to your master roster spreadsheet. Its Parties tab lists every party and what happened to it, canceled ones too. The board minutes and bylaws are copied too, as PDFs in a "Board minutes" folder: each meeting's draft when it closes (kept up to date), each approved copy, and each new version of the bylaws. Each night Poolside copies anything that was missed and brings the Parties tab up to date. <b>One-way only</b> — deleting something in this app never deletes it from your Drive.</p>
       <div id="drive-status" style="padding:12px 14px;background:var(--bg-2);border-radius:10px;font-size:13px;margin-bottom:12px">Checking…</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-primary" id="drive-request-btn" type="button" onclick="requestDriveAccess()" style="display:none;background:var(--blue)">Request Drive access</button>
@@ -1059,6 +1062,7 @@ function populate(s) {
     tzSel.value = TENANT.timezone;
   }
   setVal('location',         s.club?.location);
+  setVal('club_address',     s.club?.address);
   setVal('default_city',     s.club?.default_city);
   setVal('default_zip',      s.club?.default_zip);
   setVal('swim_team_name',   s.club?.swim_team_name);
@@ -1133,6 +1137,7 @@ function collect(prevSettings) {
     club: {
       ...(prevSettings?.club ?? {}),
       location:        val('location') || null,
+      address:         val('club_address') || null,
       default_city:    val('default_city') || null,
       default_zip:     val('default_zip') || null,
       swim_team_name:  val('swim_team_name') || null,

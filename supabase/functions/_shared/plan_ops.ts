@@ -201,6 +201,26 @@ export async function dropStaleWaitingPlans(sb: SupabaseClient, now = new Date()
   return ids.length;
 }
 
+/**
+ * What a plan payment's receipt says (PLAN.md BZ): each payment it covers
+ * ("2027 membership: payment 2 of 5"), the plan fees, a reactivation fee,
+ * and what's left after it. The card fee is the rest of what was charged.
+ */
+export function planReceiptArgs(club: PlanClub, plan: Record<string, unknown>, rows: Inst[], paid: Inst[], year: number, extraFeeCents = 0) {
+  const n = rows.length;
+  const lines = [...paid].sort((a, b) => a.sequence - b.sequence)
+    .map(r => ({ label: `${year} membership: payment ${r.sequence} of ${n}`, cents: Number(r.amount_cents) }));
+  const planFees = club.feesWaived ? 0 : paid.reduce((t, r) => t + Number(r.plan_fee_cents ?? 0), 0);
+  if (planFees > 0) lines.push({ label: 'Plan fee', cents: planFees });
+  if (extraFeeCents > 0) lines.push({ label: 'Reactivation fee', cents: extraFeeCents });
+  return {
+    kind: 'plan' as const, lines,
+    applicationId: (plan.application_id as string | null) ?? null, householdId: (plan.household_id as string | null) ?? null,
+    familyName: (plan.family_name as string | null) ?? null, payerEmail: (plan.primary_email as string | null) ?? null,
+    balanceCents: rows.filter(r => !isPaid(r) && !paid.some(p => p.id === r.id)).reduce((t, r) => t + Number(r.amount_cents), 0),
+  };
+}
+
 export async function installmentsOf(sb: SupabaseClient, planId: string): Promise<Inst[]> {
   const { data } = await sb.from('payment_plan_installments').select('*').eq('plan_id', planId).order('sequence');
   return (data ?? []) as Inst[];

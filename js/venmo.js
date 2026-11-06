@@ -21,5 +21,7 @@
     const amt = a.amountCents > 0 ? '&amount=' + (a.amountCents / 100).toFixed(2) : '';
     return 'https://venmo.com/' + encodeURIComponent(h) + '?txn=pay' + amt + '&note=' + encodeURIComponent(a.note);
   }
-  window.PoolsideVenmo = { familyShort: familyShort, note: note, link: link };
+  // Under every Venmo payment (PLAN.md BZ3); _shared/venmo.ts says the same.
+  const RECEIPT_LINE = 'The board confirms Venmo payments. Your Venmo receipt is your receipt.';
+  window.PoolsideVenmo = { familyShort: familyShort, note: note, link: link, RECEIPT_LINE: RECEIPT_LINE };
 })();

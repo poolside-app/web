@@ -348,6 +348,8 @@
         <!-- PLAN.md BC1: the code is made when the signup is saved, so the
              filled-in button comes on the next screen (and in the email). -->
         <div style="font-size:13px;color:var(--text);line-height:1.5">After you submit, you'll get a Venmo button with your amount and code filled in. Just tap it and pay.</div>
+        <!-- PLAN.md BZ3: no receipt for Venmo; js/venmo.js RECEIPT_LINE says the same. -->
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px">The board confirms Venmo payments. Your Venmo receipt is your receipt.</div>
         <div id="venmo-handle-line" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
       </div>
 
@@ -1496,6 +1498,7 @@ async function submitApplication() {
         <div style="margin-top:18px;padding:18px;border:1.5px solid #bae6fd;border-radius:14px;background:#f0f9ff;text-align:center">
           <a href="${escapeAttr(data.venmo.link)}" target="_blank" rel="noopener" style="display:block;padding:14px 18px;background:#3D95CE;color:#fff;border-radius:12px;font:600 16px 'Inter';text-decoration:none">Pay $${(data.venmo.amount_cents / 100).toFixed(2)} with Venmo</a>
           <div style="font-size:13px;color:#075985;margin-top:10px;line-height:1.5">Your code: <b>#${escapeHtml(data.venmo.code)}</b>. It's already in the Venmo note, so the board can match your payment.</div>
+          <div style="font-size:12px;color:#075985;margin-top:6px;line-height:1.5">${escapeHtml(PoolsideVenmo.RECEIPT_LINE)}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:10px">On a computer? Scan this with your phone:</div>
           <div id="venmo-pay-qr" style="margin:8px auto 0;display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
         </div>` : ''}

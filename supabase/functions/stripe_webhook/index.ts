@@ -122,6 +122,32 @@ async function orphanPayment(sb: ReturnType<typeof createClient>, tenantId: stri
   await sb.from('audit_log').insert({ tenant_id: tenantId, kind: 'payment.no_signup', entity_type: 'stripe_charge', summary: task.summary, actor_kind: 'stripe' });
 }
 
+// A card payment's receipt (PLAN.md BZ, Doug 11/6): numbered, its PDF sent
+// with the email the payment already sends (or "Payment receipt") and copied
+// to the family's Drive folder. A receipt that fails never fails the payment.
+type ReceiptArgs = Omit<import('../_shared/receipts.ts').ReceiptInput, 'tenantId' | 'paymentRef' | 'totalCents'> & { totalCents?: number };
+async function cardReceipt(sb: ReturnType<typeof createClient>, tenantId: string, session: Record<string, unknown>, a: ReceiptArgs) {
+  try {
+    const { issueReceipt, stripeCardLabel } = await import('../_shared/receipts.ts');
+    const pi = (session.payment_intent as string) || null;
+    const ref = pi || String(session.id || '');
+    if (!ref) return null;
+    const { data: t } = await sb.from('tenants').select('stripe_account_id').eq('id', tenantId).maybeSingle();
+    const cd = (session.customer_details as Record<string, unknown> | null) ?? {};
+    return await issueReceipt(sb, {
+      ...a, tenantId, paymentRef: ref,
+      totalCents: a.totalCents ?? (Number(session.amount_total) || 0),
+      paidWith: await stripeCardLabel(ref, (t?.stripe_account_id as string) ?? null),
+      fallback: { name: (cd.name as string) || null, email: (cd.email as string) || (session.customer_email as string) || null },
+    });
+  } catch (e) { console.error('receipt (non-fatal):', (e as Error).message); return null; }
+}
+async function sendReceiptEmail(sb: ReturnType<typeof createClient>, r: Record<string, unknown> | null) {
+  if (!r) return;
+  const { emailReceipt } = await import('../_shared/receipts.ts');
+  await emailReceipt(sb, r);
+}
+
 // A refund or chargeback on anything but a signup (PLAN.md BG3): find what
 // it was for and give the Treasurer a to-do and pop-up. To-do only, Doug
 // 10/20: the board decides what to undo.
@@ -289,6 +315,22 @@ Deno.serve(async (req) => {
         await recordDiscountUse(sb, md.application_id);
       } catch (e) { console.error('discount record failed:', (e as Error).message); }
 
+      // Its receipt, before the approval sends the welcome or "Renewal
+      // confirmed" email that carries it (PLAN.md BZ).
+      if (!free) {
+        const { data: ra } = await sb.from('applications').select('membership_year, tier_slug, amount_due_cents, is_renewal')
+          .eq('id', md.application_id).maybeSingle();
+        const { data: rs } = await sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle();
+        const tiers = (((rs?.value as Record<string, unknown> | undefined)?.membership_tiers) ?? []) as Array<Record<string, unknown>>;
+        const tier = tiers.find(t => t.slug === ra?.tier_slug)?.label as string | undefined;
+        const total = Number(session.amount_total) || 0;
+        await cardReceipt(sb, tenantId, session, {
+          kind: ra?.is_renewal ? 'renewal' : 'membership', applicationId: md.application_id,
+          lines: [{ label: `${ra?.membership_year ?? ''} ${ra?.is_renewal ? 'renewal' : 'membership'}${tier ? `, ${tier}` : ''}`.trim(),
+            cents: Math.min(total, Number(ra?.amount_due_cents) || total) }],
+        });
+      }
+
       // Auto-approve: applicant paid via Stripe = they're a member, no manual
       // review needed. Idempotent — applications.approve checks status first
       // and returns 409 if already approved (we ignore that error here).
@@ -433,10 +475,14 @@ Deno.serve(async (req) => {
       if (kind === 'payment_plan_first' || kind === 'payment_plan_setup') {
         // Under way now: active from here on (PLAN.md BY1).
         await ops.startPlan(sb, plan);
+        let firstReceipt: Record<string, unknown> | null = null;
         if (kind === 'payment_plan_first') {
           await sb.from('payment_plan_installments').update({
             status: 'paid', paid_at: now, stripe_payment_intent_id: piId, stripe_session_id: sessionId, last_error: null,
           }).eq('plan_id', plan.id).eq('sequence', 1);
+          // Payment 1's receipt, before the welcome email that carries it (PLAN.md BZ).
+          const rows = await ops.installmentsOf(sb, plan.id as string);
+          firstReceipt = await cardReceipt(sb, tenantId, session, ops.planReceiptArgs(club, plan, rows, rows.filter(r => r.sequence === 1), await ops.planYear(sb, plan)));
         }
         // The code use and credit count once the plan is under way.
         if (md.application_id) {
@@ -488,6 +534,11 @@ Deno.serve(async (req) => {
         }
         await ops.grantAccessIfReady(sb, club, plan, { announce: false });
         await ops.completeIfPaid(sb, club, plan);
+        // A renewal on a plan gets no welcome email: its receipt goes on its own.
+        if (firstReceipt && planApp && md.application_id) {
+          const { data: ren } = await sb.from('applications').select('is_renewal').eq('id', md.application_id).maybeSingle();
+          if (ren?.is_renewal) await sendReceiptEmail(sb, firstReceipt);
+        }
       }
 
       if (kind === 'payment_plan_catchup' || kind === 'payment_plan_payoff') {
@@ -519,14 +570,23 @@ Deno.serve(async (req) => {
         const rows = await ops.installmentsOf(sb, plan.id as string);
         await ops.grantAccessIfReady(sb, club, plan, { announce: true, rows });
         await ops.completeIfPaid(sb, club, plan, rows);
+        // Its receipt (PLAN.md BZ): with "paid in full" for a payoff, on its own for a catch-up.
+        const paidNow = rows.filter(r => ids.includes(r.id as string));
+        const extra = md.reinstate === '1' ? Number(md.reactivation_fee_cents) || 0 : 0;
+        const receipt = await cardReceipt(sb, tenantId, session, ops.planReceiptArgs(club, plan, rows, paidNow, await ops.planYear(sb, plan), extra));
         if (plan.primary_email && kind === 'payment_plan_payoff') {
           try {
             const { renderAndSend } = await import('../_shared/email_template.ts');
+            const { receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
             await renderAndSend(sb, {
               tenantId, templateKey: 'plan_installment_paid_final', to: plan.primary_email as string,
-              variables: { family_name: plan.family_name as string, amount: `$${((Number(session.amount_total) || 0) / 100).toFixed(2)}` },
+              variables: { family_name: plan.family_name as string, amount: `$${((Number(session.amount_total) || 0) / 100).toFixed(2)}`,
+                ...(receipt ? { receipt_no: receiptNo(receipt) } : {}) },
+              ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}),
             });
           } catch { /* the payment is recorded either way */ }
+        } else {
+          await sendReceiptEmail(sb, receipt);
         }
       }
     }
@@ -565,6 +625,12 @@ Deno.serve(async (req) => {
         // Close any open lapse-related admin tasks
         await sb.from('admin_tasks').update({ completed_at: now })
           .eq('source_kind', 'payment_plan').eq('source_id', plan.id).is('completed_at', null);
+        // Its receipt (PLAN.md BZ).
+        await sendReceiptEmail(sb, await cardReceipt(sb, tenantId, session, {
+          kind: 'plan', applicationId: plan.application_id as string | null, householdId: plan.household_id as string | null,
+          lines: [{ label: `${restoreYear} membership: the rest of the plan and the reactivation fee`, cents: Number(session.amount_total) || 0 }],
+          balanceCents: 0,
+        }));
       }
     }
 
@@ -572,7 +638,7 @@ Deno.serve(async (req) => {
     // Idempotent: a re-delivery finds them already paid.
     const fobIds = String(md.keyfob_ids || md.keyfob_id || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20);
     if (kind === 'keyfob' && fobIds.length && tenantId) {
-      const { data: fobs } = await sb.from('keyfobs').select('id, household_id, reason, payment_status')
+      const { data: fobs } = await sb.from('keyfobs').select('id, household_id, reason, payment_status, price_cents')
         .in('id', fobIds).eq('tenant_id', tenantId);
       const due = (fobs ?? []).filter(f => f.payment_status !== 'paid');
       // Canceled while the checkout was still open (PLAN.md X2): the money
@@ -618,12 +684,28 @@ Deno.serve(async (req) => {
           await pushMembers({ tenant_id: tenantId, household_ids: [hid],
             title: '🔑 Keyfob paid', body: 'Thanks. The board will set up your fob and let you know when it\'s ready.', url: '/m/#keyfobs', tag: 'keyfob' });
         } catch { /* best-effort */ }
+        // Its receipt (PLAN.md BZ).
+        const fobCents = due.reduce((t, f) => t + Number(f.price_cents ?? 0), 0);
+        const label = due.length > 1 ? `${due.length} keyfobs` : due[0].reason === 'replacement' ? 'Replacement keyfob' : 'Keyfob';
+        await sendReceiptEmail(sb, await cardReceipt(sb, tenantId, session, {
+          kind: 'keyfob', householdId: hid, lines: [{ label, cents: fobCents || (Number(session.amount_total) || 0) }],
+        }));
       }
     }
 
     if (kind === 'program_booking' && md.booking_id) {
       await sb.from('program_bookings').update({ paid: true, updated_at: new Date().toISOString(), stripe_payment_intent_id: piAll })
         .eq('id', md.booking_id).eq('tenant_id', tenantId);
+      // Its receipt (PLAN.md BZ).
+      const { data: bk } = await sb.from('program_bookings').select('household_id, participant_name, program_id')
+        .eq('id', md.booking_id).eq('tenant_id', tenantId).maybeSingle();
+      const { data: prog } = bk?.program_id
+        ? await sb.from('programs').select('name, price_cents').eq('id', bk.program_id).maybeSingle() : { data: null };
+      await sendReceiptEmail(sb, await cardReceipt(sb, tenantId, session, {
+        kind: 'program', householdId: (bk?.household_id as string | null) ?? null,
+        lines: [{ label: `${prog?.name ?? 'Program'}${bk?.participant_name ? `: ${bk.participant_name}` : ''}`,
+          cents: Number(prog?.price_cents) || (Number(session.amount_total) || 0) }],
+      }));
     }
 
     // Party booking — Stripe path. Marks paid + materializes calendar event,
@@ -634,7 +716,7 @@ Deno.serve(async (req) => {
     // Idempotent: re-deliveries hit `payment_status === 'paid'` and no-op.
     if (kind === 'party_booking' && md.party_id && tenantId) {
       const { data: party } = await sb.from('party_bookings')
-        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id, pool_date, admin_notes')
+        .select('id, tenant_id, household_id, requested_by, title, body, location, expected_guests, starts_at, ends_at, status, payment_status, event_id, pool_date, admin_notes, price_cents')
         .eq('id', md.party_id).eq('tenant_id', tenantId).maybeSingle();
       // Paid after the party was taken away (PLAN.md BG4): released for not
       // being paid in time → book it again if the time is still free;
@@ -722,10 +804,17 @@ Deno.serve(async (req) => {
           try {
             const { data: requester } = await sb.from('household_members')
               .select('name, email').eq('id', party.requested_by as string).maybeSingle();
+            const { party_date, party_time } = partyWhen(party.starts_at as string, await tenantTimeZone(sb, tenantId));
+            // Its receipt, attached to "Party booked" (PLAN.md BZ).
+            const receipt = await cardReceipt(sb, tenantId, session, {
+              kind: 'party', householdId: party.household_id as string,
+              payerName: (requester?.name as string | null) ?? null, payerEmail: (requester?.email as string | null) ?? null,
+              lines: [{ label: `Party on ${party_date}`, cents: Number(party.price_cents) || (Number(session.amount_total) || 0) }],
+            });
             if (requester?.email) {
               const { renderAndSend } = await import('../_shared/email_template.ts');
+              const { receiptAttachment, receiptNo } = await import('../_shared/receipts.ts');
               const { data: tenant } = await sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle();
-              const { party_date, party_time } = partyWhen(party.starts_at as string, await tenantTimeZone(sb, tenantId));
               await renderAndSend(sb, {
                 tenantId, templateKey: 'party_confirmed',
                 to: requester.email as string,
@@ -736,7 +825,9 @@ Deno.serve(async (req) => {
                   party_date,
                   party_time,
                   club_url: tenant ? `https://${tenant.slug}.poolsideapp.com` : '',
+                  ...(receipt ? { receipt_no: receiptNo(receipt) } : {}),
                 },
+                ...(receipt ? { attachments: [await receiptAttachment(receipt)] } : {}),
               });
             }
           } catch (e) { console.error('party_booking confirmed email (non-fatal):', (e as Error).message); }
@@ -784,6 +875,11 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.error('donation webhook insert failed:', (e as Error).message);
       }
+      // Its receipt (PLAN.md BZ).
+      await sendReceiptEmail(sb, await cardReceipt(sb, tenantId, session, {
+        kind: 'donation', familyName: md.donor_name || null, payerName: md.donor_name || null, payerEmail: md.donor_email || null,
+        lines: [{ label: 'Donation', cents: amountTotal }],
+      }));
     }
 
     // ── setup_service: club just paid $500 for Premium Setup. Notify

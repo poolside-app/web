@@ -9,6 +9,11 @@
 // scripts/test_venmo_codes.mjs checks the two agree.
 // =============================================================================
 
+/** Under every Venmo payment (PLAN.md BZ3, Doug 11/6: "for venmo payments, we
+ *  arent sending reciepts.... make sure it says board needs to approve... and
+ *  use the venmo reciept as your receipt"). js/venmo.js says the same. */
+export const VENMO_RECEIPT_LINE = 'The board confirms Venmo payments. Your Venmo receipt is your receipt.';
+
 /** "The Smith Family" → "Smith". */
 export function familyShort(name: string | null | undefined): string {
   return String(name ?? '').trim().replace(/^the\s+/i, '').replace(/\s+family$/i, '').trim() || 'Family';
