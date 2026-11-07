@@ -205,7 +205,9 @@ export async function runLive({ check, short }) {
       const [hh2] = await sql(`select dues_paid_for_year, paid_until_year from households where id = ${q(app.household_id)}`);
       check('S1: the gate opens, paid through 2027', hh2.dues_paid_for_year === true && hh2.paid_until_year === 2027 && !!p.access_at, short(hh2));
       const tasks = await sql(`select kind, summary from admin_tasks where tenant_id = ${q(tenantId)} and source_id = ${q(p.id)}`);
-      check('S1: the Facilities Director is told the fobs can go on', tasks.some(t => t.kind === 'plan.fob_on'), short(tasks));
+      // PLAN.md CH: the keyfob to-do only when the family has a keyfob to turn on; this one has none.
+      const [{ n: fobsOn }] = await sql(`select count(*)::int as n from keyfobs where household_id = ${q(app.household_id)} and status = 'active' and card_number is not null`);
+      check('S1: a keyfob to-do only if they have a keyfob to turn on', fobsOn > 0 || !tasks.some(t => t.kind === 'plan.fob_on'), short(tasks));
       const one = after[1];
       const pi = await stripe('GET', `/payment_intents/${one.stripe_payment_intent_id}`, {}, acct);
       check('S1: Stripe charged dues + plan fee + card fee, off-session',

@@ -900,6 +900,12 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CH. The "key fobs can be turned on" to-do only when there's a keyfob to turn on (Doug, 11/7)
+Doug: "I have a notification for giving a keyfob but it goes to the payments…. Then I go to keyfobs and nothing is there too". This morning's payment run saw the $1 test family pass half paid and made "Frevele Family have paid half their dues: their key fobs can be turned on", linking to Money → Payments. That to-do is from before Poolside managed keyfobs: it went out though the family has no keyfob at all, so Keyfobs had nothing for them.
+- **CH1.** When a plan family's gate access comes on (half paid, or paid up again), the keyfob person gets a to-do only if the family has a keyfob on the doors' list, the Season switch is open (otherwise member fobs stay off anyway) and the nightly keyfob sync is off (otherwise it turns them on by itself). It says "tap Sync keyfobs now to turn their keyfob on" and opens Keyfobs & Access (`fobOnTask` in `_shared/plan_ops.ts`). With no keyfob there's nothing for the board to do: the family's app Unlock works as soon as access comes on.
+- The test family's to-do from this morning is dismissed once this is live.
+- Failing test first: `test_plan_approval` (offline): `fobOnTask` with and without keyfobs, off-season, with the nightly sync on, its wording and link; `grantAccessIfReady` counts the family's keyfobs and uses it. The live plan test expects no to-do for a family without a keyfob.
+
 ### CG. Date and time boxes stay inside their column on iPhones (Doug, 11/7)
 Doug, with a screenshot of Start a board meeting: "The pop up is a little offset at the top". On his iPhone the Date box ran past the pop-up's right edge and Starts at slid under Location: Safari draws date and time boxes at their own width and ignores the width they're given. Chrome doesn't, so the offline renders never showed it. The signup page and the member app's party form already had the fix, page by page.
 - **CG1.** `js/phone-fit.js`, on every page with a date or time box and only on iPhones, turns off Safari's own drawing of them (`appearance: none`, the signup page's recipe), lets them shrink to their column (`min-width: 0`), keeps them 44px tall when empty, and lines the date up on the left.

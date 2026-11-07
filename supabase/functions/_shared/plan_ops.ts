@@ -274,17 +274,45 @@ export async function grantAccessIfReady(
     const why = club.cfg.access_when === 'card' ? 'saved a card for their payment plan'
       : club.cfg.access_when === 'first_payment' ? 'made the first payment on their plan'
       : 'paid half their dues';
-    const { enqueueAdminTask } = await import('./enqueue_task.ts');
-    await enqueueAdminTask(sb, {
-      tenant_id: club.tenantId, target_scopes: ['households'], kind: 'plan.fob_on',
-      summary: plan.enforced_at
-        ? `${plan.family_name} are paid up again: turn their key fobs back on`
-        : `${plan.family_name} have ${why}: their key fobs can be turned on`,
-      link_url: '/club/admin/payments.html#plans',
-      source_kind: 'payment_plan', source_id: plan.id as string,
+    // Only when there's a keyfob to turn on (PLAN.md CH): their keyfobs on the
+    // doors' list, the Season switch open, and the nightly sync off.
+    const [{ count: activeFobs }, { data: t }, { data: sv }] = await Promise.all([
+      sb.from('keyfobs').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', club.tenantId).eq('household_id', plan.household_id).eq('status', 'active').not('card_number', 'is', null),
+      sb.from('tenants').select('auto_keyfob_sync').eq('id', club.tenantId).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', club.tenantId).maybeSingle(),
+    ]);
+    const season = ((sv?.value as Record<string, unknown> | undefined)?.season ?? {}) as { open?: unknown };
+    const task = fobOnTask({
+      family: String(plan.family_name ?? 'A family'), back: !!plan.enforced_at, why,
+      activeFobs: Number(activeFobs ?? 0), autoSync: !!t?.auto_keyfob_sync, seasonOpen: season.open !== false,
     });
+    if (task) {
+      const { enqueueAdminTask } = await import('./enqueue_task.ts');
+      await enqueueAdminTask(sb, {
+        tenant_id: club.tenantId, target_scopes: ['keyfobs'], kind: 'plan.fob_on',
+        summary: task.summary, link_url: task.link_url,
+        source_kind: 'payment_plan', source_id: plan.id as string,
+      });
+    }
   }
   return true;
+}
+
+/** The keyfob person's to-do when a plan family's gate access comes on
+ *  (PLAN.md CH, Doug 11/7: it went to Payments for a family with no keyfob).
+ *  None without a keyfob on the doors' list (their app Unlock already
+ *  works), off-season (member fobs stay off), or with the nightly keyfob sync
+ *  on (it turns them on by itself). Otherwise: Sync keyfobs now. */
+export function fobOnTask(o: { family: string; back: boolean; why: string; activeFobs: number; autoSync: boolean; seasonOpen: boolean }): { summary: string; link_url: string } | null {
+  if (o.activeFobs < 1 || o.autoSync || !o.seasonOpen) return null;
+  const fobs = o.activeFobs === 1 ? 'their keyfob' : `their ${o.activeFobs} keyfobs`;
+  return {
+    summary: o.back
+      ? `${o.family} are paid up again: tap Sync keyfobs now to turn ${fobs} back on`
+      : `${o.family} have ${o.why}: tap Sync keyfobs now to turn ${fobs} on`,
+    link_url: '/club/admin/keyfobs.html',
+  };
 }
 
 /** Mark the plan finished once every payment is in. */

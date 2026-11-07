@@ -214,5 +214,21 @@ if (LIVE) {
   }
 }
 
+// PLAN.md CH (Doug 11/7): "I have a notification for giving a keyfob but it goes to the payments…. Then I go to keyfobs and nothing is there".
+console.log('\nCH · the "key fobs can be turned on" to-do');
+{
+  const ops = await importTs(new URL('../supabase/functions/_shared/plan_ops.ts', import.meta.url));
+  const base = { family: 'Frevele Family', back: false, why: 'paid half their dues', activeFobs: 1, autoSync: false, seasonOpen: true };
+  check('CH1: no keyfob, no to-do (their app Unlock already works)', typeof ops.fobOnTask === 'function' && ops.fobOnTask({ ...base, activeFobs: 0 }) === null);
+  check('CH1: off-season, or with the nightly sync on, no to-do', typeof ops.fobOnTask === 'function' && ops.fobOnTask({ ...base, seasonOpen: false }) === null && ops.fobOnTask({ ...base, autoSync: true }) === null);
+  const t = typeof ops.fobOnTask === 'function' ? ops.fobOnTask(base) : null;
+  check('CH1: with a keyfob: "tap Sync keyfobs now", opening Keyfobs & Access', !!t && t.link_url === '/club/admin/keyfobs.html' && /Sync keyfobs now/.test(t.summary) && /their keyfob/.test(t.summary) && /paid half their dues/.test(t.summary), JSON.stringify(t));
+  const t2 = typeof ops.fobOnTask === 'function' ? ops.fobOnTask({ ...base, back: true, activeFobs: 2 }) : null;
+  check('CH1: paid up again, two keyfobs', !!t2 && /paid up again/.test(t2.summary) && /their 2 keyfobs back on/.test(t2.summary), JSON.stringify(t2));
+  const src = readFileSync(new URL('../supabase/functions/_shared/plan_ops.ts', import.meta.url), 'utf8');
+  const grant = src.slice(src.indexOf('export async function grantAccessIfReady'), src.indexOf('export async function completeIfPaid'));
+  check('CH1: grantAccessIfReady counts the family\'s keyfobs and uses fobOnTask, never Payments', /fobOnTask\(/.test(grant) && /from\('keyfobs'\)/.test(grant) && /auto_keyfob_sync/.test(grant) && !/payments\.html#plans/.test(grant));
+}
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
