@@ -110,6 +110,8 @@ console.log('\nK2 · the Board page (offline)');
     /id="positions"/.test(page) && /notices/.test(page) && /description/.test(page), 'no board page');
   // CB1 (Doug 11/6): "remove the spending rule top boarder thing.. .thats stupid".
   check('CB1: the Board page has no spending rule box or its Edit window', !/spending/i.test(page), (page.match(/.{0,40}spending.{0,40}/i) || [''])[0]);
+  // CF1 (Doug 11/6): "Remove that… dumb".
+  check('CF1: no lifeguard and gate logins section or its invite form on the Board page', !/Lifeguard and gate logins|lifeguard or gate login|inviteStaff|id="staff"/i.test(page), (page.match(/.{0,40}(Lifeguard and gate|inviteStaff|id="staff").{0,30}/i) || [''])[0]);
   check('K2: the president can edit a position, assign holders, and invite someone into it',
     /save_position/.test(page) && /set_holders/.test(page) && /invite_admin/.test(page) && /position_ids/.test(page), '');
   const admins = read('club/admin/admins.html');

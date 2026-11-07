@@ -7,10 +7,9 @@ category: "Calendar & Parties"
 
 1. Go to **Calendar → Lifeguards**.
 2. On **👥 Roster**, tap **+ Add lifeguard** for each guard.
-3. Give each one a login on **Settings → Board** under **Lifeguard and gate logins**. It only shows their own shifts and the check-in page.
-4. On **📅 Schedule**, tap **+ Add shift**: the **Date**, **Start time**, **End time**, **Position** and **Spots needed**.
+3. On **📅 Schedule**, tap **+ Add shift**: the **Date**, **Start time**, **End time**, **Position** and **Spots needed**.
 
-Lifeguards sign in and pick open shifts under **My shifts**. They can **Release** a shift they can't work, and it opens up again.
+Lifeguards pick open shifts under **My shifts** with a lifeguard login, which Poolside support sets up if your club wants them. They can **Release** a shift they can't work, and it opens up again.
 
 ### Volunteers
 

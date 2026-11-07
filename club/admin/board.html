@@ -120,10 +120,6 @@
   <h2 style="margin:26px 0 10px">Board members</h2>
   <div class="card" id="members"><div style="height:60px"></div></div>
 
-  <a id="staff-anchor" name="staff"></a>
-  <h2 style="margin:26px 0 4px">Lifeguard and gate logins</h2>
-  <p class="hint" style="margin:0 0 10px">A login that only shows the check-in page and the person's own lifeguard shifts. No member contact details, no money. Use one for a shared iPad at the gate, or one per lifeguard.</p>
-  <div class="card" id="staff" data-focus="staff"><div style="height:40px"></div></div>
 </main>
 <footer>Powered by <a href="https://poolsideapp.com">Poolside</a></footer>
 
@@ -299,43 +295,6 @@ function render() {
       </div>` : ''}
     </div>`;
   }).join('') || '<div style="color:var(--muted)">Nobody yet.</div>';
-
-  const staff = B.staff || [];
-  document.getElementById('staff').innerHTML = staff.map(m => `<div class="mrow">
-      <div class="nm">${escapeHtml(m.name)}${m.pending ? '<span class="pill">Invited</span>' : ''}</div>
-      ${owner ? `<div class="actions"><button class="btn btn-sm btn-danger" onclick="removePerson('${m.id}', true)">Remove</button></div>` : ''}
-    </div>`).join('')
-    + (staff.length ? '' : '<div style="color:var(--muted);font-size:13.5px">None yet.</div>')
-    + (owner ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px;color:var(--blue)">Add a lifeguard or gate login</summary>
-        <div class="modal" style="box-shadow:none;padding:6px 0 0;max-width:none">
-          <label class="f" for="st-name">Name</label><input type="text" id="st-name" placeholder="Gate iPad, or the lifeguard's name" autocomplete="off">
-          <label class="f" for="st-phone">Mobile number <span style="font-weight:500;color:var(--muted)">(we text the invite)</span></label><input type="tel" id="st-phone" placeholder="(555) 123-4567" autocomplete="off">
-          <label class="f" for="st-email">Or email</label><input type="email" id="st-email" autocomplete="off">
-          <div style="margin-top:10px"><button class="btn btn-primary" id="st-send" type="button" onclick="inviteStaff()">Send invite</button></div>
-          <div class="err" id="st-err"></div><div class="ok" id="st-ok"></div>
-        </div></details>` : '');
-}
-
-async function inviteStaff() {
-  const name = document.getElementById('st-name').value.trim();
-  const phone = document.getElementById('st-phone').value.trim();
-  const email = document.getElementById('st-email').value.trim().toLowerCase();
-  hideErr('st-err');
-  if (!name) return showErr('st-err', 'Add a name.');
-  if (phone.replace(/\D/g, '').length < 10 && !email.includes('@')) return showErr('st-err', 'Add a mobile number or an email.');
-  const btn = document.getElementById('st-send'); btn.disabled = true;
-  try {
-    const channel = phone.replace(/\D/g, '').length >= 10 ? 'sms' : 'email';
-    const r = await admin('invite_admin', { channel, display_name: name, roles: ['gate_attendant'], phone_e164: phone || undefined, email: email || undefined });
-    if (!r.ok) throw new Error(r.error || 'Invite failed');
-    if (!r.sent) {
-      const ok = document.getElementById('st-ok');
-      ok.innerHTML = `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`;
-      ok.classList.add('show');
-      return;
-    }
-    await load();
-  } catch (e) { showErr('st-err', e.message); } finally { btn.disabled = false; }
 }
 
 // ── Edit a position ───────────────────────────────────────────────────

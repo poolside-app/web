@@ -32,6 +32,5 @@ On **Settings → Board**, find them under **Board members** and tap **Remove fr
 
 ### Lifeguards and the gate iPad
 
-Under **Lifeguard and gate logins**, **Add a lifeguard or gate login** creates a login that only shows the check-in page and that person's own lifeguard shifts. No member contact details and no money. Use one for a shared iPad at the gate, or one per lifeguard.
 
 > Tip: Always keep at least two people with full access, so the board is never locked out if one person loses their phone.

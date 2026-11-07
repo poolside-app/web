@@ -900,6 +900,12 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CF. No lifeguard and gate logins on Settings → Board (Doug, 11/6)
+Doug asked what the "Lifeguard and gate logins" section at the bottom of the Board page is (a login that only shows check-in and the person's own lifeguard shifts, for a gate iPad or a guard), then: "Remove that… dumb".
+- **CF1.** The section goes: its heading, list and "Add a lifeguard or gate login" form (`club/admin/board.html`). No club has one (checked 11/6), so nobody loses a login. The check-in page and the gate-login role stay in the code; board members still open check-in from Settings → Gate & check-in. Lifeguards picking their own shifts needed those logins; lifeguard scheduling is off at every club, and its help article says Poolside support sets a lifeguard login up if a club ever wants it.
+- Help: Board members, Check-in and Lifeguards no longer send anyone to the section.
+- Failing test first: `test_positions` K2 (offline): the Board page has no lifeguard or gate login section or its invite form; `test_help_articles` keeps every bold path real.
+
 ### CE. Member help questions go to everyone with the topic ticked (Doug, 11/6)
 Found in the Facilities Director's preview: "You handle: Keyfob & gate…" with "Doug Frevele (President)" under every topic. Each topic went to one person, the first position on the Board list with it ticked, and Bishop's President has every topic ticked, so every question would keep going to Doug after others join. Doug: "Can multiple people get the topic" → "Yes do that. Multiple people should be able to see the member help questions".
 - **CE1. Everyone with the topic ticked sees the question.** A member's question is no longer handed to one person when it arrives: everyone who holds a position with its topic ticked (none: the President, as before) sees it on Member help, has it on their dashboard and gets the pop-up (the to-do is the topic's alert, `notice`, not one person). Full access still sees every question. `canSeeHelpRequest` takes who gets the topic; `help_requests` `list` shows a person what's handed to them plus every topic they get.
