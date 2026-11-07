@@ -257,11 +257,14 @@ export async function runLive({ check, short }) {
       await sql(`update payment_plan_installments set due_date = ${q(today)}, status = 'retrying', attempt_count = 3,
         first_failed_at = now() - interval '15 days', last_error = 'declined' where id = ${q(first.id)}`);
       await cron();
+      const p0 = await planOf(s.appId);
+      // PLAN.md CJ (Doug 11/7): a failed card cancels nothing; only a missed deadline does.
+      check('S3: the fourth decline keeps the plan open', p0.status === 'active' && !p0.ended_reason, short({ status: p0.status, why: p0.ended_reason }));
+      const tasks = await sql(`select kind, summary from admin_tasks where tenant_id = ${q(tenantId)} and source_id = ${q(p0.id)} and completed_at is null and dismissed_at is null`);
+      check('S3: the board is told it still hasn\'t gone through', tasks.some(t => t.kind === 'plan.payment_failed' && /still hasn.t gone through/.test(t.summary)), short(tasks));
+      // Then a deadline passes unpaid: stand in for the daily run's deadline check.
+      await sql(`update payment_plans set status = 'lapsed', ended_reason = 'deadline', lapsed_at = now() where id = ${q(p0.id)}`);
       const p = await planOf(s.appId);
-      check('S3: the fourth decline ends the plan', p.status === 'lapsed' && p.ended_reason === 'card_failed', short({ status: p.status, why: p.ended_reason }));
-      const tasks = await sql(`select kind from admin_tasks where tenant_id = ${q(tenantId)} and source_id = ${q(p.id)} and completed_at is null`);
-      check('S3: the board is flagged', tasks.some(t => t.kind === 'plan.lapsed'), short(tasks));
-      check('S3: the gate waits for the season (pool closed in October)', !p.enforced_at);
       const mt = await memberTok(p);
       const v = await fn('payment_plans', { action: 'member_plan' }, { token: mt });
       check('S3: they see what it takes to come back: overdue plus $50', v.plan?.status === 'lapsed' && v.plan.reinstate?.fee_cents === 5000

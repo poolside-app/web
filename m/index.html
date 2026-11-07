@@ -1841,7 +1841,7 @@ function renderPlanCard(plan) {
   const pct = plan.total_cents ? Math.min(100, Math.round(plan.paid_cents / plan.total_cents * 100)) : 0;
   const head = ended
     ? `<div style="padding:12px 14px;border-radius:12px;background:#fee2e2;color:#7f1d1d;font-size:13.5px;line-height:1.5;margin-bottom:12px">
-         <b>Your membership is canceled</b> because ${plan.ended_reason === 'member_cancelled' ? 'you canceled your payment plan' : plan.ended_reason === 'deadline' ? "your dues weren't paid in full by the club's deadline" : 'your card could not be charged'}.
+         <b>Your membership is canceled</b> because ${plan.ended_reason === 'member_cancelled' ? 'you canceled your payment plan' : plan.ended_reason === 'deadline' ? "your payments weren't up to date by the club's deadline" : 'your card could not be charged'}.
          Your gate access and key fobs are off until you reinstate. Nothing you've paid is refunded.
        </div>`
     : plan.status === 'past_due'

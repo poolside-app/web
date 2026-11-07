@@ -240,13 +240,14 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     placeholders: ['family_name', 'tenant_name', 'amount'],
     adds: 'the amount, what happens next, and an "Update my card" button',
     heading: () => '⚠ Card declined',
-    details: v => box(`<b>${e(v.amount)}</b>${v.sequence ? ` (payment ${e(v.sequence)})` : ''}<br>We'll try the card again over the next two weeks. If it still can't be charged, your membership is canceled. Updating your card pays it right away.`, 'warn')
+    // Only a missed deadline cancels (PLAN.md CJ): say which one.
+    details: v => box(`<b>${e(v.amount)}</b>${v.sequence ? ` (payment ${e(v.sequence)})` : ''}<br>We'll try the card again over the next two weeks, and updating your card pays it right away. Your membership stays on as long as your payments are up to date by ${v.next_deadline ? e(v.next_deadline) : "the club's next payment deadline"}; if they aren't, it's canceled.`, 'warn')
       + button('Update my card', `${String(v.club_url ?? '')}/m/#plan`),
   },
   {
     key: 'plan_cancelled', section: 'payments',
     label: 'Plan ended, membership canceled',
-    when: 'When a payment plan ends: the card kept failing, it wasn\'t paid by the deadline, or the family canceled.',
+    when: 'When a payment plan ends: its payments weren\'t up to date by a deadline, or the family canceled.',
     default_subject: 'Your {{tenant_name}} membership is canceled',
     default_message: '<p>Hi {{family_name}},</p><p>Your {{tenant_name}} membership is canceled because {{reason}}.</p><p>Questions? Reply to this email to reach the board.</p>',
     placeholders: ['family_name', 'tenant_name', 'reason'],

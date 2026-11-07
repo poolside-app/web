@@ -570,6 +570,8 @@ Deno.serve(async (req) => {
         const rows = await ops.installmentsOf(sb, plan.id as string);
         await ops.grantAccessIfReady(sb, club, plan, { announce: true, rows });
         await ops.completeIfPaid(sb, club, plan, rows);
+        // Paid what had failed: the board's declined-payment to-do is done (PLAN.md CJ3).
+        await ops.clearFailedPayment(sb, tenantId, plan.id as string, rows);
         // Its receipt (PLAN.md BZ): with "paid in full" for a payoff, on its own for a catch-up.
         const paidNow = rows.filter(r => ids.includes(r.id as string));
         const extra = md.reinstate === '1' ? Number(md.reactivation_fee_cents) || 0 : 0;

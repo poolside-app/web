@@ -241,7 +241,7 @@
 
       <div class="card" id="plans-card">
         <h2>🗓️ Payment plans</h2>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Families pay in full, or choose how much to pay today ($0 is fine) and the month to be paid off by. Poolside splits the rest evenly by month, only accepts plans that meet your deadlines, and charges the saved card on each date. A card that keeps failing, or a plan not paid in full by your last deadline, cancels the membership until the family reinstates.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Families pay in full, or choose how much to pay today ($0 is fine) and the month to be paid off by. Poolside splits the rest evenly by month, only accepts plans that meet your deadlines, and charges the saved card on each date. Missing a deadline below cancels the membership until the family reinstates. A declined card doesn't: whoever gets payment alerts is told right away, and the card is tried again.</p>
         <label class="checkbox-row" style="margin:0 0 10px"><input type="checkbox" id="plan-enabled"><span>Enable payment plans</span></label>
         <!-- PLAN.md U1 (Doug, 10/8): two fixed deadlines, with their years.
              Stored as month-day so they carry over to each new season. -->
@@ -292,7 +292,7 @@
         <label style="margin-top:12px">Membership types that can use a plan</label>
         <div id="plan-tiers" style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px"></div>
         <label class="checkbox-row" style="margin:8px 0 0"><input type="checkbox" id="plan-deactivate"><span>When a plan lapses, turn off the family's gate access, and their keyfobs come off the doors at the next keyfob sync (both come back when they reinstate)</span></label>
-        <p style="font-size:12px;color:var(--muted);margin:6px 0 0">A declined card is tried again 3, 7 and 14 days later. The family gets one email when it first fails; whoever gets payment alerts (Settings → Board) gets one email if it still hasn't gone through.</p>
+        <p style="font-size:12px;color:var(--muted);margin:6px 0 0">A declined card is tried again 3, 7 and 14 days later. The family gets one email when it first fails; whoever gets payment alerts (Settings → Board) gets a to-do and pop-up right away, and again if the last try fails. Only a missed deadline cancels the plan.</p>
         <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
           <button class="btn btn-primary" id="plan-save" type="button" onclick="savePlanConfig()" style="background:var(--blue)">Save plan config</button>
           <span class="saved" id="plan-saved" style="display:none">✓ Saved</span>

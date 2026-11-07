@@ -29,6 +29,10 @@ No plan payment is charged until someone on the board approves it on **Money →
 
 ### When a card is declined
 
-Poolside tries again 3, 7 and 14 days later and lets the family know so they can update their card. If the card fails a fourth time, or the plan isn't paid by your last deadline, the plan ends: the family's gate access stops and they're told how to come back by paying what's overdue plus the reactivation fee. Under **Families on a payment plan**, **Send reactivation link** sends them that link again.
+Whoever gets payment alerts (set on **Settings → Board**) gets a to-do and a pop-up right away: whose payment, how much and why. Poolside tries the card again 3, 7 and 14 days later and asks the family to update their card; you're told again if the last try fails. A failed card doesn't cancel anything, and the family keeps their keyfob.
+
+### When a deadline is missed
+
+A plan ends only when a family misses a payment deadline: a payment due by your first deadline or your paid-in-full date is still unpaid after it. Then the family's gate access and keyfob stop at once, and they're told how to come back by paying what's overdue plus the reactivation fee. A family who taps **Cancel plan** stops right away too. Under **Families on a payment plan**, **Send reactivation link** sends them that link again. You set the deadlines on **Money → Payments → Money setup**; paid in full by opening day means nobody swims before they've paid.
 
 > Tip: Families see their plan in the app under **My family**: what's paid, what's left and the next charge.

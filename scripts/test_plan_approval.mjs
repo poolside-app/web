@@ -45,7 +45,10 @@ console.log('S2 · only approved payments are charged (offline)');
   const pp = read('supabase/functions/payment_plans/index.ts');
   const cron = pp.slice(pp.indexOf("if (action === 'cron_run')"), pp.indexOf("if (action === 'cron_run')") + 6000);
   check('the daily run uses it', /chargeableNow\(/.test(cron));
-  check('a plan doesn\'t end over a payment the board hadn\'t approved', /awaitingApproval|!r\.approved_at|approved_at/.test(cron.slice(cron.indexOf('paid-in-full date'))));
+  // Since PLAN.md CJ the deadline check is missedDeadline, which counts only approved payments.
+  { const po = readFileSync(new URL('../supabase/functions/_shared/plan_ops.ts', import.meta.url), 'utf8');
+    const md = po.slice(po.indexOf('export function missedDeadline'), po.indexOf('export function failedPaymentTask'));
+    check('a plan doesn\'t end over a payment the board hadn\'t approved', /missedDeadline\(/.test(cron) && /approved_at/.test(md)); }
 }
 
 console.log('S3 · the Treasurer is asked (offline)');
@@ -239,6 +242,41 @@ console.log('\nCH · the "key fobs can be turned on" to-do');
   const pay = readFileSync(new URL('../club/admin/payments.html', import.meta.url), 'utf8');
   check('CI2: no position named in the plan-ended email or the plan options (alerts go by the Board page\'s ticks)',
     !/Facilities Director/.test(src.slice(src.indexOf('async function emailTreasurer'))) && !/Facilities Director|the Treasurer gets/.test(pay.slice(pay.indexOf('id="plan-deactivate"') - 200, pay.indexOf('id="plan-deactivate"') + 700)));
+}
+
+// PLAN.md CJ (Doug 11/7): "Only cancel or turn off keyfob if they miss a deadline", "if someone on a payment plan misses a payment we should be notified right away".
+console.log('\nCJ · only a missed deadline cancels; a failed payment tells the board');
+{
+  const ops = await importTs(new URL('../supabase/functions/_shared/plan_ops.ts', import.meta.url));
+  const P = await importTs(new URL('../supabase/functions/_shared/positions.ts', import.meta.url));
+  const ms = [{ date: '2027-04-10', pct: 75 }, { date: '2027-07-01', pct: 100 }];
+  const row = (seq, due, status, approved = true) => ({ sequence: seq, due_date: due, status, approved_at: approved ? '2027-01-01T00:00:00Z' : null, amount_cents: 10000 });
+  const fn = typeof ops.missedDeadline === 'function' ? ops.missedDeadline : () => 'missing';
+  check('CJ1: the first deadline counts: a payment due by it, unpaid after it, is a missed deadline', fn([row(1, '2027-03-01', 'paid'), row(2, '2027-04-01', 'failed'), row(3, '2027-06-01', 'pending')], ms, '2027-04-11') === '2027-04-10');
+  check('CJ1: …not before it has passed', fn([row(1, '2027-03-01', 'paid'), row(2, '2027-04-01', 'retrying')], ms, '2027-04-10') === null);
+  check('CJ1: …not when everything due by it is paid (a later failure waits for the next deadline)', fn([row(1, '2027-03-01', 'paid'), row(2, '2027-04-01', 'paid'), row(3, '2027-05-01', 'failed')], ms, '2027-05-20') === null);
+  check('CJ1: the paid-in-full date counts too', fn([row(1, '2027-03-01', 'paid'), row(2, '2027-06-01', 'retrying')], ms, '2027-07-02') === '2027-07-01');
+  check('CJ1: never over a payment the board hadn\'t approved', fn([row(1, '2027-03-01', 'paid'), row(2, '2027-04-01', 'pending', false)], ms, '2027-04-20') === null);
+  const ft = typeof ops.failedPaymentTask === 'function' ? ops.failedPaymentTask : null;
+  const f1 = ft && ft({ family: 'Smith Family', amount: '$100.00', sequence: 2, exhausted: false, error: 'Your card was declined.', nextTry: 'Nov 10', deadline: 'April 10' });
+  check('CJ3: first decline: whose, how much, why, the next try and the next deadline', !!f1 && /Smith Family/.test(f1.summary) && /\$100\.00/.test(f1.summary) && /declined/i.test(f1.summary) && /Nov 10/.test(f1.summary) && /April 10/.test(f1.summary) && !/cancel/i.test(f1.summary.replace(/cancell?ed (only )?if/i, '')), JSON.stringify(f1));
+  const f2 = ft && ft({ family: 'Smith Family', amount: '$100.00', sequence: 2, exhausted: true, error: 'Your card was declined.', nextTry: null, deadline: 'April 10' });
+  check('CJ3: after the last try: still hasn\'t gone through, keyfob stays on until the deadline', !!f2 && /still hasn.t gone through/i.test(f2.summary) && /April 10/.test(f2.summary), JSON.stringify(f2));
+  check('CJ3: it\'s a payments alert', P.TASK_NOTICE['plan.payment_failed'] === 'payments');
+  const pp = read('supabase/functions/payment_plans/index.ts'), po = read('supabase/functions/_shared/plan_ops.ts'), wh = read('supabase/functions/stripe_webhook/index.ts');
+  const loop = pp.slice(pp.indexOf('const due = chargeableNow('), pp.indexOf('// 1b.'));
+  check('CJ2: the daily run never ends a plan for a card', !/endPlan\(sb, club, plan, 'card_failed'\)/.test(pp), loop.slice(0, 300));
+  const dl = pp.slice(pp.indexOf('// 2. '), pp.indexOf('past_deadline++') + 20);
+  check('CJ1: the daily run checks every deadline', /missedDeadline\(/.test(dl) && /endPlan\(sb, club, plan, 'deadline'\)/.test(dl), dl.slice(0, 300));
+  const charge = pp.slice(pp.indexOf('async function chargeInstallment'), pp.indexOf('async function sendReceipt'));
+  check('CJ3: the first decline and the last try tell the board', /failedPaymentNotice\(/.test(charge) && /attempts === 1 \|\| exhausted/.test(charge));
+  check('CJ3: a payment that goes through clears it, from the daily run and from the family paying in the app', /clearFailedPayment\(/.test(pp) && /clearFailedPayment\(/.test(wh));
+  const end = po.slice(po.indexOf('export async function endPlan'), po.indexOf('async function emailTreasurer'));
+  check('CJ4: Cancel plan turns access off at once', /if \([^\n]*reason === 'member_cancelled'[^\n]*\) await enforceEnd\(/.test(end), end.slice(0, 500));
+  const tpl = read('supabase/functions/_shared/email_template.ts'), app = read('m/index.html'), help = read('club/admin/help/articles/payment-plans.md'), pay = read('club/admin/payments.html');
+  check('CJ wording: no "can\'t be charged, your membership is canceled" left for families, the board or the help',
+    !/still can't be charged, your membership is canceled/.test(tpl) && !/card kept failing, it wasn/.test(tpl) && !/fails a fourth time/.test(help) && !/A card that keeps failing, or a plan not paid in full by your last deadline, cancels/.test(pay)
+    && /next_deadline/.test(tpl) && /missed deadline|miss(es)? a (payment )?deadline/i.test(help));
 }
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);

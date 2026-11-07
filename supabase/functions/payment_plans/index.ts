@@ -86,7 +86,7 @@ import {
   PLAN_DEFAULTS, planConfig, loadPlanClub, planYear, installmentsOf, isPaid, paidCents, chargeFor, chargeableNow, awaitingApproval,
   planStarted, startedPlanIds, dropStaleWaitingPlans, planReceiptArgs,
   grantAccessIfReady, completeIfPaid, endPlan, enforceEnd, seasonStarted, rulesFor, planView,
-  memberPlanView, type PlanClub, type PlanConfig, type Inst,
+  memberPlanView, missedDeadline, failedPaymentTask, failedPaymentNotice, clearFailedPayment, type PlanClub, type PlanConfig, type Inst,
 } from '../_shared/plan_ops.ts';
 
 // Stripe API helper — direct charges on Connect Standard, Stripe-Account header
@@ -223,6 +223,14 @@ async function chargeInstallment(
     await pushMembers({ tenant_id: club.tenantId, household_ids: [plan.household_id as string],
       title: 'A payment didn\'t go through', body: 'Update your card in the app and it goes through right away.', url: '/m/#plan', tag: `plan-${plan.id}` });
   }
+  // The next deadline (PLAN.md CJ1): only missing it cancels the plan.
+  const nice = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  let nextDeadline: string | null = null;
+  try {
+    const ms = rulesFor(club, await planYear(sb, plan)).milestones;
+    const next = ms.find(m => m.date && m.date >= club.today);
+    nextDeadline = next ? nice(next.date) : null;
+  } catch { /* the notices still go */ }
   if (attempts === 1 && plan.primary_email) {
     try {
       const { renderAndSend } = await import('../_shared/email_template.ts');
@@ -232,9 +240,25 @@ async function chargeInstallment(
           family_name: plan.family_name as string,
           amount: '$' + (amount / 100).toFixed(2),
           sequence: String(inst.sequence),
+          next_deadline: nextDeadline ?? '',
         },
       });
     } catch { /* best-effort */ }
+  }
+  // Whoever gets payment alerts hears right away, and again after the last
+  // try (PLAN.md CJ3). A failed card cancels nothing (CJ2).
+  if (attempts === 1 || exhausted) {
+    try {
+      const firstFailed = String(inst.first_failed_at ?? now).slice(0, 10);
+      const offset = club.cfg.retry_days[attempts - 1];
+      const nextTry = !exhausted && offset != null
+        ? nice(new Date(Date.parse(`${attempts === 1 ? club.today : firstFailed}T12:00:00Z`) + offset * 864e5).toISOString().slice(0, 10))
+        : null;
+      await failedPaymentNotice(sb, club, plan, failedPaymentTask({
+        family: String(plan.family_name ?? 'A family'), amount: '$' + (amount / 100).toFixed(2), sequence: inst.sequence,
+        exhausted, error: errorMsg, nextTry, deadline: nextDeadline,
+      }));
+    } catch (e) { console.error('failed payment notice:', (e as Error).message); }
   }
   return { paid: false, exhausted, error: errorMsg };
 }
@@ -291,6 +315,7 @@ async function afterPayment(sb: SupabaseClient, club: PlanClub, plan: Record<str
   const rows = await installmentsOf(sb, plan.id as string);
   await grantAccessIfReady(sb, club, plan, { announce: true, rows });
   await completeIfPaid(sb, club, plan, rows);
+  await clearFailedPayment(sb, club.tenantId, plan.id as string, rows);
 }
 
 function randomHex(bytes: number): string {
@@ -682,10 +707,8 @@ Deno.serve(async (req) => {
         if (inst.status === 'retrying') retried++;
         const r = await chargeInstallment(sb, club, plan, inst, rows);
         if (r.paid) { charged++; anyPaid = true; continue; }
-        if (r.exhausted) {
-          await endPlan(sb, club, plan, 'card_failed');
-          lapsed++;
-        }
+        // Out of tries: the board's been told and the plan stays open, past
+        // due; only a missed deadline ends it (PLAN.md CJ2).
         break;   // one failure at a time; later payments wait for this one
       }
       if (anyPaid && plan.status === 'active') await afterPayment(sb, club, plan);
@@ -700,20 +723,19 @@ Deno.serve(async (req) => {
       season_cutoffs = await membershipCutoffs(sb);
     } catch (e) { console.error('season cutoff:', (e as Error).message); }
 
-    // 2. The paid-in-full date: a plan still owing the day after it ends,
-    //    and the gate and fobs go off (Doug, 2026-10-07).
+    // 2. Every deadline (PLAN.md CJ1, Doug 11/7: "Only cancel or turn off
+    //    keyfob if they miss a deadline"): a plan with a payment due by a
+    //    deadline that's passed still unpaid ends, and the gate and fobs go
+    //    off at once. Never over a payment the board hadn't approved (S2).
     let past_deadline = 0;
     const { data: stillActive } = await sb.from('payment_plans').select('*').eq('status', 'active').limit(500);
     for (const plan of (stillActive ?? [])) {
       const club = await clubFor(plan.tenant_id as string);
       if (!club) continue;
       const rules = rulesFor(club, await planYear(sb, plan));
-      const final = rules.milestones[rules.milestones.length - 1]?.date;
-      if (!final || club.today <= final) continue;
       const rows = await installmentsOf(sb, plan.id as string);
       if (rows.every(isPaid)) continue;
-      // Never end a plan over a payment the board hadn't approved (S2).
-      if (rows.some(awaitingApproval)) continue;
+      if (!missedDeadline(rows, rules.milestones, club.today)) continue;
       await endPlan(sb, club, plan, 'deadline');
       past_deadline++;
     }

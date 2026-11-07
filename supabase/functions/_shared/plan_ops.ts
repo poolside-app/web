@@ -10,11 +10,13 @@
 // Doug, 2026-10-07:
 // - The gate and fob start once half is paid (the club can choose card saved
 //   or first payment instead).
-// - A card that keeps failing, or a plan not paid in full by the club's
-//   paid-in-full date, ends the plan: the family is told their membership is
-//   canceled and how to pay the reactivation fee to come back, the Treasurer
-//   gets one email, and the gate and fob go off (from the season's start).
-// - A family that cancels gets no refund and is treated the same way.
+// - Doug, 2026-11-07 (PLAN.md CJ): only a missed deadline ends the plan, the
+//   first deadline as well as the paid-in-full date. The family is told their
+//   membership is canceled and how to pay the reactivation fee to come back,
+//   whoever gets payment alerts gets one email, and the gate and fob go off
+//   at once. A failed card ends nothing: the board is told right away, the
+//   card is retried, and the keyfob stays on unless a deadline is missed.
+// - A family that cancels gets no refund; their access goes off at once.
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -36,7 +38,7 @@ export const PLAN_DEFAULTS = {
   reminder_days_before: [] as number[],
   /** The day of the month every plan payment falls on (PLAN.md S1). */
   billing_day: 1,
-  /** Card retries: days after the first failure. The fourth failure ends it. */
+  /** Card retries: days after the first failure. After the last, the plan stays open, past due (PLAN.md CJ2). */
   retry_days: [3, 7, 14] as number[],
   lapse_grace_days: 14,
   reactivation_fee_cents: 5000,
@@ -365,6 +367,70 @@ export async function seasonStarted(sb: SupabaseClient, club: PlanClub, plan: Re
   return seasonUnderway(club.cfg as unknown as Record<string, unknown>, year, club.today, club.opensMonth);
 }
 
+/** The first payment deadline a plan has missed (PLAN.md CJ1, Doug 11/7:
+ *  "IF they have not paid up to the terms… like half before open and then
+ *  full amount before the correct date, it's deactivated"): a deadline that's
+ *  passed with a payment due on or before it still unpaid. A payment the
+ *  board never approved (Money → Upcoming) doesn't count against the family. */
+export function missedDeadline(
+  rows: Array<{ due_date: string; status: string; approved_at?: string | null }>,
+  milestones: Array<{ date: string }>,
+  today: string,
+): string | null {
+  for (const m of milestones) {
+    if (!m.date || today <= m.date) continue;
+    if (rows.some(r => r.due_date <= m.date && !isPaid(r) && !!r.approved_at)) return m.date;
+  }
+  return null;
+}
+
+/** The board's to-do when a plan payment is declined (PLAN.md CJ3, Doug
+ *  11/7: "if someone on a payment plan misses a payment we should be
+ *  notified right away"): on the first decline, and again after the last try. */
+export function failedPaymentTask(o: {
+  family: string; amount: string; sequence: number; exhausted: boolean; error: string | null;
+  nextTry: string | null; deadline: string | null;
+}): { summary: string; push_title: string; push_body: string } {
+  const why = (o.error || 'the card was declined').replace(/\.$/, '');
+  const by = o.deadline ? ` Their keyfob stays on; the plan is canceled only if they're not paid up by ${o.deadline}.` : ' Their keyfob stays on unless a payment deadline is missed.';
+  if (o.exhausted) {
+    return {
+      summary: `${o.family}'s ${o.amount} plan payment (payment ${o.sequence}) still hasn't gone through after every try: ${why}. They can update their card and pay it in the app.${by}`,
+      push_title: `Still unpaid: ${o.family}`,
+      push_body: `${o.amount} plan payment still hasn't gone through.`,
+    };
+  }
+  return {
+    summary: `${o.family}'s ${o.amount} plan payment (payment ${o.sequence}) didn't go through: ${why}. We'll try again${o.nextTry ? ` on ${o.nextTry}` : ''}, and they've been asked to update their card.${by}`,
+    push_title: `Plan payment declined: ${o.family}`,
+    push_body: `${o.amount}: ${why}.`,
+  };
+}
+
+/** Tell whoever gets payment alerts (PLAN.md CJ3), replacing any earlier
+ *  notice for this plan. */
+export async function failedPaymentNotice(sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>, task: { summary: string; push_title: string; push_body: string }): Promise<void> {
+  await sb.from('admin_tasks').update({ dismissed_at: new Date().toISOString() })
+    .eq('tenant_id', club.tenantId).eq('source_kind', 'payment_plan').eq('source_id', plan.id)
+    .eq('kind', 'plan.payment_failed').is('completed_at', null).is('dismissed_at', null);
+  const { enqueueAdminTask } = await import('./enqueue_task.ts');
+  await enqueueAdminTask(sb, {
+    tenant_id: club.tenantId, target_scopes: ['payments'], kind: 'plan.payment_failed',
+    summary: task.summary, link_url: '/club/admin/payments.html#plans',
+    source_kind: 'payment_plan', source_id: plan.id as string,
+    push_title: task.push_title, push_body: task.push_body,
+  });
+}
+
+/** Once nothing on the plan is failing any more, its declined-payment
+ *  to-dos are done (PLAN.md CJ3). */
+export async function clearFailedPayment(sb: SupabaseClient, tenantId: string, planId: string, rows: Array<{ status: string }>): Promise<void> {
+  if (rows.some(r => r.status === 'retrying' || r.status === 'failed')) return;
+  await sb.from('admin_tasks').update({ completed_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId).eq('source_kind', 'payment_plan').eq('source_id', planId)
+    .eq('kind', 'plan.payment_failed').is('completed_at', null).is('dismissed_at', null);
+}
+
 /** Take the gate away; the keyfob person is told when there's a keyfob to turn off (PLAN.md CI1). */
 export async function enforceEnd(sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>): Promise<void> {
   if (plan.enforced_at) return;
@@ -410,12 +476,13 @@ export async function endPlan(sb: SupabaseClient, club: PlanClub, plan: Record<s
   }).eq('id', plan.id);
   plan.status = status; plan.ended_reason = reason;
 
-  if (reason === 'deadline' || await seasonStarted(sb, club, plan)) await enforceEnd(sb, club, plan);
+  // A missed deadline, or Cancel plan (PLAN.md CJ4), turns access off at once.
+  if (reason === 'deadline' || reason === 'member_cancelled' || await seasonStarted(sb, club, plan)) await enforceEnd(sb, club, plan);
 
   const rows = await installmentsOf(sb, plan.id as string);
   const back = reinstateAmount(club, plan, rows);
   const why = reason === 'card_failed' ? 'your card could not be charged'
-    : reason === 'deadline' ? `your dues weren't paid in full by the club's deadline`
+    : reason === 'deadline' ? `your payments weren't up to date by the club's deadline`
     : 'you canceled your payment plan';
 
   if (plan.household_id) {
@@ -444,7 +511,7 @@ export async function endPlan(sb: SupabaseClient, club: PlanClub, plan: Record<s
     kind: reason === 'member_cancelled' ? 'plan.cancelled' : 'plan.lapsed',
     summary: reason === 'member_cancelled'
       ? `${plan.family_name} canceled their payment plan (${money(paidCents(rows))} paid, no refund)`
-      : `${plan.family_name}: membership canceled, ${reason === 'deadline' ? 'not paid in full by the deadline' : 'card kept failing'}`,
+      : `${plan.family_name}: membership canceled, ${reason === 'deadline' ? 'payments not up to date by a deadline' : 'card kept failing'}`,
     link_url: '/club/admin/payments.html#plans',
     source_kind: 'payment_plan', source_id: plan.id as string,
     push_title: reason === 'member_cancelled' ? `Plan canceled: ${plan.family_name}` : `Plan lapsed: ${plan.family_name}`,

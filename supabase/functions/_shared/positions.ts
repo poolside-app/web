@@ -73,6 +73,7 @@ export const TASK_NOTICE: Record<string, Notice> = {
   'payment.refund': 'payments',
   'payment.dispute': 'payments',
   'plan.lapsed': 'payments',
+  'plan.payment_failed': 'payments',   // PLAN.md CJ3: a plan payment declined
   'plan.cancelled': 'payments',
   // The fobs themselves are the Facilities Director's (PLAN.md M).
   'plan.fob_on': 'gate',
