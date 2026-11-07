@@ -900,6 +900,12 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CG. Date and time boxes stay inside their column on iPhones (Doug, 11/7)
+Doug, with a screenshot of Start a board meeting: "The pop up is a little offset at the top". On his iPhone the Date box ran past the pop-up's right edge and Starts at slid under Location: Safari draws date and time boxes at their own width and ignores the width they're given. Chrome doesn't, so the offline renders never showed it. The signup page and the member app's party form already had the fix, page by page.
+- **CG1.** `js/phone-fit.js`, on every page with a date or time box and only on iPhones, turns off Safari's own drawing of them (`appearance: none`, the signup page's recipe), lets them shrink to their column (`min-width: 0`), keeps them 44px tall when empty, and lines the date up on the left.
+- **CG2.** The meeting pop-up's paired fields (title and date, start time and location) stack one per row on phones, as the signup form's do.
+- Failing test first: `test_board_meetings` (offline): the iPhone fix in phone-fit.js and on every page with a date or time box; in Chrome at iPhone width with an iPhone's browser, the pop-up's fields one per row, none past its edge.
+
 ### CF. No lifeguard and gate logins on Settings → Board (Doug, 11/6)
 Doug asked what the "Lifeguard and gate logins" section at the bottom of the Board page is (a login that only shows check-in and the person's own lifeguard shifts, for a gate iPad or a guard), then: "Remove that… dumb".
 - **CF1.** The section goes: its heading, list and "Add a lifeguard or gate login" form (`club/admin/board.html`). No club has one (checked 11/6), so nobody loses a login. The check-in page and the gate-login role stay in the code; board members still open check-in from Settings → Gate & check-in. Lifeguards picking their own shifts needed those logins; lifeguard scheduling is off at every club, and its help article says Poolside support sets a lifeguard login up if a club ever wants it.

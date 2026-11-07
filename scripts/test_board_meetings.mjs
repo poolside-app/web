@@ -117,6 +117,43 @@ console.log('\nEvery board member can find it (offline)');
 }
 
 // ── Live ────────────────────────────────────────────────────────────────
+// PLAN.md CG (Doug 11/7): on his iPhone the Date box ran past the meeting pop-up's edge.
+console.log('\nDate and time boxes on iPhones (CG, offline)');
+{
+  const { readdirSync } = await import('node:fs');
+  const fit = read('js/phone-fit.js');
+  check('CG1: phone-fit.js turns off Safari\'s own drawing of date and time boxes, so they keep to their column',
+    /appearance:\s*none/.test(fit) && /min-width:\s*0/.test(fit) && /type="?date"?/.test(fit) && /type="?time"?/.test(fit) && /date-and-time-value/.test(fit) && /min-height:\s*44px/.test(fit));
+  const pages = [...readdirSync(new URL('club/admin/', root)).map(f => 'club/admin/' + f), ...readdirSync(new URL('m/', root)).map(f => 'm/' + f), 'apply.html']
+    .filter(f => f.endsWith('.html')).filter(f => /type="(date|time|datetime-local)"/.test(read(f)));
+  const missing = pages.filter(f => !/\/js\/phone-fit\.js/.test(read(f)));
+  check(`CG1: every page with a date or time box loads it (${pages.length})`, pages.length >= 10 && !missing.length, missing.join(', '));
+  const bm = read('club/admin/board-meetings.html');
+  check('CG2: the meeting pop-up stacks its paired fields on phones', /@media \(max-width: 560px\)[\s\S]*?\.row2\s*\{\s*grid-template-columns:\s*1fr;/.test(bm));
+  const { launch, attach, BOARD } = await import('./demo_video/harness.mjs');
+  const { respond } = await import('./demo_video/data.mjs');
+  const { siteRespond } = await import('./demo_video/site_data.mjs');
+  const browser = await launch(), p = await browser.newPage();
+  await p.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1');
+  await p.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+  const log = await attach(p, { state: {}, answer: (fn, body, c) => siteRespond(fn, body, c) ?? respond(fn, body, c) });
+  p.on('dialog', d => d.dismiss());
+  await p.goto(BOARD + '/club/admin/board-meetings.html#start', { waitUntil: 'networkidle0', timeout: 45000 });
+  await new Promise(r => setTimeout(r, 1500));
+  const v = await p.evaluate(() => {
+    const m = document.querySelector('#scrim .modal'); if (!m) return null;
+    const mr = m.getBoundingClientRect();
+    const boxes = [...m.querySelectorAll('input[type="date"], input[type="time"], #m-title, #m-location')].filter(e => e.offsetParent !== null).map(e => { const r = e.getBoundingClientRect(); return { id: e.id || e.type, l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top) }; });
+    const fixed = getComputedStyle(m.querySelector('input[type="date"]') || document.body).getPropertyValue('appearance');
+    return { modalR: Math.round(mr.right), modalL: Math.round(mr.left), boxes, fixed };
+  });
+  check('CG2: in the pop-up at iPhone width, every field is inside it, one per row', !!v && v.boxes.length >= 3 && v.boxes.every(b => b.l >= v.modalL && b.r <= v.modalR)
+    && new Set(v.boxes.map(b => b.t)).size === v.boxes.length, JSON.stringify(v));
+  check('CG1: the iPhone fix reaches the meeting pop-up\'s date box', !!v && v.fixed === 'none', v && v.fixed);
+  check('CG: no page errors', !log.errors.length, log.errors.join('; '));
+  await browser.close();
+}
+
 if (process.argv.includes('--offline')) {
   console.log(`\n${failed ? 'FAILED' : 'PASSED'} (offline only): ${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
