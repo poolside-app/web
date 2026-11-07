@@ -276,16 +276,9 @@ export async function grantAccessIfReady(
       : 'paid half their dues';
     // Only when there's a keyfob to turn on (PLAN.md CH): their keyfobs on the
     // doors' list, the Season switch open, and the nightly sync off.
-    const [{ count: activeFobs }, { data: t }, { data: sv }] = await Promise.all([
-      sb.from('keyfobs').select('id', { count: 'exact', head: true })
-        .eq('tenant_id', club.tenantId).eq('household_id', plan.household_id).eq('status', 'active').not('card_number', 'is', null),
-      sb.from('tenants').select('auto_keyfob_sync').eq('id', club.tenantId).maybeSingle(),
-      sb.from('settings').select('value').eq('tenant_id', club.tenantId).maybeSingle(),
-    ]);
-    const season = ((sv?.value as Record<string, unknown> | undefined)?.season ?? {}) as { open?: unknown };
     const task = fobOnTask({
       family: String(plan.family_name ?? 'A family'), back: !!plan.enforced_at, why,
-      activeFobs: Number(activeFobs ?? 0), autoSync: !!t?.auto_keyfob_sync, seasonOpen: season.open !== false,
+      ...await fobState(sb, club.tenantId, plan.household_id as string),
     });
     if (task) {
       const { enqueueAdminTask } = await import('./enqueue_task.ts');
@@ -297,6 +290,30 @@ export async function grantAccessIfReady(
     }
   }
   return true;
+}
+
+/** What the keyfob to-dos need to know: the family's keyfobs on the doors'
+ *  list, whether the nightly sync runs, and the Season switch. */
+async function fobState(sb: SupabaseClient, tenantId: string, householdId: string): Promise<{ activeFobs: number; autoSync: boolean; seasonOpen: boolean }> {
+  const [{ count }, { data: t }, { data: sv }] = await Promise.all([
+    sb.from('keyfobs').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId).eq('household_id', householdId).eq('status', 'active').not('card_number', 'is', null),
+    sb.from('tenants').select('auto_keyfob_sync').eq('id', tenantId).maybeSingle(),
+    sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle(),
+  ]);
+  const season = ((sv?.value as Record<string, unknown> | undefined)?.season ?? {}) as { open?: unknown };
+  return { activeFobs: Number(count ?? 0), autoSync: !!t?.auto_keyfob_sync, seasonOpen: season.open !== false };
+}
+
+/** The keyfob person's to-do when a plan ends for unpaid dues (PLAN.md CI1):
+ *  the same rule as fobOnTask, the other way. */
+export function fobOffTask(o: { family: string; activeFobs: number; autoSync: boolean; seasonOpen: boolean }): { summary: string; link_url: string } | null {
+  if (o.activeFobs < 1 || o.autoSync || !o.seasonOpen) return null;
+  const fobs = o.activeFobs === 1 ? 'their keyfob' : `their ${o.activeFobs} keyfobs`;
+  return {
+    summary: `${o.family}'s membership was canceled for unpaid dues: tap Sync keyfobs now to turn ${fobs} off`,
+    link_url: '/club/admin/keyfobs.html',
+  };
 }
 
 /** The keyfob person's to-do when a plan family's gate access comes on
@@ -348,7 +365,7 @@ export async function seasonStarted(sb: SupabaseClient, club: PlanClub, plan: Re
   return seasonUnderway(club.cfg as unknown as Record<string, unknown>, year, club.today, club.opensMonth);
 }
 
-/** Take the gate away and tell the Facilities Director to turn the fobs off. */
+/** Take the gate away; the keyfob person is told when there's a keyfob to turn off (PLAN.md CI1). */
 export async function enforceEnd(sb: SupabaseClient, club: PlanClub, plan: Record<string, unknown>): Promise<void> {
   if (plan.enforced_at) return;
   const now = new Date().toISOString();
@@ -362,13 +379,15 @@ export async function enforceEnd(sb: SupabaseClient, club: PlanClub, plan: Recor
   await sb.from('payment_plans').update({ enforced_at: now, access_at: null }).eq('id', plan.id);
   plan.enforced_at = now; plan.access_at = null;
   if (plan.household_id) {
-    const { enqueueAdminTask } = await import('./enqueue_task.ts');
-    await enqueueAdminTask(sb, {
-      tenant_id: club.tenantId, target_scopes: ['households'], kind: 'plan.fob_off',
-      summary: `Turn off the ${plan.family_name} key fobs: their membership was canceled for unpaid dues`,
-      link_url: '/club/admin/payments.html#plans',
-      source_kind: 'payment_plan', source_id: plan.id as string,
-    });
+    const task = fobOffTask({ family: String(plan.family_name ?? 'A family'), ...await fobState(sb, club.tenantId, plan.household_id as string) });
+    if (task) {
+      const { enqueueAdminTask } = await import('./enqueue_task.ts');
+      await enqueueAdminTask(sb, {
+        tenant_id: club.tenantId, target_scopes: ['keyfobs'], kind: 'plan.fob_off',
+        summary: task.summary, link_url: task.link_url,
+        source_kind: 'payment_plan', source_id: plan.id as string,
+      });
+    }
   }
 }
 
@@ -459,7 +478,7 @@ async function emailTreasurer(
       <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
         <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">Payment plan ended: ${escHtml(String(plan.family_name))}</h2>
         <p style="line-height:1.55">The ${escHtml(String(plan.family_name))} family's membership is canceled because ${escHtml(why)}. They owe ${escHtml(money(back.dues_cents))} and have been emailed how to pay it with the reactivation fee.</p>
-        <p style="line-height:1.55">Their gate access goes off and the Facilities Director is asked to turn off their key fobs${plan.enforced_at ? '' : ' when the season starts'}.</p>
+        <p style="line-height:1.55">Their gate access goes off${plan.enforced_at ? '' : ' when the season starts'}, and any keyfob of theirs comes off the doors at the next keyfob sync.</p>
         <p style="margin:24px 0"><a href="${club.clubUrl}/club/admin/payments.html#plans" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">See payment plans</a></p>
       </div>`;
     for (const a of admins ?? []) {

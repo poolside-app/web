@@ -379,7 +379,9 @@ export async function runLive({ check, short }) {
         const [hh] = await sql(`select dues_paid_for_year from households where id = ${q(e.household_id)}`);
         const gate = await sql(`select bool_or(can_unlock_gate) any_on from household_members where household_id = ${q(e.household_id)} and role in ('primary','adult','teen')`);
         const fob = await sql(`select count(*)::int n from admin_tasks where source_id = ${q(e.id)} and kind = 'plan.fob_off'`);
-        check('S9: gate unlock off right away, and the fobs flagged to turn off', !!e.enforced_at && hh.dues_paid_for_year === false && gate[0].any_on === false && fob[0].n === 1, short({ e, hh, gate, fob }));
+        // PLAN.md CI1: a keyfob to-do only when the family has a keyfob on the doors' list.
+        const [{ n: fobsOn }] = await sql(`select count(*)::int as n from keyfobs where household_id = ${q(e.household_id)} and status = 'active' and card_number is not null`);
+        check('S9: gate unlock off right away, and a keyfob to-do only if they have a keyfob', !!e.enforced_at && hh.dues_paid_for_year === false && gate[0].any_on === false && fob[0].n === (fobsOn > 0 ? 1 : 0), short({ e, hh, gate, fob, fobsOn }));
       }
     }
 

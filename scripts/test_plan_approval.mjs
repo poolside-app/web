@@ -227,7 +227,18 @@ console.log('\nCH · the "key fobs can be turned on" to-do');
   check('CH1: paid up again, two keyfobs', !!t2 && /paid up again/.test(t2.summary) && /their 2 keyfobs back on/.test(t2.summary), JSON.stringify(t2));
   const src = readFileSync(new URL('../supabase/functions/_shared/plan_ops.ts', import.meta.url), 'utf8');
   const grant = src.slice(src.indexOf('export async function grantAccessIfReady'), src.indexOf('export async function completeIfPaid'));
-  check('CH1: grantAccessIfReady counts the family\'s keyfobs and uses fobOnTask, never Payments', /fobOnTask\(/.test(grant) && /from\('keyfobs'\)/.test(grant) && /auto_keyfob_sync/.test(grant) && !/payments\.html#plans/.test(grant));
+  check('CH1: grantAccessIfReady counts the family\'s keyfobs and uses fobOnTask, never Payments', /fobOnTask\(/.test(grant) && /fobState\(|from\('keyfobs'\)/.test(grant) && !/payments\.html#plans/.test(grant));
+  // CI1: the same when a plan ends.
+  const off = { family: 'Smith Family', activeFobs: 1, autoSync: false, seasonOpen: true };
+  check('CI1: a plan ending: no keyfob, off-season or nightly sync on, no to-do', typeof ops.fobOffTask === 'function'
+    && ops.fobOffTask({ ...off, activeFobs: 0 }) === null && ops.fobOffTask({ ...off, seasonOpen: false }) === null && ops.fobOffTask({ ...off, autoSync: true }) === null);
+  const o = typeof ops.fobOffTask === 'function' ? ops.fobOffTask(off) : null;
+  check('CI1: with a keyfob: "tap Sync keyfobs now to turn their keyfob off", opening Keyfobs & Access', !!o && o.link_url === '/club/admin/keyfobs.html' && /Sync keyfobs now/.test(o.summary) && /their keyfob off/.test(o.summary), JSON.stringify(o));
+  const enforce = src.slice(src.indexOf('export async function enforceEnd'), src.indexOf('export type EndReason'));
+  check('CI1: enforceEnd uses it, never Payments', /fobOffTask\(/.test(enforce) && !/payments\.html#plans/.test(enforce), enforce.slice(-400));
+  const pay = readFileSync(new URL('../club/admin/payments.html', import.meta.url), 'utf8');
+  check('CI2: no position named in the plan-ended email or the plan options (alerts go by the Board page\'s ticks)',
+    !/Facilities Director/.test(src.slice(src.indexOf('async function emailTreasurer'))) && !/Facilities Director|the Treasurer gets/.test(pay.slice(pay.indexOf('id="plan-deactivate"') - 200, pay.indexOf('id="plan-deactivate"') + 700)));
 }
 
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
