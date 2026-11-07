@@ -405,6 +405,7 @@
     const path = window.location.pathname || '';
     if (path === '/club/admin/' || path.endsWith('/club/admin/index.html')) return;
     if (path.includes('/login.html')) return;
+    if (path.endsWith('/club/admin/setup.html')) return;   // the list itself (PLAN.md CD)
     if (document.getElementById('setup-banner')) return;  // already painted
 
     let data;
@@ -416,7 +417,8 @@
       });
       data = await res.json();
     } catch (_) { return; }
-    if (!data || !data.ok || data.complete) return;
+    // Only for whoever handles setup (PLAN.md CD).
+    if (!data || !data.ok || data.complete || !data.mine) return;
 
     const banner = document.createElement('a');
     banner.id = 'setup-banner';

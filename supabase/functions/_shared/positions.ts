@@ -32,6 +32,9 @@ export const NOTICES: Record<string, { label: string; needs: string[] }> = {
   help_facility:   { label: 'Member help: pool problem', needs: [] },
   help_grounds:    { label: 'Member help: grounds, bathrooms & cleaning', needs: [] },
   help_other:      { label: 'Member help: something else', needs: [] },
+  // PLAN.md CD (Doug 11/6): whoever handles the club setup list. Nobody given
+  // it: the President, like any alert. Most steps save only with full access.
+  setup:           { label: 'Club setup checklist (getting the club ready)', needs: ['policies'] },
 };
 export type Notice = keyof typeof NOTICES;
 

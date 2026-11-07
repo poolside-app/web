@@ -141,6 +141,7 @@
     <p class="hint">One line per item. "Every month:" at the start of a line shows in bold. Indent a line to make it a sub-item.</p>
     <label class="f">Gets told about</label>
     <div class="checks" id="pos-notices"></div>
+    <p class="hint" id="pos-setup-hint" hidden>Most setup steps (logo, prices, how members pay, board positions) can only be saved with full access. Without it, they'll see those steps marked "ask the President".</p>
     <label class="f">Can use</label>
     <label style="display:flex;gap:8px;font-size:13px;margin:2px 0 6px;cursor:pointer"><input type="checkbox" id="pos-full"> <b>Everything</b> (full access, like the President)</label>
     <div class="checks" id="pos-scopes"></div>
@@ -353,8 +354,17 @@ function editPosition(id) {
     `<label><input type="checkbox" value="${k}" ${(p.scopes || []).includes(k) ? 'checked' : ''}> ${escapeHtml(label)}</label>`).join('');
   const del = document.getElementById('pos-delete');
   del.style.display = id && !p.holders.length ? '' : 'none';
+  setupHint();
   openScrim('pos-scrim');
 }
+// Club setup without full access: say most steps need it (PLAN.md CD).
+function setupHint() {
+  const on = !!document.querySelector('#pos-notices input[value="setup"]:checked') && !document.getElementById('pos-full').checked;
+  document.getElementById('pos-setup-hint').hidden = !on;
+}
+document.getElementById('pos-notices').addEventListener('change', setupHint);
+document.getElementById('pos-full').addEventListener('change', setupHint);
+
 document.getElementById('pos-save').addEventListener('click', async () => {
   const btn = document.getElementById('pos-save'); hideErr('pos-err'); btn.disabled = true;
   try {

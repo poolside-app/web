@@ -25,7 +25,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireOwner } from '../_shared/auth.ts';
 import { validTimeZone } from '../_shared/pool_time.ts';
-import { LOOK_ONLY, asView, viewAllowed } from '../_shared/board_view.ts';
+import { LOOK_ONLY, NIL, asView, viewAllowed } from '../_shared/board_view.ts';
+import { positionPreview } from '../_shared/position_preview.ts';
+import { loadBoard } from '../_shared/positions_db.ts';
+import { handlesSetup, setupFor, setupWho } from '../_shared/setup_person.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -396,15 +399,20 @@ Deno.serve(async (req) => {
         why: `Families join at ${tenant.slug ? `${tenant.slug}.poolsideapp.com/apply.html` : 'your apply page'}.` },
     ];
 
-    const done = items.filter(i => i.done).length;
-    return jsonResponse({
-      ok: true,
-      done,
-      total: items.length,
-      percent: Math.round((done / items.length) * 100),
-      complete: done === items.length,
-      items,
-    });
+    // Who handles setup (PLAN.md CD): the Club setup alert's person, else the
+    // President. They get every step; full access gets them on the Setup tab;
+    // everyone else only their own. A position's look-only preview is worked
+    // out as if someone held it.
+    let board = await loadBoard(sb as never, payload.tid);
+    let who = payload.sub, fullAccess: boolean;
+    if (view?.pos) {
+      const pv = positionPreview(board, view.pos);
+      if (!pv) return jsonResponse({ ok: false, error: 'Position not found' }, 404);
+      board = pv.board; who = NIL; fullAccess = pv.caller.isOwner;
+    } else {
+      fullAccess = await requireOwner(sb, payload as never);
+    }
+    return jsonResponse({ ok: true, ...setupFor(items, { mine: handlesSetup(who, board), fullAccess }), who: setupWho(board) });
   }
 
   return jsonResponse({ ok: false, error: `Unknown action: ${action}` }, 400);

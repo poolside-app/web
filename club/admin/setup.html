@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/js/board-view.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/phone-fit.js"></script>
+<title>Setup — Poolside</title>
+<script src="/js/pooltime.js"></script>
+<script src="/js/errors.js" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue:#0a3b5c; --blue-2:#134b73; --blue-l:#e6eef5; --sun:#f59e0b;
+    --bg:#fefdfb; --bg-2:#f7f3eb; --text:#0f172a; --muted:#5d6b81;
+    --border:#e5e7eb; --green:#16a34a; --red:#dc2626;
+    --shadow: 0 1px 2px rgba(10,59,92,.04), 0 8px 24px rgba(10,59,92,.06);
+    --r-md: 12px; --r-lg: 18px;
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--blue); }
+  h1, h2 { font-family:'Fraunces', Georgia, serif; font-weight:600; letter-spacing:-.015em; margin:0; }
+  h1 { font-size: 26px; }
+  .logo { display:inline-flex; align-items:center; gap:8px; font-family:'Fraunces',serif; font-weight:600; font-size:18px; color:var(--blue); text-decoration:none; }
+  .logo-dot { width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,var(--sun),#fbbf24); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--border); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .who { font-size:13px; color:var(--muted); display:flex; gap:14px; align-items:center; }
+  .who a { cursor: pointer; }
+  nav.tabs { background:#fff; border-bottom:1px solid var(--border); padding:0 22px; display:flex; gap:4px; overflow-x:auto; }
+  nav.tabs a { padding:12px 14px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent; text-decoration:none; margin-bottom:-1px; white-space:nowrap; }
+  nav.tabs a.on { color:var(--blue); border-bottom-color:var(--blue); }
+  nav.tabs a:hover { color:var(--blue); }
+
+  main { flex:1; padding: 28px 22px; max-width: 980px; width:100%; margin: 0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .filter-row { display:flex; gap:6px; flex-wrap: wrap; }
+  .filter-row button { padding:8px 14px; border:1.5px solid var(--border); background:#fff; border-radius:999px; font:600 12px 'Inter'; cursor:pointer; color:var(--muted); }
+  .filter-row button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  input[type="search"] { padding:9px 12px; border:1.5px solid var(--border); border-radius:var(--r-md); width:240px; font:14px 'Inter'; }
+
+  .day-group { margin-bottom: 22px; }
+  .day-head { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 0 6px 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+
+  .entry {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 10px 14px; background: #fff;
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    margin-bottom: 6px;
+  }
+  .entry .ts { color: var(--muted); font-size: 11px; min-width: 70px; flex-shrink: 0; padding-top: 2px; }
+  .entry .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--blue-l); font-size: 14px; }
+  .entry.public .icon  { background: #ddd6fe; }
+  .entry.member .icon  { background: #cffafe; }
+  .entry .body { flex: 1; min-width: 0; font-size: 13px; }
+  .entry .summary { color: var(--text); }
+  .entry .meta    { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill.tenant_admin { background: var(--bg-2); color: var(--text); }
+  .pill.public       { background: #ddd6fe; color: #5b21b6; }
+  .pill.member       { background: #cffafe; color: #155e75; }
+  .empty { padding: 60px 22px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: var(--r-md); }
+  footer { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* Setup (PLAN.md CD) */
+  .su-sub { color:var(--muted); font-size:13.5px; margin:4px 0 16px; line-height:1.5; }
+  #setup-list { background:linear-gradient(135deg,#fffbeb,#fef3c7); border:1px solid #fde68a; border-radius:14px; padding:18px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo"><span class="logo-dot"></span> Poolside</a>
+  <div class="who"><span id="whoami">…</span><a id="signout">Sign out</a></div>
+</header>
+<nav class="tabs">
+  <a href="/club/admin/">Dashboard</a>
+  <a href="/club/admin/members.html">Members</a>
+  <a href="/club/admin/payments.html">Money</a>
+  <a href="/club/admin/events.html">Calendar</a>
+  <a href="/club/admin/announcements.html">Content</a>
+  <a href="/club/admin/audit.html">Insights</a>
+  <a href="/club/admin/settings.html" class="on">Settings</a>
+</nav>
+<div id="admin-subtabs"></div>
+<script src="/js/admin-subtabs.js"></script>
+
+<!-- PLAN.md CD (Doug 11/6): the club setup list, for whoever handles setup
+     (the Club setup alert on Settings → Board, else the President) and anyone
+     with full access, always open, even after Hide for now on the home or
+     once it's all done. Anyone else sees who handles it and their own step. -->
+<main>
+  <h1>Setup</h1>
+  <p class="su-sub">Getting the club ready for members. Each step opens the screen where it's set, and ticks itself off when it's done.</p>
+  <div id="setup-list"><div style="color:var(--muted)">Loading…</div></div>
+</main>
+
+<script src="/js/admin-flags.js"></script>
+<script src="/js/setup-list.js"></script>
+<script src="/js/admin-help-fab.js" defer></script>
+<script>
+const SUPABASE_URL = 'https://sdewylbddkcvidwosgxo.supabase.co';
+const SETTINGS_URL = `${SUPABASE_URL}/functions/v1/tenant_settings`;
+const ME_URL       = `${SUPABASE_URL}/functions/v1/tenant_admin_auth`;
+let CLUB = '';
+
+function token() { return localStorage.getItem('poolside_tenant_token'); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function logout() {
+  // Same self-healing sign-out as the other board pages: only sign out when
+  // the token is really bad, never on a network blip.
+  try {
+    const t = localStorage.getItem('poolside_tenant_token');
+    if (t) {
+      const vr = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${t}` }, body: JSON.stringify({ action: 'me' }) });
+      if (vr.status !== 401) return;
+    }
+  } catch (_) { return; }
+  ['poolside_tenant_token','poolside_tenant_user','poolside_tenant_tenant'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/club/admin/login.html';
+}
+document.getElementById('signout').addEventListener('click', logout);
+
+async function load() {
+  const el = document.getElementById('setup-list');
+  try {
+    const res = await fetch(SETTINGS_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` }, body: JSON.stringify({ action: 'setup_status' }) });
+    if (res.status === 401) { logout(); return; }
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || "Couldn't load the setup list");
+    SetupList.render(el, d, { club: CLUB, tab: true, token: token(), authUrl: ME_URL, onChange: load });
+  } catch (e) {
+    el.innerHTML = `<div style="color:#92400e">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+(async () => {
+  try {
+    const me = await fetch(ME_URL, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token()}` }, body: JSON.stringify({ action: 'me' }) }).then(r => r.json());
+    if (!me.ok) { logout(); return; }
+    CLUB = me.tenant.display_name;
+    document.title = `Setup — ${me.tenant.display_name}`;
+    document.getElementById('whoami').textContent = me.user.display_name || me.user.email;
+    if (window.PoolsideFlags) PoolsideFlags.apply((me.tenant && me.tenant.features) || {}, me.user, me.tenant, me.usage);
+  } catch { logout(); return; }
+  load();
+})();
+</script>
+</body>
+</html>

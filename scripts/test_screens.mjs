@@ -203,7 +203,8 @@ console.log('\nJ1–J8 · one place for each setting');
   const setupBlock = between(ts, "if (action === 'setup_status')", 'return jsonResponse({');
   const ids = [...setupBlock.matchAll(/\bid: '([a-z_]+)'/g)].map(m => m[1]);
   check('J1: one checklist: the wizard, the setup page and the second list are gone',
-    !exists('club/wizard.html') && !exists('club/admin/setup.html') && !/onboarding_status/.test(dash)
+    // The Setup tab (PLAN.md CD) is the same list, not a second one: it draws setup_status with js/setup-list.js, as the home does.
+    !exists('club/wizard.html') && (!exists('club/admin/setup.html') || (/SetupList\.render/.test(read('club/admin/setup.html')) && /SetupList\.render/.test(dash))) && !/onboarding_status/.test(dash)
     && !/setup_wizard_complete/.test(dash) && !/using the pool too/.test(dash), '');
   check('J1: the checklist has the 9 items, each opening the real screen',
     ['logo', 'hero', 'location', 'prices', 'payment', 'policies', 'self_signup', 'invite_board', 'share_link'].every(i => ids.includes(i)) && !ids.includes('wizard'),

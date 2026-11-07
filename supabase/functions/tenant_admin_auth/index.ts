@@ -33,6 +33,10 @@ import { changePlan, stripeCaller } from '../_shared/poolside_plans.ts';
 import { isTestRecipient } from '../_shared/test_recipients.ts';
 import { LOOK_ONLY, asView, viewAllowed, viewClaims, canPreview, canPreviewPosition, positionUser } from '../_shared/board_view.ts';
 import { loginFromPositions } from '../_shared/positions.ts';
+import { loadBoard } from '../_shared/positions_db.ts';
+import { positionPreview } from '../_shared/position_preview.ts';
+import { handlesSetup } from '../_shared/setup_person.ts';
+import { NIL } from '../_shared/board_view.ts';
 
 // Shown when neither a text nor an email could go out (PLAN.md BG1).
 const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
@@ -769,6 +773,15 @@ Deno.serve(async (req) => {
         },
       });
     }
+    // Whether they handle the club setup list (PLAN.md CD): the Setup tab.
+    // Best-effort: never stops a board member signing in.
+    let handles_setup = false;
+    try {
+      const b = await loadBoard(sb as never, payload.tid);
+      const pv = payload.viewing_pos ? positionPreview(b, payload.viewing_pos) : null;
+      handles_setup = pv ? handlesSetup(NIL, pv.board) : handlesSetup(payload.sub, b);
+    } catch (e) { console.error('handles_setup (non-fatal):', (e as Error).message); }
+
     // A position's look-only preview (PLAN.md CC5) has nobody in it: `me` is
     // the position, with the screens anyone holding it gets.
     if (payload.viewing_pos) {
@@ -777,7 +790,7 @@ Deno.serve(async (req) => {
       if (!pos) return jsonResponse({ ok: false, error: 'Position not found' }, 401);
       return jsonResponse({
         ok: true, tenant: { ...tenant, features, branding }, usage, renewed_token: null,
-        user: positionUser(pos, payload.viewing_by_name ?? null, loginFromPositions([pos as never])),
+        user: { ...positionUser(pos, payload.viewing_by_name ?? null, loginFromPositions([pos as never])), handles_setup },
       });
     }
     if (!user || !user.active) return jsonResponse({ ok: false, error: 'User not found' }, 401);
@@ -825,6 +838,7 @@ Deno.serve(async (req) => {
         impersonated: !!payload.impersonated_by,
         // A look-only preview (PLAN.md CC): the page shows whose view it is.
         viewing: payload.viewing_by ? { by_name: payload.viewing_by_name ?? null } : null,
+        handles_setup,
       },
     });
   }

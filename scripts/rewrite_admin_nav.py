@@ -80,6 +80,7 @@ PAGE_TO_TAB = {
     "upcoming.html":       "money",
     "keyfobs.html":        "members",
     "billing.html":        "settings",
+    "setup.html":          "settings",   # PLAN.md CD: the club setup list
     # Deliberately no active tab: reached from the dashboard, a FAB, or an
     # emailed link rather than from the nav.
     "checkin.html":        None,

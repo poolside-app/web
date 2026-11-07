@@ -74,6 +74,8 @@
     // reach its own billing page.
     settings: [
       { key: 'settings', label: 'Settings', href: '/club/admin/settings.html', scope: 'settings' },
+      // PLAN.md CD: whoever handles the club setup list, and full access.
+      { key: 'setup',    label: 'Setup',    href: '/club/admin/setup.html',    scope: '', setup: true },
       { key: 'board',    label: 'Board',    href: '/club/admin/board.html',    scope: ''         },  // every board member reads it; the president edits
       { key: 'emails',   label: 'Emails',   href: '/club/admin/emails.html',   scope: 'announcements' },  // PLAN.md T: moved from Members
       { key: 'plan',     label: 'Plan',     href: '/club/admin/billing.html',  scope: 'settings' },
@@ -92,7 +94,7 @@
     'announcements.html': 'content', 'photos.html': 'content',
     'board-meetings.html': 'content', 'member-help.html': 'content',
     'audit.html': 'insights', 'time-saved.html': 'insights',
-    'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'members', 'emails.html': 'settings', 'billing.html': 'settings',
+    'settings.html': 'settings', 'board.html': 'settings', 'keyfobs.html': 'members', 'emails.html': 'settings', 'billing.html': 'settings', 'setup.html': 'settings',
   };
 
   // admin-flags.js puts the waiting-task numbers on these tabs (PLAN.md R1).
@@ -120,6 +122,7 @@
     return !user || user.role_template === 'owner' || !!user.is_super || !!user.impersonated || (user.roles || []).includes('owner');
   }
   function itemOn(item, user, features) {
+    if (item.setup) return ownerish(user) || !!(user && user.handles_setup);
     const f = FEATURE_OF[item.key];
     if (f) { const v = (features || {})[f[0]]; if (f[1] ? v === false : !v) return false; }
     return ownerish(user) || !item.scope || (user.scopes || []).includes(item.scope);

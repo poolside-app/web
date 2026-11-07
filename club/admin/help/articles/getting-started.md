@@ -24,6 +24,6 @@ On a phone, the bar at the bottom has **Home**, the sections you use, and **More
 
 ### Setting up a new club
 
-If your club is just starting on Poolside, **Home** shows a setup checklist at the top. Each line opens the screen where you do it, and it ticks itself off when it's done. Tap **Hide for now** to put it away; it comes back until everything's done.
+If your club is just starting on Poolside, **Home** shows a setup checklist at the top for whoever handles setup: the President, or whoever holds a position given the **Club setup** alert on **Settings → Board**. Each line opens the screen where you do it, and it ticks itself off when it's done. Tap **Hide for now** to put it away; it comes back until everything's done, and the whole list is always on **Settings → Setup**. Most steps can only be saved with full access. Everyone else on the board just sees "Sign up your own family".
 
 > Tip: Looking around is safe. Buttons that change money, doors or family records ask you to confirm first.
