@@ -64,7 +64,7 @@ export function bookedEmailHtml(p: Party, family: string | null, who: Contact, h
         ${who.email ? btn(`mailto:${who.email}`, `✉️ ${esc(who.email)}`) : ''}
       </div>
       <p style="margin:18px 0"><a href="${esc(clubUrl)}/club/admin/parties.html" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block">Open Parties</a></p>
-      <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">It's also on your board home until you mark it done. Families with questions can Ask the board → Parties &amp; events, which comes to you.</p>
+      <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">It's also on your board home until you mark it done. Families with questions can use Ask the board → Parties &amp; events.</p>
     </div>`;
 }
 
@@ -90,7 +90,7 @@ export async function partyBookedAlert(sb: SupabaseClient, args: { tenantId: str
     const [{ data: hh }, { data: who }, { data: tenant }] = await Promise.all([
       sb.from('households').select('family_name').eq('id', p.household_id as string).maybeSingle(),
       p.requested_by ? sb.from('household_members').select('name, phone_e164, email').eq('id', p.requested_by as string).maybeSingle() : Promise.resolve({ data: null }),
-      sb.from('tenants').select('slug, timezone').eq('id', args.tenantId).maybeSingle(),
+      sb.from('tenants').select('slug, timezone, display_name').eq('id', args.tenantId).maybeSingle(),
     ]);
     const tz = zoneOrDefault(tenant?.timezone as string | null | undefined);
     const family = (hh?.family_name as string | undefined) ?? null;
@@ -110,9 +110,10 @@ export async function partyBookedAlert(sb: SupabaseClient, args: { tenantId: str
     const ids = await recipientsFor(sb, args.tenantId, 'rentals');
     if (!ids.length) return;
     const { data: admins } = await sb.from('admin_users').select('email').in('id', ids).eq('active', true);
-    const { sendEmail } = await import('./send_email.ts');
+    const { sendEmail, emailShell } = await import('./send_email.ts');
     const clubUrl = tenant?.slug ? `https://${tenant.slug}.poolsideapp.com` : 'https://poolsideapp.com';
-    const html = bookedEmailHtml(party, family, contact, args.how, tz, clubUrl);
+    // In the club's email look, like every other club email (PLAN.md BG5, CK3).
+    const html = emailShell({ tenantName: String(tenant?.display_name ?? ''), clubUrl, contentHtml: bookedEmailHtml(party, family, contact, args.how, tz, clubUrl) });
     for (const a of admins ?? []) {
       if (!a.email) continue;
       await sendEmail({ to: a.email as string, subject: `🎉 Party booked: ${p.title || 'a party'}, ${when(party, tz)}`, html,

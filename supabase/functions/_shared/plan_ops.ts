@@ -518,7 +518,10 @@ export async function endPlan(sb: SupabaseClient, club: PlanClub, plan: Record<s
     push_body: 'Their membership is canceled until they pay what is overdue plus the reactivation fee.',
   });
 
-  if (reason !== 'member_cancelled') await emailTreasurer(sb, club, plan, why, back);
+  // The board's email says it to the board (PLAN.md CK3).
+  const boardWhy = reason === 'deadline' ? "their payments weren't up to date by the club's deadline"
+    : reason === 'card_failed' ? 'their card could not be charged' : 'they canceled their payment plan';
+  if (reason !== 'member_cancelled') await emailTreasurer(sb, club, plan, boardWhy, back);
 
   await sb.from('audit_log').insert({
     tenant_id: club.tenantId, kind: reason === 'member_cancelled' ? 'plan.cancelled' : 'plan.lapsed',
@@ -540,14 +543,13 @@ async function emailTreasurer(
     const ids = await recipientsFor(sb, club.tenantId, 'payments');
     if (!ids.length) return;
     const { data: admins } = await sb.from('admin_users').select('email').in('id', ids).eq('active', true);
-    const { sendEmail, escHtml } = await import('./send_email.ts');
-    const html = `
-      <div style="font-family:Inter,Arial,sans-serif;max-width:520px;padding:24px;color:#0f172a">
+    const { sendEmail, escHtml, emailShell } = await import('./send_email.ts');
+    // In the club's email look, like every other club email (PLAN.md BG5, CK3).
+    const html = emailShell({ tenantName: club.name, clubUrl: club.clubUrl, contentHtml: `
         <h2 style="font-family:Georgia,serif;color:#7f1d1d;margin:0 0 8px">Payment plan ended: ${escHtml(String(plan.family_name))}</h2>
-        <p style="line-height:1.55">The ${escHtml(String(plan.family_name))} family's membership is canceled because ${escHtml(why)}. They owe ${escHtml(money(back.dues_cents))} and have been emailed how to pay it with the reactivation fee.</p>
-        <p style="line-height:1.55">Their gate access goes off${plan.enforced_at ? '' : ' when the season starts'}, and any keyfob of theirs comes off the doors at the next keyfob sync.</p>
-        <p style="margin:24px 0"><a href="${club.clubUrl}/club/admin/payments.html#plans" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">See payment plans</a></p>
-      </div>`;
+        <p style="line-height:1.55">The ${escHtml(String(plan.family_name))} membership is canceled because ${escHtml(why)}. They owe ${escHtml(money(back.dues_cents))} and have been emailed how to pay it with the reactivation fee.</p>
+        <p style="line-height:1.55">Their gate access ${plan.enforced_at ? 'is off now' : 'goes off when the season starts'}, and any keyfob of theirs comes off the doors at the next keyfob sync.</p>
+        <p style="margin:24px 0"><a href="${club.clubUrl}/club/admin/payments.html#plans" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">See payment plans</a></p>` });
     for (const a of admins ?? []) {
       if (!a.email) continue;
       try { await sendEmail({ to: a.email as string, subject: `Payment plan ended: ${plan.family_name}`, html }); }

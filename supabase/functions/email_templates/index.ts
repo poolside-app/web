@@ -108,7 +108,11 @@ const SAMPLE_VARS: Record<string, string> = {
   member_url:        'https://bishopestates.poolsideapp.com/m/index.html#parties',
   member_name:       'Sam Smith',
   member_role:       'child',
-  reason:            'your card could not be charged',
+  reason:            "your payments weren't up to date by the club's deadline",
+  // The volunteer thank-you (PLAN.md CK4): without these it previews with blanks.
+  signup_title:      'the Snack Shack shift on Saturday',
+  reward_text:       '$10 off next season',
+  code:              'THANKS7Q2',
   paid:              '$300.00',
   owed:              '$100.00',
   fee:               '$50.00',

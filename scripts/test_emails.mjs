@@ -146,5 +146,22 @@ if (LIVE) {
   }
 }
 
+// PLAN.md CK (Doug 11/7): "go check all the emails... correct for eveyrhting we have changed recenelt?"
+console.log('CK · the emails, after what changed');
+{
+  const tpl = read('supabase/functions/_shared/email_template.ts'), app = read('m/index.html');
+  check('CK1: no email or family screen says one board member handles a topic', !/the board member who handles/i.test(tpl) && !/the board member who handles/i.test(app), (app.match(/.{0,40}the board member who handles.{0,30}/i) || tpl.match(/.{0,40}the board member who handles.{0,30}/i) || [''])[0]);
+  check('CK1: no family screen promises a text when the board replies', !/You'll get a text when they reply/.test(app));
+  const auth = read('supabase/functions/tenant_admin_auth/index.ts');
+  check('CK2: board invites say "board", not "admin"', !/You're an admin on/.test(auth) && !/added as an admin/.test(auth) && !/added as a <b>/.test(auth) && /added to the board/.test(auth));
+  const po = read('supabase/functions/_shared/plan_ops.ts'), pb = read('supabase/functions/_shared/party_booked.ts');
+  const tre = po.slice(po.indexOf('async function emailTreasurer'));
+  check('CK3: the board\'s plan-ended email speaks to the board, in the club\'s look', /emailShell\(/.test(tre) && /boardWhy/.test(po), tre.slice(0, 200));
+  check('CK3: the board\'s party-booked email is in the club\'s look, and doesn\'t say questions come to them', /emailShell\(/.test(pb) && !/which comes to you/.test(pb));
+  const sample = read('supabase/functions/email_templates/index.ts');
+  const sv = sample.slice(sample.indexOf('const SAMPLE_VARS'), sample.indexOf('};', sample.indexOf('const SAMPLE_VARS')));
+  check('CK4: the Emails page\'s samples: no card reason, the thank-you filled in', !/your card could not be charged/.test(sv) && /signup_title:/.test(sv) && /reward_text:/.test(sv) && /\bcode:/.test(sv));
+}
+
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -620,13 +620,13 @@
   </div>
 </div>
 
-<!-- Ask the board: a new question for the board member who handles the
+<!-- Ask the board: a new question for the board members who handle the
      topic (or the president). See help_requests. -->
 <div class="scrim" id="help-scrim" onclick="if (event.target === this) closeHelp()">
   <div class="pmodal">
     <div id="help-form">
       <h2 style="margin:0;font-family:'Fraunces',Georgia,serif;color:var(--blue)">🙋 Ask the board</h2>
-      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px;line-height:1.55">It goes straight to the board member who handles it. You'll get a text when they reply.</p>
+      <p style="color:var(--muted);font-size:13px;margin:6px 0 4px;line-height:1.55">It goes to the board members who handle it. Their reply pops up here, or comes by email.</p>
       <label>What's it about?</label>
       <div class="help-topics" id="help-topics">
         <button type="button" class="help-topic" data-topic="keyfob" onclick="pickHelpTopic('keyfob')">🔑 Keyfob &amp; gate</button>
@@ -2324,8 +2324,8 @@ async function startDonateStripe() {
 
 
 // ── Ask the board (help requests) ───────────────────────────────────────
-// A member's question goes to the board member who handles its topic, or
-// the president. Board replies arrive by text with a /m/#help=<id> link.
+// A member's question goes to the board members who handle its topic (PLAN.md CE), or
+// the president. Board replies arrive as a pop-up (or email) with a /m/#help=<id> link.
 const HELP_PATH = '/functions/v1/help_requests';
 const HELP_TOPIC_NAMES = {
   keyfob: '🔑 Keyfob & gate', membership: '🪪 Membership & dues', parties: '🎉 Parties & events',
@@ -2417,7 +2417,7 @@ async function sendHelp() {
     // Everyone who handles the topic sees it until one of them answers (PLAN.md CE).
     const who = r.request.assigned_name ? `${r.request.assigned_name}, who handles ${r.request.topic_label.toLowerCase()}` : `the board members who handle ${r.request.topic_label.toLowerCase()}`;
     document.getElementById('help-done-text').textContent =
-      `It went to ${who}. You'll get a text when they reply, and you can follow it under Questions for the board.`;
+      `It went to ${who}. Their reply pops up in the app, or comes by email, and you can follow it under Questions for the board.`;
     document.getElementById('help-form').style.display = 'none';
     document.getElementById('help-done').style.display = '';
     loadHelpList();
@@ -2435,7 +2435,7 @@ function renderHelpCard() {
         🙋 Questions for the board
         <button class="btn btn-ghost" onclick="openHelp()" style="font-size:12px;padding:6px 12px">Ask the board</button>
       </h2>
-      <p style="font-size:12.5px;color:var(--muted);margin:0">Keyfob not working? Question about dues or a party? It goes to the board member who handles it, and their reply pops up here.</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0">Keyfob not working? Question about dues or a party? It goes to the board members who handle it, and their reply pops up here.</p>
       <div id="help-list"></div>
     </div>`;
 }
@@ -2596,14 +2596,14 @@ function renderGateDisabled(reason, r) {
     after_hours:            { line1: gc.message || 'The pool is closed', line2: gc.why === 'season' || gc.why === 'ended' || gc.why === 'not_started' ? '' : `Member hours are ${gc.hours || 'set by the board'}. Your keyfob works the same hours.` },
     member_inactive:        { line1: 'Your membership isn\'t active', line2: 'The membership chair can help you reactivate.',
                               ask: () => openHelp('membership', 'The app says my membership isn\'t active. Can you help me reactivate?') },
-    member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'The board member who handles keyfobs can turn it on for you.',
+    member_not_authorized:  { line1: 'Your account isn\'t set up for gate access', line2: 'The board members who handle keyfobs can turn it on for you.',
                               ask: () => openHelp('keyfob', 'The app says I\'m not set up for gate access. Can you turn it on for me?') },
     household_inactive:     { line1: 'Your household isn\'t active', line2: 'The membership chair can help.',
                               ask: () => openHelp('membership', 'The app says our household isn\'t active. Can you help?') },
     dues_unpaid:            { line1: 'Pay your dues to unlock the gate', line2: 'Once your dues clear, the unlock button enables automatically.' },
     gate_offline:           { line1: 'Remote unlock is offline right now', line2: 'The pool\'s gate connection is down. Use your keyfob, or check back later — the button comes back on its own.' },
   };
-  const m = messages[reason] || { line1: 'Gate access not available', line2: 'The board member who handles keyfobs can help.',
+  const m = messages[reason] || { line1: 'Gate access not available', line2: 'The board members who handle keyfobs can help.',
     ask: () => openHelp('keyfob', 'I can\'t unlock the gate from the app. Can you help?') };
   document.getElementById('gate-card-body').innerHTML = `
     <div style="font:600 16px 'Fraunces',Georgia,serif;color:#fff">🔒 ${escapeHtml(m.line1)}</div>

@@ -69,12 +69,12 @@ async function sendAdminInviteEmail(args: {
   if (!RESEND_API_KEY) return { sent: false, error: 'RESEND_API_KEY not set' };
   const signInHost = `${escAdmin(args.clubUrl.replace(/^https?:\/\//, ''))}/club/admin`;
   // The club look every other club email has (PLAN.md BG5).
-  const html = emailShell({ tenantName: args.tenantName, clubUrl: args.clubUrl, contentHtml: `<h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added as a <b>${escAdmin(args.roleLabel)}</b>. Tap below to activate your account. No password needed.</p><p style="margin:24px 0"><a href="${args.activationLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Activate my account</a></p><p style="margin:0;color:#94a3b8;font-size:12px">This one-tap link is just for you and expires in 7 days. After that you can sign in any time at ${signInHost} — we'll text or email you a quick link to get in.</p>` });
+  const html = emailShell({ tenantName: args.tenantName, clubUrl: args.clubUrl, contentHtml: `<h2 style="font-family:Georgia,serif;color:#0a3b5c;margin:0 0 8px">You're invited to ${escAdmin(args.tenantName)}</h2><p style="margin:0 0 16px;color:#64748b">Hi ${escAdmin(args.inviteeName)} — you've been added to the board as <b>${escAdmin(args.roleLabel)}</b>. Tap below to activate your account. No password needed.</p><p style="margin:24px 0"><a href="${args.activationLink}" style="background:#0a3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;display:inline-block">Activate my account</a></p><p style="margin:0;color:#94a3b8;font-size:12px">This one-tap link is just for you and expires in 7 days. After that you can sign in any time at ${signInHost} — we'll text or email you a quick link to get in.</p>` });
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: RESEND_FROM, to: [args.to], subject: `You're an admin on ${args.tenantName}`, html }),
+      body: JSON.stringify({ from: RESEND_FROM, to: [args.to], subject: `You're on the ${args.tenantName} board`, html }),
     });
     if (!res.ok) { const t = await res.text(); return { sent: false, error: `Resend ${res.status}: ${t.slice(0, 200)}` }; }
     return { sent: true };
@@ -162,7 +162,7 @@ async function sendAdminSmsInviteLink(args: { to: string; tenantName: string; li
   if (!sid || !tok || (!messagingServiceSid && !from)) {
     return { sent: false, error: 'TWILIO_* env vars not set' };
   }
-  const smsBody = `${args.tenantName} on Poolside: you've been added as an admin. Tap to activate your account, no password needed: ${args.link}`;
+  const smsBody = `${args.tenantName} on Poolside: you've been added to the board. Tap to activate your account, no password needed: ${args.link}`;
   const params: Record<string, string> = { To: args.to, Body: smsBody };
   if (messagingServiceSid) params.MessagingServiceSid = messagingServiceSid;
   else if (from) params.From = from;
