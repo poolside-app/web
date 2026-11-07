@@ -36,9 +36,6 @@
   .lede { font-size:15px; color:var(--muted); margin:6px 0 22px; max-width:640px; line-height:1.55; }
 
   .card { background:#fff; border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow); margin-bottom:14px; padding:16px 18px; }
-  .rule { background:#fffbeb; border-color:#fcd34d; }
-  .rule .label { font-size:11.5px; font-weight:700; color:#92400e; letter-spacing:.06em; text-transform:uppercase; }
-  .rule .text { font-size:15px; margin-top:4px; white-space:pre-wrap; }
 
   .pos-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; }
   .pos-title { font-family:'Fraunces',serif; font-size:19px; font-weight:600; color:var(--blue); }
@@ -116,7 +113,6 @@
   <h1>Board</h1>
   <p class="lede">Your board positions, who holds them, and what each one is told about. Alerts go to whoever holds the position. If nobody does, they go to the President.</p>
 
-  <div class="card rule" id="spending-rule"><div class="label">Spending rule for every position</div><div class="text">…</div></div>
   <div id="positions"><div class="card" style="height:90px"></div><div class="card" style="height:90px"></div></div>
   <div id="add-position"></div>
 
@@ -197,20 +193,6 @@
   </div>
 </div>
 
-<!-- Edit the spending rule -->
-<div class="scrim" id="rule-scrim">
-  <div class="modal">
-    <h2>Spending rule</h2>
-    <label class="f" for="rule-text">Shown above every position</label>
-    <textarea id="rule-text" maxlength="600" style="min-height:100px"></textarea>
-    <div class="err" id="rule-err"></div>
-    <div class="modal-foot">
-      <button class="btn" type="button" onclick="closeScrim('rule-scrim')">Cancel</button>
-      <button class="btn btn-primary" id="rule-save" type="button">Save</button>
-    </div>
-  </div>
-</div>
-
 <div class="toast" id="toast"><span id="toast-msg"></span><span class="undo" id="toast-undo">Undo</span></div>
 
 <script src="/js/admin-flags.js"></script>
@@ -270,10 +252,6 @@ function jobHtml(text) {
 
 function render() {
   const owner = B.is_owner;
-  const rule = document.getElementById('spending-rule');
-  rule.innerHTML = `<div class="pos-head"><div class="label">Spending rule for every position</div>${owner ? '<button class="btn btn-sm" onclick="editRule()">Edit</button>' : ''}</div>
-    <div class="text">${escapeHtml(B.spending_rule || 'None set.')}</div>`;
-
   document.getElementById('positions').innerHTML = B.positions.map((p, i) => {
     const who = p.holders.length
       ? p.holders.map(h => `${escapeHtml(h.name)}${h.pending ? '<span class="pill">Invited</span>' : ''}`).join(', ')
@@ -510,18 +488,6 @@ async function removePerson(id, isStaff) {
     await load();
   };
 }
-
-// ── Spending rule ─────────────────────────────────────────────────────
-function editRule() {
-  hideErr('rule-err');
-  document.getElementById('rule-text').value = B.spending_rule || '';
-  openScrim('rule-scrim');
-}
-document.getElementById('rule-save').addEventListener('click', async () => {
-  const r = await board('set_spending_rule', { text: document.getElementById('rule-text').value });
-  if (!r.ok) { showErr('rule-err', r.error || 'Save failed'); return; }
-  closeScrim('rule-scrim'); await load();
-});
 
 async function load() {
   const r = await board('get');

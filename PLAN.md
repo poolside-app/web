@@ -900,6 +900,11 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CB. No spending rule on the board's screens (Doug, 11/6)
+Doug, on Settings → Board while adding board members: "remove the spending rule top boarder thing.. .thats stupid".
+- **CB1.** The yellow "Spending rule for every position" box at the top of Settings → Board goes, with its Edit window. So does the "Spending rule:" line under Your job on the dashboard, since nobody could change it any more. Screens only (`club/admin/board.html`, `club/admin/index.html`); the saved rule stays in the database unused, so nothing on the server changes.
+- Failing test first: `test_positions` K2 and K4 (offline): neither page shows or edits a spending rule.
+
 ### CA. "Add the app" videos for families (Doug, 11/6)
 Doug: "can you make a video describing and walking through how to add the app to your home screen on a iphone/android". His picks: made like the 90-second video ("you created a video before... do that same thing"), for families (the member app), two short ones (iPhone, Android), Ava's voice with subtitles.
 - **CA1. The app's own steps match today's phones.** Since iOS 26, Safari's Share button sits behind "•••" next to the address bar, and Add to Home Screen has an "Open as Web App" switch (on). The member app's "Add this club to your home screen" card and the board's activation page still say "Tap Share at the bottom of Safari". New iPhone steps: tap ••• next to the address bar, then Share (on older iPhones, Share is at the bottom); scroll down and tap Add to Home Screen; leave Open as Web App on and tap Add. `js/pwa.js`, `club/admin/activate.html`.

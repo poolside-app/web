@@ -106,8 +106,10 @@ console.log('\nK2 · the Board page (offline)');
       && /isOwner/.test(fnSrc), 'missing actions');
   check('K2: changing positions keeps someone with full access', /full access/i.test(between(fnSrc, "action === 'set_holders'", "action === '")) , '');
   const page = exists('club/admin/board.html') ? read('club/admin/board.html') : '';
-  check('K2: the Board page has the spending rule, each position, its alerts and job description',
-    /id="spending-rule"/.test(page) && /id="positions"/.test(page) && /notices/.test(page) && /description/.test(page), 'no board page');
+  check('K2: the Board page has each position, its alerts and job description',
+    /id="positions"/.test(page) && /notices/.test(page) && /description/.test(page), 'no board page');
+  // CB1 (Doug 11/6): "remove the spending rule top boarder thing.. .thats stupid".
+  check('CB1: the Board page has no spending rule box or its Edit window', !/spending/i.test(page), (page.match(/.{0,40}spending.{0,40}/i) || [''])[0]);
   check('K2: the president can edit a position, assign holders, and invite someone into it',
     /save_position/.test(page) && /set_holders/.test(page) && /invite_admin/.test(page) && /position_ids/.test(page), '');
   const admins = read('club/admin/admins.html');
@@ -156,12 +158,12 @@ console.log('\nK3 · alerts follow positions (offline)');
 console.log('\nK4 · "My job" on the dashboard (offline)');
 {
   const at = read('supabase/functions/admin_tasks/index.ts');
-  check('K4: the dashboard\'s task list brings the person\'s positions and the spending rule (no extra call)',
-    /my_positions/.test(at) && /spending_rule/.test(at), '');
+  check('K4: the dashboard\'s task list brings the person\'s positions (no extra call)', /my_positions/.test(at), '');
   check('K4: each task says which position it\'s for', /for_position/.test(at), '');
   const dash = read('club/admin/index.html');
   check('K4: the dashboard shows "Your job" with the purpose and full description',
     /id="my-job"/.test(dash) && /my_positions/.test(dash) && /description/.test(between(dash, 'function paintMyJob', '\n}\n')), '');
+  check('CB1: Your job on the dashboard has no spending rule line', !/spending/i.test(between(dash, 'function paintMyJob', '\n}\n')), '');
   check('K4: a task names its position ("For the Treasurer")', /for_position/.test(between(dash, 'function taskFor', '\n}\n')), '');
 }
 

@@ -215,10 +215,10 @@ export async function renderChecks({ check, read, sql, jwt }) {
           /^20\d\d$/.test(set.season || '') && set.button && set.days === 7 && /Gate & check-in/.test(set.gate) && set.methods >= 1 && set.remote !== 'none', JSON.stringify(set));
       }
       if (path === '/club/admin/board.html') {
-        // K2: the Board page: the spending rule, every position with its
+        // K2: the Board page (no spending rule since CB1): every position with its
         // holder, alerts and job description, and the president's buttons.
         const bp = await pg.evaluate(() => ({
-          rule: document.querySelector('#spending-rule .text')?.textContent,
+          rule: !!document.getElementById('spending-rule'),
           cards: document.querySelectorAll('[data-position]').length,
           pres: document.querySelector('[data-position] .pos-who')?.textContent.trim(),
           jobs: document.querySelectorAll('details.job').length,
@@ -226,8 +226,8 @@ export async function renderChecks({ check, read, sql, jwt }) {
           edit: document.querySelectorAll('[data-position] .actions button').length,
           wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         }));
-        check('K2: the Board page shows the rule, 8 positions with holders, alerts and job descriptions',
-          /Under \$50/.test(bp.rule || '') && bp.cards === 8 && /Doug/.test(bp.pres || '') && bp.jobs === 8 && bp.chips >= 8 && bp.edit >= 16 && bp.wide <= 1, JSON.stringify(bp));
+        check('K2: the Board page shows 8 positions with holders, alerts and job descriptions, no spending rule',
+          !bp.rule && bp.cards === 8 && /Doug/.test(bp.pres || '') && bp.jobs === 8 && bp.chips >= 8 && bp.edit >= 16 && bp.wide <= 1, JSON.stringify(bp));
         await pg.evaluate(() => document.querySelector('[data-position]:nth-child(3) details.job')?.setAttribute('open', ''));
         await pg.screenshot({ path: '/tmp/poolside-board.png', fullPage: false });
         await pg.evaluate(() => editPosition(document.querySelector('[data-position]:nth-child(3)').dataset.position));
