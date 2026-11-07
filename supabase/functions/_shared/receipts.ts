@@ -286,12 +286,12 @@ export async function receiptFiles(r: Row | null): Promise<Array<{ filename: str
 
 /** "Payment receipt": for card payments with no email of their own (keyfobs,
  *  programs, donations, catching up or reinstating a plan). */
-export async function emailReceipt(sb: Sb, r: Row | null): Promise<void> {
+export async function emailReceipt(sb: Sb, r: Row | null, templateKey = 'payment_receipt'): Promise<void> {
   if (!r?.payer_email) return;
   try {
     const { renderAndSend } = await import('./email_template.ts');
     await renderAndSend(sb, {
-      tenantId: String(r.tenant_id), templateKey: 'payment_receipt', to: String(r.payer_email),
+      tenantId: String(r.tenant_id), templateKey, to: String(r.payer_email),
       variables: {
         family_name: String(r.family_name ?? r.payer_name ?? ''), primary_name: String(r.payer_name ?? ''),
         amount: usd(Number(r.total_cents)), what: ((r.lines ?? []) as ReceiptLine[]).map(l => l.label).join(', '),

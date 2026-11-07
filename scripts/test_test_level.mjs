@@ -171,7 +171,9 @@ console.log('TL5 · the screens (offline)');
   P.mount(root2, quote, () => {});
   check('weekly: no "Pay today" or "Paid off by" boxes', !/pp-today|pp-month/.test(root2.innerHTML), root2.innerHTML.slice(0, 200));
   check('weekly: says $1.34 today, then every week, and lists all five', /every week/i.test(root2.innerHTML) && (root2.innerHTML.match(/\$1\.34/g) || []).length >= 5, root2.innerHTML.slice(0, 300));
-  check('weekly: the choice is the schedule\'s', short(P.choice()) === short({ today_cents: 100, payoff_month: '2026-12' }));
+  // Nothing goes to checkout until the plan agreement is signed (PLAN.md CL2);
+  // test_plan_agreement signs it in Chrome and checks what's sent.
+  check('weekly: waits for the plan agreement\'s signature', P.choice() === null && /Sign the payment plan agreement/.test(P.error() || ''), short(P.error()));
   const root3 = { innerHTML: '' };
   P.mount(root3, { ...quote, weekly: false }, () => {});
   check('monthly: the boxes are still there', /pp-today/.test(root3.innerHTML) && /pp-month/.test(root3.innerHTML));

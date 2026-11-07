@@ -66,6 +66,11 @@ export type ApplicationForPdf = {
   signature_guardian?: string | null;
   is_renewal?: boolean;                       // PLAN.md BO6: titled Membership Renewal
   membership_year?: number | null;
+  /** The payment plan agreement, signed at checkout (PLAN.md CL2). */
+  plan_agreement?: {
+    lines: string[]; authorization: string; signature: string | null;
+    signer: string | null; signed_at: string | null;
+  } | null;
 };
 
 // Decode a data URL ("data:image/png;base64,...") into a Uint8Array. Returns
@@ -344,6 +349,50 @@ export async function renderApplicationPdf(app: ApplicationForPdf): Promise<Uint
       moveDown(drawH + 6);
     } catch {
       text('(guardian signature could not be embedded)', { x: MARGIN + 14, size: 9, color: COLOR_MUTED });
+      moveDown(14);
+    }
+  }
+
+  // ── Payment plan agreement (PLAN.md CL2) ─────────────────────────────
+  // A plan family's second signature, under the words they read at checkout.
+  const pa = app.plan_agreement;
+  if (pa && pa.lines.length) {
+    sectionHeading('Payment plan agreement');
+    for (const line of pa.lines) {
+      const wrapped = wrapText(line, 9);
+      wrapped.forEach((ln, k) => {
+        ensureSpace(12);
+        text(k === 0 ? `* ${ln}` : `  ${ln}`, { size: 9, x: MARGIN + 14 });
+        moveDown(12);
+      });
+      moveDown(3);
+    }
+    if (pa.authorization) {
+      moveDown(4);
+      for (const ln of wrapText(pa.authorization, 10)) {
+        ensureSpace(13);
+        text(ln, { size: 10, bold: true, x: MARGIN + 14 });
+        moveDown(13);
+      }
+    }
+    const planSig = decodeDataUrl(pa.signature);
+    ensureSpace(80);
+    text(`${pa.signer || 'Signed'}${pa.signed_at ? `, ${pa.signed_at}` : ''}`, { size: 10, bold: true });
+    moveDown(14);
+    if (planSig) {
+      try {
+        const png = await doc.embedPng(planSig);
+        const ratio = png.height ? png.width / png.height : 3;
+        const drawH = 50;
+        const drawW = Math.min(220, drawH * ratio);
+        page.drawImage(png, { x: MARGIN + 14, y: y - drawH, width: drawW, height: drawH });
+        moveDown(drawH + 6);
+      } catch {
+        text('(signature image could not be embedded)', { x: MARGIN + 14, size: 9, color: COLOR_MUTED });
+        moveDown(14);
+      }
+    } else {
+      text('(no signature on file)', { x: MARGIN + 14, size: 9, color: COLOR_MUTED });
       moveDown(14);
     }
   }

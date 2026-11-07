@@ -14,6 +14,8 @@
 // the undeliverable 555 exchange. About 50 Edge Function calls.
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
+// A signed payment plan agreement (PLAN.md CL2): checkout won't start a plan without one.
+const PLAN_SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 export async function runLive({ check, short }) {
   const root = new URL('../../', import.meta.url);
@@ -153,7 +155,7 @@ export async function runLive({ check, short }) {
     // Start a plan through checkout and the club's test payment page.
     const start = async (n, today_cents, payoff_month) => {
       const appId = await mkApp(n);
-      const r = await fn('stripe_checkout', { action: 'application_plan', application_id: appId, today_cents, payoff_month });
+      const r = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: appId, today_cents, payoff_month });
       if (!r.ok) return { appId, error: r.error, r };
       const c = claims(r.url);
       const s = await fn('stripe_checkout', { action: 'simulate_complete', token: c.token });
@@ -319,14 +321,14 @@ export async function runLive({ check, short }) {
     if (run('S6')) {
       console.log('M8 · S6 late joiner, membership type');
       const single = await mkApp(7, 'single');
-      const r1 = await fn('stripe_checkout', { action: 'application_plan', application_id: single, today_cents: 0, payoff_month: '2027-05' });
+      const r1 = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: single, today_cents: 0, payoff_month: '2027-05' });
       check('S6: not offered for a type the club left out', !r1.ok && /type/.test(r1.error || ''), short(r1));
       // Half was due October 1, which has passed.
       await setSettings({ ...planCfg, milestones: [{ date: '2026-10-01', min_pct: 50, label: 'Half paid' }, { date: '2027-07-15', min_pct: 100, label: 'Paid in full' }] });
       const late = await mkApp(6);
-      const r2 = await fn('stripe_checkout', { action: 'application_plan', application_id: late, today_cents: 0, payoff_month: '2027-05' });
+      const r2 = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: late, today_cents: 0, payoff_month: '2027-05' });
       check('S6: a late joiner must pay half today', !r2.ok && r2.min_today_cents === 30000 && /\$300\.00/.test(r2.error || ''), short(r2));
-      const r3 = await fn('stripe_checkout', { action: 'application_plan', application_id: late, today_cents: 30000, payoff_month: '2027-05' });
+      const r3 = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: late, today_cents: 30000, payoff_month: '2027-05' });
       check('S6: with $300 today it works', r3.ok, short(r3));
       await setSettings(planCfg);
     }
@@ -336,11 +338,11 @@ export async function runLive({ check, short }) {
       console.log('M8 · S7 real Stripe checkout pages');
       await setSettings(planCfg, { test_mode: false });
       const a8 = await mkApp(8);
-      const r0 = await fn('stripe_checkout', { action: 'application_plan', application_id: a8, today_cents: 0, payoff_month: '2027-05' });
+      const r0 = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: a8, today_cents: 0, payoff_month: '2027-05' });
       const p8 = await planOf(a8);
       check('S7: $0 today opens a real Stripe "save card" page', r0.ok && /^https:\/\/checkout\.stripe\.com\//.test(r0.url || '') && /^cus_/.test(p8?.stripe_customer_id || ''), short(r0));
       const a9 = await mkApp(9);
-      const r1 = await fn('stripe_checkout', { action: 'application_plan', application_id: a9, today_cents: 10000, payoff_month: '2027-05' });
+      const r1 = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: a9, today_cents: 10000, payoff_month: '2027-05' });
       check('S7: money today opens a real Stripe payment page', r1.ok && /^https:\/\/checkout\.stripe\.com\//.test(r1.url || ''), short(r1));
       if (plans.s5) {
         const r2 = await fn('stripe_checkout', { action: 'plan_reinstate' }, { token: await memberTok(plans.s5) });
@@ -427,7 +429,7 @@ export async function runLive({ check, short }) {
       const appId = yes.application_id;
       check('W: a board email with +w2 can', yes.ok && !!appId, short(yes));
       if (appId) {
-        const r = await fn('stripe_checkout', { action: 'application_plan', application_id: appId, today_cents: ch?.today_cents, payoff_month: ch?.payoff_month });
+        const r = await fn('stripe_checkout', { action: 'application_plan', plan_signature: PLAN_SIG, application_id: appId, today_cents: ch?.today_cents, payoff_month: ch?.payoff_month });
         const c = r.ok ? claims(r.url) : null;
         check('W: checkout takes $1.34 today and says weekly', r.ok && c?.amt === grossUp(100) && /4 weekly payments/.test(c?.desc || ''), short({ r, amt: c?.amt, desc: c?.desc }));
         if (c) await fn('stripe_checkout', { action: 'simulate_complete', token: c.token });

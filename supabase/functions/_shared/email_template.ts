@@ -77,6 +77,14 @@ const receiptNote = (v: Vars) => v.receipt_no ? small(`📎 Your receipt ${e(v.r
 const venmoNote = () => small(e(VENMO_RECEIPT_LINE));
 const boardNote = (v: Vars) => v.admin_notes ? box(`<b>Note from the board:</b> ${e(v.admin_notes)}`, 'warn') : '';
 const memberHome = (v: Vars) => `${String(v.club_url ?? '')}/m/`;
+// The payment plan agreement they signed, line for line (PLAN.md CL3):
+// `plan_terms` is its lines, one per line.
+const planTerms = (v: Vars) => {
+  const lines = String(v.plan_terms ?? '').split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.length
+    ? box(`<b>Your payment plan</b><ul style="margin:8px 0 0;padding-left:18px">${lines.map(l => `<li style="margin:4px 0">${e(l)}</li>`).join('')}</ul>`)
+    : '';
+};
 
 export const EMAIL_REGISTRY: EmailDef[] = [
   // ─── Signing up ────────────────────────────────────────────────────────
@@ -124,14 +132,14 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     default_subject: 'Welcome to {{tenant_name}}!',
     default_message: '<p>Hi {{primary_name}},</p><p>Welcome to {{tenant_name}}! We can\'t wait to see you at the pool.</p>',
     placeholders: ['primary_name', 'tenant_name'],
-    adds: 'how they paid (or what\'s left to pay), their sign-in button, and a copy of their signed application',
+    adds: 'how they paid (or what\'s left to pay), the payment plan they signed, their sign-in button, and a copy of their signed application',
     heading: (v, x) => x.pay === 'unpaid_venmo' ? '🎉 You\'re approved!' : `🎉 Welcome to ${e(v.tenant_name)}!`,
     details: (v, x) => {
       const pay = ({
         card: ok('✓ Your card payment cleared. Your membership is active.'),
         free: ok('✓ Your discount covered the whole price, so there\'s nothing to pay. Your membership is active.'),
         venmo_verified: ok('✓ The board verified your Venmo payment. Your dues are paid in full.') + venmoNote(),
-        plan: ok('✓ Your payment plan is set up. Each payment is charged on its date, with a receipt each time. Sign in to see what\'s paid and what\'s next.'),
+        plan: ok('✓ Your payment plan is set up. Each payment is charged on its date, with a receipt each time. Sign in to see what\'s paid and what\'s next.') + planTerms(v),
         unpaid_venmo: v.venmo_link
           ? box(`<b>Last step: send your dues by Venmo</b><br>Tap the button to pay <b>@${e(v.venmo_handle)}</b>. The amount and your code, <b>#${e(v.venmo_code)}</b>, are filled in. We'll email you when the board sees it.`, 'warn') + button('Pay with Venmo', v.venmo_link)
           : box(`<b>Last step: send your dues by Venmo</b><br>Send them to <b>@${e(v.venmo_handle)}</b>. We'll email you when the board sees it.`, 'warn'),
@@ -208,11 +216,13 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     default_subject: 'Your {{tenant_name}} payment went through',
     default_message: '<p>Hi {{family_name}},</p><p>Thanks! Your payment went through.</p>',
     placeholders: ['family_name', 'tenant_name', 'amount'],
-    adds: 'the amount, what\'s next (or "paid in full"), and a button to their member page',
+    adds: 'the amount, what\'s next (or "paid in full"), when their gate access turns on, and a button to their member page',
     heading: (_v, x) => x.final ? '✓ You\'re paid in full!' : '✓ Payment received',
     details: (v, x) => (x.final
       ? ok(`We charged ${e(v.amount)}. Your dues are paid in full for the season.`)
       : box(`We charged ${e(v.amount)} to your saved card.${v.next_amount ? ` Your next payment of <b>${e(v.next_amount)}</b> is on <b>${e(v.next_due_date)}</b>.` : ''}`))
+      // The payment that turns their gate access on (PLAN.md CL3).
+      + (v.access_now ? ok('🔓 Half your dues are paid, so your gate access is on for the season, keyfob included.') : '')
       + receiptNote(v) + button('Open my member page', memberHome(v)),
     variants: [
       { id: 'partial', label: 'More to go', x: { final: false } },
@@ -223,26 +233,45 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     // PLAN.md BZ2 (Doug 11/6): card payments with no email of their own.
     key: 'payment_receipt', section: 'payments',
     label: 'Card payment receipt',
-    when: 'After a card payment that has no email of its own: keyfobs, a program, a donation, or catching up or reinstating a payment plan.',
+    when: 'After a card payment that has no email of its own: keyfobs, a program, a donation, or catching up or reinstating a payment plan. Reinstating says "Welcome back".',
     default_subject: 'Your {{tenant_name}} receipt',
     default_message: '<p>Hi {{family_name}},</p><p>Thanks! Your payment went through.</p>',
     placeholders: ['family_name', 'tenant_name', 'amount'],
-    adds: 'what was paid for and the amount, with the receipt attached as a PDF',
-    heading: () => '✓ Payment received',
-    details: v => box(`<b>${e(v.amount)}</b>${v.what ? ` for ${e(v.what)}` : ''}`) + receiptNote(v),
+    adds: 'what was paid for and the amount, with the receipt attached as a PDF; after reinstating, that their membership is active again',
+    heading: (_v, x) => x.reinstated ? '🎉 Welcome back!' : '✓ Payment received',
+    details: (v, x) => (x.reinstated
+      ? ok('Your membership is active again, and your gate access is back on. Your payment plan carries on from here.')
+        + button('See my plan', `${String(v.club_url ?? '')}/m/#plan`)
+      : '')
+      + box(`<b>${e(v.amount)}</b>${v.what ? ` for ${e(v.what)}` : ''}`) + receiptNote(v),
+    variants: [
+      { id: 'receipt', label: 'A payment', x: {} },
+      { id: 'reinstated', label: 'Back after reinstating', x: { reinstated: true } },
+    ],
   },
   {
     key: 'plan_payment_failed', section: 'payments',
     label: 'Plan payment declined',
-    when: 'When a payment-plan card is declined.',
+    when: 'When a payment-plan card is declined, and again if it\'s still declined after the last try.',
     default_subject: 'Your card was declined: {{tenant_name}} payment plan',
     default_message: '<p>Hi {{family_name}},</p><p>We tried to charge your card for your {{tenant_name}} payment plan, but it was declined.</p><p>Common reasons are an expired card, a new billing address, or a daily limit. Reply to this email if you need help.</p>',
     placeholders: ['family_name', 'tenant_name', 'amount'],
-    adds: 'the amount, what happens next, and an "Update my card" button',
-    heading: () => '⚠ Card declined',
+    adds: 'the amount, what happens next, and an "Update my card" button; after the last try, a "Pay now" button and the deadline',
+    heading: (_v, x) => x.final ? '⚠ We still couldn\'t charge your card' : '⚠ Card declined',
     // Only a missed deadline cancels (PLAN.md CJ): say which one.
-    details: v => box(`<b>${e(v.amount)}</b>${v.sequence ? ` (payment ${e(v.sequence)})` : ''}<br>We'll try the card again over the next two weeks, and updating your card pays it right away. Your membership stays on as long as your payments are up to date by ${v.next_deadline ? e(v.next_deadline) : "the club's next payment deadline"}; if they aren't, it's canceled.`, 'warn')
-      + button('Update my card', `${String(v.club_url ?? '')}/m/#plan`),
+    details: (v, x) => {
+      const by = v.next_deadline ? `<b>${e(v.next_deadline)}</b>` : "the club's next payment deadline";
+      return x.final
+        // After the last try (PLAN.md CL3): we stop trying, so they pay it.
+        ? box(`<b>${e(v.amount)}</b>${v.sequence ? ` (payment ${e(v.sequence)})` : ''}<br>We tried your card again over the last two weeks and it was still declined, so we've stopped trying. Pay it in the app by ${by}. If your payments aren't up to date by then, your membership is canceled and your gate access and keyfob turn off.`, 'warn')
+          + button('Pay now', `${String(v.club_url ?? '')}/m/#plan`)
+        : box(`<b>${e(v.amount)}</b>${v.sequence ? ` (payment ${e(v.sequence)})` : ''}<br>We'll try the card again over the next two weeks, and updating your card pays it right away. Your membership stays on as long as your payments are up to date by ${by}; if they aren't, it's canceled.`, 'warn')
+          + button('Update my card', `${String(v.club_url ?? '')}/m/#plan`);
+    },
+    variants: [
+      { id: 'first', label: 'Declined', x: {} },
+      { id: 'final', label: 'Still declined after the last try', x: { final: true } },
+    ],
   },
   {
     key: 'plan_cancelled', section: 'payments',
@@ -301,15 +330,23 @@ export const EMAIL_REGISTRY: EmailDef[] = [
   {
     key: 'renewal_confirmed', section: 'renewals',
     label: 'Renewal confirmed',
-    when: 'When a family\'s renewal is paid, by card or by a Venmo the board confirms. A one-tap renewal gets the one-tap receipt instead.',
+    when: 'When a family\'s renewal is paid, by card or by a Venmo the board confirms, or their payment plan starts. A one-tap renewal gets the one-tap receipt instead.',
     default_subject: 'You\'re renewed for {{season}} at {{tenant_name}}',
     default_message: '<p>Hi {{family_name}},</p><p>Thanks for renewing! See you at the pool.</p>',
     placeholders: ['family_name', 'tenant_name', 'season', 'amount'],
-    adds: 'the amount, how they paid, and the season it covers',
+    adds: 'the amount, how they paid, and the season it covers; on a payment plan, the plan they signed',
     heading: v => `✅ You're renewed for ${e(v.season)}`,
-    details: v => ok((v.amount && v.amount !== '$0.00' ? `We got your ${e(v.amount)} payment by ${e(v.paid_by || 'card')}. ` : 'Nothing was due this time. ')
-      + `Your membership is paid through the ${e(v.season)} season.`)
-      + (v.paid_by === 'Venmo' ? venmoNote() : receiptNote(v)) + button('Open my member page', memberHome(v)),
+    details: (v, x) => x.plan
+      // On a payment plan (PLAN.md CL3): not "paid through", the plan instead.
+      ? ok(`You're on a payment plan for the ${e(v.season)} season.${v.amount && v.amount !== '$0.00' ? ` We got your first payment of ${e(v.amount)}.` : ''} Each payment is charged on its date, with a receipt each time.`)
+        + planTerms(v) + (v.receipt_no ? receiptNote(v) : '') + button('See my plan', `${String(v.club_url ?? '')}/m/#plan`)
+      : ok((v.amount && v.amount !== '$0.00' ? `We got your ${e(v.amount)} payment by ${e(v.paid_by || 'card')}. ` : 'Nothing was due this time. ')
+        + `Your membership is paid through the ${e(v.season)} season.`)
+        + (v.paid_by === 'Venmo' ? venmoNote() : receiptNote(v)) + button('Open my member page', memberHome(v)),
+    variants: [
+      { id: 'paid', label: 'Paid', x: {} },
+      { id: 'plan', label: 'On a payment plan', x: { plan: true } },
+    ],
   },
 
   // ─── Parties ───────────────────────────────────────────────────────────
@@ -414,6 +451,9 @@ const ALIASES: Record<string, { key: string; x: Variant }> = (() => {
     plan_installment_paid_partial: { key: 'plan_payment_received', x: { final: false } },
     plan_installment_paid_final: { key: 'plan_payment_received', x: { final: true } },
     plan_installment_failed: { key: 'plan_payment_failed', x: {} },
+    plan_installment_failed_final: { key: 'plan_payment_failed', x: { final: true } },
+    renewal_confirmed_plan: { key: 'renewal_confirmed', x: { plan: true } },
+    plan_reinstated: { key: 'payment_receipt', x: { reinstated: true } },
     dues_reminder_waiting: { key: 'dues_reminder', x: { approved: false } },
     dues_reminder_approved: { key: 'dues_reminder', x: { approved: true } },
   };

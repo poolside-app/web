@@ -218,10 +218,14 @@ async function chargeInstallment(
     attempt_count: attempts, last_attempt_at: now, last_error: errorMsg,
     first_failed_at: inst.first_failed_at ?? now,
   }).eq('id', inst.id);
-  if (attempts === 1 && plan.household_id) {
+  const lastTry = exhausted && attempts > 1;
+  if ((attempts === 1 || lastTry) && plan.household_id) {
     const { pushMembers } = await import('../_shared/member_notify.ts');
     await pushMembers({ tenant_id: club.tenantId, household_ids: [plan.household_id as string],
-      title: 'A payment didn\'t go through', body: 'Update your card in the app and it goes through right away.', url: '/m/#plan', tag: `plan-${plan.id}` });
+      ...(lastTry
+        ? { title: 'We still couldn\'t charge your card', body: 'Pay it in the app to keep your membership.' }
+        : { title: 'A payment didn\'t go through', body: 'Update your card in the app and it goes through right away.' }),
+      url: '/m/#plan', tag: `plan-${plan.id}` });
   }
   // The next deadline (PLAN.md CJ1): only missing it cancels the plan.
   const nice = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -231,11 +235,13 @@ async function chargeInstallment(
     const next = ms.find(m => m.date && m.date >= club.today);
     nextDeadline = next ? nice(next.date) : null;
   } catch { /* the notices still go */ }
-  if (attempts === 1 && plan.primary_email) {
+  // The family hears on the first decline, and again after the last try,
+  // when we stop trying and they need to pay it in the app (PLAN.md CL3).
+  if ((attempts === 1 || lastTry) && plan.primary_email) {
     try {
       const { renderAndSend } = await import('../_shared/email_template.ts');
       await renderAndSend(sb, {
-        tenantId: club.tenantId, templateKey: 'plan_installment_failed', to: plan.primary_email as string,
+        tenantId: club.tenantId, templateKey: lastTry ? 'plan_installment_failed_final' : 'plan_installment_failed', to: plan.primary_email as string,
         variables: {
           family_name: plan.family_name as string,
           amount: '$' + (amount / 100).toFixed(2),
@@ -291,6 +297,12 @@ async function sendReceipt(
     const { renderAndSend } = await import('../_shared/email_template.ts');
     const { receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
     const next = rows.find(r => r.sequence > inst.sequence && !isPaid(r));
+    // The payment that reaches half turns their gate access on (PLAN.md CL3):
+    // say so, for clubs whose access starts at half paid.
+    const paidNow = paidCents(rows.filter(r => r.id !== inst.id)) + Number(inst.amount_cents);
+    const access_now = !plan.access_at && !!plan.household_id
+      && !['card', 'first_payment'].includes(String(club.cfg.access_when))
+      && paidNow * 2 >= Number(plan.total_cents) ? 'yes' : '';
     await renderAndSend(sb, {
       tenantId: club.tenantId,
       templateKey: next ? 'plan_installment_paid_partial' : 'plan_installment_paid_final',
@@ -302,6 +314,7 @@ async function sendReceipt(
         next_amount: next ? '$' + (chargeFor(next, club.feesWaived) / 100).toFixed(2) : '',
         // Words, not "2027-08-01" (PLAN.md BG5).
         next_due_date: next ? fmtPoolDay(next.due_date as string) : '',
+        access_now: next ? access_now : '',
         ...(receipt ? { receipt_no: receiptNo(receipt) } : {}),
       },
       ...(receipt ? { attachments: await receiptFiles(receipt) } : {}),

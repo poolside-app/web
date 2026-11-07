@@ -417,6 +417,13 @@ Deno.serve(async (req) => {
     if (app.payment_status === 'paid') return jsonResponse({ ok: false, error: 'Already paid' }, 409);
     const unsignedPlan = await renewalUnsigned(sb, app.id as string);
     if (unsignedPlan) return unsignedPlan;
+    // The payment plan agreement, signed under the schedule they picked
+    // (PLAN.md CL2, Doug 11/7: "another signature that they accept the
+    // payment and payment plan agreements"). Nothing starts without it.
+    const planSig = String(body.plan_signature ?? '');
+    if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(planSig) || planSig.length > 400_000) {
+      return jsonResponse({ ok: false, code: 'needs_plan_signature', error: 'Sign the payment plan agreement first.' }, 409);
+    }
 
     const { data: tenant } = await sb.from('tenants')
       .select('slug, display_name, stripe_account_id, stripe_charges_enabled, platform_fees_waived, timezone').eq('id', app.tenant_id).maybeSingle();
@@ -491,7 +498,23 @@ Deno.serve(async (req) => {
       await sb.from('payment_plans').delete().eq('id', planId);
       return jsonResponse({ ok: false, error: instErr.message }, 500);
     }
-    await sb.from('applications').update({ payment_method: 'stripe_plan' }).eq('id', id);
+    // Kept on the signup: the words they read, worked out again here from the
+    // same quote, the sentence they signed under, and the signature. The
+    // membership PDF prints it (PLAN.md CL2).
+    const { planAgreement, planAuthorization, PLAN_TERMS_VERSION } = await import('../_shared/payment_terms.ts');
+    const planAgreementRecord = {
+      version: PLAN_TERMS_VERSION,
+      lines: planAgreement({
+        clubName: club.name, todayDate: club.today, rows,
+        totalChargeCents: q.choice.totals?.charge_cents ?? rows.reduce((n, r) => n + r.charge_cents, 0),
+        deadlines: q.deadlines, accessWhen: q.access_when, reactivationFeeCents: q.reactivation_fee_cents,
+      }),
+      authorization: planAuthorization(club.name),
+      signature: planSig,
+      signer: (app.primary_name as string | null) ?? null,
+      signed_at: new Date().toISOString(),
+    };
+    await sb.from('applications').update({ payment_method: 'stripe_plan', plan_agreement: planAgreementRecord }).eq('id', id);
 
     const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
     const successUrl = app.is_renewal ? `${clubUrl}/m/?renewed=1&plan=1` : `${clubUrl}/apply.html?plan_started=1&app_id=${id}`;

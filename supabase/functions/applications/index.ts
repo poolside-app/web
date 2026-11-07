@@ -1973,6 +1973,13 @@ Deno.serve(async (req) => {
             venmo_handle: venmo ? String(venmo) : '',
             club_url: clubUrl,
             ...(welcomeReceiptNo ? { receipt_no: welcomeReceiptNo } : {}),
+            ...(await (async () => {
+              // The payment plan they signed at checkout, line for line (PLAN.md CL3).
+              if (!onPlan) return {};
+              const { data: pa } = await sb.from('applications').select('plan_agreement').eq('id', id).maybeSingle();
+              const lines = (pa?.plan_agreement as { lines?: string[] } | null)?.lines ?? [];
+              return lines.length ? { plan_terms: lines.join('\n') } : {};
+            })()),
           },
           attachments: welcomeAttachments,
         });

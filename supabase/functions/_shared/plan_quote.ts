@@ -25,6 +25,9 @@ export type PlanQuote = {
   months: Array<{ value: string; label: string }>;
   deadlines: Array<{ date: string; label: string; pct: number }>;
   access_when: string;
+  /** For the payment plan agreement (PLAN.md CL1): who it's with, and what coming back costs. */
+  club_name: string;
+  reactivation_fee_cents: number;
   /** The board's test level: $1 today, then $1 a week (PLAN.md BN1). Nothing to pick. */
   weekly?: boolean;
   choice: null | {
@@ -61,6 +64,8 @@ export function quotePlan(club: PlanClub, args: {
     months: [],
     deadlines: rules.milestones.map(m => ({ date: m.date, label: m.label ?? (m.min_pct >= 100 ? 'Paid in full' : `${m.min_pct}% paid`), pct: m.min_pct })),
     access_when: cfg.access_when,
+    club_name: club.name,
+    reactivation_fee_cents: Number(cfg.reactivation_fee_cents ?? 0),
     choice: null,
   };
   if (!cfg.enabled) return { ...base, reason: 'This club does not offer payment plans.' };

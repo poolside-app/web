@@ -117,6 +117,21 @@ const SAMPLE_VARS: Record<string, string> = {
   owed:              '$100.00',
   fee:               '$50.00',
   total:             '$150.00',
+  // The payment plan they signed, the next deadline, gate access turning on
+  // (PLAN.md CL3), so the plan versions preview whole.
+  next_deadline:     'May 23',
+  access_now:        'yes',
+  receipt_no:        '2027-0009',
+  what:              'Smith Family plan payments 2 and 3 and the reactivation fee',
+  plan_terms: [
+    'Your payments: $300.00 today (November 7), $100.00 on December 1 and $100.00 on January 1. $500.00 in all.',
+    'Each payment is charged to the card you save, on its date, once the board approves it. You get a receipt each time.',
+    'If a payment is declined, we try your card again over the next two weeks, and you can update your card in the app.',
+    'Your payments need to be up to date by each deadline: 75% paid by May 23 and everything paid by July 1.',
+    "If you're not paid up by a deadline, your membership is canceled and your gate access and keyfob turn off. To come back, you pay what's overdue plus the $50.00 reactivation fee.",
+    'Your gate access and keyfob start once half your dues are paid.',
+    "You can pay off the rest early any time in the app. If you cancel the plan, your membership ends right away and nothing you've paid is refunded.",
+  ].join('\n'),
   club_url:          'https://bishopestates.poolsideapp.com',
 };
 

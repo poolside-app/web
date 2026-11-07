@@ -135,7 +135,7 @@ check('a party, attached to "Party booked"', /cardReceipt\(/.test(partyB) && /at
 check('a donation', /cardReceipt\(/.test(branch("if (kind === 'donation' && tenantId)", "if (kind === 'setup_service'")));
 check('payments with no email of their own get the new "Payment receipt" email', /emailReceipt\(/.test(wh));
 const pp = read('supabase/functions/payment_plans/index.ts');
-check('each plan payment the daily run charges, attached to "Plan payment received"', /issueReceipt\(/.test(block(pp, 'async function sendReceipt', 2600)) && /attachments/.test(block(pp, 'async function sendReceipt', 2600)));
+check('each plan payment the daily run charges, attached to "Plan payment received"', /issueReceipt\(/.test(block(pp, 'async function sendReceipt', 3400)) && /attachments/.test(block(pp, 'async function sendReceipt', 3400)));
 check('…with the card it was charged to', /stripeCardLabel\(/.test(block(pp, 'async function chargeInstallment', 4000)));
 check('a one-tap renewal, attached to its receipt email', /issueReceipt\(/.test(block(pp, 'async function chargeRenewalWithSavedCard', 6000)) && /attachments/.test(block(pp, "templateKey: 'auto_renew_charged'", 500)));
 const apps = read('supabase/functions/applications/index.ts');

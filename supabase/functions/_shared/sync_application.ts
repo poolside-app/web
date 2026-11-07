@@ -100,6 +100,21 @@ export async function loadApplicationForPdf(
     signature_guardian:(app.signature_guardian as string | null) ?? null,
     is_renewal:        app.is_renewal === true,
     membership_year:   (app.membership_year as number | null) ?? null,
+    plan_agreement:    planAgreementForPdf(app.plan_agreement, tenant.timezone),
+  };
+}
+
+// The payment plan agreement a plan family signed at checkout (PLAN.md CL2),
+// with its time in pool time.
+function planAgreementForPdf(raw: unknown, tz?: string): ApplicationForPdf['plan_agreement'] {
+  const a = raw as { lines?: unknown; authorization?: unknown; signature?: unknown; signer?: unknown; signed_at?: unknown } | null;
+  if (!a || !Array.isArray(a.lines)) return null;
+  return {
+    lines: a.lines.map(String),
+    authorization: String(a.authorization ?? ''),
+    signature: typeof a.signature === 'string' ? a.signature : null,
+    signer: typeof a.signer === 'string' ? a.signer : null,
+    signed_at: a.signed_at ? fmtPoolStamp(new Date(String(a.signed_at)), zoneOrDefault(tz)) : null,
   };
 }
 

@@ -142,10 +142,10 @@ async function cardReceipt(sb: ReturnType<typeof createClient>, tenantId: string
     });
   } catch (e) { console.error('receipt (non-fatal):', (e as Error).message); return null; }
 }
-async function sendReceiptEmail(sb: ReturnType<typeof createClient>, r: Record<string, unknown> | null) {
+async function sendReceiptEmail(sb: ReturnType<typeof createClient>, r: Record<string, unknown> | null, templateKey?: string) {
   if (!r) return;
   const { emailReceipt } = await import('../_shared/receipts.ts');
-  await emailReceipt(sb, r);
+  await emailReceipt(sb, r, templateKey);
 }
 
 // A refund or chargeback on anything but a signup (PLAN.md BG3): find what
@@ -534,10 +534,31 @@ Deno.serve(async (req) => {
         }
         await ops.grantAccessIfReady(sb, club, plan, { announce: false });
         await ops.completeIfPaid(sb, club, plan);
-        // A renewal on a plan gets no welcome email: its receipt goes on its own.
-        if (firstReceipt && planApp && md.application_id) {
-          const { data: ren } = await sb.from('applications').select('is_renewal').eq('id', md.application_id).maybeSingle();
-          if (ren?.is_renewal) await sendReceiptEmail(sb, firstReceipt);
+        // A renewal on a plan gets no welcome email: "You're renewed", on a
+        // payment plan, with the plan they signed and payment 1's receipt
+        // (PLAN.md CL3). It used to be the bare receipt, or nothing at $0 today.
+        if (planApp && md.application_id) {
+          const { data: ren } = await sb.from('applications')
+            .select('is_renewal, membership_year, primary_email, family_name, plan_agreement').eq('id', md.application_id).maybeSingle();
+          const to = (ren?.primary_email as string | null) ?? (plan.primary_email as string | null);
+          if (ren?.is_renewal && to) {
+            try {
+              const { renderAndSend } = await import('../_shared/email_template.ts');
+              const { receiptFiles, receiptNo } = await import('../_shared/receipts.ts');
+              const lines = ((ren.plan_agreement as { lines?: string[] } | null)?.lines ?? []);
+              await renderAndSend(sb, {
+                tenantId, templateKey: 'renewal_confirmed_plan', to,
+                variables: {
+                  family_name: String(ren.family_name ?? plan.family_name ?? ''),
+                  season: String(ren.membership_year ?? await ops.planYear(sb, plan)),
+                  amount: firstReceipt ? `$${((Number(firstReceipt.total_cents) || 0) / 100).toFixed(2)}` : '',
+                  plan_terms: lines.join('\n'),
+                  ...(firstReceipt ? { receipt_no: receiptNo(firstReceipt) } : {}),
+                },
+                ...(firstReceipt ? { attachments: await receiptFiles(firstReceipt) } : {}),
+              });
+            } catch (e) { console.error('plan renewal email (non-fatal):', (e as Error).message); }
+          }
         }
       }
 
@@ -551,7 +572,8 @@ Deno.serve(async (req) => {
             ...(kind === 'payment_plan_payoff' ? { plan_fee_cents: 0, card_fee_cents: 0 } : {}),
           }).eq('plan_id', plan.id).in('id', ids).not('status', 'in', '("paid","manual")');
         }
-        if (md.reinstate === '1' && plan.status !== 'active') {
+        const reinstated = md.reinstate === '1' && plan.status !== 'active';
+        if (reinstated) {
           await sb.from('payment_plans').update({
             status: 'active', reactivated_at: now, ended_reason: null, lapsed_at: null, cancelled_at: null,
           }).eq('id', plan.id);
@@ -588,7 +610,8 @@ Deno.serve(async (req) => {
             });
           } catch { /* the payment is recorded either way */ }
         } else {
-          await sendReceiptEmail(sb, receipt);
+          // Back after reinstating: "Welcome back" with the receipt (PLAN.md CL3).
+          await sendReceiptEmail(sb, receipt, reinstated ? 'plan_reinstated' : undefined);
         }
       }
     }
