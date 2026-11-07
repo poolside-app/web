@@ -3,7 +3,8 @@
 // =============================================================================
 //   node scripts/demo_video/homescreen.mjs [iphone|android|both]   (about 2 minutes each)
 // Writes handouts/poolside-home-screen-iphone.mp4 and -android.mp4 (1920×1080),
-// a -small.mp4 of each (1280×720, for texts and email) and their subtitles.
+// a -small.mp4 of each (1280×720, for texts and email) and their subtitles, and
+// videos/add-app-iphone.mp4 / -android.mp4, the ~6 MB copies the app plays (PLAN.md CA4).
 // Env: as promo.mjs (DEMO_VOICE, DEMO_RATE, DEMO_MUSIC, DEMO_WORK, DEMO_ENCODER).
 //
 // Doug 11/6: "a video describing and walking through how to add the app to
@@ -292,6 +293,10 @@ async function film(phone) {
   console.log(String(execFileSync(ENC, [...args, OUT, `${WORK}/music.json`], { env: { ...process.env, DEMO_BITRATE: '6000000' } })).trim());
   console.log(String(execFileSync(ENC, [...args, OUT.replace(/\.mp4$/, '-small.mp4'), `${WORK}/music.json`],
     { env: { ...process.env, DEMO_SIZE: '720', DEMO_BITRATE: '1800000' } })).trim());
+  // The copy the app plays under its written steps (PLAN.md CA4): on the site, about 6 MB for cell data.
+  // If its length changes, change the seconds in INSTALL_VIDEO in js/pwa.js (test_demo_video checks).
+  console.log(String(execFileSync(ENC, [...args, new URL(`../../videos/add-app-${phone}.mp4`, import.meta.url).pathname, `${WORK}/music.json`],
+    { env: { ...process.env, DEMO_SIZE: '720', DEMO_BITRATE: '900000' } })).trim());
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

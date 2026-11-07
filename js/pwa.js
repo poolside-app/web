@@ -94,6 +94,45 @@
     'android': '<div class="pwa-android-slot"></div><ol class="pwa-steps"><li>Or tap Chrome\u2019s <b>&#8942;</b> menu (top-right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>).</li></ol>',
   };
 
+  // A short video under the written steps, for anyone who'd rather watch
+  // (PLAN.md CA4). Hosted next to the pages; written by
+  // scripts/demo_video/homescreen.mjs. Chrome on an iPhone gets the iPhone
+  // one: its steps already send people to Safari.
+  const INSTALL_VIDEO = {
+    'ios-safari': { src: '/videos/add-app-iphone.mp4', secs: 48 },
+    'ios-chrome': { src: '/videos/add-app-iphone.mp4', secs: 48 },
+    'android':    { src: '/videos/add-app-android.mp4', secs: 42 },
+  };
+
+  function installVideoHtml(env) {
+    const v = INSTALL_VIDEO[env];
+    if (!v) return '';
+    ensureInstallCss();
+    return '<div class="pwa-vbox"><button type="button" class="pwa-watch" data-src="' + v.src + '">' +
+      '&#9654;&#xFE0E; Watch a ' + v.secs + '-second video</button></div>';
+  }
+
+  // Tapping plays it right there. No playsinline, so an iPhone plays it full
+  // screen (it's a wide video); Android plays it in the card with a full-screen button.
+  function wireInstallVideo(root) {
+    if (!root) return;
+    root.querySelectorAll('.pwa-watch').forEach(function (btn) {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', function () {
+        const box = btn.parentNode;
+        const v = document.createElement('video');
+        v.className = 'pwa-vid';
+        v.controls = true;
+        v.preload = 'auto';
+        v.setAttribute('src', btn.dataset.src);
+        box.replaceChild(v, btn);
+        const p = v.play();
+        if (p && p.catch) p.catch(function () { /* they can press play */ });
+      });
+    });
+  }
+
   const INSTALL_CSS = `
     .pwa-install{margin-top:18px;padding:16px 18px;background:#f7f3eb;border-radius:14px}
     .pwa-install h3{margin:0 0 4px;font:600 16px Georgia,serif;color:#0a3b5c}
@@ -105,6 +144,10 @@
     .pwa-steps{margin:0;padding-left:20px;font-size:14px;line-height:1.7;color:#0f172a}
     .pwa-ic{display:inline-block;padding:0 5px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px}
     .pwa-hint{margin:8px 0 0;font-size:12.5px;color:#64748b}
+    .pwa-vbox{margin-top:10px}
+    button.pwa-watch{padding:0;border:0;background:none;font:600 14px Inter,system-ui,sans-serif;color:#0a3b5c;
+      text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+    .pwa-vid{display:block;width:100%;border-radius:10px;background:#0a3b5c}
     .pwa-install button.pwa-install-btn{margin:0 0 8px;padding:11px 20px;border:0;border-radius:10px;
       background:#0a3b5c;color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer}
   `;
@@ -153,7 +196,8 @@
         tabs.map(function (t) {
           return '<button type="button" class="pwa-btab' + (t[0] === env ? ' on' : '') + '" data-b="' + t[0] + '">' + t[1] + '</button>';
         }).join('') +
-      '</div><div class="pwa-instr">' + (INSTALL_INSTR[env] || INSTALL_INSTR['ios-safari']) + '</div></div>';
+      '</div><div class="pwa-instr">' + (INSTALL_INSTR[env] || INSTALL_INSTR['ios-safari']) + '</div>' +
+      '<div class="pwa-video">' + installVideoHtml(INSTALL_INSTR[env] ? env : 'ios-safari') + '</div></div>';
 
     // Detection is a guess, so the tabs are the escape hatch: a member whose
     // steps do not match what they see can switch and still get there.
@@ -162,9 +206,12 @@
         host.querySelectorAll('.pwa-btab').forEach(function (x) { x.classList.remove('on'); });
         b.classList.add('on');
         host.querySelector('.pwa-instr').innerHTML = INSTALL_INSTR[b.dataset.b];
+        host.querySelector('.pwa-video').innerHTML = installVideoHtml(b.dataset.b);
+        wireInstallVideo(host);
         mountAndroidBtn(host);
       });
     });
+    wireInstallVideo(host);
     mountAndroidBtn(host);
     return true;
   }
@@ -192,6 +239,8 @@
     detectPlatform,
     detectInstallEnv,
     renderInstallGuide,
+    installVideoHtml,
+    wireInstallVideo,
     canPromptInstall: () => !!deferredInstallPrompt,
     promptInstall: showAndroidInstall,
 

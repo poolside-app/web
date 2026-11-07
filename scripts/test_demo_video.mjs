@@ -2,7 +2,7 @@
 // Offline: every Supabase call is answered by scripts/demo_video/data.mjs.
 // A screen that makes a call the demo doesn't answer, or throws, fails here
 // before it spoils a recording.   node scripts/test_demo_video.mjs
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { launch, attach, FAMILY, BOARD, ALEX } from './demo_video/harness.mjs';
 
 let passed = 0, failed = 0;
@@ -98,6 +98,53 @@ console.log('CA · the "add the app" videos');
   const taps = [...src.matchAll(/ui\(h, '([^']+)'/g)].map(m => m[1]);
   const missing = taps.filter(sel => !stage.includes(`id="${sel.replace(/^#/, '')}"`));
   check('every button the videos tap is drawn on the stage', taps.length >= 10 && !missing.length, missing.join(', ') || String(taps.length));
+
+  // CA4 (Doug 11/6): "I still want the directinos so if epople know how to do it... but if they dont they
+  // can refer to the video". Hosted next to the pages; a link under the written steps plays the phone's one.
+  const mp4Secs = b => { const i = b.indexOf('mvhd'); if (i < 0) return 0; const v1 = b[i + 4] === 1, o = i + (v1 ? 24 : 16); return (v1 ? Number(b.readBigUInt64BE(o + 4)) : b.readUInt32BE(o + 4)) / b.readUInt32BE(o); };
+  const secs = {};
+  for (const phone of ['iphone', 'android']) {
+    const url = new URL(`../videos/add-app-${phone}.mp4`, import.meta.url), b = existsSync(url) ? readFileSync(url) : null;
+    secs[phone] = b ? mp4Secs(b) : 0;
+    check(`CA4: the ${phone} video is on the site, under 8 MB, ready to stream (its index first)`, !!b && b.length > 1e6 && b.length < 8e6 && b.indexOf('moov') < b.indexOf('mdat'),
+      b ? `${(b.length / 1e6).toFixed(1)} MB` : `missing videos/add-app-${phone}.mp4`);
+  }
+  check('CA4: homescreen.mjs writes them there', /videos\/add-app-/.test(src));
+  const routes = (JSON.parse(read('../vercel.json') || '{}').rewrites || []).map(r => r.source);
+  check('CA4: no rewrite in vercel.json catches /videos/', !routes.some(r => new RegExp('^' + r.replace(/\(\.\*\)|:\w+\*/g, '.*') + '$').test('/videos/add-app-iphone.mp4')), routes.join(' '));
+
+  const b2 = await launch(), page = await b2.newPage();
+  await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1');
+  await page.setViewport({ width: 390, height: 844 });
+  const log = await attach(page, { state: {} });
+  await page.goto(FAMILY + '/m/', { waitUntil: 'networkidle0', timeout: 45000 });
+  await new Promise(r => setTimeout(r, 800));
+  const card = () => page.evaluate(() => {
+    const g = document.getElementById('install-guide'); if (!g) return null;
+    const w = g.querySelector('.pwa-watch'), v = g.querySelector('video');
+    return { steps: (g.querySelector('.pwa-steps') || {}).textContent || '', watch: w ? w.textContent : '', src: w ? w.dataset.src : v ? v.getAttribute('src') : '',
+      video: !!v, playsinline: v ? v.hasAttribute('playsinline') : null, controls: v ? v.controls : null };
+  });
+  const tab = b => page.evaluate(k => { const t = document.querySelector(`#install-guide .pwa-btab[data-b="${k}"]`); if (t) t.click(); }, b);
+  const label = c => +(((c && c.watch) || '').match(/Watch a (\d+)-second video/) || [])[1] || 0;
+  let c = await card();
+  check('CA4: the member card keeps the written steps and offers the iPhone video under them', !!c && /Add to Home Screen/.test(c.steps) && c.src === '/videos/add-app-iphone.mp4', JSON.stringify(c));
+  check('CA4: its label says how long it is', label(c) > 0 && Math.abs(label(c) - secs.iphone) <= 1, `${label(c)} vs ${secs.iphone.toFixed(1)}`);
+  await tab('android'); c = await card();
+  check('CA4: the Android tab switches to the Android video', !!c && /Add to Home screen/.test(c.steps) && c.src === '/videos/add-app-android.mp4' && Math.abs(label(c) - secs.android) <= 1, JSON.stringify(c));
+  await tab('ios-chrome'); c = await card();
+  check('CA4: Chrome on an iPhone gets the iPhone video (its steps send people to Safari)', !!c && c.src === '/videos/add-app-iphone.mp4', JSON.stringify(c));
+  await tab('ios-safari');
+  await page.evaluate(() => { const w = document.querySelector('#install-guide .pwa-watch'); if (w) w.click(); });
+  await new Promise(r => setTimeout(r, 300)); c = await card();
+  check('CA4: tapping it plays it right in the card, with controls (full screen on an iPhone), the steps still above', !!c && c.video && c.controls === true && c.playsinline === false
+    && c.src === '/videos/add-app-iphone.mp4' && /Add to Home Screen/.test(c.steps), JSON.stringify(c));
+  // The demo data never answered the phone's sign-in hand-off; the video doesn't need it.
+  const problems = [...new Set(log.unknown)].filter(u => u !== 'family member_auth:handoff').map(u => 'unanswered ' + u).concat(log.errors);
+  check('CA4: no page errors', !problems.length, problems.join('; '));
+  await b2.close();
+  check('CA4: the board\'s activation page shows the same video under its steps, switching with its tabs',
+    /Pwa\.installVideoHtml\(INSTALL_ENV\)/.test(act) && /Pwa\.installVideoHtml\(key\)/.test(act) && /Pwa\.wireInstallVideo\(/.test(act));
 }
 
 const enc = readFileSync(new URL('./demo_video/encode.swift', import.meta.url), 'utf8');

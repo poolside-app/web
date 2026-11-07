@@ -141,7 +141,8 @@ function installCardHtml() {
   return `<div class="install"><h2>📲 Put it on your home screen</h2>
     <p style="font-size:12.5px;color:var(--muted);margin:2px 0 10px">Tap your browser for the steps:</p>
     <div class="bpick">${tabHtml}</div>
-    <div id="binstr">${INSTALL_INSTR[INSTALL_ENV] || INSTALL_INSTR['ios-safari']}</div></div>`;
+    <div id="binstr">${INSTALL_INSTR[INSTALL_ENV] || INSTALL_INSTR['ios-safari']}</div>
+    <div id="bvideo">${window.Pwa ? window.Pwa.installVideoHtml(INSTALL_ENV) : ''}</div></div>`;
 }
 
 // Android/desktop Chrome can offer a real one-tap install via beforeinstallprompt.
@@ -158,9 +159,13 @@ function wireInstallCard() {
     const key = b.dataset.b;
     const box = document.getElementById('binstr');
     if (box) box.innerHTML = INSTALL_INSTR[key] || '';
+    // The same short video as the member app, under the steps (PLAN.md CA4).
+    const vb = document.getElementById('bvideo');
+    if (vb && window.Pwa) { vb.innerHTML = window.Pwa.installVideoHtml(key); window.Pwa.wireInstallVideo(vb); }
     document.querySelectorAll('.btab').forEach(x => x.classList.toggle('on', x === b));
     if (key === 'android') mountAndroidInstallBtn();
   }));
+  if (window.Pwa) window.Pwa.wireInstallVideo(document.getElementById('bvideo'));
   // Mount the one-tap button now (if Android/desktop tab is active)…
   mountAndroidInstallBtn();
   // …and again if Chrome fires the install prompt a moment late.
