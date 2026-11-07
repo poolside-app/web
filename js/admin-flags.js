@@ -16,11 +16,11 @@
 (function () {
   'use strict';
 
-  // A look-only preview of a board member's board (PLAN.md CC, js/board-view.js)
-  // stays on their home: any other board page opened in its tab goes back
-  // there, showing the screens they can open.
+  // A look-only preview (PLAN.md CC, js/board-view.js, first on every board
+  // page): a page without it, opened in the preview's tab, would use the
+  // President's own sign-in, so it goes back to the preview's home instead.
   try {
-    if (sessionStorage.getItem('poolside_view_token') && !/^\/club\/admin\/(index\.html)?$/.test(location.pathname)) {
+    if (sessionStorage.getItem('poolside_view_token') && !window.BoardView) {
       location.replace('/club/admin/#screens');
       return;
     }

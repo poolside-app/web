@@ -41,6 +41,7 @@ import { taskNotice } from '../_shared/task_routing.ts';
 import { loadHome } from '../_shared/board_home.ts';
 import { zoneOrDefault } from '../_shared/pool_time.ts';
 import { LOOK_ONLY, asView, viewAllowed } from '../_shared/board_view.ts';
+import { positionPreview } from '../_shared/position_preview.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -124,13 +125,22 @@ Deno.serve(async (req) => {
   const TID = payload.tid;
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
-  const caller = await getCaller(sb, payload);
+  let caller = await getCaller(sb, payload);
   // Who gets each board-position alert right now (PLAN.md K3). Loaded once
   // per call; tasks are routed when they're shown, so a reassigned position
   // takes its open tasks with it.
-  const board = await loadBoard(sb, TID);
+  let board = await loadBoard(sb, TID);
+  // A position's look-only preview (PLAN.md CC5): as if someone held it, plus
+  // the to-dos assigned to whoever holds it now.
+  let sees: string[] = [];
+  if (view?.pos) {
+    const pv = positionPreview(board, view.pos);
+    if (!pv) return jsonResponse({ ok: false, error: 'Position not found' }, 404);
+    board = pv.board; caller = pv.caller; sees = pv.sees;
+  }
   const recipientsOf = (notice: string) => noticeRecipients(notice, board.positions, board.holders, board.logins);
-  const visible = (t: Parameters<typeof taskVisibleTo>[0]) => taskVisibleTo(t, caller, recipientsOf);
+  const visible = (t: Parameters<typeof taskVisibleTo>[0]) => taskVisibleTo(t, caller, recipientsOf)
+    || (!!(t as { assigned_admin_id?: string | null }).assigned_admin_id && sees.includes((t as { assigned_admin_id: string }).assigned_admin_id));
 
   // The open tasks this person sees, and what the dashboard shows with them.
   async function listPayload() {

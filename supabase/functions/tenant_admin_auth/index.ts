@@ -31,7 +31,8 @@ import { isLocked, afterFailure, lockedMessage, lockedEmail, escapeLike, MAX_TRI
 import { sendEmail, emailShell } from '../_shared/send_email.ts';
 import { changePlan, stripeCaller } from '../_shared/poolside_plans.ts';
 import { isTestRecipient } from '../_shared/test_recipients.ts';
-import { LOOK_ONLY, asView, viewAllowed, viewClaims, canPreview } from '../_shared/board_view.ts';
+import { LOOK_ONLY, asView, viewAllowed, viewClaims, canPreview, canPreviewPosition, positionUser } from '../_shared/board_view.ts';
+import { loginFromPositions } from '../_shared/positions.ts';
 
 // Shown when neither a text nor an email could go out (PLAN.md BG1).
 const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
@@ -203,8 +204,8 @@ type TenantAdminPayload = {
   sub: string; kind: 'tenant_admin'; tid: string; slug: string; exp: number;
   impersonated_by?: string; synthetic?: boolean;
   role_template?: string; scopes?: string[]; is_super?: boolean;
-  // A look-only preview (PLAN.md CC): who's looking.
-  viewing_by?: string; viewing_by_name?: string;
+  // A look-only preview (PLAN.md CC): who's looking, and the position when it's one (CC5).
+  viewing_by?: string; viewing_by_name?: string; viewing_pos?: string;
 };
 
 // Predefined role templates. The `owner` template is special — it skips
@@ -663,7 +664,7 @@ Deno.serve(async (req) => {
     const view = asView(await verifyClaims(token));
     if (view) {
       if (!viewAllowed('tenant_admin_auth', action)) return jsonResponse({ ok: false, error: LOOK_ONLY, look_only: true }, 403);
-      payload = { sub: view.sub, kind: 'tenant_admin', tid: view.tid, slug: view.slug, exp: view.exp, viewing_by: view.by, viewing_by_name: view.by_name };
+      payload = { sub: view.sub, kind: 'tenant_admin', tid: view.tid, slug: view.slug, exp: view.exp, viewing_by: view.by, viewing_by_name: view.by_name, viewing_pos: view.pos };
     }
   }
   if (!payload) return jsonResponse({ ok: false, error: 'Invalid or expired session' }, 401);
@@ -768,6 +769,17 @@ Deno.serve(async (req) => {
         },
       });
     }
+    // A position's look-only preview (PLAN.md CC5) has nobody in it: `me` is
+    // the position, with the screens anyone holding it gets.
+    if (payload.viewing_pos) {
+      const { data: pos } = await sb.from('board_positions').select('id, title, scopes, notices, full_access, sort')
+        .eq('id', payload.viewing_pos).eq('tenant_id', payload.tid).maybeSingle();
+      if (!pos) return jsonResponse({ ok: false, error: 'Position not found' }, 401);
+      return jsonResponse({
+        ok: true, tenant: { ...tenant, features, branding }, usage, renewed_token: null,
+        user: positionUser(pos, payload.viewing_by_name ?? null, loginFromPositions([pos as never])),
+      });
+    }
     if (!user || !user.active) return jsonResponse({ ok: false, error: 'User not found' }, 401);
 
     // ── Sliding renewal ─────────────────────────────────────────────────
@@ -823,6 +835,20 @@ Deno.serve(async (req) => {
   // (_shared/board_view.ts). Nothing is recorded as theirs.
   if (action === 'view_as') {
     const isOwner = await requireOwner(sb, payload as never);
+    // A position, with nobody in it (PLAN.md CC5).
+    if (body.position_id) {
+      const { data: position } = await sb.from('board_positions').select('id, tenant_id, title')
+        .eq('id', String(body.position_id)).eq('tenant_id', payload.tid).maybeSingle();
+      const whyNot = canPreviewPosition({ tid: payload.tid, isOwner }, position);
+      if (whyNot) return jsonResponse({ ok: false, error: whyNot }, isOwner ? 400 : 403);
+      const { data: me } = await sb.from('admin_users').select('display_name, email').eq('id', payload.sub).maybeSingle();
+      const posClaims = viewClaims({
+        position: position!.id, tid: payload.tid, slug: payload.slug, by: payload.sub,
+        byName: me?.display_name || me?.email || 'The President', nowSec: Math.floor(Date.now() / 1000),
+      });
+      const posTok = await create({ alg: 'HS256', typ: 'JWT' }, posClaims as unknown as Record<string, unknown>, await getJwtKey());
+      return jsonResponse({ ok: true, token: posTok, name: position!.title });
+    }
     const { data: target } = await sb.from('admin_users')
       .select('id, tenant_id, active, role_template, display_name, email')
       .eq('id', String(body.admin_id ?? '')).eq('tenant_id', payload.tid).maybeSingle();

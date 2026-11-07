@@ -33,6 +33,8 @@ import { HELP_TOPICS, topicOwnerId } from '../_shared/task_routing.ts';
 import { TOPIC_LABELS, isTopic, helpLink, replyText, canSeeHelpRequest, snippet, type Topic } from '../_shared/help.ts';
 import { openHelpTask, closeHelpTasks } from '../_shared/help_tasks.ts';
 import { sendEmail, emailShell, escHtml } from '../_shared/send_email.ts';
+import { LOOK_ONLY, NIL, asView, viewAllowed } from '../_shared/board_view.ts';
+import { positionPreview } from '../_shared/position_preview.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,6 +60,18 @@ async function verifyToken(token: string): Promise<Payload | null> {
     const p = await verify(token, key) as Record<string, unknown>;
     if (!p.sub || !p.tid || (p.kind !== 'member' && p.kind !== 'tenant_admin')) return null;
     return p as unknown as Payload;
+  } catch { return null; }
+}
+
+// Any sign-in signed with our key, whatever its kind (for a preview's, PLAN.md CC).
+async function verifyClaims(token: string): Promise<Record<string, unknown> | null> {
+  if (!JWT_SECRET || !token) return null;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+    );
+    return await verify(token, key) as Record<string, unknown>;
   } catch { return null; }
 }
 
@@ -140,7 +154,15 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
-  const payload = await verifyToken(authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '');
+  const tokRaw = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
+  let payload = await verifyToken(tokRaw);
+  // A look-only preview of a board member's or a position's board (PLAN.md
+  // CC5): Member help's reads only, as them.
+  const view = !payload && tokRaw ? asView(await verifyClaims(tokRaw)) : null;
+  if (view) {
+    if (!viewAllowed('help_requests', action)) return j({ ok: false, error: LOOK_ONLY, look_only: true }, 403);
+    payload = { sub: view.sub, kind: 'tenant_admin', tid: view.tid };
+  }
   if (!payload) return j({ ok: false, error: 'Not authenticated' }, 401);
   const TID = payload.tid;
   const { data: tenant } = await sb.from('tenants').select('id, slug, display_name, plan').eq('id', TID).maybeSingle();
@@ -240,7 +262,19 @@ Deno.serve(async (req) => {
   }
 
   // ═══ Board side ══════════════════════════════════════════════════════
-  const me: BoardCaller | null = await boardCaller(sb, payload.sub, TID);
+  // A position's preview (PLAN.md CC5) has nobody in it: it sees what's
+  // assigned to whoever holds the position now, and the topics it gets.
+  let me: BoardCaller | null;
+  let sees: string[] | null = null, posNotices: string[] | null = null;
+  if (view?.pos) {
+    const { loadBoard } = await import('../_shared/positions_db.ts');
+    const pv = positionPreview(await loadBoard(sb, TID), view.pos);
+    if (!pv) return j({ ok: false, error: 'Position not found' }, 404);
+    me = { id: NIL, isOwner: pv.caller.isOwner, name: pv.position.title };
+    sees = pv.sees; posNotices = (pv.position.notices ?? []) as string[];
+  } else {
+    me = await boardCaller(sb, payload.sub, TID);
+  }
   if (!me) return j({ ok: false, error: 'Member help is for board members only.' }, 403);
 
   // Board members for names, hand-offs and the topic picker.
@@ -256,7 +290,7 @@ Deno.serve(async (req) => {
   const visible = async (id: string) => {
     if (!id) return null;
     const { data } = await sb.from('help_requests').select(REQ_FIELDS).eq('id', id).eq('tenant_id', TID).maybeSingle();
-    return data && canSeeHelpRequest(data, me) ? data : null;
+    return data && (canSeeHelpRequest(data, me) || (!!sees && sees.includes(String(data.assigned_admin_id ?? '')))) ? data : null;
   };
   const note = (requestId: string, text: string) => sb.from('help_messages').insert({
     tenant_id: TID, request_id: requestId, author_kind: 'note', author_admin_id: me.id, body: text,
@@ -285,7 +319,7 @@ Deno.serve(async (req) => {
       const pos = b.positions.find(p => (p.notices ?? []).includes(HELP_NOTICE[t]));
       topics[t] = who ? { admin_id: who.id, name: who.name, position: pos?.title ?? null } : null;
     }
-    const mine = [...HELP_TOPICS, 'other'].filter(t => topics[t]?.admin_id === me.id);
+    const mine = [...HELP_TOPICS, 'other'].filter(t => topics[t]?.admin_id === me.id || (!!posNotices && posNotices.includes(HELP_NOTICE[t as keyof typeof HELP_NOTICE])));
     return j({ ok: true, topics, labels: TOPIC_LABELS, board, mine, is_owner: me.isOwner });
   }
 
@@ -296,7 +330,7 @@ Deno.serve(async (req) => {
   if (action === 'list') {
     const view = String(body.view ?? 'open');
     let q = sb.from('help_requests').select(REQ_FIELDS).eq('tenant_id', TID);
-    if (!me.isOwner) q = q.eq('assigned_admin_id', me.id);
+    if (!me.isOwner) q = sees ? q.in('assigned_admin_id', sees.length ? sees : [NIL]) : q.eq('assigned_admin_id', me.id);
     if (view === 'open') q = q.neq('status', 'solved');
     else if (view === 'solved') q = q.eq('status', 'solved');
     const { data, error } = await q.order('updated_at', { ascending: false }).limit(100);

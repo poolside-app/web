@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/js/board-view.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="/js/phone-fit.js"></script>
@@ -275,6 +276,7 @@ function render() {
       ${p.purpose ? `<div class="pos-purpose">${escapeHtml(p.purpose)}</div>` : ''}
       ${chips ? `<div class="chips">${chips}</div>` : ''}
       ${p.description ? `<details class="job"><summary>Job description</summary><div class="job-text">${jobHtml(p.description)}</div></details>` : ''}
+      ${owner ? `<div style="margin-top:10px"><button class="btn btn-sm" data-see-pos="${p.id}" onclick="seePositionView('${p.id}')">See this position's view</button></div>` : ''}
     </div>`;
   }).join('') || '<div class="card">No positions yet.</div>';
 
@@ -470,20 +472,22 @@ document.getElementById('person-save').addEventListener('click', async () => {
 });
 
 let undoTimer = null;
-// Their board home as they see it, look only (PLAN.md CC): a one-hour
-// look-only sign-in, opened in this tab by js/board-view.js. Close comes back here.
-async function seeView(id) {
-  const btn = document.querySelector(`[data-see="${id}"]`);
+// Their board as they see it, look only (PLAN.md CC): a one-hour look-only
+// sign-in, opened in this tab by js/board-view.js. A position's needs nobody
+// in it (CC5). Close comes back here.
+async function openView(extra, btn, label) {
   if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
   let r = null;
-  try { r = await admin('view_as', { admin_id: id }); } catch (_) { r = null; }
+  try { r = await admin('view_as', extra); } catch (_) { r = null; }
   if (!r || !r.ok || !r.token) {
-    if (btn) { btn.disabled = false; btn.textContent = 'See their view'; }
-    alert((r && r.error) || 'Could not open their view. Try again.');
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    alert((r && r.error) || 'Could not open the view. Try again.');
     return;
   }
   location.href = '/club/admin/#view=' + encodeURIComponent(r.token);
 }
+function seeView(id) { openView({ admin_id: id }, document.querySelector(`[data-see="${id}"]`), 'See their view'); }
+function seePositionView(id) { openView({ position_id: id }, document.querySelector(`[data-see-pos="${id}"]`), 'See this position\'s view'); }
 
 async function removePerson(id, isStaff) {
   const m = (isStaff ? B.staff : B.members).find(x => x.id === id);
