@@ -352,7 +352,11 @@ Deno.serve(async (req) => {
       .eq('id', String(body.request_id ?? '')).eq('tenant_id', TID).maybeSingle();
     if (!req) return jsonResponse({ ok: false, error: 'That question isn\'t there any more.' }, 404);
     const { canSeeHelpRequest } = await import('../_shared/help.ts');
-    if (!caller.isOwner && !canSeeHelpRequest(req, { id: caller.id ?? '', isOwner: false })) return jsonResponse({ ok: false, error: 'Only who it went to, or the President, can post it.' }, 403);
+    // Whoever's handling it, or everyone who gets its topic (PLAN.md CE).
+    const { loadBoard } = await import('../_shared/positions_db.ts');
+    const { topicHandlers } = await import('../_shared/task_routing.ts');
+    const getsTopic = topicHandlers(String(req.topic) as never, await loadBoard(sb as never, TID));
+    if (!caller.isOwner && !canSeeHelpRequest(req, { id: caller.id ?? '', isOwner: false }, getsTopic)) return jsonResponse({ ok: false, error: 'Only the board members it went to, or the President, can post it.' }, 403);
     const { data: msgs } = await sb.from('help_messages').select('body, photo_path, author_kind, created_at')
       .eq('request_id', req.id).eq('author_kind', 'member').order('created_at', { ascending: true });
     const first = (msgs ?? [])[0];

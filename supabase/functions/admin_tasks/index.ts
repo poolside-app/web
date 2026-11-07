@@ -152,10 +152,15 @@ Deno.serve(async (req) => {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     const tasks = (data ?? []).filter(visible);
-    // "For the Treasurer": the position a board-position alert belongs to.
+    // "For the Treasurer": the position a board-position alert belongs to;
+    // their own when they hold one with it ticked (PLAN.md CE3: several
+    // positions can share a member-help topic).
+    const heldIds = new Set(board.holders.filter(h => h.admin_user_id === caller.id).map(h => h.position_id));
     for (const t of tasks as Record<string, unknown>[]) {
       const n = taskNotice(t as never);
-      if (n && !t.assigned_admin_id) t.for_position = board.positions.find(p => (p.notices ?? []).includes(n))?.title ?? 'President';
+      if (!n || t.assigned_admin_id) continue;
+      const withIt = board.positions.filter(p => (p.notices ?? []).includes(n));
+      t.for_position = (withIt.find(p => heldIds.has(p.id)) ?? withIt[0])?.title ?? 'President';
     }
     // Name who each assigned task is for ("For you" / "For Pat").
     const ids = [...new Set(tasks.map(t => t.assigned_admin_id).filter(Boolean))];
@@ -178,7 +183,6 @@ Deno.serve(async (req) => {
       .map(t => TOPIC_LABELS[t]);
     // "Your job" (PLAN.md K4): the positions this person holds, with their
     // job descriptions, and the club's spending rule.
-    const heldIds = new Set(board.holders.filter(h => h.admin_user_id === caller.id).map(h => h.position_id));
     const held = board.positions.filter(p => heldIds.has(p.id));
     const my_positions = held.map(p => ({ title: p.title, purpose: p.purpose ?? null, description: p.description ?? null }));
     const { data: st } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();

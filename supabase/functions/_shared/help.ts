@@ -40,8 +40,11 @@ export function replyText(clubName: string, fromName: string, body: string, link
   return head + fit + tail;
 }
 
-export function canSeeHelpRequest(req: { assigned_admin_id?: string | null }, caller: { id: string; isOwner: boolean }): boolean {
-  return caller.isOwner || (!!req.assigned_admin_id && req.assigned_admin_id === caller.id);
+/** Who can see a member's question: full access, whoever's handling it, and
+ *  (PLAN.md CE, Doug 11/6: "Multiple people should be able to see the member
+ *  help questions") everyone who gets its topic (`getsTopic`, topicHandlers). */
+export function canSeeHelpRequest(req: { assigned_admin_id?: string | null }, caller: { id: string; isOwner: boolean }, getsTopic: string[] = []): boolean {
+  return caller.isOwner || (!!req.assigned_admin_id && req.assigned_admin_id === caller.id) || getsTopic.includes(caller.id);
 }
 
 export const snippet = (s: string, n: number) => {

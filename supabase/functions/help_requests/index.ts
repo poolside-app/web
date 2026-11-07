@@ -29,9 +29,11 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, isBoardMember, type BoardCaller } from '../_shared/board.ts';
-import { HELP_TOPICS, topicOwnerId } from '../_shared/task_routing.ts';
+import { HELP_TOPICS, topicHandlers, myTopics } from '../_shared/task_routing.ts';
+import { HELP_NOTICE } from '../_shared/positions.ts';
+import { loadBoard } from '../_shared/positions_db.ts';
 import { TOPIC_LABELS, isTopic, helpLink, replyText, canSeeHelpRequest, snippet, type Topic } from '../_shared/help.ts';
-import { openHelpTask, closeHelpTasks } from '../_shared/help_tasks.ts';
+import { openHelpTask, closeHelpTasks, claimHelpTask } from '../_shared/help_tasks.ts';
 import { sendEmail, emailShell, escHtml } from '../_shared/send_email.ts';
 import { LOOK_ONLY, NIL, asView, viewAllowed } from '../_shared/board_view.ts';
 import { positionPreview } from '../_shared/position_preview.ts';
@@ -202,9 +204,10 @@ Deno.serve(async (req) => {
       if (photo.error) return j({ ok: false, error: photo.error }, 400);
       // Whoever holds the board position that gets this topic (PLAN.md K3),
       // else the President.
-      const assigned = await topicOwnerId(sb, TID, topic);
+      // Not handed to one person: everyone who gets the topic sees it until
+      // one of them answers (PLAN.md CE).
       const { data: r, error } = await sb.from('help_requests').insert({
-        id, tenant_id: TID, household_id: me.household_id, member_id: me.id, topic, assigned_admin_id: assigned,
+        id, tenant_id: TID, household_id: me.household_id, member_id: me.id, topic, assigned_admin_id: null,
       }).select(REQ_FIELDS).single();
       if (error) return j({ ok: false, error: error.message }, 500);
       await sb.from('help_messages').insert({
@@ -262,20 +265,24 @@ Deno.serve(async (req) => {
   }
 
   // ═══ Board side ══════════════════════════════════════════════════════
-  // A position's preview (PLAN.md CC5) has nobody in it: it sees what's
-  // assigned to whoever holds the position now, and the topics it gets.
+  // Who gets each topic: every holder of a position with it ticked (PLAN.md
+  // CE). A position's preview (CC5) has nobody in it: worked out as if
+  // someone held it, plus what's handed to whoever holds it now.
+  let routing = await loadBoard(sb as never, TID);
   let me: BoardCaller | null;
-  let sees: string[] | null = null, posNotices: string[] | null = null;
+  let sees: string[] | null = null;
   if (view?.pos) {
-    const { loadBoard } = await import('../_shared/positions_db.ts');
-    const pv = positionPreview(await loadBoard(sb, TID), view.pos);
+    const pv = positionPreview(routing, view.pos);
     if (!pv) return j({ ok: false, error: 'Position not found' }, 404);
+    routing = pv.board;
     me = { id: NIL, isOwner: pv.caller.isOwner, name: pv.position.title };
-    sees = pv.sees; posNotices = (pv.position.notices ?? []) as string[];
+    sees = pv.sees;
   } else {
     me = await boardCaller(sb, payload.sub, TID);
   }
   if (!me) return j({ ok: false, error: 'Member help is for board members only.' }, 403);
+  const handlersOf = (topic: unknown) => topicHandlers(String(topic) as never, routing);
+  const mineTopics = myTopics(me.id, routing);
 
   // Board members for names, hand-offs and the topic picker.
   const { data: admins } = await sb.from('admin_users')
@@ -290,7 +297,7 @@ Deno.serve(async (req) => {
   const visible = async (id: string) => {
     if (!id) return null;
     const { data } = await sb.from('help_requests').select(REQ_FIELDS).eq('id', id).eq('tenant_id', TID).maybeSingle();
-    return data && (canSeeHelpRequest(data, me) || (!!sees && sees.includes(String(data.assigned_admin_id ?? '')))) ? data : null;
+    return data && (canSeeHelpRequest(data, me, handlersOf(data.topic)) || (!!sees && sees.includes(String(data.assigned_admin_id ?? '')))) ? data : null;
   };
   const note = (requestId: string, text: string) => sb.from('help_messages').insert({
     tenant_id: TID, request_id: requestId, author_kind: 'note', author_admin_id: me.id, body: text,
@@ -309,18 +316,20 @@ Deno.serve(async (req) => {
   // Who handles each topic: whoever holds the board position that gets it.
   // Set on the Board page (PLAN.md K3); this is read-only.
   if (action === 'topics') {
-    const { loadBoard } = await import('../_shared/positions_db.ts');
-    const { noticeRecipients, HELP_NOTICE } = await import('../_shared/positions.ts');
-    const b = await loadBoard(sb, TID);
+    // Everyone who gets each topic (PLAN.md CE), and "You handle" from the
+    // same rule, so the two can't disagree.
+    const handlers: Record<string, Array<{ admin_id: string; name: string; position: string | null; preview?: boolean }>> = {};
     const topics: Record<string, { admin_id: string; name: string; position: string | null } | null> = {};
     for (const t of [...HELP_TOPICS, 'other'] as const) {
-      const id = noticeRecipients(HELP_NOTICE[t], b.positions, b.holders, b.logins)[0];
-      const who = id ? board.find(x => x.id === id) : undefined;
-      const pos = b.positions.find(p => (p.notices ?? []).includes(HELP_NOTICE[t]));
-      topics[t] = who ? { admin_id: who.id, name: who.name, position: pos?.title ?? null } : null;
+      handlers[t] = topicHandlers(t, routing).map(id => {
+        const pos = routing.positions.find(p => (p.notices ?? []).includes(HELP_NOTICE[t])
+          && routing.holders.some(h => h.position_id === p.id && h.admin_user_id === id));
+        if (id === NIL) return { admin_id: id, name: 'This position', position: pos?.title ?? null, preview: true };
+        return { admin_id: id, name: board.find(x => x.id === id)?.name ?? 'Board member', position: pos?.title ?? 'President' };
+      });
+      topics[t] = handlers[t][0] ?? null;
     }
-    const mine = [...HELP_TOPICS, 'other'].filter(t => topics[t]?.admin_id === me.id || (!!posNotices && posNotices.includes(HELP_NOTICE[t as keyof typeof HELP_NOTICE])));
-    return j({ ok: true, topics, labels: TOPIC_LABELS, board, mine, is_owner: me.isOwner });
+    return j({ ok: true, topics, handlers, labels: TOPIC_LABELS, board, mine: mineTopics, is_owner: me.isOwner });
   }
 
   if (action === 'set_topics') {
@@ -330,7 +339,13 @@ Deno.serve(async (req) => {
   if (action === 'list') {
     const view = String(body.view ?? 'open');
     let q = sb.from('help_requests').select(REQ_FIELDS).eq('tenant_id', TID);
-    if (!me.isOwner) q = sees ? q.in('assigned_admin_id', sees.length ? sees : [NIL]) : q.eq('assigned_admin_id', me.id);
+    // What's handed to them, and every topic they get (PLAN.md CE).
+    if (!me.isOwner) {
+      const ors = [`assigned_admin_id.eq.${me.id}`];
+      if (mineTopics.length) ors.push(`topic.in.(${mineTopics.join(',')})`);
+      if (sees && sees.length) ors.push(`assigned_admin_id.in.(${sees.join(',')})`);
+      q = q.or(ors.join(','));
+    }
     if (view === 'open') q = q.neq('status', 'solved');
     else if (view === 'solved') q = q.eq('status', 'solved');
     const { data, error } = await q.order('updated_at', { ascending: false }).limit(100);
@@ -422,6 +437,12 @@ Deno.serve(async (req) => {
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (r.status === 'open') patch.status = 'in_progress';
+    // The first board member to answer takes it (PLAN.md CE2): theirs, and
+    // its to-do leaves everyone else's dashboard.
+    if (!r.assigned_admin_id) {
+      patch.assigned_admin_id = me.id;
+      await claimHelpTask(sb, TID, r.id, me.id);
+    }
     const { data: updated } = await sb.from('help_requests').update(patch).eq('id', r.id).select(REQ_FIELDS).single();
     return j({ ok: true, request: shapeBoard(updated ?? r), message: { id: msg?.id, sent_by, send_error } });
   }
@@ -436,6 +457,11 @@ Deno.serve(async (req) => {
     const patch: Record<string, unknown> = { status, updated_at: now };
     if (status === 'solved') Object.assign(patch, { solved_at: now, solved_by: me.id });
     else Object.assign(patch, { solved_at: null, solved_by: null });
+    // "I'm on it" takes it, like answering first (PLAN.md CE2).
+    if (status === 'in_progress' && !r.assigned_admin_id) {
+      patch.assigned_admin_id = me.id;
+      await claimHelpTask(sb, TID, r.id, me.id);
+    }
     const { data: updated } = await sb.from('help_requests').update(patch).eq('id', r.id).select(REQ_FIELDS).single();
     if (status === 'solved') {
       await closeHelpTasks(sb, TID, r.id, 'complete', me.id);
@@ -457,7 +483,7 @@ Deno.serve(async (req) => {
     const { data: updated } = await sb.from('help_requests')
       .update({ assigned_admin_id: to, updated_at: new Date().toISOString() })
       .eq('id', r.id).select(REQ_FIELDS).single();
-    await note(r.id, `Handed to ${nameOf(to) ?? 'the president'} by ${me.name}`);
+    await note(r.id, `Handed to ${nameOf(to) ?? 'everyone who handles it'} by ${me.name}`);
     await closeHelpTasks(sb, TID, r.id, 'dismiss', me.id);
     if ((updated ?? r).status !== 'solved') {
       const member = await memberOf(r);

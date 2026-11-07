@@ -3,11 +3,11 @@ title: "How do I answer a member's question?"
 category: "Signups & Families"
 ---
 
-Members ask the board questions from the app, under **Ask the board**: a keyfob that won't work, a question about dues, a party. Each question goes to the board member whose position handles that topic.
+Members ask the board questions from the app, under **Ask the board**: a keyfob that won't work, a question about dues, a party. Each question goes to every board member whose position handles that topic, and whoever answers first takes it.
 
 ### Who gets which questions
 
-Go to **Content → Member help** and open **Who handles what**. Each topic goes to whoever holds the position that's told about it (set under **Gets told about** on **Settings → Board**). If nobody holds that position, it goes to the President.
+Go to **Content → Member help** and open **Who handles what**. Each topic goes to everyone who holds a position that's told about it (set under **Gets told about** on **Settings → Board**), so two people can share a topic. If nobody holds one, it goes to the President. Once someone answers, it's theirs: it leaves everyone else's **Home**, and **Member help** shows who's handling it.
 
 ### Answer a question
 

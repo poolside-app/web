@@ -109,7 +109,7 @@
 
 <main>
   <h1>Member help</h1>
-  <p class="lede">Questions and problems members send from the app. Each topic goes to the board member who handles it, and anything else goes to the president. Your replies pop up in the member's app (or are emailed). A request stays on your dashboard until it's solved.</p>
+  <p class="lede">Questions and problems members send from the app. Each question goes to everyone who handles its topic, and whoever answers first takes it; a topic nobody has goes to the president. Your replies pop up in the member's app (or are emailed). A request stays on your dashboard until it's solved.</p>
 
   <!-- Who handles what. The president picks; everyone else sees it. -->
   <details class="topics" id="topics-card" style="display:none">
@@ -216,12 +216,15 @@ async function loadTopics() {
   TOPICS = r;
   const card = document.getElementById('topics-card');
   const keys = ['keyfob', 'membership', 'parties', 'facility', 'grounds', 'other'];
-  const who = t => r.topics[t]
-    ? `${escapeHtml(r.topics[t].name)}${r.topics[t].position ? ` <span style="color:var(--muted)">(${escapeHtml(r.topics[t].position)})</span>` : ''}`
-    : 'The president';
+  // Everyone who gets each topic (PLAN.md CE): a question goes to all of them until one answers.
+  const one = h => `${escapeHtml(h.name)}${h.position ? ` <span style="color:var(--muted)">(${escapeHtml(h.position)})</span>` : ''}`;
+  const who = t => {
+    const hs = (r.handlers && r.handlers[t]) || (r.topics[t] ? [r.topics[t]] : []);
+    return hs.length ? hs.map(one).join('<br>') : 'The president';
+  };
   document.getElementById('topics-body').innerHTML = keys.map(t => `
     <div class="topic-row"><span style="font-size:13.5px;font-weight:600">${TOPIC_ICON[t] || '💬'} ${escapeHtml(r.labels[t])}</span><span style="font-size:13.5px">${who(t)}</span></div>`).join('')
-    + `<p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">Each topic goes to whoever holds its board position. ${r.is_owner ? 'Change it' : 'The president changes it'} on the <a href="/club/admin/board.html">Board page</a>. They'll need pop-ups turned on, from their dashboard, to hear about new questions.</p>`;
+    + `<p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">Each question goes to everyone who holds a position with its topic ticked, and whoever answers first handles it. ${r.is_owner ? 'Change the ticks' : 'The president changes the ticks'} on the <a href="/club/admin/board.html">Board page</a>. They'll need pop-ups turned on, from their dashboard, to hear about new questions.</p>`;
   document.getElementById('topics-summary').textContent = r.mine.length
     ? `You handle: ${r.mine.map(t => r.labels[t]).join(', ')}`
     : 'Who handles what';
@@ -240,7 +243,8 @@ async function loadList() {
     }
     host.innerHTML = rows.map(q => {
       const waiting = q.waiting_on_board && q.status !== 'solved';
-      const whose = r.is_owner ? ` · ${escapeHtml(q.assigned_name || 'President')}` : '';
+      // Who's answering it, once someone has (PLAN.md CE2).
+      const whose = q.assigned_name ? ` · ${escapeHtml(q.assigned_name)} is handling it` : (q.status === 'solved' ? '' : ' · Not answered yet');
       return `
         <button class="row" onclick="openRequest('${escapeAttr(q.id)}')">
           <div style="font-size:22px;line-height:1">${TOPIC_ICON[q.topic] || '💬'}</div>
@@ -311,7 +315,7 @@ function paintRequest() {
   // sign-up, when the club has sign-ups on (PLAN.md BM4).
   const signupsOn = (() => { try { return JSON.parse(document.body.dataset.featureFlags || '{}').volunteer !== false; } catch (_) { return true; } })();
   const jobBtn = signupsOn ? `<a class="btn btn-ghost btn-sm" href="/club/admin/volunteer.html#from_help=${escapeAttr(q.id)}">📋 Post as a job</a>` : '';
-  const handOpts = `<option value="">The president</option>` + board.filter(b => !b.is_owner || b.id === q.assigned_admin_id).map(b =>
+  const handOpts = `<option value="">Everyone who handles it</option>` + board.filter(b => !b.is_owner || b.id === q.assigned_admin_id).map(b =>
     `<option value="${escapeAttr(b.id)}" ${b.id === q.assigned_admin_id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('');
   document.getElementById('r-controls').innerHTML = `
     <span class="chip ${escapeAttr(q.status)}">${escapeHtml(STATUS[q.status] || q.status)}</span>

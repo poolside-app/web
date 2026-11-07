@@ -2414,7 +2414,8 @@ async function sendHelp() {
     const photo = await shrinkPhoto(document.getElementById('help-photo').files[0] || null);
     const r = await callHelp('submit', { topic: HELP_TOPIC, body: text, ...photo });
     if (!r.ok) throw new Error(r.error || 'Could not send');
-    const who = r.request.assigned_name ? `${r.request.assigned_name}, who handles ${r.request.topic_label.toLowerCase()}` : 'the board president';
+    // Everyone who handles the topic sees it until one of them answers (PLAN.md CE).
+    const who = r.request.assigned_name ? `${r.request.assigned_name}, who handles ${r.request.topic_label.toLowerCase()}` : `the board members who handle ${r.request.topic_label.toLowerCase()}`;
     document.getElementById('help-done-text').textContent =
       `It went to ${who}. You'll get a text when they reply, and you can follow it under Questions for the board.`;
     document.getElementById('help-form').style.display = 'none';
@@ -2490,7 +2491,7 @@ function closeHelpThread() {
 function paintHelpThread(r) {
   const q = r.request;
   document.getElementById('help-thread-title').textContent = HELP_TOPIC_NAMES[q.topic] || q.topic_label;
-  const handler = q.assigned_name ? `${q.assigned_name} is handling this` : 'The board president is handling this';
+  const handler = q.assigned_name ? `${q.assigned_name} is handling this` : 'The board is handling this';
   document.getElementById('help-thread-sub').innerHTML =
     `<span class="help-chip ${escapeAttr(q.status)}">${escapeHtml(HELP_STATUS[q.status] || q.status)}</span> &nbsp;${escapeHtml(handler)}`;
   const when = iso => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });

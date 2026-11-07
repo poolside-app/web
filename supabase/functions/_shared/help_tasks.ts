@@ -2,7 +2,8 @@
 // help_tasks — a help request's place on the board's dashboards
 // =============================================================================
 // While a request is unsolved it has one open admin_tasks row (source_kind
-// 'help_request'), on the assignee's dashboard or the president's. Member
+// 'help_request'): on the dashboard of everyone who gets its topic (its
+// alert, PLAN.md CE) until one of them answers, then on theirs alone. Member
 // replies pop up without adding a second task. Solving it completes the
 // task; handing it off or deleting it dismisses it. Done on the dashboard
 // marks the request solved (admin_tasks calls markHelpSolved).
@@ -11,6 +12,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { enqueueAdminTask, pushBoard } from './enqueue_task.ts';
 import { snippet, TOPIC_LABELS, type Topic } from './help.ts';
+import { HELP_NOTICE } from './positions.ts';
 
 type Req = { id: string; tenant_id: string; topic: string; assigned_admin_id: string | null };
 
@@ -19,20 +21,24 @@ type Req = { id: string; tenant_id: string; topic: string; assigned_admin_id: st
 export async function openHelpTask(sb: SupabaseClient, req: Req, memberName: string, text: string, isReply: boolean): Promise<void> {
   const label = TOPIC_LABELS[req.topic as Topic] ?? 'Help';
   const url = `/club/admin/member-help.html#r=${req.id}`;
+  // Nobody's taken it yet: everyone who gets the topic, by its alert (PLAN.md
+  // CE1). Once someone answers or it's handed to someone: them alone.
+  const byTopic = req.assigned_admin_id ? null : HELP_NOTICE[req.topic as keyof typeof HELP_NOTICE] ?? null;
   const { data: open } = await sb.from('admin_tasks').select('id')
     .eq('tenant_id', req.tenant_id).eq('source_kind', 'help_request').eq('source_id', req.id)
     .is('completed_at', null).is('dismissed_at', null).limit(1);
   if (open && open.length) {
     await pushBoard({
-      tenant_id: req.tenant_id, target_scopes: [], assigned_admin_id: req.assigned_admin_id,
+      tenant_id: req.tenant_id, target_scopes: [], assigned_admin_id: req.assigned_admin_id, notice: byTopic,
       title: `${memberName} replied`, body: snippet(text, 120), url, tag: `help_request:${req.id}`,
     });
     return;
   }
   await enqueueAdminTask(sb, {
     tenant_id: req.tenant_id,
-    target_scopes: [],                        // with no assignee: the president
+    target_scopes: [],
     assigned_admin_id: req.assigned_admin_id,
+    notice: byTopic,
     kind: 'help.request',
     summary: `${label}: ${memberName} - "${snippet(text, 70)}"`,
     link_url: url,
@@ -40,6 +46,14 @@ export async function openHelpTask(sb: SupabaseClient, req: Req, memberName: str
     push_title: isReply ? `${memberName} replied` : `${label} question from ${memberName}`,
     push_body: snippet(text, 120),
   });
+}
+
+/** The first board member to answer takes the question (PLAN.md CE2): its
+ *  to-do leaves everyone else's dashboard and stays on theirs. */
+export async function claimHelpTask(sb: SupabaseClient, tenantId: string, requestId: string, adminId: string): Promise<void> {
+  await sb.from('admin_tasks').update({ assigned_admin_id: adminId, notice: null })
+    .eq('tenant_id', tenantId).eq('source_kind', 'help_request').eq('source_id', requestId)
+    .is('completed_at', null).is('dismissed_at', null);
 }
 
 /** Take the request off dashboards: 'complete' when solved, 'dismiss' when

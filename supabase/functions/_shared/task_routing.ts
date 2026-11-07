@@ -15,7 +15,7 @@
 // =============================================================================
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { HELP_NOTICE, TASK_NOTICE } from './positions.ts';
+import { HELP_NOTICE, TASK_NOTICE, noticeRecipients, type Holder, type Login, type Position } from './positions.ts';
 
 export type RoutedTask = { target_scopes?: string[] | null; assigned_admin_id?: string | null; notice?: string | null; kind?: string | null };
 
@@ -66,8 +66,20 @@ export function pushRecipients(
 export const HELP_TOPICS = ['keyfob', 'membership', 'parties', 'facility', 'grounds'] as const;
 export type HelpTopic = typeof HELP_TOPICS[number] | 'other';
 
-/** The board member who handles a help topic: the first holder of the
- *  position that gets it, else the President (positions.ts fallback). */
+/** Everyone who gets a help topic (PLAN.md CE): every holder of a position
+ *  with it ticked, else the President (positions.ts fallback). A question
+ *  goes to all of them until one answers. */
+export function topicHandlers(topic: HelpTopic, b: { positions: Position[]; holders: Holder[]; logins: Login[] }): string[] {
+  return noticeRecipients(HELP_NOTICE[topic], b.positions, b.holders, b.logins);
+}
+
+/** The topics this board member gets: Member help's "You handle". */
+export function myTopics(adminId: string, b: { positions: Position[]; holders: Holder[]; logins: Login[] }): HelpTopic[] {
+  return ([...HELP_TOPICS, 'other'] as HelpTopic[]).filter(t => topicHandlers(t, b).includes(adminId));
+}
+
+/** The first board member who gets a help topic. Before PLAN.md CE every
+ *  question went to this one person; kept for anything that needs one name. */
 export async function topicOwnerId(sb: SupabaseClient, tenantId: string, topic: HelpTopic): Promise<string | null> {
   const { recipientsFor } = await import('./positions_db.ts');
   return (await recipientsFor(sb as never, tenantId, HELP_NOTICE[topic]))[0] ?? null;

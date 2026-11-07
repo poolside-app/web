@@ -112,6 +112,73 @@ console.log('\nBoard side (E4, offline)');
     /help_topics_mine/.test(dash) && /mustFor/.test(read('js/admin-push.js')));
 }
 
+// PLAN.md CE (Doug 11/6): "Multiple people should be able to see the member help questions".
+console.log('\nCE · everyone with the topic ticked (offline)');
+{
+  const between = (t, a, b) => { const i = t.indexOf(a); if (i < 0) return ''; const j = t.indexOf(b, i + a.length); return t.slice(i, j < 0 ? undefined : j); };
+  try {
+    const h = await importTs(new URL('supabase/functions/_shared/help.ts', root));
+    const r = await importTs(new URL('supabase/functions/_shared/task_routing.ts', root));
+    check('CE1: everyone who gets the topic can see a question nobody has answered yet',
+      h.canSeeHelpRequest({ assigned_admin_id: null }, { id: 'fac', isOwner: false }, ['doug', 'fac'])
+      && !h.canSeeHelpRequest({ assigned_admin_id: null }, { id: 'party', isOwner: false }, ['doug', 'fac'])
+      && h.canSeeHelpRequest({ assigned_admin_id: 'pat' }, { id: 'pat', isOwner: false }, []));
+    check('CE2: …and after someone takes it, they still see it ("Pat is handling it")',
+      h.canSeeHelpRequest({ assigned_admin_id: 'pat' }, { id: 'fac', isOwner: false }, ['pat', 'fac']));
+    const P = (id, slug, notices, extra = {}) => ({ id, slug, title: id, notices, scopes: [], sort: 0, ...extra });
+    const board = {
+      positions: [P('President', 'president', ['help_keyfob', 'help_other'], { full_access: true }), P('Facilities', 'facilities', ['help_keyfob', 'help_facility']), P('Treasurer', 'treasurer', ['help_membership'])],
+      holders: [{ position_id: 'President', admin_user_id: 'doug' }, { position_id: 'Facilities', admin_user_id: 'fac' }],
+      logins: [{ id: 'doug', active: true, role_template: 'owner' }, { id: 'fac', active: true, role_template: 'custom' }],
+    };
+    check('CE1: a topic ticked on two held positions goes to both', JSON.stringify(r.topicHandlers('keyfob', board).sort()) === '["doug","fac"]', JSON.stringify(r.topicHandlers('keyfob', board)));
+    check('CE1: a topic only on an empty position goes to the President, as before', JSON.stringify(r.topicHandlers('membership', board)) === '["doug"]', JSON.stringify(r.topicHandlers('membership', board)));
+    check('CE3: "You handle" is every topic you get', JSON.stringify(r.myTopics('fac', board)) === '["keyfob","facility"]' && r.myTopics('doug', board).includes('keyfob'), JSON.stringify(r.myTopics('fac', board)));
+  } catch (e) { check('the routing rules load', false, String(e.message).split('\n')[0]); }
+  const hr = read('supabase/functions/help_requests/index.ts'), ht = read('supabase/functions/_shared/help_tasks.ts');
+  const submit = between(hr, "if (action === 'submit')", "if (action === 'mine')");
+  check('CE1: a new question isn\'t handed to one person', !/topicOwnerId\(/.test(hr) && /assigned_admin_id: null/.test(submit), submit.slice(0, 120));
+  check('CE1: its to-do and pop-up go to everyone with the topic (its alert), until someone takes it', /req\.assigned_admin_id \? null : HELP_NOTICE\[/.test(ht) && /notice: byTopic/.test(ht));
+  const reply = between(hr.slice(hr.indexOf('Board side')), "if (action === 'reply')", "if (action === 'set_status')");
+  check('CE2: the first board reply takes it: theirs, and the to-do moves to them', /claimHelpTask\(/.test(reply) && /!r\.assigned_admin_id/.test(reply), reply.slice(0, 160));
+  const setStatus = between(hr.slice(hr.indexOf('Board side')), "if (action === 'set_status')", "if (action === 'assign')");
+  check('CE2: "I\'m on it" takes it too', /claimHelpTask\(/.test(setStatus) && /in_progress' && !r\.assigned_admin_id/.test(setStatus));
+  const list = between(hr, "if (action === 'list')", "if (action === 'get')");
+  check('CE1: Member help lists what\'s handed to you plus every topic you get', /\.or\(/.test(list) && /topic\.in\./.test(list) && /myTopics\(|mineTopics/.test(hr), list.slice(0, 200));
+  const topics = between(hr, "if (action === 'topics')", "if (action === 'set_topics')");
+  check('CE3: Who handles what lists everyone per topic, and "You handle" comes from the same rule', /handlers/.test(topics) && /topicHandlers\(/.test(topics) && !/posNotices/.test(topics), topics.slice(0, 200));
+  const at = read('supabase/functions/admin_tasks/index.ts');
+  check('CE3: the dashboard says your own position ("For the Facilities Director")', /heldIds\.has|held\.find/.test(between(at, 'for_position', 'assigned_name')), between(at, '"For the Treasurer"', 'Name who').slice(0, 300));
+  check('sign-ups from a member question follow the same rule', /topicHandlers\(/.test(read('supabase/functions/volunteer/index.ts')));
+  const app = read('m/index.html');
+  check('CE4: the family\'s app says the board members who handle it, not "the board president"', /board members who handle/.test(app) && /The board is handling this/.test(app) && !/'the board president'/.test(app) && !/'The board president is handling this'/.test(app));
+  const inbox = read('club/admin/member-help.html');
+  check('CE3: Member help shows everyone who handles each topic, and who\'s handling each question', /handlers/.test(inbox) && /is handling it/.test(inbox));
+}
+
+{
+  const { launch, attach, BOARD } = await import('./demo_video/harness.mjs');
+  const { respond } = await import('./demo_video/data.mjs');
+  const browser = await launch(), p = await browser.newPage();
+  await p.setViewport({ width: 390, height: 844 });
+  const H = (n, pos) => ({ admin_id: n, name: n, position: pos });
+  const log = await attach(p, { state: {}, answer: (fn, body, c) => {
+    if (fn === 'help_requests' && body.action === 'topics') return { ok: true, is_owner: false, mine: ['keyfob'], labels: { keyfob: 'Keyfob & gate', membership: 'Membership & dues', parties: 'Parties & events', facility: 'Pool problem', grounds: 'Grounds, bathrooms & cleaning', other: 'Something else' },
+      board: [], topics: { keyfob: H('Doug Frevele', 'President') }, handlers: { keyfob: [H('Doug Frevele', 'President'), H('Mike Rivera', 'Facilities Director')], membership: [H('Doug Frevele', 'President')], parties: [], facility: [], grounds: [], other: [] } };
+    if (fn === 'help_requests' && body.action === 'list') return { ok: true, is_owner: false, requests: [
+      { id: 'r1', topic: 'keyfob', topic_label: 'Keyfob & gate', status: 'in_progress', assigned_name: 'Mike Rivera', member_name: 'Ana', family_name: 'Lopez', first_snippet: 'My fob stopped working', updated_at: new Date().toISOString() },
+      { id: 'r2', topic: 'keyfob', topic_label: 'Keyfob & gate', status: 'open', assigned_name: null, member_name: 'Ben', family_name: 'Ortiz', first_snippet: 'Gate stuck', updated_at: new Date().toISOString(), waiting_on_board: true }] };
+    return respond(fn, body, c);
+  } });
+  await p.goto(BOARD + '/club/admin/member-help.html', { waitUntil: 'networkidle0', timeout: 45000 });
+  await new Promise(r => setTimeout(r, 900));
+  const v = await p.evaluate(() => ({ topics: document.getElementById('topics-body')?.textContent.replace(/\s+/g, ' ') || '', list: document.getElementById('list')?.innerText.replace(/\s+/g, ' ') || '' }));
+  check('CE3: Who handles what shows both people on a shared topic', /Doug Frevele \(President\)/.test(v.topics) && /Mike Rivera \(Facilities Director\)/.test(v.topics), v.topics.slice(0, 200));
+  check('CE2: Member help says who\'s handling each question, or that nobody has answered yet', /Mike Rivera is handling it/.test(v.list) && /Not answered yet/.test(v.list), v.list.slice(0, 200));
+  check('CE: no page errors', !log.errors.length, log.errors.join('; '));
+  await browser.close();
+}
+
 if (process.argv.includes('--offline')) {
   console.log(`\n${failed ? 'FAILED' : 'PASSED'} (offline only): ${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
@@ -135,7 +202,7 @@ const PHONE = `+1555010${String(Date.now()).slice(-4)}`;
 // login and puts its holders back afterward.
 const [facilities] = await sql(`select id from board_positions where tenant_id = '${club.id}' and slug = 'facilities'`);
 const savedHolders = (await sql(`select admin_user_id from board_position_holders where position_id = '${facilities.id}'`)).map(r => r.admin_user_id);
-const reqTasks = id => sql(`select id, assigned_admin_id, target_scopes, completed_at, dismissed_at from admin_tasks
+const reqTasks = id => sql(`select id, assigned_admin_id, notice, target_scopes, completed_at, dismissed_at from admin_tasks
   where source_kind = 'help_request' and source_id = '${id}' order by created_at`);
 let r1, r2;
 try {
@@ -157,13 +224,14 @@ try {
   check('the president makes the keyfob person Facilities Director', st2.ok, short(st2));
   const tp = await help('topics', fobTok);
   // Bishop's President takes every topic (Doug, 10/8: "leave them alone"), and
-  // a question goes to the first position that takes it. Then a test question
-  // would land with a real board member, pop-up and all, so the member-help
-  // flow below is skipped until a topic reaches the test's keyfob person.
-  if (tp.ok && tp.topics?.keyfob?.admin_id !== fobId) {
-    console.log(`  - skipped the rest: keyfob questions go to ${tp.topics?.keyfob?.name} (${tp.topics?.keyfob?.position}), a real board member`);
+  // since PLAN.md CE a question goes to everyone who takes it. Then a test
+  // question would reach a real board member, pop-up and all, so the
+  // member-help flow below is skipped while anyone else gets keyfob questions.
+  const realOnKeyfob = (tp.handlers?.keyfob || []).filter(h => h.admin_id !== fobId);
+  if (tp.ok && realOnKeyfob.length) {
+    console.log(`  - skipped the rest: keyfob questions also go to ${realOnKeyfob.map(h => `${h.name} (${h.position})`).join(', ')}, a real board member`);
   } else flow: {
-  check('the keyfob person sees that it\'s theirs', tp.ok && tp.topics?.keyfob?.admin_id === fobId && tp.mine?.includes('keyfob'), short(tp));
+  check('the keyfob person sees that it\'s theirs', tp.ok && (tp.handlers?.keyfob || []).some(h => h.admin_id === fobId) && tp.mine?.includes('keyfob'), short(tp));
   const dt = await fn('admin_tasks', 'list', fobTok);
   check('their dashboard knows it, and that pop-ups are off everywhere for them',
     dt.ok && (dt.help_topics_mine || []).includes('Keyfob & gate') && dt.push_devices === 0, short({ mine: dt.help_topics_mine, devices: dt.push_devices }));
@@ -171,9 +239,9 @@ try {
   console.log('\nA member asks for help (E2)');
   const s1 = await help('submit', memTok, { topic: 'keyfob', body: 'My fob stopped working at the side gate.', photo_content_type: 'image/png', photo_base64: PNG });
   r1 = s1.request?.id;
-  check('a keyfob question goes to the keyfob person', s1.ok && s1.request?.assigned_name === 'SimTest Keyfob', short(s1));
+  check('a keyfob question isn\'t handed to one person (CE1)', s1.ok && !s1.request?.assigned_admin_id, short(s1));
   let t1 = await reqTasks(r1);
-  check('…and on their dashboard', t1.length === 1 && t1[0].assigned_admin_id === fobId && !t1[0].completed_at, short(t1));
+  check('…its to-do is the keyfob alert, for everyone who gets it', t1.length === 1 && t1[0].notice === 'help_keyfob' && !t1[0].assigned_admin_id && !t1[0].completed_at, short(t1));
   const s2 = await help('submit', memTok, { topic: 'other', body: 'Can I bring my dog to the swim meet?' });
   r2 = s2.request?.id;
   const t2 = await reqTasks(r2);
@@ -181,8 +249,8 @@ try {
   // "something else"), named, rather than to any owner login.
   const [presHolder] = await sql(`select h.admin_user_id from board_position_holders h join board_positions p on p.id = h.position_id
     where p.tenant_id = '${club.id}' and p.slug = 'president' limit 1`);
-  check('"Something else" goes to the president', s2.ok && t2.length === 1 && t2[0].assigned_admin_id === presHolder?.admin_user_id
-    && t2[0].target_scopes.length === 0, short(t2));
+  check('"Something else" goes by its alert (the President holds it)', s2.ok && t2.length === 1 && t2[0].notice === 'help_other' && !t2[0].assigned_admin_id
+    && t2[0].target_scopes.length === 0 && !!presHolder, short(t2));
 
   const lf = await help('list', fobTok, { view: 'open' });
   const fobIds = (lf.requests || []).map(x => x.id);
@@ -206,6 +274,9 @@ try {
   console.log('\nThe board answers (E2)');
   const b1 = await help('reply', fobTok, { id: r1, body: 'Your new fob is at the pool house. Bring your ID.' });
   check('the keyfob person replies; it\'s now being handled', b1.ok && b1.request?.status === 'in_progress', short(b1));
+  const tc = await reqTasks(r1);
+  check('…and it\'s theirs: the first reply takes it, and the to-do moves to them (CE2)', b1.request?.assigned_admin_id === fobId
+    && tc.filter(t => !t.completed_at && !t.dismissed_at).every(t => t.assigned_admin_id === fobId && !t.notice), short(tc));
   const [sms] = await sql(`select count(*)::int as n from sms_log where to_phone = '${PHONE}' and source = 'help_requests.reply'`);
   check('…and the reply is texted to the member', sms.n === 1, `texts logged: ${sms.n}`);
   const mg = await help('get', memTok, { id: r1 });
@@ -227,7 +298,7 @@ try {
   const notes = await sql(`select body from help_messages where request_id = '${r1}' and author_kind = 'note'`);
   check('…and the conversation notes the hand-off', notes.some(n => /SimTest Parties/.test(n.body)), short(notes));
   const lf2 = await help('list', fobTok, { view: 'open' });
-  check('it\'s no longer on the keyfob person\'s list', lf2.ok && !(lf2.requests || []).some(x => x.id === r1));
+  check('the keyfob person still sees it (they get keyfob questions), as the party person\'s', lf2.ok && (lf2.requests || []).find(x => x.id === r1)?.assigned_name === 'SimTest Parties', short(lf2));
   const sv = await help('set_status', partyTok, { id: r1, status: 'solved' });
   t1 = await reqTasks(r1);
   check('solving it clears it from the dashboard', sv.ok && sv.request?.status === 'solved' && t1.every(t => t.completed_at || t.dismissed_at), short(t1));

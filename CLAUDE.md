@@ -137,7 +137,7 @@ When a club has keyfobs on (`features.keyfobs`), each fob is a row in `keyfobs` 
 
 ### Member help
 
-Members ask the board from the app (`help_requests` function, `help_requests` + `help_messages` tables). Each topic goes to whoever holds the board position that gets it (`HELP_NOTICE` in `_shared/positions.ts`), else the president. Only they see it, it keeps one dashboard task until solved, and board replies are texted to the member with a `/m/#help=<id>` link. Photos live in the private `help-photos` bucket behind signed links. SQL can't delete storage files, so delete a request through the function (president) to remove its photos. `node scripts/test_help_requests.mjs [--offline]`.
+Members ask the board from the app (`help_requests` function, `help_requests` + `help_messages` tables). Each question goes to everyone who holds a board position with its topic ticked (`HELP_NOTICE` in `_shared/positions.ts`, `topicHandlers` in `_shared/task_routing.ts`), else the president, as one dashboard task by the topic's alert; the first board reply takes it (`claimHelpTask`, PLAN.md CE) and the task moves to them alone; full access sees every question. It keeps one dashboard task until solved, and board replies are texted to the member with a `/m/#help=<id>` link. Photos live in the private `help-photos` bucket behind signed links. SQL can't delete storage files, so delete a request through the function (president) to remove its photos. `node scripts/test_help_requests.mjs [--offline]`.
 
 Offline tests load Edge Function helpers with `scripts/lib/importts.mjs`, which follows their relative `.ts` imports.
 
