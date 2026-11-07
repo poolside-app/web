@@ -215,14 +215,15 @@ async function loadTopics() {
   if (!r.ok) return;
   TOPICS = r;
   const card = document.getElementById('topics-card');
-  const keys = ['keyfob', 'membership', 'parties', 'facility', 'grounds', 'other'];
+  // Only the topics they're sent: their own, or every one for full access (PLAN.md CE5).
+  const keys = ['keyfob', 'membership', 'parties', 'facility', 'grounds', 'other'].filter(t => !r.handlers || t in r.handlers);
   // Everyone who gets each topic (PLAN.md CE): a question goes to all of them until one answers.
   const one = h => `${escapeHtml(h.name)}${h.position ? ` <span style="color:var(--muted)">(${escapeHtml(h.position)})</span>` : ''}`;
   const who = t => {
     const hs = (r.handlers && r.handlers[t]) || (r.topics[t] ? [r.topics[t]] : []);
     return hs.length ? hs.map(one).join('<br>') : 'The president';
   };
-  document.getElementById('topics-body').innerHTML = keys.map(t => `
+  document.getElementById('topics-body').innerHTML = (keys.length ? '' : `<p style="font-size:13.5px;margin:4px 0 0">No member-help topics come to you. ${r.is_owner ? 'Tick them' : 'The president ticks them'} on the <a href="/club/admin/board.html">Board page</a>.</p>`) + keys.map(t => `
     <div class="topic-row"><span style="font-size:13.5px;font-weight:600">${TOPIC_ICON[t] || '💬'} ${escapeHtml(r.labels[t])}</span><span style="font-size:13.5px">${who(t)}</span></div>`).join('')
     + `<p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">Each question goes to everyone who holds a position with its topic ticked, and whoever answers first handles it. ${r.is_owner ? 'Change the ticks' : 'The president changes the ticks'} on the <a href="/club/admin/board.html">Board page</a>. They'll need pop-ups turned on, from their dashboard, to hear about new questions.</p>`;
   document.getElementById('topics-summary').textContent = r.mine.length

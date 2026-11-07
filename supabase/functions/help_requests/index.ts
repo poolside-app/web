@@ -320,7 +320,10 @@ Deno.serve(async (req) => {
     // same rule, so the two can't disagree.
     const handlers: Record<string, Array<{ admin_id: string; name: string; position: string | null; preview?: boolean }>> = {};
     const topics: Record<string, { admin_id: string; name: string; position: string | null } | null> = {};
+    // Only the topics that come to them, unless they have full access (PLAN.md
+    // CE5: "The secratary shouldn't see all the other items that could be helped").
     for (const t of [...HELP_TOPICS, 'other'] as const) {
+      if (!(me.isOwner || mineTopics.includes(t))) continue;
       handlers[t] = topicHandlers(t, routing).map(id => {
         const pos = routing.positions.find(p => (p.notices ?? []).includes(HELP_NOTICE[t])
           && routing.holders.some(h => h.position_id === p.id && h.admin_user_id === id));

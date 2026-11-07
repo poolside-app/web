@@ -147,6 +147,7 @@ console.log('\nCE · everyone with the topic ticked (offline)');
   check('CE1: Member help lists what\'s handed to you plus every topic you get', /\.or\(/.test(list) && /topic\.in\./.test(list) && /myTopics\(|mineTopics/.test(hr), list.slice(0, 200));
   const topics = between(hr, "if (action === 'topics')", "if (action === 'set_topics')");
   check('CE3: Who handles what lists everyone per topic, and "You handle" comes from the same rule', /handlers/.test(topics) && /topicHandlers\(/.test(topics) && !/posNotices/.test(topics), topics.slice(0, 200));
+  check('CE5: someone without full access is sent only the topics that come to them', /me\.isOwner \|\| mineTopics\.includes\(t\)/.test(topics), topics.slice(0, 300));
   const at = read('supabase/functions/admin_tasks/index.ts');
   check('CE3: the dashboard says your own position ("For the Facilities Director")', /heldIds\.has|held\.find/.test(between(at, 'for_position', 'assigned_name')), between(at, '"For the Treasurer"', 'Name who').slice(0, 300));
   check('sign-ups from a member question follow the same rule', /topicHandlers\(/.test(read('supabase/functions/volunteer/index.ts')));
@@ -176,6 +177,25 @@ console.log('\nCE · everyone with the topic ticked (offline)');
   check('CE3: Who handles what shows both people on a shared topic', /Doug Frevele \(President\)/.test(v.topics) && /Mike Rivera \(Facilities Director\)/.test(v.topics), v.topics.slice(0, 200));
   check('CE2: Member help says who\'s handling each question, or that nobody has answered yet', /Mike Rivera is handling it/.test(v.list) && /Not answered yet/.test(v.list), v.list.slice(0, 200));
   check('CE: no page errors', !log.errors.length, log.errors.join('; '));
+  // CE5: a Secretary who only gets "Something else", and someone who gets nothing.
+  for (const [label, mine, handlers, want, wantNot] of [
+    ['a Secretary with only Something else sees only that topic', ['other'], { other: [H('Doug Frevele', 'President'), H('Pat Lee', 'Secretary')] }, /Something else[\s\S]*Pat Lee/, /Keyfob|Membership|Parties|Pool problem|Grounds/],
+    ['someone with no topics is told none come to them, and where that\'s set', [], {}, /No member-help topics come to you/, /Keyfob|Something else/],
+  ]) {
+    const q = await (await launch()).newPage();
+    await q.setViewport({ width: 390, height: 844 });
+    const lg = await attach(q, { state: {}, answer: (fn, body, c) => {
+      if (fn === 'help_requests' && body.action === 'topics') return { ok: true, is_owner: false, mine, labels: { keyfob: 'Keyfob & gate', membership: 'Membership & dues', parties: 'Parties & events', facility: 'Pool problem', grounds: 'Grounds, bathrooms & cleaning', other: 'Something else' },
+        board: [], topics: Object.fromEntries(Object.entries(handlers).map(([k, v]) => [k, v[0]])), handlers };
+      if (fn === 'help_requests' && body.action === 'list') return { ok: true, is_owner: false, requests: [] };
+      return respond(fn, body, c);
+    } });
+    await q.goto(BOARD + '/club/admin/member-help.html', { waitUntil: 'networkidle0', timeout: 45000 });
+    await new Promise(r => setTimeout(r, 800));
+    const t = await q.evaluate(() => (document.getElementById('topics-summary')?.textContent || '') + ' | ' + (document.getElementById('topics-body')?.textContent || '').replace(/\s+/g, ' '));
+    check('CE5: ' + label, want.test(t) && !wantNot.test(t) && !lg.errors.length, t.slice(0, 220) + (lg.errors.length ? ' ' + lg.errors.join('; ') : ''));
+    await q.browser().close();
+  }
   await browser.close();
 }
 
