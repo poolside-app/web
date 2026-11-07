@@ -291,6 +291,53 @@ console.log('CC2–CC6 · in Chrome');
     check('CC5: no page errors', !log.errors.length, log.errors.join('; '));
     await p.close();
   }
+  // CC7: what Doug found on the Secretary's preview, which real board members had too.
+  {
+    const SEC = { id: 'adm-sec', email: 'sec@example.com', display_name: 'Pat Secretary', is_super: false, is_default_pw: false, active: true,
+      scopes: ['households', 'events', 'volunteer', 'announcements', 'photos', 'policies', 'directory', 'meetings'], role_template: 'custom', roles: ['custom'],
+      linked_member_id: null, member_apply_dismissed: false, board_title: 'Secretary', impersonated: false };
+    const asSec = async () => {
+      const p = await browser.newPage();
+      await p.setViewport({ width: 390, height: 844 });
+      const log = await attach(p, { state: {}, answer: (fn, body, c) => {
+        if (fn === 'tenant_admin_auth' && body.action === 'me') return { ...respond(fn, body, c), user: SEC };
+        if (fn === 'tenant_settings' && body.action === 'setup_status') return { ok: true, done: 8, total: 10, percent: 80, complete: false, items: [
+          { id: 'logo', label: 'Upload your club logo', done: true, fix_url: '/club/admin/settings.html', fix_label: 'Upload' },
+          { id: 'self_signup', label: 'Sign up your own family', done: false, can_skip: true, why: 'Same form your members use, so you see it the way they do. Not a swimmer? Mark it done.', fix_url: '/apply.html?prefill=admin', fix_label: 'Sign up' },
+          { id: 'invite_board', label: 'Set up your board positions', done: false, why: 'Each position gets its own alerts and screens.', fix_url: '/club/admin/board.html', fix_label: 'Set up' },
+        ] };
+        return siteRespond(fn, body, c) ?? respond(fn, body, c);
+      } });
+      // Their own saved sign-in, as admin-flags.js keeps it.
+      await p.evaluateOnNewDocument(u => { try { localStorage.setItem('poolside_tenant_user', u); } catch (_) {} }, JSON.stringify(SEC));
+      return { p, log };
+    };
+    const shown = p => p.evaluate(() => [...document.querySelectorAll('#admin-subtabs a')].filter(a => a.offsetParent !== null && getComputedStyle(a).display !== 'none').map(a => a.textContent.replace(/\s+\d+$/, '').trim()));
+    const { p, log } = await asSec();
+    await p.goto(BOARD + '/club/admin/members.html#households', { waitUntil: 'networkidle0', timeout: 45000 });
+    await settle(800);
+    const t1 = await shown(p);
+    await p.evaluate(() => { location.hash = '#renewals'; });
+    await settle(600);
+    const t2 = await shown(p);
+    check('CC7: a Secretary\'s Members tabs leave out Signups and Keyfobs & Access, also after switching to Renewals',
+      t1.length === 3 && t2.length === 3 && ![...t1, ...t2].some(t => /Signups|Keyfobs/.test(t)), JSON.stringify({ t1, t2 }));
+    await p.goto(BOARD + '/club/admin/board.html', { waitUntil: 'networkidle0', timeout: 45000 });
+    await settle(800);
+    const t3 = await shown(p);
+    check('CC7: Settings → Board\'s tabs leave out Settings and Plan for them', t3.includes('Board') && !t3.includes('Settings') && !t3.includes('Plan'), JSON.stringify(t3));
+    await p.goto(BOARD + '/club/admin/', { waitUntil: 'networkidle0', timeout: 45000 });
+    await settle(900);
+    const su = await p.evaluate(() => {
+      const btn = document.querySelector('#setup-card [data-skip="self_signup"]');
+      const row = btn && btn.closest('#setup-card > div > div, #setup-card [class]') ? btn.parentElement.parentElement : null;
+      const label = row ? [...row.querySelectorAll('div')].find(d => /Sign up your own family/.test(d.textContent) && d.children.length >= 1) : null;
+      return { text: label ? Math.round(label.getBoundingClientRect().width) : 0, wide: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    });
+    check('CC7: the setup list\'s "Sign up your own family" reads across at phone width (its buttons go under it)', su.text >= 180 && su.wide <= 1, JSON.stringify(su));
+    check('CC7: no page errors', !log.errors.length, log.errors.join('; '));
+    await p.close();
+  }
   await browser.close();
 }
 

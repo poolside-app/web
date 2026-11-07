@@ -143,6 +143,8 @@
   }
 
   let navUser = null, navFeatures = {}, navCounts = null;
+  // The tab strip, redrawn whenever who's signed in becomes known (PLAN.md CC7).
+  let renderStrip = null;
   function pageSection() {
     const f = (window.location.pathname.split('/').pop() || 'index.html');
     return f === 'index.html' || f === '' ? 'home' : (PAGE_SECTION[f] || null);
@@ -233,6 +235,7 @@
   function renderNav(user, features) {
     navUser = user || null;
     navFeatures = features || {};
+    if (renderStrip) renderStrip();
     const secs = sectionsFor(navUser, navFeatures);
     fixTopTabs(secs);
     if (!document.body) return;
@@ -312,6 +315,7 @@
     const u = JSON.parse(localStorage.getItem('poolside_tenant_user') || 'null');
     const f = JSON.parse(localStorage.getItem('poolside_tenant_features') || 'null');
     if (u) {
+      navUser = u; navFeatures = f || {};   // so the strip below is drawn for them straight away
       const draw = () => renderNav(u, f || {});
       if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw, { once: true });
     }
@@ -371,7 +375,11 @@
     const el = document.getElementById('admin-subtabs');
     if (!el) return;
     const active = activeKey();
-    el.innerHTML = `<div class="admin-subtabs-wrap"><div class="admin-subtabs">${items.map(t => `
+    // Only the tabs this person can use (PLAN.md CC7, the bottom bar's rule).
+    // They used to be drawn and then hidden once, so a redraw (Households →
+    // Renewals) brought back tabs they can't open.
+    const mine = navUser ? items.filter(t => t.key === active || itemOn(t, navUser, navFeatures)) : items;
+    el.innerHTML = `<div class="admin-subtabs-wrap"><div class="admin-subtabs">${mine.map(t => `
       <a href="${t.href}" class="${active === t.key ? 'on' : ''}" data-scope="${t.scope}"${t.feature ? ` data-feature="${t.feature}"` : ''} data-subtab="${t.key}">${t.label}${t.key === 'applications' ? ' <span class="badge zero" id="apps-badge">0</span>' : ''}</a>
     `).join('')}</div></div>`;
 
@@ -413,6 +421,7 @@
   // container, so the element exists. Waiting for DOMContentLoaded would
   // make the strip appear late and shift the page.
   render();
+  renderStrip = render;
   window.addEventListener('hashchange', render);
 
   // Preserved from members-subtabs.js — members.html calls this to show the
