@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/js/board-view.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="/js/phone-fit.js"></script>
@@ -309,7 +310,7 @@ function taskRank(kind) {
   // is_default_pw=true and no other surface to change it. Force them through
   // /change-password.html before they can do anything else.
   // Impersonators bypass (Doug supports without password rituals).
-  if (!user.impersonated && user.is_default_pw) {
+  if (!user.impersonated && !user.viewing && user.is_default_pw) {
     window.location.replace('/club/admin/change-password.html');
     return;
   }
@@ -319,7 +320,7 @@ function taskRank(kind) {
   // the club actually uses: scheduling first (more useful to the lifeguard
   // personally), check-in as fallback. Impersonators bypass this so Doug
   // can support from within.
-  if (!user.impersonated && user.role_template === 'gate_attendant') {
+  if (!user.impersonated && !user.viewing && user.role_template === 'gate_attendant') {
     const features = (tenant && tenant.features) || {};
     if (features.lifeguard_scheduling) {
       window.location.replace('/club/admin/my-shifts.html');
@@ -645,7 +646,8 @@ function taskRank(kind) {
 
   if (home.pool && home.pool.location) PoolWeather.load(home.pool.location, document.getElementById('hero-weather'));
   // Get the sign-ins a Home Screen app added from here brings along ready.
-  PoolsideHandoff.prepare();
+  // Not in a look-only preview (PLAN.md CC): nothing is handed off as them.
+  if (!(window.BoardView && window.BoardView.on)) PoolsideHandoff.prepare();
   paintMyJob(tdata);
 
   // The signup link: copy it, and tick the setup step.
@@ -685,7 +687,7 @@ function taskRank(kind) {
   // The phone pop-ups prompt (admin-push.js builds its own markup). For
   // someone member-help questions come to, with no device getting pop-ups,
   // it can't be dismissed. admin-push.js is deferred, so wait for it.
-  const mountPush = () => window.AdminPush && window.AdminPush.mountPrompt(document.getElementById('push-prompt'), {
+  const mountPush = () => !(window.BoardView && window.BoardView.on) && window.AdminPush && window.AdminPush.mountPrompt(document.getElementById('push-prompt'), {
     mustFor: tdata.help_topics_mine || [],
     devices: tdata.push_devices,
   });

@@ -25,6 +25,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireOwner } from '../_shared/auth.ts';
 import { validTimeZone } from '../_shared/pool_time.ts';
+import { LOOK_ONLY, asView, viewAllowed } from '../_shared/board_view.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -59,18 +60,38 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
+// Any sign-in signed with our key, whatever its kind (for a preview's, PLAN.md CC).
+async function verifyClaims(token: string): Promise<Record<string, unknown> | null> {
+  if (!JWT_SECRET) return null;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+    );
+    return await verify(token, key) as Record<string, unknown>;
+  } catch { return null; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return jsonResponse({ ok: false, error: 'POST required' }, 405);
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const token = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
-  const payload = token ? await verifyTenantAdmin(token) : null;
-  if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
+  let payload = token ? await verifyTenantAdmin(token) : null;
+  // A look-only preview of a board member's board (PLAN.md CC): the setup
+  // checklist only, as the board member it's for.
+  const view = !payload && token ? asView(await verifyClaims(token)) : null;
+  if (!payload && !view) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
+  if (view) {
+    if (!viewAllowed('tenant_settings', action)) return jsonResponse({ ok: false, error: LOOK_ONLY, look_only: true }, 403);
+    payload = { sub: view.sub, kind: 'tenant_admin', tid: view.tid, slug: view.slug };
+  }
+  if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 

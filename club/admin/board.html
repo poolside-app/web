@@ -291,6 +291,7 @@ function render() {
       </div>
       ${owner ? `<div class="actions">
         <button class="btn btn-sm" onclick="editPerson('${m.id}')">Positions</button>
+        ${m.id !== B.me ? `<button class="btn btn-sm" data-see="${m.id}" onclick="seeView('${m.id}')">See their view</button>` : ''}
         ${m.id !== B.me ? `<button class="btn btn-sm btn-danger" onclick="removePerson('${m.id}')">Remove from the board</button>` : ''}
       </div>` : ''}
     </div>`;
@@ -469,6 +470,21 @@ document.getElementById('person-save').addEventListener('click', async () => {
 });
 
 let undoTimer = null;
+// Their board home as they see it, look only (PLAN.md CC): a one-hour
+// look-only sign-in, opened in this tab by js/board-view.js. Close comes back here.
+async function seeView(id) {
+  const btn = document.querySelector(`[data-see="${id}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+  let r = null;
+  try { r = await admin('view_as', { admin_id: id }); } catch (_) { r = null; }
+  if (!r || !r.ok || !r.token) {
+    if (btn) { btn.disabled = false; btn.textContent = 'See their view'; }
+    alert((r && r.error) || 'Could not open their view. Try again.');
+    return;
+  }
+  location.href = '/club/admin/#view=' + encodeURIComponent(r.token);
+}
+
 async function removePerson(id, isStaff) {
   const m = (isStaff ? B.staff : B.members).find(x => x.id === id);
   if (!m || !confirm(isStaff ? `Remove ${m.name}'s login?`

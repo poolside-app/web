@@ -40,6 +40,7 @@ import { noticeRecipients, HELP_NOTICE, SPENDING_RULE } from '../_shared/positio
 import { taskNotice } from '../_shared/task_routing.ts';
 import { loadHome } from '../_shared/board_home.ts';
 import { zoneOrDefault } from '../_shared/pool_time.ts';
+import { LOOK_ONLY, asView, viewAllowed } from '../_shared/board_view.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -71,6 +72,18 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
+// Any sign-in signed with our key, whatever its kind (for a preview's, PLAN.md CC).
+async function verifyClaims(token: string): Promise<Record<string, unknown> | null> {
+  if (!JWT_SECRET) return null;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+    );
+    return await verify(token, key) as Record<string, unknown>;
+  } catch { return null; }
+}
+
 const FIELDS = 'id, tenant_id, target_scopes, assigned_admin_id, notice, kind, summary, link_url, source_kind, source_id, metadata, created_at, completed_at, completed_by, dismissed_at';
 
 // Returns the caller's effective scopes + owner flag, sourced from the DB
@@ -94,13 +107,21 @@ Deno.serve(async (req) => {
 
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const tokRaw  = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
-  const payload = tokRaw ? await verifyTenantAdmin(tokRaw) : null;
-  if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
-  const TID = payload.tid;
+  let payload = tokRaw ? await verifyTenantAdmin(tokRaw) : null;
+  // A look-only preview of a board member's board (PLAN.md CC): the board
+  // home's reads only, as the board member it's for.
+  const view = !payload && tokRaw ? asView(await verifyClaims(tokRaw)) : null;
+  if (!payload && !view) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* keep empty */ }
   const action = String(body.action ?? '');
+  if (view) {
+    if (!viewAllowed('admin_tasks', action)) return jsonResponse({ ok: false, error: LOOK_ONLY, look_only: true }, 403);
+    payload = { sub: view.sub, kind: 'tenant_admin', tid: view.tid };
+  }
+  if (!payload) return jsonResponse({ ok: false, error: 'Not authenticated' }, 401);
+  const TID = payload.tid;
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
   const caller = await getCaller(sb, payload);

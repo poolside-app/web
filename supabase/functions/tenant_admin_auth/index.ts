@@ -31,6 +31,7 @@ import { isLocked, afterFailure, lockedMessage, lockedEmail, escapeLike, MAX_TRI
 import { sendEmail, emailShell } from '../_shared/send_email.ts';
 import { changePlan, stripeCaller } from '../_shared/poolside_plans.ts';
 import { isTestRecipient } from '../_shared/test_recipients.ts';
+import { LOOK_ONLY, asView, viewAllowed, viewClaims, canPreview } from '../_shared/board_view.ts';
 
 // Shown when neither a text nor an email could go out (PLAN.md BG1).
 const SEND_FAILED = 'We couldn\'t send your sign-in right now. Please try again in a few minutes.';
@@ -202,6 +203,8 @@ type TenantAdminPayload = {
   sub: string; kind: 'tenant_admin'; tid: string; slug: string; exp: number;
   impersonated_by?: string; synthetic?: boolean;
   role_template?: string; scopes?: string[]; is_super?: boolean;
+  // A look-only preview (PLAN.md CC): who's looking.
+  viewing_by?: string; viewing_by_name?: string;
 };
 
 // Predefined role templates. The `owner` template is special — it skips
@@ -305,6 +308,11 @@ async function signToken(
     },
     key,
   );
+}
+
+// Any sign-in this function signed, whatever its kind (for a preview's, PLAN.md CC).
+async function verifyClaims(token: string): Promise<Record<string, unknown> | null> {
+  try { return await verify(token, await getJwtKey()) as Record<string, unknown>; } catch { return null; }
 }
 
 async function verifyToken(token: string): Promise<TenantAdminPayload | null> {
@@ -648,7 +656,16 @@ Deno.serve(async (req) => {
   // Auth required for everything below
   const authHdr = req.headers.get('Authorization') || req.headers.get('authorization') || '';
   const token = authHdr.startsWith('Bearer ') ? authHdr.slice(7) : '';
-  const payload = token ? await verifyToken(token) : null;
+  let payload = token ? await verifyToken(token) : null;
+  // A look-only preview of a board member's board (PLAN.md CC) reads `me`,
+  // as them, and nothing else. 403, not 401, so nothing signs out.
+  if (!payload && token) {
+    const view = asView(await verifyClaims(token));
+    if (view) {
+      if (!viewAllowed('tenant_admin_auth', action)) return jsonResponse({ ok: false, error: LOOK_ONLY, look_only: true }, 403);
+      payload = { sub: view.sub, kind: 'tenant_admin', tid: view.tid, slug: view.slug, exp: view.exp, viewing_by: view.by, viewing_by_name: view.by_name };
+    }
+  }
   if (!payload) return jsonResponse({ ok: false, error: 'Invalid or expired session' }, 401);
 
   // ── handoff (PLAN.md AI) ───────────────────────────────────────────────
@@ -658,7 +675,7 @@ Deno.serve(async (req) => {
   // once only, because a board sign-in can do more than a member's. Never
   // for a provider visit.
   if (action === 'handoff') {
-    if (payload.synthetic || payload.impersonated_by) return jsonResponse({ ok: false, error: 'Not for a provider visit' }, 403);
+    if (payload.synthetic || payload.impersonated_by || payload.viewing_by) return jsonResponse({ ok: false, error: 'Not for a provider visit or a preview' }, 403);
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
@@ -759,7 +776,8 @@ Deno.serve(async (req) => {
     // so an active admin effectively never has to re-login. Skip for
     // impersonation tokens — they have a deliberately shorter cap.
     let renewed_token: string | null = null;
-    if (!payload.impersonated_by && payload.exp && tenant.slug) {
+    // Never for a look-only preview (PLAN.md CC): it must not turn into a real sign-in.
+    if (!payload.impersonated_by && !payload.viewing_by && payload.exp && tenant.slug) {
       const remaining = (payload.exp as number) * 1000 - Date.now();
       const NINETY_THREE_DAYS_MS = 93 * 24 * 60 * 60 * 1000;
       // Also renew when their access changed since the token was made (a new
@@ -793,8 +811,30 @@ Deno.serve(async (req) => {
         linked_member_id: user.linked_member_id ?? null,
         member_apply_dismissed: !!user.member_apply_dismissed,
         impersonated: !!payload.impersonated_by,
+        // A look-only preview (PLAN.md CC): the page shows whose view it is.
+        viewing: payload.viewing_by ? { by_name: payload.viewing_by_name ?? null } : null,
       },
     });
+  }
+
+  // ── view_as (PLAN.md CC) ───────────────────────────────────────────────
+  // The President sees a board member's board home, look only: a one-hour
+  // sign-in of its own kind that only the board home's reads accept
+  // (_shared/board_view.ts). Nothing is recorded as theirs.
+  if (action === 'view_as') {
+    const isOwner = await requireOwner(sb, payload as never);
+    const { data: target } = await sb.from('admin_users')
+      .select('id, tenant_id, active, role_template, display_name, email')
+      .eq('id', String(body.admin_id ?? '')).eq('tenant_id', payload.tid).maybeSingle();
+    const why = canPreview({ id: payload.sub, tid: payload.tid, isOwner }, target);
+    if (why) return jsonResponse({ ok: false, error: why }, isOwner ? 400 : 403);
+    const { data: by } = await sb.from('admin_users').select('display_name, email').eq('id', payload.sub).maybeSingle();
+    const claims = viewClaims({
+      target: target!.id, tid: payload.tid, slug: payload.slug, by: payload.sub,
+      byName: by?.display_name || by?.email || 'The President', nowSec: Math.floor(Date.now() / 1000),
+    });
+    const tok = await create({ alg: 'HS256', typ: 'JWT' }, claims as unknown as Record<string, unknown>, await getJwtKey());
+    return jsonResponse({ ok: true, token: tok, name: target!.display_name || target!.email });
   }
 
   // ── change_password ────────────────────────────────────────────────────

@@ -16,6 +16,16 @@
 (function () {
   'use strict';
 
+  // A look-only preview of a board member's board (PLAN.md CC, js/board-view.js)
+  // stays on their home: any other board page opened in its tab goes back
+  // there, showing the screens they can open.
+  try {
+    if (sessionStorage.getItem('poolside_view_token') && !/^\/club\/admin\/(index\.html)?$/.test(location.pathname)) {
+      location.replace('/club/admin/#screens');
+      return;
+    }
+  } catch (_) { /* no sessionStorage: no preview */ }
+
   // ── PWA manifest: tell the manifest endpoint we're on an admin page ──
   // The default manifest's start_url is '/m/' (member portal). If an admin
   // saves an admin page to their home screen and taps the icon later, iOS
