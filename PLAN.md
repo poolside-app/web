@@ -900,6 +900,19 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CN. A member invited to the board is linked to their family (Doug, 11/8)
+Doug: "If a board member is invited, I want to be able to invite them the normal way… if they are already a member, it will link the accounts and both options for board or member view can flip back and forth… we would need to sign up under the same phone number".
+
+Today: the board side's "Member view" (board home, and More on phones) shows only when the board login is linked to a family member (`admin_users.linked_member_id`). That link is made only when a family is approved after the person is on the board (`autoLinkAdminToMember`, primary's phone or email). Invited after joining, they get no Member view, and the setup list asks them to "Sign up your own family". The family side's "Board tools" already matches by phone or email. Deleting the family clears the link (the foreign key sets it to null).
+Doug 11/8, on the plan: "If it's a family Membership, the family shouldn't have board access.. So track that by the phone number". The link is one person, by their mobile number; nobody else in the family gets anything.
+- **CN1. Link at the invite.** `tenant_admin_auth` `invite_admin`: the one active family member at the club with the same mobile number is linked. The Board page says so: "They're a member too (Skeen Family), so they can switch between the board and their family." An email-only invite links nobody.
+- **CN2. Board members already on the board** are linked the same way the next time they open the board (`me`, only while not linked).
+- **CN3. The person, not the primary.** The signup's link at approval matches the board member's number against every adult in the family with a phone, so a spouse on the board is linked to themselves, not the person who opened the membership. By phone only (it used email too).
+- **CN4. Phone only everywhere.** Today the family side's "Board tools" and the shared pop-up switch (`_shared/board_member.ts`) also match by email, so a spouse who shares the board member's email would see Board tools and could register their phone for board pop-ups. Both become the link or the same mobile number only.
+- Signing in stays per side: Member view opens their family side, which asks for a texted code the first time on that phone; after that both sides stay signed in and the switch goes straight across. (A board sign-in never signs anyone into a family, so a mistyped number can't open someone else's family.)
+- Failing test first: `test_board_link` (15 checks, offline, pretend database; Member view for a linked board member checked in the page source), in CI.
+- Built 11/8 on Doug's "Yes build it", not deployed yet. All 65 offline suites pass.
+
 ### CM. A family that skips the app, and removing a saved card (Doug, 11/8)
 Doug: "Have we checked the flow of someone doesn't have the full app experience and just buys a membership… have a button to remove their card… make sure though it will auto reject all future payments etc.. Check all scenarios".
 

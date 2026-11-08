@@ -396,9 +396,13 @@ document.getElementById('iv-send').addEventListener('click', async () => {
     });
     if (!r.ok) throw new Error(r.error || 'Invite failed');
     const ok = document.getElementById('iv-ok');
-    ok.innerHTML = r.sent
+    // Already a member with that mobile number: linked to their own family (PLAN.md CN1).
+    const fam = r.member_family
+      ? ` They're a member too (${escapeHtml(r.member_family)}), so they can switch between the board and their family.`
+      : '';
+    ok.innerHTML = (r.sent
       ? `<b>Invite sent</b> by ${channel === 'sms' ? 'text' : 'email'}. ${escapeHtml(name)} holds this position now.`
-      : `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`;
+      : `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`) + fam;
     ok.classList.add('show');
     for (const f of ['iv-name', 'iv-phone', 'iv-email']) document.getElementById(f).value = '';
     await load();

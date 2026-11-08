@@ -709,6 +709,12 @@ Deno.serve(async (req) => {
       sb.from('settings').select('value').eq('tenant_id', payload.tid).maybeSingle(),
     ]);
     if (!tenant) return jsonResponse({ ok: false, error: 'Tenant not found' }, 401);
+    // On the board already and a member with the same mobile number, but not
+    // linked yet (invited before PLAN.md CN): linked now, so Member view shows.
+    if (user && !user.linked_member_id && user.phone_e164 && !payload.synthetic && !payload.impersonated_by && !payload.viewing_by) {
+      const { linkAdminByPhone } = await import('../_shared/board_member.ts');
+      await linkAdminByPhone(sb as never, payload.tid as string, user as never);
+    }
     const settingsValue = (settings?.value ?? {}) as Record<string, unknown>;
     const features = settingsValue.features ?? {};
     const branding = settingsValue.branding ?? {};
@@ -1119,11 +1125,18 @@ Deno.serve(async (req) => {
       sent = r.sent; sendError = r.sent ? null : (r.error ?? 'unknown');
     }
 
+    // Already a member at the club with this mobile number: linked to
+    // themselves, so they can switch between the board and their family
+    // (PLAN.md CN1). Only that person; an email-only invite links nobody.
+    const { linkAdminByPhone } = await import('../_shared/board_member.ts');
+    const fam = await linkAdminByPhone(sb as never, payload.tid as string, { id: adminId, phone_e164: phone, linked_member_id: null });
+
     return jsonResponse({
       ok: true, admin_id: adminId, reactivated, channel,
       activation_url: activationLink,
       sent, send_error: sendError,
       role_template, roles, scopes,
+      member_family: fam?.family_name ?? null,
     });
   }
 

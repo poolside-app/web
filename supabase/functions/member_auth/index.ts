@@ -626,9 +626,10 @@ Deno.serve(async (req) => {
     // otherwise never see the door they are entitled to walk through.
     let is_board_member = false;
     try {
+      // The link or the same mobile number, never email: a spouse who shares
+      // the board member's email isn't on the board (PLAN.md CN4).
       const or = [`linked_member_id.eq.${member.id}`];
       if (member.phone_e164) or.push(`phone_e164.eq.${member.phone_e164}`);
-      if (member.email)      or.push(`email.eq.${String(member.email).toLowerCase()}`);
       const { data: adminRow } = await sb.from('admin_users')
         .select('id').eq('tenant_id', payload.tid).eq('active', true)
         .or(or.join(',')).limit(1).maybeSingle();

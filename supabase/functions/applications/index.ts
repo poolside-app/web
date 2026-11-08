@@ -161,37 +161,22 @@ function publicPrice(p: import('../_shared/membership_price.ts').PriceResult) {
 // sha256Hex declared above — same generate-then-store-the-hash pattern the
 // magic-link paths already use.
 
-// Bind an admin row to the household_member they just got approved as.
-// Match on email OR phone (E.164) — phone is a stronger signal because
-// the admin-prefill flow copies it byte-for-byte from admin_users.
-// Idempotent: skips if linked_member_id is already set.
+// Link each board member in a just-approved family to themselves, by mobile
+// number: a spouse on the board is linked to the spouse, and nobody is
+// linked by email (PLAN.md CN3, CN4, _shared/board_member.ts). It used to
+// link the family's primary to any board login with the same email or phone.
+// Idempotent: a board login already linked is left alone.
 async function autoLinkAdminToMember(
   sb: ReturnType<typeof createClient>,
   tenantId: string,
-  identity: { email?: string | null; phone?: string | null },
+  _identity: { email?: string | null; phone?: string | null },
   memberId: string,
 ): Promise<void> {
-  if (!identity.email && !identity.phone) return;
   try {
-    const orParts: string[] = [];
-    if (identity.email) orParts.push(`email.ilike.${identity.email}`);
-    if (identity.phone) orParts.push(`phone_e164.eq.${identity.phone}`);
-    const { data: matchedAdmin } = await sb.from('admin_users')
-      .select('id, linked_member_id')
-      .eq('tenant_id', tenantId).eq('active', true)
-      .or(orParts.join(','))
-      .limit(1).maybeSingle();
-    if (matchedAdmin && !matchedAdmin.linked_member_id) {
-      await sb.from('admin_users')
-        .update({ linked_member_id: memberId })
-        .eq('id', matchedAdmin.id);
-      await sb.from('audit_log').insert({
-        tenant_id: tenantId, kind: 'admin.linked_to_member',
-        entity_type: 'admin_user', entity_id: matchedAdmin.id,
-        summary: 'Admin auto-linked to household member',
-        actor_kind: 'system',
-      });
-    }
+    const { data: m } = await sb.from('household_members').select('household_id').eq('id', memberId).maybeSingle();
+    if (!m?.household_id) return;
+    const { linkHousehold } = await import('../_shared/board_member.ts');
+    await linkHousehold(sb as never, tenantId, m.household_id as string);
   } catch { /* never fail the calling action over this */ }
 }
 
