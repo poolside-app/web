@@ -260,7 +260,9 @@ function priceLinesHtml(p) {
   const row = (label, cents, green) => `<div style="display:flex;justify-content:space-between;${green ? 'color:#15803d' : ''}"><span>${label}</span><span>${cents < 0 ? '−' : ''}${money(Math.abs(cents))}</span></div>`;
   return `<div style="margin-top:14px;font-size:13.5px;line-height:1.7;border-top:1px solid var(--border);padding-top:10px">
     ${row(esc(OPTS.tier_label || 'Membership'), p.base_cents)}
-    ${p.discount_cents ? row(`Code ${esc(p.code || '')}${p.code_label ? ' (' + esc(p.code_label) + ')' : ''}`, -p.discount_cents, true) : ''}
+    ${p.discount_cents ? row(p.discount_kind === 'board'
+      ? `Board member discount${p.board_pct >= 100 ? ' (free)' : p.board_pct ? ' (' + p.board_pct + '% off)' : ''}`
+      : `Code ${esc(p.code || '')}${p.code_label ? ' (' + esc(p.code_label) + ')' : ''}`, -p.discount_cents, true) : ''}
     ${p.credit_cents ? row('Your referral credit', -p.credit_cents, true) : ''}
     ${p.fob_count ? row(`${p.fob_count} extra keyfob${p.fob_count === 1 ? '' : 's'}`, p.fob_cents) : ''}
   </div>`;

@@ -26,7 +26,7 @@ export async function loadBoard(sb: SB, tenantId: string): Promise<BoardData> {
   const [{ data: positions }, { data: holders }, { data: logins }] = await Promise.all([
     sb.from('board_positions').select(POSITION_FIELDS).eq('tenant_id', tenantId).order('sort').order('title'),
     sb.from('board_position_holders').select('position_id, admin_user_id').eq('tenant_id', tenantId).order('assigned_at'),
-    sb.from('admin_users').select('id, display_name, email, board_title, role_template, roles, scopes, active, last_login_at, phone_e164, linked_member_id')
+    sb.from('admin_users').select('id, display_name, email, board_title, role_template, roles, scopes, active, last_login_at, phone_e164, linked_member_id, member_discount_pct')
       .eq('tenant_id', tenantId),
   ]);
   const board = (logins ?? []).filter(l => l.role_template !== 'gate_attendant'

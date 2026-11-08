@@ -900,6 +900,14 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CO. A membership discount for each board member (Doug, 11/8)
+Doug: "when adding that board member, there should be a spot that has a check box allowing for a free membership? … Or have a discount apply right there?", then "Yes plan build dwploy". (Bishop's rule: half off over 80 member families, free over 100; the President sets each person's discount and changes it when the count passes 80 or 100.)
+- **CO1. Set it on the Board page.** Inviting someone has "Membership discount": None, Half off, Free, or another percent. Each board member's row shows it ("Free membership") and the President changes it there (`board` `set_member_discount`, President or full access only). Stored on the board login (`admin_users.member_discount_pct`).
+- **CO2. It comes off their family's dues by itself,** for as long as they're on the board: on their renewal (their family has a member linked to their board login, PLAN.md CN) and on their own signup started from their board home ("Sign up your own family", which sends their board sign-in, `applications.board_admin_id`). Never from a phone number typed into the public form, so nobody can claim a board member's discount by typing their number. Dues only, not keyfobs or parties. One discount counts: the biggest of the board's, a code, or a friend's referral (`discount_kind` 'board'). Free goes the "nothing to pay" way.
+- **CO3. The signup, renewal and the board's Signups say "Board member discount".**
+- Someone who paid before their discount was set is refunded by hand. A board member who leaves the board pays full price from their next renewal.
+- Failing test first: `test_board_discount` (27 checks, offline), in CI. Built 11/8; all 66 offline suites pass.
+
 ### CN. A member invited to the board is linked to their family (Doug, 11/8)
 Doug: "If a board member is invited, I want to be able to invite them the normal way… if they are already a member, it will link the accounts and both options for board or member view can flip back and forth… we would need to sign up under the same phone number".
 

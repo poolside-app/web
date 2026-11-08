@@ -426,6 +426,10 @@ document.addEventListener('change', (e) => {
 let PRICE = null;          // { base_cents, discount_cents, discount_kind, amount_due_cents, code, code_problem, note, referral_family }
 let APPLIED_CODE = '';
 let QUOTE_SEQ = 0;
+// A board member signing up their own family from their board home
+// ("Sign up your own family", ?prefill=admin): their board sign-in goes with
+// the price and the signup, so their board discount applies (PLAN.md CO).
+let BOARD_TOKEN = null;
 function tierListCents() {
   const tiers = (TENANT_PUBLIC && TENANT_PUBLIC.tiers) || [];
   const checked = document.querySelector('input[name="tier_slug"]:checked')?.value;
@@ -453,6 +457,7 @@ async function refreshQuote() {
         phone: primary.phone || document.getElementById('primary_phone').value.trim() || null,
         ...(PLAN_SEL.payoff_month ? { plan_today_cents: PLAN_SEL.today_cents ?? 0, plan_payoff_month: PLAN_SEL.payoff_month } : {}),
         fob_extra: FOB_EXTRA, need_new_fob: wantsFreeFob(), claim_token: window.__POOLSIDE_CLAIM_TOKEN__ || null,
+        board_token: BOARD_TOKEN,
       }),
     }).then(x => x.json());
     if (seq !== QUOTE_SEQ) return;       // a newer quote is on its way
@@ -501,11 +506,14 @@ function paintPrice() {
     msg.style.color = PRICE.code_problem ? 'var(--red, #dc2626)' : '#15803d';
     msg.textContent = PRICE.code_problem || (!PRICE.code ? ''
       : PRICE.discount_kind === 'code' ? `✓ ${PRICE.code}: ${fmt(PRICE.discount_cents)} off.`
+      : PRICE.discount_kind === 'board' ? `${PRICE.code} works, but your board member discount saves more, so we used that.`
       : `${PRICE.code} works, but your referral saves more, so we used that.`);
   } else { msg.textContent = ''; }
   if (!PRICE.discount_cents && !PRICE.fob_count && !PRICE.referral_problem) { box.style.display = 'none'; return; }
   const why = PRICE.discount_kind === 'code'
     ? `Code ${escapeHtml(PRICE.code || '')}${PRICE.code_label ? ' (' + escapeHtml(PRICE.code_label) + ')' : ''}`
+    : PRICE.discount_kind === 'board'
+    ? `Board member discount${PRICE.board_pct >= 100 ? ' (free)' : PRICE.board_pct ? ' (' + PRICE.board_pct + '% off)' : ''}`
     : `Referral discount${PRICE.referral_family ? ' — invited by the ' + escapeHtml(PRICE.referral_family) : ''}`;
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between"><span>${escapeHtml(PRICE.tier_label || 'Membership')}</span><span>${fmt(PRICE.base_cents)}</span></div>
@@ -1290,6 +1298,7 @@ async function submitApplication() {
   const primary = adults[0] || {};
   const payload = {
     action: 'submit', slug,
+    board_token: BOARD_TOKEN,   // their own signup from the board home (PLAN.md CO)
     family_name: get('family_name') + (get('family_name').endsWith(' Family') ? '' : ' Family'),
     primary_name: primary.name,
     primary_email: primary.email || get('primary_email').toLowerCase(),
@@ -1927,6 +1936,9 @@ async function prefillFromClaim(token) {
         }).then(r => r.json());
         if (me.ok && me.user) {
           const u = me.user;
+          // Their board discount comes with their own signup (PLAN.md CO).
+          BOARD_TOKEN = t;
+          if (typeof refreshQuote === 'function') refreshQuote();
           // Skip the auto-fill if display_name looks like the email's
           // local part (legacy tenant_signup default before 2026-05-20)
           // or like a slug. Those weren't real human names and pre-filling

@@ -110,6 +110,7 @@ Deno.serve(async (req) => {
       id: l.id, name: nameOf(l.id), board_title: l.board_title ?? null,
       pending: !(l as { last_login_at?: string | null }).last_login_at,
       full_access: isFull(l),
+      member_discount_pct: Number((l as { member_discount_pct?: number }).member_discount_pct ?? 0),
       position_ids: b.holders.filter(h => h.admin_user_id === l.id).map(h => h.position_id),
     }));
     // Lifeguard and gate-iPad logins: not board members, made here too.
@@ -258,6 +259,24 @@ Deno.serve(async (req) => {
       removed.length ? `${names(removed)} no longer ${removed.length === 1 ? 'holds' : 'hold'} ${pos.title}` : '',
     ].filter(Boolean).join('; '), positionId, { added, removed });
     return jsonResponse({ ok: true, added, removed });
+  }
+
+  // ── set_member_discount (PLAN.md CO) ───────────────────────────────────
+  // A board member's discount on their own family's dues, 0–100%. The
+  // President (or anyone with full access) sets it; it applies to their
+  // family's next signup or renewal (_shared/board_discount.ts).
+  if (action === 'set_member_discount') {
+    if (!me.isOwner) return onlyPresident();
+    const id = String(body.admin_id ?? '');
+    const pct = Math.max(0, Math.min(100, Math.trunc(Number(body.member_discount_pct) || 0)));
+    const { data: who } = await sb.from('admin_users').select('id, display_name, email')
+      .eq('id', id).eq('tenant_id', TID).eq('active', true).maybeSingle();
+    if (!who) return jsonResponse({ ok: false, error: 'That board member isn\'t here.' }, 404);
+    const { error } = await sb.from('admin_users').update({ member_discount_pct: pct }).eq('id', id).eq('tenant_id', TID);
+    if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    const name = who.display_name || who.email || 'A board member';
+    await audit('board.member_discount', `${name}'s membership discount: ${pct >= 100 ? 'free' : pct ? pct + '% off' : 'none'}`, null, { admin_id: id, pct });
+    return jsonResponse({ ok: true, member_discount_pct: pct });
   }
 
   // ── set_spending_rule ──────────────────────────────────────────────────

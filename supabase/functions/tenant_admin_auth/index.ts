@@ -963,6 +963,8 @@ Deno.serve(async (req) => {
       : (phone_raw ? 'sms' : 'email');
     if (!display_name) return jsonResponse({ ok: false, error: 'Name is required' }, 400);
     if (email && !email.includes('@')) return jsonResponse({ ok: false, error: 'That email address doesn\'t look right' }, 400);
+    // Their membership discount as a board member, 0–100% (PLAN.md CO).
+    const memberDiscountPct = Math.max(0, Math.min(100, Math.trunc(Number(body.member_discount_pct) || 0)));
 
     // Resolve roles + scopes. New API accepts a `roles[]` array (multi-role,
     // e.g. ['communications', 'volunteer']). Legacy `role_template` (single
@@ -1062,6 +1064,7 @@ Deno.serve(async (req) => {
         password_hash: hash, is_default_pw: false, notify_pref,
         scopes, role_template, roles,
         phone_e164: phone ?? null, board_title,
+        member_discount_pct: memberDiscountPct,
       }).eq('id', clash.id);
       adminId = clash.id;
       reactivated = true;
@@ -1074,6 +1077,7 @@ Deno.serve(async (req) => {
         is_default_pw: false, active: true,
         scopes, role_template, roles, phone_e164: phone,
         board_title,
+        member_discount_pct: memberDiscountPct,
       }).select('id').single();
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
       adminId = data.id;

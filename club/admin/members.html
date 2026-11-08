@@ -1251,7 +1251,7 @@ const App = (() => {
       try {
         if (typeof a.amount_due_cents === 'number') {
           priceLabel = '$' + (a.amount_due_cents / 100).toFixed(a.amount_due_cents % 100 ? 2 : 0)
-            + (a.discount_cents ? ` (after a $${(a.discount_cents / 100).toFixed(0)} ${a.discount_kind === 'code' ? 'code' : 'referral'} discount)` : '');
+            + (a.discount_cents ? ` (after a $${(a.discount_cents / 100).toFixed(0)} ${a.discount_kind === 'code' ? 'code' : a.discount_kind === 'board' ? 'board member' : 'referral'} discount)` : '');
         } else {
           const tier = (window.__APP_TIERS__ || []).find(t => t.slug === a.tier_slug);
           if (tier && tier.price_cents) priceLabel = '$' + (Number(tier.price_cents) / 100).toFixed(0);

@@ -28,7 +28,7 @@ export type DiscountCode = {
 export type Price = {
   base_cents: number;
   discount_cents: number;
-  discount_kind: 'code' | 'referral' | null;
+  discount_kind: 'code' | 'referral' | 'board' | null;
   discount_code_id: string | null;
   credit_cents: number;
   amount_due_cents: number;
@@ -81,10 +81,13 @@ export function priceMembership(args: {
   code?: DiscountCode | null;
   referralOffCents?: number;
   creditCents?: number;
+  /** A board member's discount on their own family's dues (PLAN.md CO). */
+  boardOffCents?: number;
 }): Price {
   const base = Math.max(0, Math.trunc(Number(args.baseCents) || 0));
   const codeOff = codeOffCents(args.code, base);
   const refOff = Math.max(0, Math.min(base, Math.trunc(Number(args.referralOffCents) || 0)));
+  const boardOff = Math.max(0, Math.min(base, Math.trunc(Number(args.boardOffCents) || 0)));
 
   // The bigger discount wins. A tie goes to the referral, since the family
   // came in through a member's link.
@@ -92,6 +95,19 @@ export function priceMembership(args: {
   let discount = 0;
   if (codeOff > refOff) { kind = 'code'; discount = codeOff; }
   else if (refOff > 0) { kind = 'referral'; discount = refOff; }
+
+  // A board member's discount (PLAN.md CO): it counts when it saves at least
+  // as much as the code or referral would. Only one discount counts.
+  if (boardOff > 0 && boardOff >= discount) {
+    const other = Math.max(codeOff, refOff);
+    const credit = Math.max(0, Math.min(base - boardOff, Math.trunc(Number(args.creditCents) || 0)));
+    return {
+      base_cents: base, discount_cents: boardOff, discount_kind: 'board', discount_code_id: null,
+      credit_cents: credit,
+      amount_due_cents: base - boardOff - credit,
+      note: other > 0 ? `Only one discount can count. We used your board member discount because it saves more (${money(boardOff)} vs. ${money(other)}).` : null,
+    };
+  }
 
   let note: string | null = null;
   // Said plainly (PLAN.md AU3, Doug 10/13: "the coupon code narrative...

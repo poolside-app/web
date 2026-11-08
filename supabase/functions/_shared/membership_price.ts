@@ -40,6 +40,9 @@ export type PriceResult = Price & {
   fob_fee_cents: number;
   /** How many more they could add (the family limit, less what they have). */
   fob_room: number;
+  /** The board member whose discount this is, and how much (PLAN.md CO). */
+  board_name: string | null;
+  board_pct: number;
 };
 
 const CODE_FIELDS = 'id, code, label, amount_cents, percent_off, expires_on, max_uses, active';
@@ -103,6 +106,8 @@ export type PriceInput = {
   fobExtra?: unknown;
   fobHave?: number;
   fobFree?: number;
+  /** A board member who started this signup from their board home (PLAN.md CO). */
+  boardAdminId?: string | null;
 };
 
 export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown, input: PriceInput): Promise<PriceResult> {
@@ -131,7 +136,13 @@ export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown,
     credit = Number(hh?.referral_credits_cents) || 0;
   }
 
-  const price = priceMembership({ baseCents: base, code, referralOffCents: ref.cents, creditCents: credit });
+  // A board member's discount: their family has someone linked to their
+  // board login, or they started this from their board home (PLAN.md CO).
+  const { boardDiscountFor } = await import('./board_discount.ts');
+  const board = await boardDiscountFor(sb, tenantId, { boardAdminId: input.boardAdminId ?? null, householdId: input.householdId ?? null });
+  const boardOff = board ? Math.round(base * board.pct / 100) : 0;
+
+  const price = priceMembership({ baseCents: base, code, referralOffCents: ref.cents, creditCents: credit, boardOffCents: boardOff });
   // Extra keyfobs are added after discounts and credit, which are for dues.
   const fs = fobSettings(sv);
   const fx = fs.enabled ? fobExtras(fs, { requested: input.fobExtra ?? 0, have: input.fobHave ?? 0, free: input.fobFree ?? 0 }) : { count: 0, cents: 0, room: 0 };
@@ -145,12 +156,14 @@ export async function priceFor(sb: SB, tenantId: string, settingsValue: unknown,
     code_problem: typed ? problem : null,
     referral_family: price.discount_kind === 'referral' ? ref.family : null,
     referral_problem: ref.problem,
+    board_name: price.discount_kind === 'board' && board ? board.name : null,
+    board_pct: price.discount_kind === 'board' && board ? board.pct : 0,
   };
 }
 
 const APP_PRICE_FIELDS = 'id, tenant_id, tier_slug, household_id, is_renewal, referral_code, primary_email, primary_phone, address, membership_year, payment_status, '
   + 'discount_code_id, discount_recorded_at, base_cents, discount_cents, discount_kind, credit_cents, amount_due_cents, '
-  + 'fob_extra_count, fob_cents, need_new_fob, is_new_member, prior_fob_number';
+  + 'fob_extra_count, fob_cents, need_new_fob, is_new_member, prior_fob_number, board_admin_id';
 
 /**
  * Work out an application's price and store it. `code` is what the family
@@ -182,6 +195,7 @@ export async function priceApplication(
     address: app.address as string | null,
     season: app.membership_year as number | null,
     exceptAppId: app.id as string,
+    boardAdminId: app.board_admin_id as string | null,
   };
 
   if (app.discount_recorded_at || app.payment_status === 'paid') {
@@ -253,7 +267,7 @@ export async function recordDiscountUse(sb: SB, appId: string): Promise<void> {
       codeName = c?.code ? ` (code ${c.code})` : '';
     }
     const parts = [
-      discount > 0 ? `$${(discount / 100).toFixed(2)} ${app.discount_kind === 'code' ? 'discount' + codeName : 'referral discount'}` : '',
+      discount > 0 ? `$${(discount / 100).toFixed(2)} ${app.discount_kind === 'code' ? 'discount' + codeName : app.discount_kind === 'board' ? 'board member discount' : 'referral discount'}` : '',
       credit > 0 ? `$${(credit / 100).toFixed(2)} referral credit` : '',
     ].filter(Boolean);
     try {

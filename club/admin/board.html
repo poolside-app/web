@@ -166,6 +166,15 @@
       <input type="tel" id="iv-phone" placeholder="(555) 123-4567" autocomplete="off">
       <label class="f" for="iv-email">Or their email</label>
       <input type="email" id="iv-email" placeholder="margaret@example.com" autocomplete="off">
+      <!-- PLAN.md CO: their own family's dues, while they're on the board. -->
+      <label class="f" for="iv-discount">Membership discount <span style="font-weight:500;color:var(--muted)">(their own family's dues)</span></label>
+      <select id="iv-discount">
+        <option value="0">None</option>
+        <option value="50">Half off</option>
+        <option value="100">Free</option>
+        <option value="other">Another percent…</option>
+      </select>
+      <input type="number" id="iv-discount-other" min="1" max="99" placeholder="Percent off, like 25" style="display:none;margin-top:6px">
       <div style="margin-top:10px"><button class="btn btn-primary" id="iv-send" type="button">Send invite</button></div>
       <div class="ok" id="iv-ok"></div>
     </details>
@@ -282,13 +291,20 @@ function render() {
 
   const members = B.members;
   document.getElementById('members').innerHTML = members.map(m => {
+    m.member_discount_pct = Math.max(0, Math.min(100, Number(m.member_discount_pct) || 0));   // PLAN.md CO
     const titles = B.positions.filter(p => m.position_ids.includes(p.id)).map(p => p.title);
     return `<div class="mrow">
       <div>
         <div class="nm">${escapeHtml(m.name)}${m.id === B.me ? ' <span style="font-weight:500;color:var(--muted);font-size:12.5px">(you)</span>' : ''}${m.pending ? '<span class="pill">Invited</span>' : ''}</div>
         <div class="ttl">${titles.length ? escapeHtml(titles.join(' · ')) : (m.board_title ? escapeHtml(m.board_title) + ' · no position yet' : 'No position yet')}</div>
+        ${m.member_discount_pct && !owner ? `<div class="ttl" style="color:#15803d;font-weight:600">${escapeHtml(discountWords(m.member_discount_pct))}</div>` : ''}
       </div>
       ${owner ? `<div class="actions">
+        <select class="btn btn-sm" aria-label="Membership discount for ${escapeHtml(m.name)}" onchange="setDiscount('${m.id}', this)" style="width:auto">
+          ${[[0, 'No discount'], [50, 'Half off membership'], [100, 'Free membership']].map(([v, l]) => `<option value="${v}" ${m.member_discount_pct === v ? 'selected' : ''}>${l}</option>`).join('')}
+          ${[0, 50, 100].includes(m.member_discount_pct) ? '' : `<option value="${m.member_discount_pct}" selected>${escapeHtml(discountWords(m.member_discount_pct))}</option>`}
+          <option value="other">Another percent…</option>
+        </select>
         <button class="btn btn-sm" onclick="editPerson('${m.id}')">Positions</button>
         ${m.id !== B.me ? `<button class="btn btn-sm" data-see="${m.id}" onclick="seeView('${m.id}')">See their view</button>` : ''}
         ${m.id !== B.me ? `<button class="btn btn-sm btn-danger" onclick="removePerson('${m.id}')">Remove from the board</button>` : ''}
@@ -379,6 +395,29 @@ document.getElementById('hold-save').addEventListener('click', async () => {
     closeScrim('hold-scrim'); await load();
   } catch (e) { showErr('hold-err', e.message); } finally { btn.disabled = false; }
 });
+// The membership discount box (PLAN.md CO): None, Half off, Free, or a percent.
+function discountPick(selId, otherId) {
+  const v = document.getElementById(selId).value;
+  if (v !== 'other') return Number(v) || 0;
+  return Math.max(0, Math.min(100, Math.round(Number(document.getElementById(otherId).value) || 0)));
+}
+document.getElementById('iv-discount').addEventListener('change', e => {
+  document.getElementById('iv-discount-other').style.display = e.target.value === 'other' ? '' : 'none';
+});
+function discountWords(pct) { return pct >= 100 ? 'Free membership' : pct === 50 ? 'Half off membership' : pct > 0 ? `${pct}% off membership` : ''; }
+// A board member's row: change their discount (the President only).
+async function setDiscount(id, sel) {
+  let pct = sel.value === 'other' ? Number(prompt('Percent off their family\'s dues (1 to 99):', '25')) : Number(sel.value);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) { await load(); return; }
+  pct = Math.round(pct);
+  sel.disabled = true;
+  try {
+    const r = await board('set_member_discount', { admin_id: id, member_discount_pct: pct });
+    if (!r.ok) throw new Error(r.error || 'Could not save that');
+    if (typeof toast === 'function') toast(pct ? `${discountWords(pct)} for their family.` : 'No membership discount.');
+  } catch (e) { alert(e.message); }
+  await load();
+}
 document.getElementById('iv-send').addEventListener('click', async () => {
   const name = document.getElementById('iv-name').value.trim();
   const phone = document.getElementById('iv-phone').value.trim();
@@ -389,10 +428,12 @@ document.getElementById('iv-send').addEventListener('click', async () => {
   const btn = document.getElementById('iv-send'); btn.disabled = true;
   try {
     const channel = phone.replace(/\D/g, '').length >= 10 ? 'sms' : 'email';
+    const pct = discountPick('iv-discount', 'iv-discount-other');
     const r = await admin('invite_admin', {
       channel, display_name: name, roles: ['custom'], scopes: [],
       phone_e164: phone || undefined, email: email || undefined,
       position_ids: [document.getElementById('hold-id').value],
+      member_discount_pct: pct,
     });
     if (!r.ok) throw new Error(r.error || 'Invite failed');
     const ok = document.getElementById('iv-ok');
@@ -400,11 +441,14 @@ document.getElementById('iv-send').addEventListener('click', async () => {
     const fam = r.member_family
       ? ` They're a member too (${escapeHtml(r.member_family)}), so they can switch between the board and their family.`
       : '';
+    const disc = pct ? ` ${discountWords(pct)} for their family, when they sign up or renew.` : '';
     ok.innerHTML = (r.sent
       ? `<b>Invite sent</b> by ${channel === 'sms' ? 'text' : 'email'}. ${escapeHtml(name)} holds this position now.`
-      : `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`) + fam;
+      : `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`) + fam + disc;
     ok.classList.add('show');
-    for (const f of ['iv-name', 'iv-phone', 'iv-email']) document.getElementById(f).value = '';
+    for (const f of ['iv-name', 'iv-phone', 'iv-email', 'iv-discount-other']) document.getElementById(f).value = '';
+    document.getElementById('iv-discount').value = '0';
+    document.getElementById('iv-discount-other').style.display = 'none';
     await load();
     // Keep the dialog open and current, so the link stays on screen.
     const id = document.getElementById('hold-id').value;

@@ -58,6 +58,17 @@ async function verifyTenantAdmin(token: string): Promise<Payload | null> {
   } catch { return null; }
 }
 
+/** A board member's own sign-in sent with their signup, for this club, as
+ *  themselves (not a preview or a provider visit): their board login id
+ *  (PLAN.md CO). Anything else is null. */
+async function boardSignIn(token: unknown, tenantId: string): Promise<string | null> {
+  const t = String(token ?? '').trim();
+  if (!t) return null;
+  const p = await verifyTenantAdmin(t) as (Payload & { impersonated_by?: unknown; viewing_by?: unknown }) | null;
+  if (!p || p.tid !== tenantId || p.synthetic || p.impersonated_by || p.viewing_by) return null;
+  return p.sub;
+}
+
 function strOrNull(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -154,6 +165,8 @@ function publicPrice(p: import('../_shared/membership_price.ts').PriceResult) {
     referral_problem: p.referral_problem,
     // Extra keyfobs, already in amount_due_cents (PLAN.md Q).
     fob_count: p.fob_count, fob_cents: p.fob_cents, fob_fee_cents: p.fob_fee_cents, fob_room: p.fob_room,
+    // A board member's discount (PLAN.md CO).
+    board_name: p.board_name, board_pct: p.board_pct,
   };
 }
 
@@ -812,6 +825,10 @@ Deno.serve(async (req) => {
       // card to charge next season, so ticking it would be a lie.
       wants_auto_renew: body.wants_auto_renew === true
         && (body.payment_method === 'stripe' || body.payment_method === 'stripe_plan'),
+      // A board member's own signup from their board home ("Sign up your own
+      // family") carries their board sign-in, checked here, so their board
+      // discount applies (PLAN.md CO). Never a typed phone number.
+      board_admin_id: await boardSignIn(body.board_token, tenant.id as string),
     };
 
     // Claim → UPDATE the pre-filled row (flip to 'pending', stamp claimed_at).
@@ -1095,6 +1112,8 @@ Deno.serve(async (req) => {
       email: strOrNull(body.email)?.toLowerCase() ?? null,
       phone: rawPhone ? normalizePhoneE164(rawPhone) : null,
       code: body.code != null ? String(body.code) : null,
+      // Their own signup from the board home: the board discount shows (PLAN.md CO).
+      boardAdminId: await boardSignIn(body.board_token, tenant.id as string),
     });
     // The payment plan on offer at this price, with what they picked
     // (PLAN.md M). Worked out here so the form never does the math.
