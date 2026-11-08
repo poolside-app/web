@@ -900,6 +900,24 @@ Steps:
 - A help article covers it.
 `node scripts/test_time_saved.mjs` (offline). Live 10/19: Bishop shows "About 10 hours" (doors opened remotely are most of it, from the 10/12 tap tests). A board member with no screens now has Insights in the bottom bar (`test_board_home` updated).
 
+### CP. "What the app does" video, next to Full app experience (Doug, 11/8)
+Doug: "create a video highlighting the benefits of the app… put that video next to the selection of full app experience… the party booking party specifically, unlock by phone, communications features, chat feature. See an issue take a photo. Ease of signing up… no wait time if you pay by card… unlock is already loaded on phone. Full calendar which will have swim meet and practice schedules", then "Same type of video like you did tutorials. Just don't click through as fast".
+- **CP1. The video.** Made like the step-by-step tour (`tour.mjs`, PLAN.md BD2): the real member pages with the made-up club's data, a camera that zooms into what's in use, a ring on what matters, a short title per step, one spoken line per step in the tour's voice, texts and pop-ups as bubbles. Slower than the tour: about 140 words a minute, and each screen held until its line is done plus a beat. Captions burned in, since many people watch muted. Its own script, `member_video.mjs`, so the tour stays as it is.
+- **CP2. The story,** one family on one phone:
+  1. Signing up takes a few minutes; pay by card and you're in straight away, no waiting on the board.
+  2. The welcome text signs you in, no password, and the app on the Home Screen opens signed in.
+  3. Open the gate from your phone during pool hours.
+  4. Book a party: pick a day and time, pay, and it's booked.
+  5. Ask the board: a message goes to the board member who handles it, and their reply pops up. See an issue? Take a photo and send it.
+  6. Club news as pop-ups.
+  7. The calendar: swim meets, practices and club events.
+  8. Close: "Choose the Full app experience. It's free with your membership."
+- **CP3. On the join form.** Under "Full app experience", a "Watch what the app does" button with its length, playing like the add-the-app videos (`js/pwa.js`), from `/videos/`.
+- Accurate claims only: the gate button works in season during member hours, and swim schedules show only once the club adds them.
+- Test first: the video's script runs every step against the made-up club and stops if anything it taps isn't on the screen (like `test_demo_video`); the join form's button and video file are checked offline.
+- Doug's answers 11/8: about 90 seconds; the made-up club (Maple Grove), so it fits every club; Bishop's swim meets and practices will come from the swim team's own calendar link, synced in; and also show pay over time, the whole family on the app, renewing next year in one tap, and keyfobs in the app. Those four are a short closing run (a few seconds each), so the main parts keep their slower pace. Made from the 90-second video's script (`promo.mjs`, which the add-the-app tutorials also came from): Ava's voice, subtitles on screen, the music under her, the phone with a big title per part. Doug sees it before it goes on the join form.
+- Built 11/8: `scripts/demo_video/member_video.mjs` (Ava at 150 words a minute, a beat after each line), 1:55 with everything Doug picked, `videos/what-the-app-does.mp4` (9.7 MB, 720p), the full-size copies in `handouts/`. The join form shows "Watch what the app does (1:55)" under Full app experience, which plays it in place, and the Full app line now reads "Open the gate from your phone, book parties, ask the board (with a photo), get club news, and see the calendar." `test_member_video` (13 checks, in CI). Not deployed: Doug watches it first.
+
 ### CO. A membership discount for each board member (Doug, 11/8)
 Doug: "when adding that board member, there should be a spot that has a check box allowing for a free membership? … Or have a discount apply right there?", then "Yes plan build dwploy". (Bishop's rule: half off over 80 member families, free over 100; the President sets each person's discount and changes it when the count passes 80 or 100.)
 - **CO1. Set it on the Board page.** Inviting someone has "Membership discount": None, Half off, Free, or another percent. Each board member's row shows it ("Free membership") and the President changes it there (`board` `set_member_discount`, President or full access only). Stored on the board login (`admin_users.member_discount_pct`).

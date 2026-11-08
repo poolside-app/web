@@ -112,6 +112,17 @@
       '&#9654;&#xFE0E; Watch a ' + v.secs + '-second video</button></div>';
   }
 
+  // "What the app does" (PLAN.md CP, Doug 11/8), next to "Full app experience"
+  // on the join form. Written by scripts/demo_video/member_video.mjs; if its
+  // length changes, change secs here (test_member_video checks).
+  const APP_VIDEO = { src: '/videos/what-the-app-does.mp4', secs: 115 };
+  function appVideoHtml() {
+    ensureInstallCss();
+    const m = Math.floor(APP_VIDEO.secs / 60), s = String(APP_VIDEO.secs % 60).padStart(2, '0');
+    return '<div class="pwa-vbox"><button type="button" class="pwa-watch" data-src="' + APP_VIDEO.src + '">' +
+      '&#9654;&#xFE0E; Watch what the app does (' + m + ':' + s + ')</button></div>';
+  }
+
   // Tapping plays it right there. No playsinline, so an iPhone plays it full
   // screen (it's a wide video); Android plays it in the card with a full-screen button.
   function wireInstallVideo(root) {
@@ -240,6 +251,7 @@
     detectInstallEnv,
     renderInstallGuide,
     installVideoHtml,
+    appVideoHtml,
     wireInstallVideo,
     canPromptInstall: () => !!deferredInstallPrompt,
     promptInstall: showAndroidInstall,
