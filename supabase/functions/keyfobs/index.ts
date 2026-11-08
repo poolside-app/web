@@ -28,7 +28,7 @@
 // Card payments go through stripe_checkout ('keyfob') and stripe_webhook.
 // =============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { requireScope, type AdminPayload } from '../_shared/auth.ts';
 import { fobSettings, parseFobNumber, fobTail, fobCardTotal, syncHouseholdFobs, liveFobCount, canCancel } from '../_shared/keyfobs.ts';
@@ -94,10 +94,12 @@ async function closeTasks(sb: Sb, fobId: string, by: string | null, householdId?
     }
   }
 }
-async function popFamily(tenantId: string, householdId: string, title: string, body: string) {
+// A pop-up, and an email when no pop-up reached them (PLAN.md CM3): a family
+// without the app never heard their keyfob was ready.
+async function popFamily(sb: SupabaseClient, tenantId: string, householdId: string, title: string, body: string) {
   try {
-    const { pushMembers } = await import('../_shared/member_notify.ts');
-    await pushMembers({ tenant_id: tenantId, household_ids: [householdId], title, body, url: '/m/#keyfobs', tag: 'keyfob' });
+    const { noticeFamily } = await import('../_shared/member_notify.ts');
+    await noticeFamily(sb, { tenantId, householdId, pop: { title, body, url: '/m/#keyfobs', tag: 'keyfob' } });
   } catch { /* the app shows it either way */ }
 }
 
@@ -392,7 +394,7 @@ Deno.serve(async (req) => {
     if (error) return j({ ok: false, error: /duplicate|unique/i.test(error.message) ? 'That number is already on another fob.' : error.message }, 409);
     await closeTasks(sb, f.id as string, me.id, f.household_id as string);
     await syncHouseholdFobs(sb, f.household_id as string);
-    await popFamily(TID, f.household_id as string, '🔑 Your keyfob is ready', `Fob ${fobTail(parsed.number)} is set up. Pick it up from the board.`);
+    await popFamily(sb, TID, f.household_id as string, '🔑 Your keyfob is ready', `Fob ${fobTail(parsed.number)} is set up. Pick it up from the board.`);
     return j({ ok: true, fob: shape(data) });
   }
 
@@ -429,7 +431,7 @@ Deno.serve(async (req) => {
     if (!f || !canCancel(f)) return j({ ok: false, error: 'Only a request that isn\'t paid yet can be canceled.' }, 409);
     await sb.from('keyfobs').delete().eq('id', f.id);
     await closeTasks(sb, f.id as string, me.id, f.household_id as string);
-    await popFamily(TID, f.household_id as string, '🔑 Keyfob request canceled',
+    await popFamily(sb, TID, f.household_id as string, '🔑 Keyfob request canceled',
       `The board canceled your request for ${f.reason === 'replacement' ? 'a replacement fob' : 'a new fob'}. Ask the board if you still need one.`);
     return j({ ok: true });
   }
@@ -440,7 +442,7 @@ Deno.serve(async (req) => {
     await sb.from('keyfobs').update({ included: false, price_cents: settings.fee_cents, payment_status: settings.fee_cents > 0 ? 'unpaid' : 'none',
       check_note: `${f.check_note ? f.check_note + ' ' : ''}${me.name} asked for payment instead.` }).eq('id', f.id);
     await closeTasks(sb, f.id as string, me.id, f.household_id as string);
-    await popFamily(TID, f.household_id as string, '🔑 Your keyfob',
+    await popFamily(sb, TID, f.household_id as string, '🔑 Your keyfob',
       `The board asked for the $${(settings.fee_cents / 100).toFixed(2)} fob fee. Pay it in the app and they'll issue your fob.`);
     return j({ ok: true });
   }
@@ -458,7 +460,7 @@ Deno.serve(async (req) => {
       await sb.from('keyfobs').insert({ tenant_id: TID, household_id: f.household_id, member_id: f.member_id ?? null, status: 'requested',
         reason: 'replacement', included: false, price_cents: settings.fee_cents, payment_status: free ? 'none' : 'unpaid', replaces_id: f.id });
       await syncHouseholdFobs(sb, f.household_id as string);
-      await popFamily(TID, f.household_id as string, '🔑 Your new keyfob',
+      await popFamily(sb, TID, f.household_id as string, '🔑 Your new keyfob',
         free ? 'The board will set up a new fob for you.' : `Pay the $${(settings.fee_cents / 100).toFixed(2)} fob fee in the app and the board will set up your new fob.`);
       return j({ ok: true, charged: !free });
     }
@@ -472,7 +474,7 @@ Deno.serve(async (req) => {
       replaces_id: f.id, issued_at: now, issued_by: me.id }).select(FIELDS).single();
     if (error) return j({ ok: false, error: /duplicate|unique/i.test(error.message) ? 'That number is already on another fob.' : error.message }, 409);
     await syncHouseholdFobs(sb, f.household_id as string);
-    await popFamily(TID, f.household_id as string, '🔑 Your new keyfob is ready', `Fob ${fobTail(parsed.number)} replaces your broken one. Pick it up from the board.`);
+    await popFamily(sb, TID, f.household_id as string, '🔑 Your new keyfob is ready', `Fob ${fobTail(parsed.number)} replaces your broken one. Pick it up from the board.`);
     return j({ ok: true, fob: shape(data) });
   }
 

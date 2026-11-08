@@ -14,6 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" id="meta-apple-title" content="Poolside">
 <script src="/js/pwa.js" defer></script>
+<script src="/js/saved-card.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js" defer></script>
 <style>
@@ -384,6 +385,7 @@ function render() {
   const root = document.getElementById('root');
   root.innerHTML = `
     <div id="auto-renew-card"></div>
+    <div id="saved-card"></div>
     <div class="card">
       <div class="card-eyebrow">Household</div>
       <h2 id="h-family-name-display" style="font-size:22px;font-family:'Fraunces',Georgia,serif;color:var(--blue);margin:0 0 4px">${escapeHtml(h.family_name || 'Your household')}</h2>
@@ -771,6 +773,24 @@ async function loadAutoRenew() {
     </div>`;
 }
 
+// The saved card, and Remove my card (PLAN.md CM5, js/saved-card.js). Only
+// the person who opened the membership sees it, like automatic renewal.
+async function loadSavedCard() {
+  const host = document.getElementById('saved-card');
+  if (!host || !IS_PRIMARY || !window.SavedCard) return;
+  let d;
+  try {
+    d = await callMember('saved_card');
+    if (!d.ok || !d.primary) return;
+  } catch (_) { return; }
+  SavedCard.render(host, d, async () => {
+    const r = await callMember('remove_card');
+    if (!r.ok) throw new Error(r.error || 'Could not remove it');
+    await loadAutoRenew();
+    await loadSavedCard();
+  });
+}
+
 async function toggleAutoRenew(turnOn) {
   // Confirm only when switching ON: that is the direction that authorizes a
   // future charge. Turning it off should never be made to feel risky.
@@ -782,6 +802,7 @@ async function toggleAutoRenew(turnOn) {
     const r = await callMember('set_auto_renew', { auto_renew: !!turnOn, source: 'member_portal' });
     if (!r.ok) throw new Error(r.error || 'Could not save that');
     await loadAutoRenew();
+    loadSavedCard();
   } catch (e) {
     if (msg) { msg.style.color = 'var(--red,#b91c1c)'; msg.textContent = e.message; }
     if (btn) { btn.disabled = false; btn.textContent = turnOn ? 'Turn on automatic renewal' : 'Turn off automatic renewal'; }
@@ -802,6 +823,7 @@ async function toggleAutoRenew(turnOn) {
     syncBranding(me, publicData);
     render();
     loadAutoRenew();   // independent — must never block the household list
+    loadSavedCard();   // PLAN.md CM5, the same
   } catch (e) {
     document.getElementById('root').innerHTML = `<div class="card"><h2>Error</h2><p>${escapeHtml(e.message)}</p></div>`;
   }

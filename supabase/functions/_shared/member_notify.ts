@@ -60,3 +60,39 @@ export async function notifyHousehold(sb: SupabaseClient, args: {
   void sb;
   return { pushed, emailed };
 }
+
+/**
+ * A pop-up to the family, and the same words by email ("Message from the
+ * club", `club_notice`) to the person who opened the membership when no pop-up
+ * reached anyone in it: a family that skipped the app, or never turned
+ * pop-ups on (PLAN.md CM3, Doug 11/8).
+ */
+export async function noticeFamily(sb: SupabaseClient, args: {
+  tenantId: string;
+  householdId: string;
+  pop: Pop;
+  button?: string;
+}): Promise<{ pushed: boolean; emailed: boolean }> {
+  const [{ data: hh }, { data: prim }] = await Promise.all([
+    sb.from('households').select('family_name').eq('id', args.householdId).eq('tenant_id', args.tenantId).maybeSingle(),
+    sb.from('household_members').select('email').eq('household_id', args.householdId).eq('tenant_id', args.tenantId)
+      .eq('role', 'primary').eq('active', true).maybeSingle(),
+  ]);
+  const to = (prim?.email as string | null) ?? null;
+  return notifyHousehold(sb, {
+    tenantId: args.tenantId, householdId: args.householdId, pop: args.pop,
+    email: to ? {
+      to,
+      send: async () => {
+        const { renderAndSend } = await import('./email_template.ts');
+        return renderAndSend(sb as never, {
+          tenantId: args.tenantId, templateKey: 'club_notice', to,
+          variables: {
+            family_name: String(hh?.family_name ?? ''), title: args.pop.title, body: args.pop.body,
+            url: args.pop.url ?? '/m/', button: args.button ?? 'Open my member page',
+          },
+        });
+      },
+    } : null,
+  });
+}

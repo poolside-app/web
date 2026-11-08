@@ -84,3 +84,23 @@ export function renewalText(args: { tenantName: string; year: number | string; l
     ? `${club}: ${own} ${args.link}`
     : `${club}: it's time to renew for ${args.year}. Your details are filled in, no password needed: ${args.link}`;
 }
+
+/** The welcome text at approval. A family that picked "Just sign me up" gets
+ *  no sign-in link (PLAN.md CM1, Doug 11/8: "Text with no link"); the form
+ *  told them they wouldn't be pushed to the app. Plain characters only. */
+export function welcomeText(a: { firstName: string; clubName: string; onPlan: boolean; owes: boolean; link: string; noApp: boolean }): string {
+  const first = normalizeForSms(a.firstName || 'there');
+  const club = normalizeForSms(a.clubName);
+  if (a.noApp) {
+    return a.onPlan
+      ? `Hi ${first}, your membership at ${club} is approved and your payment plan is set up. Your schedule is in your email. See you at the pool!`
+      : a.owes
+      ? `Hi ${first}, your membership at ${club} is approved. Your email says how to pay your dues.`
+      : `Hi ${first}, you're all set - your membership at ${club} is approved and paid. See you at the pool!`;
+  }
+  return a.onPlan
+    ? `Hi ${first}, your membership at ${club} is approved and your payment plan is set up. Tap to sign in and see your schedule: ${a.link}`
+    : a.owes
+    ? `Hi ${first}, your membership at ${club} is approved. Last step is your dues - tap to sign in and pay: ${a.link}`
+    : `Hi ${first}, you're all set - your membership at ${club} is approved and paid. Tap to sign in: ${a.link}`;
+}

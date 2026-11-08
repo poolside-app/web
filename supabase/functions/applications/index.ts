@@ -1157,7 +1157,7 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
     const { data: app } = await sb.from('applications')
-      .select('id, tenant_id, status, payment_status, paid_at, plan_started_at, primary_email, household_id')
+      .select('id, tenant_id, status, payment_status, paid_at, plan_started_at, primary_email, household_id, no_app_member')
       .eq('id', id).maybeSingle();
     if (!app)                                              return jsonResponse({ ok: false, error: 'Application not found' }, 404);
     if (app.payment_status !== 'paid' && app.payment_status !== 'pending') {
@@ -1197,7 +1197,8 @@ Deno.serve(async (req) => {
     const { data: tenant } = await sb.from('tenants').select('slug').eq('id', app.tenant_id).maybeSingle();
     const verifyUrl = `https://${tenant?.slug}.poolsideapp.com/m/verify.html#token=${encodeURIComponent(tok)}`;
 
-    return jsonResponse({ ok: true, verify_url: verifyUrl, member_name: primary.name });
+    // "Just sign me up": the page says see you at the pool, not Sign in (PLAN.md CM2).
+    return jsonResponse({ ok: true, verify_url: verifyUrl, member_name: primary.name, no_app: !!app.no_app_member });
   }
 
   // ── claim_venmo_paid (member-side: "I paid via Venmo") ─────────────────
@@ -2001,11 +2002,9 @@ Deno.serve(async (req) => {
           const firstNm = String(app.primary_name || '').trim().split(/\s+/)[0] || 'there';
           // GSM-7 only. One curly quote or dash doubles the segment count.
           const owes = app.payment_status !== 'paid' && !onPlan;
-          const body = onPlan
-            ? `Hi ${firstNm}, your membership at ${clubName} is approved and your payment plan is set up. Tap to sign in and see your schedule: ${verifyLink}`
-            : owes
-            ? `Hi ${firstNm}, your membership at ${clubName} is approved. Last step is your dues - tap to sign in and pay: ${verifyLink}`
-            : `Hi ${firstNm}, you're all set - your membership at ${clubName} is approved and paid. Tap to sign in: ${verifyLink}`;
+          // "Just sign me up" gets no sign-in link (PLAN.md CM1).
+          const { welcomeText } = await import('../_shared/sms_text.ts');
+          const body = welcomeText({ firstName: firstNm, clubName, onPlan, owes, link: verifyLink, noApp: !!app.no_app_member });
           const r = await sendSms({
             // No tenantPlan: 'transactional' is never counted against the
             // club's monthly allowance, so the plan is not consulted.

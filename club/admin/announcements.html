@@ -214,7 +214,7 @@
          posts only; editing a post never sends it again. -->
     <div class="check-row" id="m-notify-row">
       <input type="checkbox" id="m-notify" checked>
-      <label for="m-notify" style="margin:0;font-weight:500">🔔 Notify members (a pop-up on their phones)</label>
+      <label for="m-notify" style="margin:0;font-weight:500">🔔 Notify members (a pop-up on their phones, or an email to families without pop-ups)</label>
     </div>
     <div class="err" id="m-err"></div>
     <div class="modal-foot">
@@ -547,7 +547,14 @@ async function save() {
     const data = await call(action, id ? { id, title, body, pinned } : { title, body, pinned, notify_members });
     if (!data.ok) throw new Error(data.error || 'Save failed');
     closeM();
-    if (!id && notify_members && typeof toast === 'function') toast(data.notified ? `Posted. It popped up for ${data.notified} member${data.notified === 1 ? '' : 's'}.` : 'Posted. Nobody has notifications on yet.');
+    if (!id && notify_members && typeof toast === 'function') {
+      // Pop-ups, and email to families no pop-up reached (PLAN.md CM4).
+      const pops = data.notified ? `It popped up for ${data.notified} member${data.notified === 1 ? '' : 's'}` : 'Nobody has pop-ups on yet';
+      const mail = data.emailed || data.queued
+        ? `, and ${data.emailed + data.queued} famil${data.emailed + data.queued === 1 ? 'y gets' : 'ies get'} it by email${data.queued ? ` (${data.queued} tomorrow morning, after today's email limit)` : ''}`
+        : '';
+      toast(`Posted. ${pops}${mail}.`);
+    }
     await refresh();
   } catch (e) { err.textContent = e.message; err.classList.add('show'); }
   finally { btn.disabled = false; btn.textContent = orig; }

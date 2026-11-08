@@ -865,6 +865,33 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── saved_card / remove_card (PLAN.md CM5) ─────────────────────────────
+  // Doug 11/8: "have a button to remove their card… make sure though it will
+  // auto reject all future payments". The family's primary removes it from My
+  // family ("Family only"); a plan with payments left keeps it until it's
+  // paid off or canceled (_shared/saved_card.ts).
+  if (action === 'saved_card' || action === 'remove_card') {
+    const { data: me } = await sb.from('household_members').select('role')
+      .eq('id', payload.sub as string).eq('household_id', payload.hid as string).maybeSingle();
+    const primary = me?.role === 'primary';
+    const { data: tenant } = await sb.from('tenants').select('stripe_account_id').eq('id', payload.tid as string).maybeSingle();
+    const { cardState, cardLabel, removeCards, stripeCaller, PLAN_KEEPS_CARD } = await import('../_shared/saved_card.ts');
+    const stripe = stripeCaller(Deno.env.get('STRIPE_SECRET_KEY'), tenant?.stripe_account_id as string | null);
+    if (action === 'saved_card') {
+      if (!primary) return jsonResponse({ ok: true, primary: false, has_card: false });
+      const st = await cardState(sb, payload.tid as string, payload.hid as string);
+      return jsonResponse({
+        ok: true, primary: true, has_card: st.pms.length > 0,
+        label: st.pms.length ? await cardLabel(stripe, st.shown) : null,
+        can_remove: st.pms.length > 0 && !st.blocking,
+        reason: st.blocking ? PLAN_KEEPS_CARD : null,
+      });
+    }
+    if (!primary) return jsonResponse({ ok: false, error: 'Only the person who opened your membership can remove its card.' }, 403);
+    const r = await removeCards(sb, { tenantId: payload.tid as string, householdId: payload.hid as string, memberId: payload.sub as string, stripe });
+    return jsonResponse(r, r.ok ? 200 : r.code === 'stripe' ? 502 : 409);
+  }
+
   // ── renew_start ────────────────────────────────────────────────────────
   // One tap. Build a renewal application pre-filled from the household the
   // member already has, so renewing is a confirmation rather than a second

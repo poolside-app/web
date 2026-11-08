@@ -427,6 +427,26 @@ export const EMAIL_REGISTRY: EmailDef[] = [
     details: (v, x) => (x.attached ? small(`📎 A signed copy is attached, with the policies ${e(v.member_name)} accepted and the signature on file. Please keep it for your records.`) : '')
       + button('Open my member page', memberHome(v)),
   },
+  {
+    // PLAN.md CM3, CM4 (Doug 11/8): what the app tells a family by pop-up
+    // reaches a family no pop-up reached (no app, or pop-ups never turned on)
+    // by email instead, in the same words: a keyfob ready, a change after a
+    // refund, and announcements sent with "Notify members".
+    key: 'club_notice', section: 'family',
+    label: 'Message from the club',
+    when: 'When the app tells a family something by pop-up (a keyfob ready, an announcement, a change after a refund) and no pop-up reached them, because they don\'t use the app or never turned pop-ups on.',
+    default_subject: '{{title}}',
+    default_message: '<p>Hi {{family_name}},</p>',
+    placeholders: ['family_name', 'tenant_name', 'title'],
+    adds: 'the message itself, in the pop-up\'s words, and a button to their member page',
+    heading: v => e(v.title),
+    details: v => String(v.body ?? '').split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => para(e(l))).join('')
+      + (v.url ? button(String(v.button || 'Open my member page'), `${String(v.club_url ?? '')}${String(v.url)}`) : ''),
+    variants: [
+      { id: 'notice', label: 'A keyfob ready', x: {} },
+      { id: 'news', label: 'An announcement', x: { news: true } },
+    ],
+  },
 
   // ─── Sign-ups (PLAN.md BM) ─────────────────────────────────────────────
   {
@@ -598,6 +618,52 @@ export async function renderAndSend(
   // Replies reach the club, not Poolside's no-reply address (PLAN.md BG5).
   return await sendEmail({ to: args.to, subject: out.subject, html: out.html,
     replyTo: args.replyTo ?? await clubReplyTo(sb, args.tenantId, settingsValue), attachments: args.attachments });
+}
+
+/**
+ * The same as renderAndSend's email, built but not sent, for mail that goes
+ * through the queue (_shared/email_budget.ts) to many families at once
+ * (PLAN.md CM4). The club's wording and reply-to are read once. Null when the
+ * club turned the email off.
+ */
+export async function emailRenderer(sb: SupabaseClient, tenantId: string, templateKey: string, x: Variant = {}): Promise<null | {
+  replyTo: string | null;
+  render: (variables: Vars) => { subject: string; html: string };
+}> {
+  const hit = resolveEmail(templateKey);
+  if (!hit) return null;
+  let subject: string | null = null, message: string | null = null;
+  try {
+    const ovr = await loadOverride(sb, tenantId, hit.def.key);
+    if (ovr) {
+      if (!ovr.enabled) return null;
+      subject = ovr.subject || null;
+      message = ovr.body_html || null;
+    }
+  } catch { /* the default wording */ }
+  const base: Vars = {};
+  let settingsValue: Record<string, unknown> | null = null;
+  try {
+    const [{ data: tenant }, { data: sv }] = await Promise.all([
+      sb.from('tenants').select('display_name, slug').eq('id', tenantId).maybeSingle(),
+      sb.from('settings').select('value').eq('tenant_id', tenantId).maybeSingle(),
+    ]);
+    if (tenant) {
+      base.tenant_name = tenant.display_name as string;
+      base.club_url = `https://${tenant.slug as string}.poolsideapp.com`;
+    }
+    settingsValue = (sv?.value as Record<string, unknown> | null) ?? null;
+    const logo = (settingsValue?.branding as Record<string, unknown> | undefined)?.logo_url;
+    if (logo) base.__logo_url = String(logo);
+  } catch { /* keep what we have */ }
+  const replyTo = await clubReplyTo(sb, tenantId, settingsValue).catch(() => null);
+  return {
+    replyTo: replyTo ?? null,
+    render: (variables: Vars) => {
+      const out = composeEmail(templateKey, subject, message, { ...base, ...variables }, x);
+      return { subject: out.subject, html: out.html };
+    },
+  };
 }
 
 /** The Emails page's preview: an email, a version of it, sample details. */

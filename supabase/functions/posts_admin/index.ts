@@ -106,9 +106,10 @@ Deno.serve(async (req) => {
       notify_members: notify,
     }).select(FIELDS).single();
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-    // A pop-up for every member with notifications on. No email and no text
-    // (Doug, 2026-10-07): "Text all members" is the only club-wide text.
-    let notified = 0;
+    // A pop-up for every member with notifications on, and an email to each
+    // family no pop-up reached (PLAN.md CM4, Doug 11/8: "Email if no pop-up").
+    // No text (Doug, 2026-10-07): "Text all members" is the only club-wide text.
+    let notified = 0, emailed = 0, queued = 0;
     if (notify) {
       const { pushMembers } = await import('../_shared/member_notify.ts');
       const r = await pushMembers({
@@ -117,10 +118,27 @@ Deno.serve(async (req) => {
       });
       notified = r.reached.length;
       await sb.from('posts').update({ notified_at: new Date().toISOString() }).eq('id', data.id);
+      try {
+        const { newsRecipients } = await import('../_shared/news_email.ts');
+        const to = await newsRecipients(sb, TID, r.reached);
+        const { emailRenderer } = await import('../_shared/email_template.ts');
+        const em = to.length ? await emailRenderer(sb as never, TID, 'club_notice', { news: true }) : null;
+        if (em) {
+          // Through the queue: what today's email limit allows now, the rest
+          // with the next morning's daily run (_shared/email_budget.ts).
+          const { enqueueEmails, drainEmailQueue } = await import('../_shared/email_budget.ts');
+          const n = await enqueueEmails(sb as never, TID, to.map(t => ({
+            to: t.email, replyTo: em.replyTo, category: 'bulk',
+            ...em.render({ family_name: t.family_name, title: `📰 ${title}`, body: text, url: '/m/#news', button: 'See all club news' }),
+          })));
+          const d = n ? await drainEmailQueue(sb as never, { tenantId: TID }) : { sent: 0, still_queued: 0 };
+          emailed = d.sent; queued = d.still_queued;
+        }
+      } catch (e) { console.error('news email (non-fatal):', (e as Error).message); }
     }
     // Only the newest 15 are kept (Doug, 10/12, PLAN.md AQ5); pinned ones stay.
     const trimmed = await keepNewestPosts(sb, TID, created_by).catch(() => 0);
-    return jsonResponse({ ok: true, post: data, notified, trimmed });
+    return jsonResponse({ ok: true, post: data, notified, emailed, queued, trimmed });
   }
 
   if (action === 'update') {

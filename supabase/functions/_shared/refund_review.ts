@@ -226,11 +226,12 @@ export async function listReviews(sb: SupabaseClient, tid: string, opts: { appli
   return out;
 }
 
-async function pop(tid: string, hid: unknown, title: string, body: string, url: string) {
+// A pop-up, and an email when no pop-up reached them (PLAN.md CM3).
+async function pop(sb: SupabaseClient, tid: string, hid: unknown, title: string, body: string, url: string) {
   if (!hid) return;
   try {
-    const { pushMembers } = await import('./member_notify.ts');
-    await pushMembers({ tenant_id: tid, household_ids: [String(hid)], title, body, url, tag: 'refund' });
+    const { noticeFamily } = await import('./member_notify.ts');
+    await noticeFamily(sb, { tenantId: tid, householdId: String(hid), pop: { title, body, url, tag: 'refund' } });
   } catch { /* the choice is made either way */ }
 }
 
@@ -281,7 +282,7 @@ export async function decideReview(
     if (ctx.plan?.status === 'active') {
       await sb.from('payment_plans').update({ status: 'cancelled', cancelled_at: now, ended_reason: 'refunded' }).eq('id', String(ctx.plan.id));
     }
-    await pop(tid, ctx.hh?.id, 'Your membership has ended',
+    await pop(sb, tid, ctx.hh?.id, 'Your membership has ended',
       `Your ${season ? season + ' ' : ''}membership has ended${view.dispute ? '' : ' and your payment was refunded'}. Ask the board if you have questions.`, '/m/');
     done = `${fam}'s membership ended.`;
   } else if (choice === 'keep' && view.item === 'membership') {
@@ -306,7 +307,7 @@ export async function decideReview(
       }
     }
     if (canceled) {
-      await pop(tid, ctx.hh?.id, '🔑 Keyfob request canceled',
+      await pop(sb, tid, ctx.hh?.id, '🔑 Keyfob request canceled',
         `Your keyfob payment was ${word}, so ${canceled === 1 ? 'the request is' : 'the requests are'} canceled. Ask the board if you still need one.`, '/m/#keyfobs');
     }
     done = [off ? `${off} fob${off === 1 ? '' : 's'} to turn off (a to-do for the keyfob person)` : '', canceled ? `${canceled} request${canceled === 1 ? '' : 's'} canceled` : '']
@@ -316,7 +317,7 @@ export async function decideReview(
   } else if (choice === 'cancel_party' && ctx.party) {
     const { cancelParty } = await import('./party_cancel.ts');
     await cancelParty(sb, tid, String(ctx.party.id), input.by);
-    await pop(tid, ctx.party.household_id, '🎉 Your party is canceled',
+    await pop(sb, tid, ctx.party.household_id, '🎉 Your party is canceled',
       `Your party${ctx.party.pool_date ? ` on ${ctx.party.pool_date}` : ''} is canceled and its payment was ${word}. Ask the board if you have questions.`, '/m/#parties');
     done = 'The party is canceled.';
   } else if (choice === 'cancel_booking' && ctx.booking) {

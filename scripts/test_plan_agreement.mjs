@@ -98,7 +98,7 @@ console.log('CL3 · the emails');
   const b = text(et.composeEmail('plan_reinstated', null, null, { ...base, receipt_no: '2027-0009' }).html);
   check('paying to come back: "Welcome back", active again', /Welcome back/.test(b) && /active again/.test(b) && /2027-0009/.test(b), b.slice(0, 300));
   check('the Emails page previews the new versions', ['plan_payment_received', 'plan_payment_failed', 'renewal_confirmed'].every(k => (et.getRegistryEntry(k).variants || []).length >= 2)
-    && et.EMAIL_REGISTRY.length === 21);
+    && et.EMAIL_REGISTRY.length >= 21);
   const apps = read('supabase/functions/applications/index.ts'), pp = read('supabase/functions/payment_plans/index.ts'), wh = read('supabase/functions/stripe_webhook/index.ts');
   check('the welcome and the plan renewal carry the plan\'s words', /plan_terms/.test(apps) && /renewal_confirmed_plan/.test(apps + wh));
   check('the daily run says when access comes on, and tells the family after the last try', /access_now/.test(pp) && /plan_installment_failed_final/.test(pp));

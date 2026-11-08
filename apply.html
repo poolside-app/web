@@ -1492,7 +1492,7 @@ async function submitApplication() {
       <h1>🎉 Got it!</h1>
       <p class="lede">Your application is in the queue. ${isVenmo
         ? `Once you Venmo your dues${data.price && data.price.amount_due_cents > 0 ? ' (<b>$' + (data.price.amount_due_cents / 100).toFixed(2) + '</b>)' : ''}${venmoHandle ? ' to <b>@' + escapeHtml(venmoHandle.replace(/^@+/, '')) + '</b>' : ''}, the board verifies the payment and approves your membership in one shot, usually within <b>${within}</b>.${isNoApp
-            ? ` You'll get a welcome email from the board once you're in.`
+            ? ` You'll get a welcome email and text from the board once you're in.`
             : ` You'll get a welcome email and text with a link to sign in when you're in.`}`
         : `The board will review it and reach out, usually within ${within}.`}</p>
       ${isVenmo && data.venmo && data.venmo.link ? `
@@ -1589,6 +1589,17 @@ async function renderPostPaymentSuccess(headline, lede, appId) {
         body: JSON.stringify({ action: 'post_payment_signin', id: appId }),
       });
       const data = await res.json();
+      // "Just sign me up" (PLAN.md CM2): they're a member; the app is there
+      // if they ever want it, not pushed on them.
+      if (data.ok && data.verify_url && data.no_app) {
+        document.getElementById('signin-area').innerHTML = `
+          <p style="font-size:15px;line-height:1.5">You're a member. See you at the pool! Your receipt and your signed application are in your email.</p>
+          <p style="margin-top:10px;font-size:12.5px;color:var(--muted)">
+            Want to check your membership online later? <a href="${escapeAttr(data.verify_url)}" style="color:var(--blue)">Sign in any time</a> with your email or phone.
+          </p>`;
+        document.getElementById('install-area').innerHTML = '';
+        return;
+      }
       if (data.ok && data.verify_url) {
         document.getElementById('signin-area').innerHTML = `
           <a href="${escapeAttr(data.verify_url)}"

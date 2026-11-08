@@ -31,7 +31,7 @@ const et = await importTs(new URL('supabase/functions/_shared/email_template.ts'
   // the dues reminder, plan payment coming up and party time released (BG5);
   // 20 with "Thank you for helping" (sign-ups, BM).
   // 21 since PLAN.md BZ added "Payment receipt".
-  check('21 emails, down from 29', list.length === 21, String(list.length));
+  check('22 emails, down from 29 (CM3 added "Message from the club")', list.length === 22, String(list.length));
   check('each has a plain name, when it goes out, and a section',
     list.every(d => d.label && !/—|\(no app\)|TBD|Stripe/.test(d.label) && d.when && et.EMAIL_SECTIONS.some(s => s.id === d.section)), short(list.map(d => d.label)));
   check('sections in order: Signing up, Welcome, Payments, Renewals, Parties, Family changes, Sign-ups',
@@ -130,7 +130,7 @@ if (LIVE) {
     await sql(`update admin_users set email = 'delivered@resend.dev' where id = '${adminId}'`);
     const tok = jwt({ sub: adminId, kind: 'tenant_admin', tid: club.id, slug: 'bishopestates' });
     const l = await fn('email_templates', { action: 'list' }, tok);
-    check('T2: the list comes in sections, 21 emails', l.ok && l.emails?.length === 21 && l.sections?.length === 7, short({ n: l.emails?.length, s: l.sections?.length }));
+    check('T2: the list comes in sections, 22 emails', l.ok && l.emails?.length === 22 && l.sections?.length === 7, short({ n: l.emails?.length, s: l.sections?.length }));
     const dr = await fn('email_templates', { action: 'preview', key: 'dues_reminder', variant: 'waiting' }, tok);
     check('BG5: the dues reminder previews with the amount and the Venmo button', dr.ok && /venmo\.com/.test(dr.html || '') && !/is approved/.test(dr.html || ''), short({ ok: dr.ok, e: dr.error }));
     const pv = await fn('email_templates', { action: 'preview', key: 'welcome', variant: 'unpaid_venmo' }, tok);

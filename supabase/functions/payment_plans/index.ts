@@ -180,8 +180,14 @@ async function chargeInstallment(
     application_fee_amount: String(policy.waived ? 0 : platformFeeCents(inst.amount_cents, 'dues', policy) + planFee),
   };
   if (!STRIPE_KEY || !club.stripeAccount) return { paid: false, exhausted: false, error: 'Stripe not set up' };
+  // No card on file (PLAN.md CM6): never skipped without a word. It goes the
+  // declined-card way below: the family is told to update it, the board gets
+  // its to-do, and only a missed deadline cancels.
+  const noCard = !plan.stripe_customer_id || !plan.stripe_payment_method_id;
   let res: Response;
-  try {
+  if (noCard) {
+    res = new Response(JSON.stringify({ error: { message: 'There is no card on file for this plan.' } }), { status: 402 });
+  } else try {
     res = await fetch('https://api.stripe.com/v1/payment_intents', {
       method: 'POST',
       headers: {
@@ -711,7 +717,8 @@ Deno.serve(async (req) => {
       // Only what a board member approved on Money → Upcoming (PLAN.md S2).
       const due = chargeableNow(rows, club.today);
       if (!due.length) continue;
-      if (!plan.stripe_customer_id || !plan.stripe_payment_method_id) continue;
+      // A plan with no card goes on to chargeInstallment, which treats it as
+      // declined (PLAN.md CM6); it used to be skipped here without a word.
       if (String(plan.stripe_payment_method_id).startsWith('sim_')) continue;
       if (!club.stripeAccount || !club.chargesEnabled) continue;
       let anyPaid = false;
