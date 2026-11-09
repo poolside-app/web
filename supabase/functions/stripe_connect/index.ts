@@ -208,10 +208,18 @@ Deno.serve(async (req) => {
     const { requestChange } = await import('../_shared/pending_change.ts');
     const req = await requestChange(sb as never, { tenantId: tenant.id, kind: 'stripe_switch', requestedBy: payload.sub,
       payload: { from_account: tenant.stripe_account_id }, summary: 'switch the club to a different Stripe account' });
-    return jsonResponse({ ok: true, waiting: true, id: req.id, poolside: req.poolside,
-      message: req.poolside
-        ? "Sent to Poolside to approve, since nobody else at the club can. Payments keep going to the current account until then."
-        : 'Sent to the Treasurer and the others with full access to approve. Payments keep going to the current account until one of them does.' });
+    // Nobody else on the board: their code was enough, the old account is set
+    // aside now, and the new one's sign-up starts, as it used to.
+    if (req.applied) {
+      tenant.stripe_account_id = null;
+      const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
+      const r = await startOnboarding(sb, tenant as Tenant, payload.sub,
+        `${clubUrl}/club/admin/payments.html#stripe=connected`, `${clubUrl}/club/admin/payments.html#stripe=retry`);
+      if (!r.ok) return jsonResponse({ ok: false, error: r.error }, 500);
+      return jsonResponse({ ok: true, url: r.url, account_id: r.account_id });
+    }
+    return jsonResponse({ ok: true, waiting: true, id: req.id,
+      message: 'Sent to the Treasurer and the others with full access to approve. Payments keep going to the current account until one of them does; then Connect Stripe sets up the new one.' });
   }
 
   if (action === 'sync') {

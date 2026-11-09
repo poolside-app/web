@@ -59,10 +59,8 @@ console.log('CQ1 · a fresh texted code');
 
 console.log('CQ3 · a second board member approves');
 const pc = await importTs(new URL('supabase/functions/_shared/pending_change.ts', root));
-const texts = [], emails = [];
+const texts = [];
 pc.notifyDeps.sms = async (sb, tid, to, body) => { texts.push({ to, body }); return true; };
-pc.notifyDeps.email = async (to, subject, text) => { emails.push({ to, subject, text }); return true; };
-pc.notifyDeps.provider = () => ({ phone: '+19995550000', email: 'poolside@example.com' });
 const club = () => ({
   tenants: [{ id: 't', display_name: 'Maple Grove', slug: 'maplegrove', stripe_account_id: 'acct_OLD' }],
   settings: [{ tenant_id: 't', value: { payments: { venmo_handle: 'maplegrove', pass_stripe_fee: true } } }],
@@ -128,11 +126,19 @@ const club = () => ({
   T.admin_users = T.admin_users.filter(a => a.id === 'pres' || a.id === 'sec');
   T.board_position_holders = [];
   const sb = fakeDb(T);
-  texts.length = 0; emails.length = 0;
+  texts.length = 0;
   const r = await pc.requestChange(sb, { tenantId: 't', kind: 'stripe_switch', requestedBy: 'pres', summary: 'switch the club to a different Stripe account' });
-  check('nobody else can approve: it goes to Poolside, by text and email', r.poolside && texts.some(x => x.to === '+19995550000' && /poolsideapp\.com\/admin/.test(x.body)) && emails.length === 1, short({ r, texts }));
-  const ok = await pc.decideChange(sb, { id: r.id, tenantId: null, by: null, poolside: true, approve: true });
-  check('Poolside approves it from the provider console', ok.ok && T.tenants[0].stripe_account_id === null && T.pending_changes[0].decided_by_poolside === true);
+  // Doug 11/8: "Do everything the same Minus message goes to poolside. If I'm the only person, I can get a text code and it will work".
+  check('nobody else on the board: their own code is enough, it happens at once', r.applied && T.tenants[0].stripe_account_id === null && T.pending_changes[0].status === 'approved', short({ r, t: T.tenants[0] }));
+  check('…and nothing goes to Poolside', !texts.length, short(texts));
+  const T2 = club(); T2.admin_users = T2.admin_users.filter(a => a.id === 'pres' || a.id === 'sec'); T2.board_position_holders = [];
+  const r2 = await pc.requestChange(fakeDb(T2), { tenantId: 't', kind: 'payments_change', requestedBy: 'pres', payload: { venmo_handle: 'newclub' }, summary: "change the club's Venmo to @newclub" });
+  check('…the same for a new Venmo', r2.applied && T2.settings[0].value.payments.venmo_handle === 'newclub');
+  const T3 = club(), sb3 = fakeDb(T3);
+  const r3 = await pc.requestChange(sb3, { tenantId: 't', kind: 'stripe_switch', requestedBy: 'pres', summary: 'switch' });
+  check('with someone else on the board, it still waits for them', !r3.applied && T3.pending_changes[0].status === 'waiting' && T3.tenants[0].stripe_account_id === 'acct_OLD');
+  const ok = await pc.decideChange(sb3, { id: r3.id, tenantId: null, by: null, poolside: true, approve: true });
+  check('Poolside can still decide one from the provider console', ok.ok && T3.tenants[0].stripe_account_id === null && T3.pending_changes[0].decided_by_poolside === true);
 }
 
 console.log('CQ3 · full access on the Board page');

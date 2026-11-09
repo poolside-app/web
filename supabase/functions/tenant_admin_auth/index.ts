@@ -1195,10 +1195,11 @@ Deno.serve(async (req) => {
     // Their full access waits for a second board member (PLAN.md CQ3).
     if (fullAccessWaits) {
       const { requestChange } = await import('../_shared/pending_change.ts');
-      await requestChange(sb as never, {
+      const req = await requestChange(sb as never, {
         tenantId: payload.tid as string, kind: 'full_access', targetAdminId: adminId, requestedBy: payload.synthetic ? null : payload.sub as string,
         summary: `give ${display_name} full access${board_title ? ` (${board_title})` : ''}`,
       });
+      fullAccessWaits = !req.applied;   // nobody else on the board: done with their code
     }
 
     return jsonResponse({
@@ -1315,8 +1316,9 @@ Deno.serve(async (req) => {
     if (ownerWaits) {
       const { data: who } = await sb.from('admin_users').select('display_name, email').eq('id', id).maybeSingle();
       const { requestChange } = await import('../_shared/pending_change.ts');
-      await requestChange(sb as never, { tenantId: payload.tid as string, kind: 'full_access', targetAdminId: id,
+      const req = await requestChange(sb as never, { tenantId: payload.tid as string, kind: 'full_access', targetAdminId: id,
         requestedBy: payload.synthetic ? null : payload.sub as string, summary: `give ${who?.display_name || who?.email || 'a board member'} full access` });
+      ownerWaits = !req.applied;
     }
 
     try {
@@ -1415,10 +1417,12 @@ Deno.serve(async (req) => {
     const { error } = await sb.from('admin_users').update(ownerBack ? { active: true, role_template: 'custom', roles: ['custom'], scopes: [] } : { active: true })
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    let backWaits = false;
     if (ownerBack) {
       const { requestChange } = await import('../_shared/pending_change.ts');
-      await requestChange(sb as never, { tenantId: payload.tid as string, kind: 'full_access', targetAdminId: id,
+      const req = await requestChange(sb as never, { tenantId: payload.tid as string, kind: 'full_access', targetAdminId: id,
         requestedBy: payload.synthetic ? null : payload.sub as string, summary: `give ${back.display_name || back.email || 'a board member'} full access again` });
+      backWaits = !req.applied;
     }
     try {
       await sb.from('audit_log').insert({
@@ -1426,7 +1430,7 @@ Deno.serve(async (req) => {
         summary: 'Reactivated admin (undo)', actor_id: payload.sub, actor_kind: 'tenant_admin',
       });
     } catch { /* ignore */ }
-    return jsonResponse({ ok: true, waiting_full_access: ownerBack });
+    return jsonResponse({ ok: true, waiting_full_access: backWaits });
   }
 
   // Self-service: dismiss the founder "set up your membership" banner. The

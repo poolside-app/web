@@ -5,9 +5,12 @@
 // need to reply? So it's extra secure?". Switching the club's Stripe account,
 // changing where Venmo payments go, and giving someone full access wait here
 // until the Treasurer or anyone else with full access approves (with their
-// own texted code, _shared/step_up.ts). A club with nobody else gets Poolside,
-// on the provider console. Until then nothing changes, so payments keep going
-// to the current account. A request lasts 7 days.
+// own texted code, _shared/step_up.ts). Until then nothing changes, so
+// payments keep going to the current account. A request lasts 7 days.
+// When there's nobody else on the board (a club still being set up), the
+// asker's own texted code is enough and it happens at once; nothing goes to
+// Poolside (Doug 11/8: "Do everything the same Minus message goes to
+// poolside. If I'm the only person, I can get a text code and it will work").
 //
 // Heads-up texts (CQ2): every full-access board member hears when one of
 // these is asked for, approved or stopped, and when someone texts every
@@ -31,13 +34,6 @@ export const notifyDeps = {
       return (await sendSms({ sb: sb as never, tenantId, to, body, kind: 'transactional', source })).sent;
     } catch (e) { console.error('pending change text:', (e as Error).message); return false; }
   },
-  async email(to: string, subject: string, text: string): Promise<boolean> {
-    try {
-      const { sendEmail } = await import('./send_email.ts');
-      return (await sendEmail({ to, subject, html: `<p style="font:15px/1.55 Inter,Arial,sans-serif;color:#0f172a">${text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!)).replace(/(https:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>` })).sent;
-    } catch (e) { console.error('pending change email:', (e as Error).message); return false; }
-  },
-  provider() { return { phone: Deno.env.get('PROVIDER_NOTIFY_PHONE') || null, email: Deno.env.get('PROVIDER_NOTIFY_EMAIL') || null }; },
 };
 
 const isOwner = (a: Record<string, unknown>) => a.is_super === true || a.role_template === 'owner' || (Array.isArray(a.roles) && (a.roles as string[]).includes('owner'));
@@ -87,8 +83,9 @@ async function club(sb: Db, tenantId: string): Promise<{ name: string; slug: str
 export async function requestChange(sb: Db, args: {
   tenantId: string; kind: ChangeKind; summary: string; payload?: Record<string, unknown>;
   targetAdminId?: string | null; requestedBy: string | null;
-}): Promise<{ id: string; approvers: number; poolside: boolean }> {
+}): Promise<{ id: string; approvers: number; applied: boolean }> {
   const now = new Date().toISOString();
+  const approvers = await approversFor(sb, args.tenantId, args.requestedBy);
   const { data: open } = await sb.from('pending_changes').select('id, target_admin_id').eq('tenant_id', args.tenantId)
     .eq('kind', args.kind).eq('status', 'waiting');
   for (const o of ((open ?? []) as Array<{ id: string; target_admin_id: string | null }>)) {
@@ -99,14 +96,24 @@ export async function requestChange(sb: Db, args: {
   }
   const { data: row } = await sb.from('pending_changes').insert({
     tenant_id: args.tenantId, kind: args.kind, summary: args.summary, payload: args.payload ?? {},
-    target_admin_id: args.targetAdminId ?? null, requested_by: args.requestedBy, status: 'waiting',
+    target_admin_id: args.targetAdminId ?? null, requested_by: args.requestedBy, status: approvers.length ? 'waiting' : 'approved',
+    ...(approvers.length ? {} : { decided_by: args.requestedBy, decided_at: now }),
     expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), created_at: now,
   }).select('id').single();
   const id = String(row?.id);
   const c = await club(sb, args.tenantId);
   const logins = await boardLogins(sb, args.tenantId);
   const who = nameOf(logins.find(a => a.id === args.requestedBy));
-  const approvers = await approversFor(sb, args.tenantId, args.requestedBy);
+  // Nobody else on the board: their own code (already checked) is enough.
+  if (!approvers.length) {
+    const err = await apply(sb, { id, tenant_id: args.tenantId, kind: args.kind, target_admin_id: args.targetAdminId ?? null, payload: args.payload ?? {},
+      summary: args.summary, requested_by: args.requestedBy, status: 'approved', expires_at: now, created_at: now }, args.requestedBy);
+    try {
+      await sb.from('audit_log').insert({ tenant_id: args.tenantId, kind: 'change.approved', entity_type: 'pending_change', entity_id: id,
+        summary: `${who}: ${args.summary}, with a texted code (nobody else on the board to approve)${err ? `. It didn't go through: ${err}` : ''}`, actor_id: args.requestedBy, actor_kind: 'tenant_admin' });
+    } catch { /* done either way */ }
+    return { id, approvers: 0, applied: !err };
+  }
   const link = `https://${c.slug}.poolsideapp.com/club/admin/#approve=${id}`;
   const { enqueueAdminTask } = await import('./enqueue_task.ts');
   for (const a of approvers) {
@@ -121,24 +128,15 @@ export async function requestChange(sb: Db, args: {
     if (a.phone_e164) await notifyDeps.sms(sb, args.tenantId, String(a.phone_e164),
       `${c.name}: ${who} asked to ${args.summary}. Nothing changes until a second board member approves. Approve or stop it: ${link}`, 'pending_change.ask');
   }
-  // Nobody else at the club can approve: Poolside does, on the provider console.
-  let poolside = false;
-  if (!approvers.length) {
-    poolside = true;
-    const p = notifyDeps.provider();
-    const text = `${c.name}: ${who} asked to ${args.summary}. Nobody else there can approve it, so it's Poolside's: https://poolsideapp.com/admin/#changes`;
-    if (p.phone) await notifyDeps.sms(sb, args.tenantId, p.phone, text, 'pending_change.poolside');
-    if (p.email) await notifyDeps.email(p.email, `${c.name}: a change waits for Poolside`, text);
-  }
   // Everyone else with full access hears about it too (approvers already did).
   const told = new Set(approvers.map(a => String(a.id)));
   await headsUp(sb, { tenantId: args.tenantId, text: `${c.name}: heads-up, ${who} asked to ${args.summary}. If that's wrong, call them.`,
     except: [args.requestedBy, ...told], source: 'pending_change.heads_up' });
   try {
     await sb.from('audit_log').insert({ tenant_id: args.tenantId, kind: 'change.requested', entity_type: 'pending_change', entity_id: id,
-      summary: `${who} asked to ${args.summary}${poolside ? ' (Poolside approves)' : ''}`, actor_id: args.requestedBy, actor_kind: 'tenant_admin' });
+      summary: `${who} asked to ${args.summary}`, actor_id: args.requestedBy, actor_kind: 'tenant_admin' });
   } catch { /* the request stands */ }
-  return { id, approvers: approvers.length, poolside };
+  return { id, approvers: approvers.length, applied: false };
 }
 
 /** The club's changes still waiting, for the pages' banners. */

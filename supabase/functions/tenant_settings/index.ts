@@ -257,10 +257,11 @@ Deno.serve(async (req) => {
         .filter(Boolean).join(' and ');
       const req = await requestChange(sb as never, { tenantId: payload.tid, kind: 'payments_change', requestedBy: (payload as { synthetic?: boolean }).synthetic ? null : payload.sub,
         payload: paymentsAsk, summary: `change ${what}` });
-      return jsonResponse({ ok: true, waiting: { id: req.id, poolside: req.poolside,
-        message: req.poolside
-          ? 'Saved, except the new Venmo: it waits for Poolside to approve, since nobody else at the club can. Payments keep going to the current one until then.'
-          : 'Saved, except the new Venmo: it waits for the Treasurer or another full-access board member to approve. Payments keep going to the current one until then.' } });
+      // Nobody else on the board: their code was enough, and it's saved.
+      if (!req.applied) {
+        return jsonResponse({ ok: true, waiting: { id: req.id,
+          message: 'Saved, except the new Venmo: it waits for the Treasurer or another full-access board member to approve. Payments keep going to the current one until then.' } });
+      }
     }
 
     return jsonResponse({ ok: true });

@@ -65,11 +65,12 @@ export async function syncLogins(sb: SB, tenantId: string, adminIds: string[], b
         .eq('id', id).eq('tenant_id', tenantId);
       const who = board.logins.find(l => l.id === id);
       const { requestChange } = await import('./pending_change.ts');
-      await requestChange(sb as never, {
+      const req = await requestChange(sb as never, {
         tenantId, kind: 'full_access', targetAdminId: id, requestedBy: opts.by ?? null,
         summary: `give ${who?.display_name || 'a board member'} full access${login.board_title ? ` (${login.board_title})` : ''}`,
       });
-      waiting.push(id);
+      // Nobody else on the board: the asker's code was enough, it's done.
+      if (!req.applied) waiting.push(id);
       continue;
     }
     await sb.from('admin_users').update(login).eq('id', id).eq('tenant_id', tenantId);
