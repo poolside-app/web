@@ -134,6 +134,14 @@
       </div>
     </div>
 
+    <!-- PLAN.md CQ3: Stripe switches, new Venmo handles and full access a club
+         asked for, waiting for a second board member; Poolside decides when
+         nobody else at the club can. Call the club first. -->
+    <div class="card" id="changes" style="display:none">
+      <div class="card-head"><h2>🔐 Changes waiting for Poolside</h2></div>
+      <div id="changes-list" style="font-size:14px"></div>
+    </div>
+
     <div class="card" id="tenants">
       <div class="card-head">
         <h2>🏊 Tenants</h2>
@@ -1003,7 +1011,33 @@
   window.setDriveAccessStatus = setDriveAccessStatus;
 
   // Kick off the loads
-  setTimeout(() => { loadTenants(); loadPlatformHealth(); loadGateSummary(); loadDriveAccessRequests(); }, 400);
+  setTimeout(() => { loadTenants(); loadPlatformHealth(); loadGateSummary(); loadDriveAccessRequests(); loadChanges(); }, 400);
+
+  // ── Changes waiting for Poolside (PLAN.md CQ3) ──────────────────────
+  async function loadChanges() {
+    const card = document.getElementById('changes'), box = document.getElementById('changes-list');
+    try {
+      const { changes } = await callTenantsAdmin('changes');
+      const mine = (changes || []).filter(c => c.poolside_decides);
+      const others = (changes || []).filter(c => !c.poolside_decides);
+      if (!changes || !changes.length) { card.style.display = 'none'; return; }
+      card.style.display = '';
+      const row = c => `<div style="padding:10px 0;border-top:1px solid var(--border)">
+        <div><b>${escapeHtml(c.club)}</b>: ${escapeHtml(c.asked_by)} asked to ${escapeHtml(c.summary)}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin:2px 0 8px">${new Date(c.created_at).toLocaleString()}${c.asked_by_phone ? ' · call ' + escapeHtml(c.asked_by_phone) : ''}${c.poolside_decides ? ' · nobody else at the club can approve' : ' · the club\'s approvers: ' + escapeHtml(c.approvers.join(', '))}</div>
+        <button class="btn btn-primary" onclick="decideChange('${c.id}', true)">Approve</button>
+        <button class="btn" onclick="decideChange('${c.id}', false)">Stop it</button>
+      </div>`;
+      box.innerHTML = (mine.length ? `<p style="margin:0 0 4px">Yours to decide. Call the club before you approve.</p>${mine.map(row).join('')}` : '')
+        + (others.length ? `<p style="margin:12px 0 4px;color:var(--muted)">Waiting on the club (you can still decide):</p>${others.map(row).join('')}` : '');
+    } catch (e) { card.style.display = 'none'; }
+  }
+  async function decideChange(id, approve) {
+    if (!confirm(approve ? 'Approve this change? Call the club first.' : 'Stop this change?')) return;
+    try { await callTenantsAdmin('change_decide', { id, approve }); } catch (e) { alert(e.message); }
+    loadChanges();
+  }
+  window.decideChange = decideChange;
 </script>
 
 <script type="module">

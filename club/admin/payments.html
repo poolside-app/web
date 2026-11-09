@@ -115,6 +115,8 @@
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <script src="/js/refund-review.js"></script>
+<script src="/js/step-up.js"></script>
+<script src="/js/approvals.js"></script>
 
 <main>
   <!-- Every sibling admin page opens with an <h1>; this one went straight
@@ -699,11 +701,15 @@ async function connectStripe() {
   if (!r.ok) { alert(r.error || 'Failed'); return; }
   window.location.href = r.url;
 }
+// A fresh code to your phone, then a second board member approves (PLAN.md
+// CQ, js/step-up.js, js/approvals.js). Once approved, Connect Stripe starts the new account.
 async function switchStripe() {
-  if (!confirm('Disconnect this Stripe account and connect a different one?\n\nCard payments stop until the new account is set up. Money already paid stays in the old account.')) return;
-  const r = await api(STRIPE_URL, 'switch_account');
+  if (!confirm('Connect a different Stripe account?\n\nWe text you a code first. Then the Treasurer or another full-access board member has to approve it. Payments keep going to this account until they do; after that, Connect Stripe sets up the new one. Money already paid stays in the old account.')) return;
+  const r = await StepUp.run(code => api(STRIPE_URL, 'switch_account', { step_up_code: code }));
+  if (r.cancelled) return;
   if (!r.ok) { alert(r.error || 'Failed'); return; }
-  window.location.href = r.url;
+  if (r.waiting) { alert(r.message || 'Sent for approval.'); if (window.Approvals) Approvals.mount(); return; }
+  if (r.url) window.location.href = r.url;
 }
 async function syncStripe() {
   const r = await api(STRIPE_URL, 'sync');
@@ -1261,15 +1267,20 @@ async function savePaymentMethods(which) {
     const paypal = document.getElementById('paypal_link').value.trim();
     const verifyDays = Math.max(1, Math.min(30, Number(document.getElementById('offline_verify_window_days').value) || 3));
     const passFee = document.getElementById('pass_stripe_fee').checked;
-    const r = await api(SETTINGS_URL, 'save', {
+    // Changing a Venmo or PayPal that's set takes a code texted to you; a new
+    // one waits for a second board member (PLAN.md CQ).
+    const r = await StepUp.run(code => api(SETTINGS_URL, 'save', {
       value: { payments: {
         venmo_handle: venmo || null,
         paypal_link: paypal || null,
         offline_verify_window_days: verifyDays,
         pass_stripe_fee: passFee,
       } },
-    });
+      step_up_code: code,
+    }));
+    if (r.cancelled) return;
     if (!r.ok) throw new Error(r.error || 'Save failed');
+    if (r.waiting) { alert(r.waiting.message); if (window.Approvals) Approvals.mount(); await loadPaymentMethods(); return; }
     savedEl.style.display = 'inline';
     setTimeout(() => { savedEl.style.display = 'none'; }, 1800);
   } catch (e) {

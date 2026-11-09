@@ -204,6 +204,8 @@
 
 <script src="/js/admin-flags.js"></script>
 <script src="/js/phone-format.js"></script>
+<script src="/js/step-up.js"></script>
+<script src="/js/approvals.js"></script>
 <script src="/js/focus-highlight.js"></script>
 <script src="/js/admin-help-fab.js" defer></script>
 <script>
@@ -343,7 +345,7 @@ document.getElementById('pos-full').addEventListener('change', setupHint);
 document.getElementById('pos-save').addEventListener('click', async () => {
   const btn = document.getElementById('pos-save'); hideErr('pos-err'); btn.disabled = true;
   try {
-    const r = await board('save_position', { position: {
+    const position = {
       id: document.getElementById('pos-id').value || null,
       title: document.getElementById('pos-title').value,
       purpose: document.getElementById('pos-purpose').value,
@@ -351,9 +353,12 @@ document.getElementById('pos-save').addEventListener('click', async () => {
       full_access: document.getElementById('pos-full').checked,
       notices: [...document.querySelectorAll('#pos-notices input:checked')].map(c => c.value),
       scopes: [...document.querySelectorAll('#pos-scopes input:checked')].map(c => c.value),
-    } });
+    };
+    // Giving someone full access takes a code texted to you (PLAN.md CQ1).
+    const r = await StepUp.run(code => board('save_position', { position, step_up_code: code }));
+    if (r.cancelled) return;
     if (!r.ok) throw new Error(r.error || 'Save failed');
-    closeScrim('pos-scrim'); await load();
+    closeScrim('pos-scrim'); await load(); fullAccessNote(r);
   } catch (e) { showErr('pos-err', e.message); } finally { btn.disabled = false; }
 });
 document.getElementById('pos-delete').addEventListener('click', async () => {
@@ -387,12 +392,12 @@ function editHolders(id) {
 document.getElementById('hold-save').addEventListener('click', async () => {
   const btn = document.getElementById('hold-save'); hideErr('hold-err'); btn.disabled = true;
   try {
-    const r = await board('set_holders', {
-      position_id: document.getElementById('hold-id').value,
-      admin_ids: [...document.querySelectorAll('#hold-list input:checked')].map(c => c.value),
-    });
+    const position_id = document.getElementById('hold-id').value;
+    const admin_ids = [...document.querySelectorAll('#hold-list input:checked')].map(c => c.value);
+    const r = await StepUp.run(code => board('set_holders', { position_id, admin_ids, step_up_code: code }));
+    if (r.cancelled) return;
     if (!r.ok) throw new Error(r.error || 'Save failed');
-    closeScrim('hold-scrim'); await load();
+    closeScrim('hold-scrim'); await load(); fullAccessNote(r);
   } catch (e) { showErr('hold-err', e.message); } finally { btn.disabled = false; }
 });
 // The membership discount box (PLAN.md CO): None, Half off, Free, or a percent.
@@ -429,19 +434,23 @@ document.getElementById('iv-send').addEventListener('click', async () => {
   try {
     const channel = phone.replace(/\D/g, '').length >= 10 ? 'sms' : 'email';
     const pct = discountPick('iv-discount', 'iv-discount-other');
-    const r = await admin('invite_admin', {
+    const r = await StepUp.run(code => admin('invite_admin', {
       channel, display_name: name, roles: ['custom'], scopes: [],
       phone_e164: phone || undefined, email: email || undefined,
       position_ids: [document.getElementById('hold-id').value],
       member_discount_pct: pct,
-    });
+      step_up_code: code,
+    }));
+    if (r.cancelled) return;
     if (!r.ok) throw new Error(r.error || 'Invite failed');
     const ok = document.getElementById('iv-ok');
     // Already a member with that mobile number: linked to their own family (PLAN.md CN1).
     const fam = r.member_family
       ? ` They're a member too (${escapeHtml(r.member_family)}), so they can switch between the board and their family.`
       : '';
-    const disc = pct ? ` ${discountWords(pct)} for their family, when they sign up or renew.` : '';
+    const disc = (pct ? ` ${discountWords(pct)} for their family, when they sign up or renew.` : '')
+      + (r.waiting_full_access ? ' Their full access waits for the Treasurer or another full-access board member to approve it (or Poolside, if there\'s nobody else).' : '');
+    if (r.waiting_full_access && window.Approvals) Approvals.mount();
     ok.innerHTML = (r.sent
       ? `<b>Invite sent</b> by ${channel === 'sms' ? 'text' : 'email'}. ${escapeHtml(name)} holds this position now.`
       : `<b>Saved, but the ${channel === 'sms' ? 'text' : 'email'} didn't go through.</b> Send them this link another way: <a href="${escapeHtml(r.activation_url)}">${escapeHtml(r.activation_url)}</a>`) + fam + disc;
@@ -481,13 +490,22 @@ document.getElementById('person-save').addEventListener('click', async () => {
     for (const p of changes) {
       const holders = p.holders.map(h => h.id).filter(x => x !== id);
       if (want.has(p.id)) holders.push(id);
-      const r = await board('set_holders', { position_id: p.id, admin_ids: holders });
+      const r = await StepUp.run(code => board('set_holders', { position_id: p.id, admin_ids: holders, step_up_code: code }));
+      if (r.cancelled) { await load(); return; }
       if (!r.ok) throw new Error(r.error || 'Save failed');
+      fullAccessNote(r);
     }
     closeScrim('person-scrim'); await load();
   } catch (e) { showErr('person-err', e.message); await load(); } finally { btn.disabled = false; }
 });
 
+// Full access for someone new waits for a second board member (PLAN.md CQ3).
+function fullAccessNote(r) {
+  const waiting = r && (Array.isArray(r.waiting_full_access) ? r.waiting_full_access.length : r.waiting_full_access);
+  if (!waiting) return;
+  alert('Saved. Their full access waits for the Treasurer or another full-access board member to approve it (or Poolside, if there\'s nobody else). They have their other screens meanwhile.');
+  if (window.Approvals) Approvals.mount();
+}
 let undoTimer = null;
 // Their board as they see it, look only (PLAN.md CC): a one-hour look-only
 // sign-in, opened in this tab by js/board-view.js. A position's needs nobody
@@ -520,9 +538,10 @@ async function removePerson(id, isStaff) {
   undoTimer = setTimeout(() => toast.classList.remove('open'), 30000);
   document.getElementById('toast-undo').onclick = async () => {
     toast.classList.remove('open'); clearTimeout(undoTimer);
-    const u = await admin('reactivate_admin', { id });
+    const u = await StepUp.run(code => admin('reactivate_admin', { id, step_up_code: code }));
+    if (u.cancelled) return;
     if (!u.ok) alert('Could not undo: ' + (u.error || 'unknown error'));
-    await load();
+    await load(); fullAccessNote(u);
   };
 }
 

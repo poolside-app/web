@@ -169,6 +169,32 @@ Deno.serve(async (req) => {
     const { data: existing } = await sb.from('settings')
       .select('value').eq('tenant_id', payload.tid).maybeSingle();
     const wasOpen = ((existing?.value as Record<string, Record<string, unknown>> | undefined)?.season?.open) !== false;
+
+    // Where Venmo (and PayPal) payments go (PLAN.md CQ, Doug 11/8): changing
+    // or clearing a handle that's set takes a fresh code to their own phone;
+    // replacing it with a different one also waits for a second board member
+    // (_shared/pending_change.ts), and the rest of this save goes ahead. The
+    // first time it's set needs neither: no money goes anywhere yet.
+    let paymentsAsk: Record<string, unknown> | null = null;
+    if (isPlainObject(value.payments)) {
+      const pv = value.payments as Record<string, unknown>;
+      const cur = (((existing?.value ?? {}) as Record<string, unknown>).payments ?? {}) as Record<string, unknown>;
+      const norm = (v: unknown) => String(v ?? '').trim().replace(/^@+/, '').toLowerCase();
+      const changed = ['venmo_handle', 'paypal_link'].filter(k => k in pv && norm(cur[k]) !== '' && norm(pv[k]) !== norm(cur[k]));
+      if (changed.length) {
+        if (!(payload as { synthetic?: boolean }).synthetic) {
+          const { checkStepUp } = await import('../_shared/step_up.ts');
+          const bad = await checkStepUp(sb as never, { tenantId: payload.tid, adminId: payload.sub, purpose: 'payments_change', code: body.step_up_code });
+          if (bad) return jsonResponse(bad.body, bad.status);
+        }
+        const replacing = changed.filter(k => norm(pv[k]) !== '');
+        if (replacing.length) {
+          paymentsAsk = Object.fromEntries(replacing.map(k => [k, k === 'venmo_handle' ? String(pv[k]).trim().replace(/^@+/, '') : String(pv[k]).trim()]));
+          for (const k of replacing) delete pv[k];
+        }
+      }
+    }
+
     if (existing) {
       const merged = deepMerge(
         (existing.value ?? {}) as Record<string, unknown>,
@@ -224,6 +250,19 @@ Deno.serve(async (req) => {
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
     }
 
+    // The new Venmo or PayPal waits for a second board member (PLAN.md CQ3).
+    if (paymentsAsk) {
+      const { requestChange } = await import('../_shared/pending_change.ts');
+      const what = [paymentsAsk.venmo_handle ? `the club's Venmo to @${paymentsAsk.venmo_handle}` : '', paymentsAsk.paypal_link ? `the club's PayPal link to ${paymentsAsk.paypal_link}` : '']
+        .filter(Boolean).join(' and ');
+      const req = await requestChange(sb as never, { tenantId: payload.tid, kind: 'payments_change', requestedBy: (payload as { synthetic?: boolean }).synthetic ? null : payload.sub,
+        payload: paymentsAsk, summary: `change ${what}` });
+      return jsonResponse({ ok: true, waiting: { id: req.id, poolside: req.poolside,
+        message: req.poolside
+          ? 'Saved, except the new Venmo: it waits for Poolside to approve, since nobody else at the club can. Payments keep going to the current one until then.'
+          : 'Saved, except the new Venmo: it waits for the Treasurer or another full-access board member to approve. Payments keep going to the current one until then.' } });
+    }
+
     return jsonResponse({ ok: true });
   }
 
@@ -238,6 +277,9 @@ Deno.serve(async (req) => {
     { id: 'policies', label: 'Review the policies and waiver', link: '/club/admin/policies.html' },
     { id: 'opening', label: 'Set opening and closing day', link: '/club/admin/settings.html?focus=season#season', auto: true },
     { id: 'renewal', label: 'Send the renewal message to last season\'s members', link: '/club/admin/members.html#renewals', auto: true },
+    // PLAN.md CQ4 (Doug 11/8): "a reminder to check the Venmo and stripe
+    // accounts to ensure they are up to date". The label shows what's set now.
+    { id: 'payments_dest', label: 'Check that payments still go to the club', link: '/club/admin/payments.html?focus=stripe' },
   ];
   async function seasonStatus() {
     const { data: row } = await sb.from('settings').select('value').eq('tenant_id', payload!.tid).maybeSingle();
@@ -256,12 +298,35 @@ Deno.serve(async (req) => {
       opening: String(seasonInfo.start_date ?? '').startsWith(String(season)),
       renewal: (sent ?? []).length > 0,
     };
+    // What's set now, so the board can see at a glance it's still the club's.
+    const { data: tn } = await sb.from('tenants').select('stripe_account_id').eq('id', payload!.tid).maybeSingle();
+    const venmo = String(((sv.payments ?? {}) as Record<string, unknown>).venmo_handle ?? '').trim().replace(/^@+/, '');
+    const dest = [tn?.stripe_account_id ? `Stripe account …${String(tn.stripe_account_id).slice(-6)}` : 'no Stripe account', venmo ? `Venmo @${venmo}` : 'no Venmo'].join(', ');
     return {
       season, pinned: Number(membership.year) > 2000, next: season + 1,
       paid: paid ?? 0, last_season_paid: lastPaid ?? 0,
-      checklist: SEASON_ITEMS.map(i => ({ ...i, done: !!(ticks[i.id] || autoDone[i.id]) })),
+      checklist: SEASON_ITEMS.map(i => ({ ...i, ...(i.id === 'payments_dest' ? { label: `${i.label} (${dest})` } : {}), done: !!(ticks[i.id] || autoDone[i.id]) })),
       history: Array.isArray(sv.season_history) ? sv.season_history : [],
     };
+  }
+
+  // A board member downloaded every household's details (Signups' CSV): a
+  // heads-up to everyone with full access (PLAN.md CQ2). The file is made in
+  // the browser, so this is the page telling us; it's a heads-up, not a lock.
+  if (action === 'export_note') {
+    if ((payload as { synthetic?: boolean; viewing_by?: unknown }).synthetic || (payload as { viewing_by?: unknown }).viewing_by) return jsonResponse({ ok: true });
+    try {
+      const [{ data: who }, { data: tn }] = await Promise.all([
+        sb.from('admin_users').select('display_name, email').eq('id', payload.sub).maybeSingle(),
+        sb.from('tenants').select('display_name').eq('id', payload.tid).maybeSingle(),
+      ]);
+      const { headsUp } = await import('../_shared/pending_change.ts');
+      await headsUp(sb as never, { tenantId: payload.tid, except: [payload.sub], source: 'heads_up.export',
+        text: `${tn?.display_name ?? 'Your club'}: heads-up, ${who?.display_name || who?.email || 'a board member'} downloaded every household's details (the Signups CSV).` });
+      await sb.from('audit_log').insert({ tenant_id: payload.tid, kind: 'households.exported', entity_type: 'tenant', entity_id: payload.tid,
+        summary: 'Downloaded every household as a CSV', actor_id: payload.sub, actor_kind: 'tenant_admin' });
+    } catch (e) { console.error('export heads-up (non-fatal):', (e as Error).message); }
+    return jsonResponse({ ok: true });
   }
 
   if (action === 'season_status') {

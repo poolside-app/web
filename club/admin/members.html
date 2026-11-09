@@ -789,6 +789,8 @@ function csvCell(s) {
   return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 function exportCsv() {
+  // Everyone with full access gets a heads-up (PLAN.md CQ2).
+  try { fetch(SETTINGS_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` }, body: JSON.stringify({ action: 'export_note' }) }).catch(() => {}); } catch (_) {}
   const headers = ['Family name','Membership level','Fob #','Dues paid','Paid until year','Address','City','Zip','Emergency contact','Notes','# Members (active)','Primary name','Primary phone','Primary email','Other members'];
   const rows = [headers.map(csvCell).join(',')];
   for (const h of Households.cache) {

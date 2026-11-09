@@ -226,8 +226,13 @@ console.log('BN1b · connect a different Stripe account');
   check('stripe_connect has switch_account', /action === 'switch_account'/.test(c));
   check('  owner only', /requireOwner/.test(sw.slice(0, 600)));
   check('  refuses while families have saved cards', /savedCards\(/.test(sw) && /switchBlocked\(/.test(sw) && /409/.test(sw.slice(0, 1500)));
-  check('  forgets the account, in the Activity log, then a fresh sign-up', /forgetAccount\(/.test(sw) && /startOnboarding\(/.test(sw)
-    && /stripe\.account_switched/.test(c));
+  // PLAN.md CQ (Doug 11/8): a fresh texted code, then a second board member
+  // approves; the approval sets the old account aside (_shared/pending_change.ts)
+  // and Connect Stripe starts the new one.
+  const swOnly = sw.slice(0, sw.indexOf("action === 'sync'"));
+  check('  a code, then a second board member approves; the approval sets the old account aside, in the Activity log',
+    /purpose: 'stripe_switch'/.test(swOnly) && /requestChange\(/.test(swOnly) && !/forgetAccount\(/.test(swOnly)
+    && /stripe\.account_switched/.test(read('supabase/functions/_shared/pending_change.ts')));
   const forget = c.slice(c.indexOf('async function forgetAccount'), c.indexOf('async function forgetAccount') + 900);
   check('  forgetting clears the account and both switches', /stripe_account_id: null/.test(forget) && /stripe_charges_enabled: false/.test(forget) && /stripe_payouts_enabled: false/.test(forget) && /audit_log/.test(forget));
   const onb = c.slice(c.indexOf("action === 'onboard'"), c.indexOf("action === 'sync'"));
@@ -292,9 +297,8 @@ if (process.argv.includes('--live')) {
     await sql(`update payment_plans set stripe_payment_method_id = 'sim_pm_test' where tenant_id = ${q(club.id)}`);
     const sw = await call({ action: 'switch_account' });
     const afterSw = await acctOf();
-    if (afterSw.stripe_account_id) made.add(afterSw.stripe_account_id);
-    check('Switch: with only a test card, a new account and its sign-up page', sw.ok && /^https:\/\/connect\.stripe\.com\//.test(sw.url || '')
-      && /^acct_/.test(afterSw.stripe_account_id || '') && afterSw.stripe_account_id !== afterOnb.stripe_account_id, JSON.stringify({ sw, afterSw }));
+    check('Switch: with only a test card, it asks for a texted code and changes nothing (PLAN.md CQ)', sw.ok === false && sw.needs_code === true
+      && afterSw.stripe_account_id === afterOnb.stripe_account_id, JSON.stringify({ sw, afterSw }));
   } catch (e) {
     check('live run', false, e.stack || e.message);
   } finally {

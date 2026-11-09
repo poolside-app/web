@@ -142,6 +142,31 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Provider admin not found or inactive' }, 401);
   }
 
+  // ── Changes waiting for Poolside (PLAN.md CQ3) ─────────────────────────
+  // A club with nobody else to approve a Stripe switch, a new Venmo or full
+  // access gets Poolside: call the club, then approve or stop it here.
+  if (action === 'changes' || action === 'change_decide') {
+    const pc = await import('../_shared/pending_change.ts');
+    if (action === 'changes') {
+      const now = new Date().toISOString();
+      const { data: rows } = await sb.from('pending_changes').select('*').eq('status', 'waiting').gt('expires_at', now).order('created_at', { ascending: false }).limit(100);
+      const tids = [...new Set((rows ?? []).map(r => r.tenant_id as string))];
+      const { data: tns } = tids.length ? await sb.from('tenants').select('id, slug, display_name').in('id', tids) : { data: [] };
+      const out = [];
+      for (const r of rows ?? []) {
+        const t = (tns ?? []).find(x => x.id === r.tenant_id);
+        const approvers = await pc.approversFor(sb as never, r.tenant_id as string, r.requested_by as string | null);
+        const { data: asker } = r.requested_by ? await sb.from('admin_users').select('display_name, email, phone_e164').eq('id', r.requested_by).maybeSingle() : { data: null };
+        out.push({ id: r.id, club: t?.display_name ?? '', slug: t?.slug ?? '', summary: r.summary, kind: r.kind, created_at: r.created_at, expires_at: r.expires_at,
+          asked_by: asker?.display_name || asker?.email || 'Poolside', asked_by_phone: asker?.phone_e164 ?? null,
+          poolside_decides: approvers.length === 0, approvers: approvers.map(a => a.display_name || a.email) });
+      }
+      return jsonResponse({ ok: true, changes: out });
+    }
+    const r = await pc.decideChange(sb as never, { id: String(body.id ?? ''), tenantId: null, by: null, poolside: true, approve: body.approve === true });
+    return jsonResponse(r, r.ok ? 200 : 409);
+  }
+
   // ── list ───────────────────────────────────────────────────────────────
   if (action === 'list') {
     const { data, error } = await sb.from('tenants')

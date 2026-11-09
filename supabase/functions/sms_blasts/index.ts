@@ -270,6 +270,18 @@ Deno.serve(async (req) => {
       actor_id: me, actor_kind: 'tenant_admin',
     });
 
+    // A heads-up to everyone with full access (PLAN.md CQ2): a stolen sign-in
+    // could text every family a fake "pay here" link from the club's number.
+    if (sent > 0) {
+      try {
+        const { headsUp } = await import('../_shared/pending_change.ts');
+        const { data: who } = me ? await sb.from('admin_users').select('display_name, email').eq('id', me).maybeSingle() : { data: null };
+        const msg = String(blast.body).replace(/\s+/g, ' ').trim();
+        await headsUp(sb as never, { tenantId: TID, except: [me, blast.created_by as string | null], source: 'heads_up.sms_blast',
+          text: `${clubName}: heads-up, ${who?.display_name || who?.email || 'a board member'} sent a text to every member: "${msg.length > 90 ? msg.slice(0, 87) + '…' : msg}"` });
+      } catch (e) { console.error('heads-up (non-fatal):', (e as Error).message); }
+    }
+
     return j({ ok: true, sent, failed, capped, total: people.length });
   }
 

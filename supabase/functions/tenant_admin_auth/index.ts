@@ -919,6 +919,45 @@ Deno.serve(async (req) => {
   // Doug in. Anyone with an active admin_users row can manage their peers
   // — board self-governance, no super-admin tier required.
 
+  // ── Locks on where the money goes (PLAN.md CQ) ─────────────────────────
+  // step_up_start: text (or email) me a code for one dangerous change.
+  // changes: the club's changes waiting for a second board member, and which
+  // I can approve. change_decide: approve (with my own code) or stop one;
+  // the one who asked can take it back. Never in a look-only preview.
+  if (action === 'step_up_start' || action === 'changes' || action === 'change_decide') {
+    if (payload.synthetic || payload.impersonated_by || payload.viewing_by) {
+      return jsonResponse({ ok: false, error: 'Not for a provider visit or a preview' }, 403);
+    }
+    const { data: tn } = await sb.from('tenants').select('display_name').eq('id', payload.tid).maybeSingle();
+    if (action === 'step_up_start') {
+      const { startStepUp } = await import('../_shared/step_up.ts');
+      const r = await startStepUp(sb as never, { tenantId: payload.tid as string, adminId: payload.sub as string,
+        purpose: String(body.purpose ?? '') as never, clubName: String(tn?.display_name ?? 'Your club') });
+      return jsonResponse(r, r.ok ? 200 : 400);
+    }
+    const pc = await import('../_shared/pending_change.ts');
+    if (action === 'changes') {
+      const list = await pc.waitingChanges(sb as never, payload.tid as string);
+      const mine = new Set((await pc.approversFor(sb as never, payload.tid as string, null)).map(a => String(a.id)));
+      const { data: names } = await sb.from('admin_users').select('id, display_name, email').eq('tenant_id', payload.tid);
+      const nameOf = (id: string | null) => { const a = (names ?? []).find(x => x.id === id); return a ? (a.display_name || a.email || 'A board member') : 'Poolside'; };
+      return jsonResponse({ ok: true, changes: list.map(c => ({
+        id: c.id, kind: c.kind, summary: c.summary, created_at: c.created_at, expires_at: c.expires_at,
+        asked_by: nameOf(c.requested_by), mine: c.requested_by === payload.sub,
+        can_approve: c.requested_by !== payload.sub && mine.has(String(payload.sub)),
+      })) });
+    }
+    // change_decide
+    const approve = body.approve === true;
+    if (approve) {
+      const { checkStepUp } = await import('../_shared/step_up.ts');
+      const bad = await checkStepUp(sb, { tenantId: payload.tid as string, adminId: payload.sub as string, purpose: 'approve', code: body.step_up_code });
+      if (bad) return jsonResponse(bad.body, bad.status);
+    }
+    const r = await pc.decideChange(sb as never, { id: String(body.id ?? ''), tenantId: payload.tid as string, by: payload.sub as string, approve });
+    return jsonResponse(r, r.ok ? 200 : 409);
+  }
+
   if (action === 'list_admins') {
     const { data, error } = await sb.from('admin_users')
       .select('id, username, email, display_name, notify_pref, is_default_pw, is_super, active, last_login_at, created_at, scopes, role_template, roles, linked_member_id, phone_e164, board_title')
@@ -1026,6 +1065,7 @@ Deno.serve(async (req) => {
     // Invited straight into board positions (the Board page, PLAN.md K):
     // their title, screens and full access come from the positions.
     const positionIds = Array.isArray(body.position_ids) ? [...new Set((body.position_ids as unknown[]).map(String))] : [];
+    let restScopes: string[] = [];
     if (positionIds.length) {
       const { data: held } = await sb.from('board_positions').select('id, slug, title, notices, scopes, full_access, sort')
         .eq('tenant_id', payload.tid).in('id', positionIds);
@@ -1034,6 +1074,23 @@ Deno.serve(async (req) => {
       const login = loginFromPositions(held);
       role_template = login.role_template; roles = login.roles; scopes = login.scopes;
       board_title = login.board_title; roleLabel = login.board_title || roleLabel;
+      restScopes = loginFromPositions(held.filter(p => !p.full_access)).scopes;
+    }
+    // Full access for someone new takes a fresh code (PLAN.md CQ1), then
+    // waits for a second board member (CQ3): they start with their other
+    // positions' screens, and get full access once it's approved.
+    let fullAccessWaits = false;
+    if (role_template === 'owner' || roles.includes('owner')) {
+      if (!payload.synthetic) {
+        const { checkStepUp } = await import('../_shared/step_up.ts');
+        const bad = await checkStepUp(sb, { tenantId: payload.tid, adminId: payload.sub, purpose: 'full_access', code: body.step_up_code });
+        if (bad) return jsonResponse(bad.body, bad.status);
+      }
+      fullAccessWaits = true;
+      roles = roles.filter(r => r !== 'owner');
+      if (!roles.length) roles = ['custom'];
+      role_template = 'custom';
+      scopes = positionIds.length ? restScopes : scopes.filter(s => s !== 'owner');
     }
 
     // Tenant — needed to build the activation link's subdomain URL.
@@ -1135,12 +1192,22 @@ Deno.serve(async (req) => {
     const { linkAdminByPhone } = await import('../_shared/board_member.ts');
     const fam = await linkAdminByPhone(sb as never, payload.tid as string, { id: adminId, phone_e164: phone, linked_member_id: null });
 
+    // Their full access waits for a second board member (PLAN.md CQ3).
+    if (fullAccessWaits) {
+      const { requestChange } = await import('../_shared/pending_change.ts');
+      await requestChange(sb as never, {
+        tenantId: payload.tid as string, kind: 'full_access', targetAdminId: adminId, requestedBy: payload.synthetic ? null : payload.sub as string,
+        summary: `give ${display_name} full access${board_title ? ` (${board_title})` : ''}`,
+      });
+    }
+
     return jsonResponse({
       ok: true, admin_id: adminId, reactivated, channel,
       activation_url: activationLink,
       sent, send_error: sendError,
       role_template, roles, scopes,
       member_family: fam?.family_name ?? null,
+      waiting_full_access: fullAccessWaits,
     });
   }
 
@@ -1226,9 +1293,31 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Making someone an owner takes a fresh code (PLAN.md CQ1) and waits for
+    // a second board member (CQ3).
+    let ownerWaits = false;
+    if (roles.includes('owner') && !wasOwner) {
+      if (!payload.synthetic) {
+        const { checkStepUp } = await import('../_shared/step_up.ts');
+        const bad = await checkStepUp(sb, { tenantId: payload.tid, adminId: payload.sub, purpose: 'full_access', code: body.step_up_code });
+        if (bad) return jsonResponse(bad.body, bad.status);
+      }
+      ownerWaits = true;
+      roles = roles.filter(r => r !== 'owner');
+      if (!roles.length) roles = ['custom'];
+      role_template = roles.length === 1 ? roles[0] : 'custom';
+      scopes = [...new Set(roles.flatMap(r => templateScopes(r)))];
+    }
+
     const { error } = await sb.from('admin_users').update({ scopes, role_template, roles })
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (ownerWaits) {
+      const { data: who } = await sb.from('admin_users').select('display_name, email').eq('id', id).maybeSingle();
+      const { requestChange } = await import('../_shared/pending_change.ts');
+      await requestChange(sb as never, { tenantId: payload.tid as string, kind: 'full_access', targetAdminId: id,
+        requestedBy: payload.synthetic ? null : payload.sub as string, summary: `give ${who?.display_name || who?.email || 'a board member'} full access` });
+    }
 
     try {
       await sb.from('audit_log').insert({
@@ -1239,7 +1328,7 @@ Deno.serve(async (req) => {
       });
     } catch { /* ignore */ }
 
-    return jsonResponse({ ok: true, role_template, roles, scopes });
+    return jsonResponse({ ok: true, role_template, roles, scopes, waiting_full_access: ownerWaits });
   }
 
   if (action === 'deactivate_admin') {
@@ -1310,16 +1399,34 @@ Deno.serve(async (req) => {
     }
     const id = String(body.id ?? '');
     if (!id) return jsonResponse({ ok: false, error: 'id required' }, 400);
-    const { error } = await sb.from('admin_users').update({ active: true })
+    // Bringing back someone who had full access hands it over again: a fresh
+    // code (PLAN.md CQ1), and their full access waits for a second board
+    // member (CQ3). They're back with no screens until then.
+    const { data: back } = await sb.from('admin_users').select('id, display_name, email, role_template, roles, is_super')
+      .eq('id', id).eq('tenant_id', payload.tid).maybeSingle();
+    if (!back) return jsonResponse({ ok: false, error: 'Admin not found' }, 404);
+    const { hasFullAccess } = await import('../_shared/positions_db.ts');
+    const ownerBack = hasFullAccess(back) && !back.is_super;
+    if (ownerBack && !payload.synthetic) {
+      const { checkStepUp } = await import('../_shared/step_up.ts');
+      const bad = await checkStepUp(sb, { tenantId: payload.tid, adminId: payload.sub, purpose: 'full_access', code: body.step_up_code });
+      if (bad) return jsonResponse(bad.body, bad.status);
+    }
+    const { error } = await sb.from('admin_users').update(ownerBack ? { active: true, role_template: 'custom', roles: ['custom'], scopes: [] } : { active: true })
       .eq('id', id).eq('tenant_id', payload.tid);
     if (error) return jsonResponse({ ok: false, error: error.message }, 500);
+    if (ownerBack) {
+      const { requestChange } = await import('../_shared/pending_change.ts');
+      await requestChange(sb as never, { tenantId: payload.tid as string, kind: 'full_access', targetAdminId: id,
+        requestedBy: payload.synthetic ? null : payload.sub as string, summary: `give ${back.display_name || back.email || 'a board member'} full access again` });
+    }
     try {
       await sb.from('audit_log').insert({
         tenant_id: payload.tid, kind: 'admin.reactivated', entity_type: 'admin_user', entity_id: id,
         summary: 'Reactivated admin (undo)', actor_id: payload.sub, actor_kind: 'tenant_admin',
       });
     } catch { /* ignore */ }
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, waiting_full_access: ownerBack });
   }
 
   // Self-service: dismiss the founder "set up your membership" banner. The

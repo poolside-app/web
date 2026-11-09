@@ -23,7 +23,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 import { boardCaller, type BoardCaller } from '../_shared/board.ts';
 import { NOTICES, SCREENS, HELP_NOTICE, SPENDING_RULE, loginFromPositions, noticeRecipients, slugify } from '../_shared/positions.ts';
-import { loadBoard, syncLogins, POSITION_FIELDS } from '../_shared/positions_db.ts';
+import { loadBoard, syncLogins, grantsFullAccess, POSITION_FIELDS } from '../_shared/positions_db.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -83,6 +83,14 @@ Deno.serve(async (req) => {
         actor_id: payload!.synthetic ? null : me!.id, actor_kind: 'tenant_admin', metadata,
       });
     } catch { /* never block a change on the audit write */ }
+  }
+  // A fresh texted code for a dangerous change (PLAN.md CQ1). Poolside's own
+  // visits (synthetic) don't have a phone here, and Poolside approves anyway.
+  async function codeFor(purpose: 'full_access'): Promise<Response | null> {
+    if (payload!.synthetic) return null;
+    const { checkStepUp } = await import('../_shared/step_up.ts');
+    const bad = await checkStepUp(sb, { tenantId: TID, adminId: me!.id, purpose, code: body.step_up_code });
+    return bad ? jsonResponse(bad.body, bad.status) : null;
   }
   async function spendingRule(): Promise<string> {
     const { data } = await sb.from('settings').select('value').eq('tenant_id', TID).maybeSingle();
@@ -167,12 +175,22 @@ Deno.serve(async (req) => {
           return jsonResponse({ ok: false, error: 'Someone has to keep full access. Give another position full access first.' }, 409);
         }
       }
+      // Turning on full access for people who hold this position takes a
+      // fresh code (PLAN.md CQ1); their full access then waits for a second
+      // board member (CQ3, syncLogins).
+      if (!before.full_access && row.full_access && holderIds.length) {
+        const after = { ...b, positions: b.positions.map(x => x.id === before.id ? { ...x, ...row } : x) };
+        if (grantsFullAccess(after, holderIds)) {
+          const bad = await codeFor('full_access');
+          if (bad) return bad;
+        }
+      }
       const { data, error } = await sb.from('board_positions').update(row)
         .eq('id', before.id).eq('tenant_id', TID).select(POSITION_FIELDS).single();
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
-      await syncLogins(sb, TID, holderIds);
+      const sync = await syncLogins(sb, TID, holderIds, undefined, { by: payload.synthetic ? null : me.id });
       await audit('board_position.updated', `Changed the ${title} position`, before.id, { before, after: row });
-      return jsonResponse({ ok: true, position: data });
+      return jsonResponse({ ok: true, position: data, waiting_full_access: sync.waiting });
     }
 
     let slug = slugify(title);
@@ -228,12 +246,18 @@ Deno.serve(async (req) => {
     if (!keepsFullAccess(after, [...added, ...removed])) {
       return jsonResponse({ ok: false, error: 'Someone has to keep full access. Make someone else President first.' }, 409);
     }
+    // Handing someone full access takes a fresh code (PLAN.md CQ1); it then
+    // waits for a second board member (CQ3, syncLogins).
+    if (grantsFullAccess(after, added)) {
+      const bad = await codeFor('full_access');
+      if (bad) return bad;
+    }
 
     if (removed.length) await sb.from('board_position_holders').delete().eq('position_id', positionId).in('admin_user_id', removed);
     if (added.length) {
       await sb.from('board_position_holders').insert(added.map(id => ({ position_id: positionId, admin_user_id: id, tenant_id: TID })));
     }
-    await syncLogins(sb, TID, [...added, ...removed]);
+    const sync = await syncLogins(sb, TID, [...added, ...removed], undefined, { by: payload.synthetic ? null : me.id });
 
     // Open member help conversations on this position's topics move to
     // whoever handles them now. Other alerts follow the position by
@@ -258,7 +282,7 @@ Deno.serve(async (req) => {
       added.length ? `${names(added)} now ${added.length === 1 ? 'holds' : 'hold'} ${pos.title}` : '',
       removed.length ? `${names(removed)} no longer ${removed.length === 1 ? 'holds' : 'hold'} ${pos.title}` : '',
     ].filter(Boolean).join('; '), positionId, { added, removed });
-    return jsonResponse({ ok: true, added, removed });
+    return jsonResponse({ ok: true, added, removed, waiting_full_access: sync.waiting });
   }
 
   // ── set_member_discount (PLAN.md CO) ───────────────────────────────────

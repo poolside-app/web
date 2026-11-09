@@ -197,12 +197,21 @@ Deno.serve(async (req) => {
     if (!tenant.stripe_account_id) return jsonResponse({ ok: false, error: 'No Stripe account is connected yet. Use Connect Stripe.' }, 400);
     const kept = await savedCards(sb, tenant.id);
     if (kept > 0) return jsonResponse({ ok: false, error: switchBlocked(kept), saved_cards: kept }, 409);
-    await forgetAccount(sb, tenant as Tenant, payload.sub, 'the club connected a different account');
-    const clubUrl = `https://${tenant.slug}.poolsideapp.com`;
-    const r = await startOnboarding(sb, tenant as Tenant, payload.sub,
-      `${clubUrl}/club/admin/payments.html#stripe=connected`, `${clubUrl}/club/admin/payments.html#stripe=retry`);
-    if (!r.ok) return jsonResponse({ ok: false, error: r.error }, 500);
-    return jsonResponse({ ok: true, url: r.url, account_id: r.account_id });
+    // A stolen sign-in mustn't be able to send the club's money elsewhere
+    // (PLAN.md CQ, Doug 11/8): a fresh code to their own phone, then a second
+    // board member approves (_shared/pending_change.ts). Nothing changes until
+    // then, so payments keep going to the current account; once it's
+    // approved, the old account is set aside and Connect Stripe starts the new one.
+    const { checkStepUp } = await import('../_shared/step_up.ts');
+    const bad = await checkStepUp(sb as never, { tenantId: tenant.id, adminId: payload.sub, purpose: 'stripe_switch', code: body.step_up_code });
+    if (bad) return jsonResponse(bad.body, bad.status);
+    const { requestChange } = await import('../_shared/pending_change.ts');
+    const req = await requestChange(sb as never, { tenantId: tenant.id, kind: 'stripe_switch', requestedBy: payload.sub,
+      payload: { from_account: tenant.stripe_account_id }, summary: 'switch the club to a different Stripe account' });
+    return jsonResponse({ ok: true, waiting: true, id: req.id, poolside: req.poolside,
+      message: req.poolside
+        ? "Sent to Poolside to approve, since nobody else at the club can. Payments keep going to the current account until then."
+        : 'Sent to the Treasurer and the others with full access to approve. Payments keep going to the current account until one of them does.' });
   }
 
   if (action === 'sync') {
