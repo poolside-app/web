@@ -26,9 +26,12 @@ export function venmoNote(a: { club: string; what: string; family: string | null
   return parts.filter(Boolean).join(' - ').slice(0, 120);
 }
 
-/** Opens the Venmo app on a phone (Venmo's website on a computer), filled in. */
+/** Opens the Venmo app on a phone (Venmo's website on a computer), filled in.
+ *  The note's spaces go as no-break spaces: venmo.com hands the link to the
+ *  app with its spaces turned into "+", which the app shows as is ("Cabana+
+ *  Club+2027+dues", Doug 11/8). No-break spaces look the same and get through. */
 export function venmoLink(a: { handle: string; amountCents: number; note: string }): string {
   const h = String(a.handle || '').trim().replace(/^@+/, '');
   const amt = a.amountCents > 0 ? `&amount=${(a.amountCents / 100).toFixed(2)}` : '';
-  return `https://venmo.com/${encodeURIComponent(h)}?txn=pay${amt}&note=${encodeURIComponent(a.note)}`;
+  return `https://venmo.com/${encodeURIComponent(h)}?txn=pay${amt}&note=${encodeURIComponent(String(a.note).replace(/ /g, '\u00A0'))}`;
 }

@@ -19,7 +19,8 @@
   function link(a) {
     const h = String(a.handle || '').trim().replace(/^@+/, '');
     const amt = a.amountCents > 0 ? '&amount=' + (a.amountCents / 100).toFixed(2) : '';
-    return 'https://venmo.com/' + encodeURIComponent(h) + '?txn=pay' + amt + '&note=' + encodeURIComponent(a.note);
+    // No-break spaces: venmo.com turns plain ones into "+" on the way to the app (_shared/venmo.ts).
+    return 'https://venmo.com/' + encodeURIComponent(h) + '?txn=pay' + amt + '&note=' + encodeURIComponent(String(a.note).replace(/ /g, '\u00A0'));
   }
   // Under every Venmo payment (PLAN.md BZ3); _shared/venmo.ts says the same.
   const RECEIPT_LINE = 'The board confirms Venmo payments. Your Venmo receipt is your receipt.';

@@ -26,7 +26,9 @@ if (v && cv) {
   check('the note: club, what, family, code', v.venmoNote(args) === 'Cabana Club 2027 dues - Frevele - #K7Q2', v.venmoNote(args));
   check('the app and the server write the same note', cv.note(args) === v.venmoNote(args), cv.note(args));
   const link = v.venmoLink({ handle: '@bishopestates', amountCents: 60000, note: v.venmoNote(args) });
-  check('the link opens the club\'s Venmo with the amount and note', link === 'https://venmo.com/bishopestates?txn=pay&amount=600.00&note=Cabana%20Club%202027%20dues%20-%20Frevele%20-%20%23K7Q2', link);
+  // The note's spaces as no-break spaces (%C2%A0): venmo.com turns plain ones into "+" in the app (Doug 11/8).
+  check('the link opens the club\'s Venmo with the amount and note', link === 'https://venmo.com/bishopestates?txn=pay&amount=600.00&note=Cabana%C2%A0Club%C2%A02027%C2%A0dues%C2%A0-%C2%A0Frevele%C2%A0-%C2%A0%23K7Q2', link);
+  check('…with no "+" or plain space left in the note', !/note=[^&]*(\+|%20)/.test(link), link);
   check('the app and the server build the same link', cv.link({ handle: '@bishopestates', amountCents: 60000, note: v.venmoNote(args) }) === link);
   check('no amount, no amount in the link', !/amount=/.test(v.venmoLink({ handle: 'x', amountCents: 0, note: 'n' })));
   check('"The Smith Family" reads as Smith', v.familyShort('The Smith Family') === 'Smith' && v.familyShort('Garcia') === 'Garcia');
